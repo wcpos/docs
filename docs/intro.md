@@ -1,35 +1,27 @@
 ---
-sidebar_position: 1
+title: Introduction
+description: User manual for WooCommerce POS, the point of sale plugin for WordPress.
 ---
 
-# Tutorial Intro
+WooCommerce POS is the Point of Sale plugin for [WooCommerce](https://www.woothemes.com/woocommerce/). 
+This documentation covers the open source plugin, as well as the Pro plugin which adds functionality to the free plugin. 
 
-Let's discover **Docusaurus in less than 5 minutes**.
+* Download [WooCommerce POS](https://wordpress.org/plugins/woocommerce-pos/) from WordPress.org
+* Upgrade to [WooCommerce POS Pro](http://wcpos.com/pro)
 
-## Getting Started
+{% hint style='info' %}
+Please make sure the version number of the documentation matches the version of your installed plugins.
+{% endhint %}
 
-Get started by **creating a new site**.
+### Other documentation
 
-Or **try Docusaurus immediately** with **[new.docusaurus.io](https://new.docusaurus.io)**.
+A list of **Frequently Asked Questions** are available at [faq.wcpos.com](http://faq.wcpos.com). 
+**Developer documentation** is available at [api.wcpos.com](http://api.wcpos.com).
 
-## Generate a new site
+### Help and Support
 
-Generate a new Docusaurus site using the **classic template**:
+If you have a question which is not covered by this documentation or the FAQ, you can contact us at [support@wcpos.com](mailto:support@wcpos.com).
 
-```shell
-npx @docusaurus/init@latest init my-website classic
-```
+### Contribute to this documentation
 
-## Start your site
-
-Run the development server:
-
-```shell
-cd my-website
-
-npx docusaurus start
-```
-
-Your site starts at `http://localhost:3000`.
-
-Open `docs/intro.md` and edit some lines: the site **reloads automatically** and display your changes.
+You can improve this documentation on [GitHub](https://github.com/kilbot/WooCommerce-POS-Manual) by submitting issues or proposing changes. 
