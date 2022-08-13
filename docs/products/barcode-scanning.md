@@ -1,7 +1,13 @@
 ---
 title: Barcode Scanning
 description: WooCommerce POS is able to filter products by the SKU field, this allows you to instantly add products to cart using a barcode scanner.
-tags: barcode, barcode-scanning, filtering, search, sku, sku-field
+tags: 
+	- barcode
+	- barcode-scanning
+	- filtering
+	- search
+	- sku
+	- sku-field
 ---
 
 WooCommerce POS is able to filter products by the SKU field. If a search matches the barcode field exactly the product is added to the cart instantly and the search field is reset. If you have a barcode scanner that is able to populate the search field then you should be use WooCommerce POS for barcode scanning. 

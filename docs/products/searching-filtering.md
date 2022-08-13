@@ -1,7 +1,12 @@
 ---
 title: Product Searching and Filtering
 description: You can use search phrases to filter products by any attribute such as id, category and type.
-tags: categories, category, filtering, product-tabs, searching
+tags: 
+	- categories
+	- category
+	- filtering
+	- product-tabs
+	- searching
 ---
 
 With WooCommerce POS you can search for product by title and also by attribute. For example, on the [demo site](http://demo.wcpos.com/pos/) a search for `woo` will filter by title, a search for `cat:posters` will filter products by the Posters category and a search for `cat:posters woo` will filter products by Posters category with 'woo' in the title. If you wanted to select the Movie Posters category you could use `cat:"movie posters"`. 

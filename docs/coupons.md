@@ -1,6 +1,11 @@
 ---
 title: Coupons
-tags: coupon, discount, gift-cards, loyalty-cards, store-credit
+tags: 
+- coupon
+- discount
+- gift-cards
+- loyalty-cards
+- store-credit
 ---
 
 {% hint style='info' %}

@@ -1,7 +1,11 @@
 ---
 title: Emails
 description: Using the WooCommerce POS settings, store owners can choose to enable or disable the email notifications from WooCommerce.
-tags: checkout, emails, new-orders, notifications
+tags: 
+	- checkout
+	- emails
+	- new-orders
+	- notifications
 ---
 
 By default, WooCommerce sends emails to notify the store owner and customer about the status of their orders. 

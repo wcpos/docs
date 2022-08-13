@@ -1,6 +1,10 @@
 ---
 title: Reports
-tags: data, export, reports, sales
+tags: 
+	- data
+	- export
+	- reports
+	- sales
 ---
 
 {% hint style='info' %}

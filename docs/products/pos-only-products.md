@@ -1,7 +1,10 @@
 ---
 title: POS Only Products
 description: Products can be hidden in your online store or at the point of sale using the POS visibility setting.
-tags: filtering, pos-only, product display
+tags: 
+	- filtering
+	- pos-only
+	- product display
 ---
 
 There may be situations where you need to hide a product from either your Online store or your POS. 

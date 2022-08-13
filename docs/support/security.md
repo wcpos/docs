@@ -1,7 +1,12 @@
 ---
 title: Security
 description: It is your responsibility to ensure the security of your customer's information
-tags: credit-card, hacking, plugins, security, ssl
+tags: 
+	- credit-card
+	- hacking
+	- plugins
+	- security
+	- ssl
 ---
 
 WooCommerce POS allows payment using any installed [WooCommerce gateway](http://www.woothemes.com/product-category/woocommerce-extensions/payment-gateways/). If the payment gateway collects personal information **it is up to you** to ensure the security of your customer's information. Below are some tips for keeping your POS secure:

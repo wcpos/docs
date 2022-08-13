@@ -1,7 +1,12 @@
 ---
 title: Installing WooCommerce POS Pro
 description: If you have purchased the Pro version please follow the steps below to install the plugin.
-tags: downloads, installation, license, pro, updates
+tags: 
+	- downloads
+	- installation
+	- license
+	- pro
+	- updates
 ---
 
 {% hint style='info' %}

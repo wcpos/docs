@@ -1,6 +1,12 @@
 ---
 title: POS Performance
-tags: connection, hosting, optimization, performance, plugins, speed
+tags: 
+	- connection
+	- hosting
+	- optimization
+	- performance
+	- plugins
+	- speed
 ---
 
 WooCommerce POS is a single-page javascript web application which communicates to your server via the [WooCommerce REST API](http://woothemes.github.io/woocommerce-rest-api-docs/). Performance issues can be separated into two categories; server-side and clients-side.

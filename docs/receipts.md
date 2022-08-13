@@ -1,7 +1,13 @@
 ---
 title: Receipts
 description: Receipts can be customised by copying the receipt.php template in your theme directory.
-tags: customise, date, handlebars, moment.js, printing, receipts, template, theme
+tags: 
+	- customise
+	- customize
+	- printing
+	- receipts
+	- template
+	- theme
 ---
 
 The POS receipt print templates reside in the `includes/views/print/tmpl-receipt.php` file of both the free and the Pro plugins. Receipt templates can be customised by creating a `woocommerce-pos/print/tmpl-receipt.php` file in your theme directory. The code for both templates is included below.

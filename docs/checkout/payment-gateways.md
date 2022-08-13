@@ -1,7 +1,13 @@
 ---
 title: Payment Gateways
 description: WooCommerce POS Pro users can activate and accept payments from any installed WooCommerce gateway.
-tags: bitcoin, credit-card, gateways, payment, payment-gateways, paypal
+tags: 
+	- bitcoin
+	- credit-card
+	- gateways
+	- payment
+	- payment-gateways
+	- paypal
 ---
 
 WooCommerce POS supports three payment gateways by default: Cash, Card (external EFTPOS machine) and PayPal. 

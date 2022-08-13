@@ -1,7 +1,11 @@
 ---
 title: Legacy Servers
 description: If your web host blocks modern RESTful HTTP methods you will need to enable legacy server support.
-tags: errors, http, legacy, REST
+tags: 
+   - errors
+   - http
+   - legacy
+   - REST
 ---
 
 HTTP (and HTTPS) are the protocols used by every browser to talk to web applications. 

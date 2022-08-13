@@ -1,7 +1,10 @@
 ---
 title: Filtering orders by POS or Online sales
 description: Separate POS and Online orders by using the quick-links in the WooCommerce admin.
-tags: admin, filtering, orders
+tags: 
+	- admin
+	- filtering
+	- orders
 ---
 
 You can quickly separate your POS and Online orders in the WooCommerce admin by using the quick-links to the top left. 

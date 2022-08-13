@@ -1,6 +1,9 @@
 ---
 title: Custom Barcode Field
-tags: barcode, filters, postmeta
+tags: 
+	- barcode
+	- filters
+	- postmeta
 ---
 
 By default WooCommerce POS will use the SKU field as the barcode. 
