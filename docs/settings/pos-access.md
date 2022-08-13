@@ -2,14 +2,14 @@
 title: POS Access
 description: Using the POS Access settings, store owners can grant or remove user privileges to the Point of Sale system.
 tags: 
-	- access
-	- administrator
-	- capabilities
-	- cashier
-	- privileges
-	- roles
-	- shop-manager
-	- users
+- access
+- administrator
+- capabilities
+- cashier
+- privileges
+- roles
+- shop-manager
+- users
 ---
 
 Using the POS Access settings, store owners can grant or remove user privileges to the Point of Sale system. 

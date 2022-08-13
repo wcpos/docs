@@ -2,13 +2,13 @@
 title: Debugging
 description: If debugging is enabled, WooCommerce POS will log various messages to the console which may assist in diagnosing problems.
 tags: 
-	- browser
-	- console
-	- debugging
-	- developer
-	- javascript
-	- local-storage
-	- support
+- browser
+- console
+- debugging
+- developer
+- javascript
+- local-storage
+- support
 ---
 
 {% hint style='info' %}

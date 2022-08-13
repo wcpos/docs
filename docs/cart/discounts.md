@@ -2,11 +2,11 @@
 title: Discounts
 description: WooCommerce POS allows you to quick apply discounts at the point-of-sale.
 tags: 
-	- discount
-	- item-price
-	- number-pad
-	- sale
-	- tax
+- discount
+- item-price
+- number-pad
+- sale
+- tax
 ---
 
 ### Item Price
