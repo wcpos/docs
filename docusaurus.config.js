@@ -6,7 +6,7 @@ module.exports = {
   title: 'WooCommerce POS',
   tagline: '',
   url: 'https://wcpos.github.io',
-  baseUrl: '/',
+  baseUrl: '/docs/',
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/favicon.ico',
