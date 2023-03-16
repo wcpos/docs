@@ -31,7 +31,7 @@ module.exports = {
           position: 'right',
           dropdownItemsAfter: [
             {
-              to: 'https://www.transifex.com/wcpos/',
+              to: 'https://github.com/wcpos/docs/issues/new?assignees=&labels=i18n&template=translation_request.md&title=',
               label: 'Help us translate',
             },
           ],
