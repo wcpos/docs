@@ -13,6 +13,12 @@ module.exports = {
   organizationName: 'wcpos', // Usually your GitHub org/user name.
   projectName: 'docs', // Usually your repo name.
   themeConfig: {
+    docs: {
+      sidebar: {
+        // hideable: true,
+        // autoCollapseCategories: true,
+      },
+    },
     navbar: {
       title: 'WooCommerce POS',
       logo: {
@@ -22,7 +28,7 @@ module.exports = {
       items: [
         {
           type: 'doc',
-          docId: 'intro',
+          docId: 'introduction',
           position: 'left',
           label: 'Docs',
         },
@@ -31,7 +37,7 @@ module.exports = {
           position: 'right',
           dropdownItemsAfter: [
             {
-              to: 'https://github.com/wcpos/docs/issues/new?assignees=&labels=i18n&template=translation_request.md&title=',
+              to: 'https://github.com/wcpos/docs/issues/new?assignees=&labels=i18n&template=translation_request.yml&language=',
               label: 'Help us translate',
             },
           ],
@@ -39,13 +45,15 @@ module.exports = {
         {
           type: 'docsVersionDropdown',
           position: 'right',
-          dropdownItemsAfter: [{ to: '/versions', label: 'All versions' }],
+          // dropdownItemsAfter: [{ to: '/versions', label: 'All versions' }],
           dropdownActiveClassDisabled: true,
         },
         {
           href: 'https://github.com/wcpos/docs',
-          label: 'GitHub',
+          // label: 'GitHub',
           position: 'right',
+          className: 'header-github-link',
+          'aria-label': 'GitHub repository',
         },
         {
           type: 'search',
@@ -133,18 +141,18 @@ module.exports = {
       '@docusaurus/preset-classic',
       {
         docs: {
+          breadcrumbs: true,
           routeBasePath: '/',
-          lastVersion: '0.4.x',
-          versions: {
-            current: {
-              label: 'next',
-              path: 'next',
-            },
-          },
+          lastVersion: '1.0.x',
+          includeCurrentVersion: false,
+          // versions: {
+          //   '1.0.x': {
+          //     label: '1.0.x',
+          //     path: '1.0.x',
+          //   },
+          // },
           sidebarPath: require.resolve('./sidebars.js'),
-          // Please change this to your repo.
-          editUrl:
-            'https://github.com/wcpos/docs/edit/main/',
+          editUrl: 'https://github.com/wcpos/docs/edit/main/',
         },
         blog: false,
         theme: {
