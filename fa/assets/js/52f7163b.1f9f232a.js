@@ -1,1 +1,0 @@
-"use strict";(self.webpackChunkwcpos=self.webpackChunkwcpos||[]).push([[481],{2959:e=>{e.exports=JSON.parse('{"pluginId":"default","version":"1.0.x","label":"1.0.x","banner":"unreleased","badge":true,"noIndex":false,"className":"docs-version-1.0.x","isLast":false,"docsSidebars":{},"docs":{"intro":{"id":"intro","title":"intro","description":"1.0.x"}}}')}}]);
