@@ -105,6 +105,7 @@ module.exports = {
     prism: {
       theme: lightCodeTheme,
       darkTheme: darkCodeTheme,
+      additionalLanguages: ['php'],
     },
     algolia: {
       // The application ID provided by Algolia
