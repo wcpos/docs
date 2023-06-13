@@ -115,7 +115,7 @@ module.exports = {
         docs: {
           breadcrumbs: true,
           routeBasePath: '/',
-          lastVersion: '1.0.x',
+          lastVersion: '1.x',
           includeCurrentVersion: false,
           // versions: {
           //   '1.0.x': {
