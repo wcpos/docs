@@ -5,14 +5,15 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 module.exports = {
   title: 'WooCommerce POS',
   tagline: '',
-  url: 'https://wcpos.github.io',
-  baseUrl: '/docs/',
+  url: 'https://docs.wcpos.com',
+  baseUrl: '/',
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/favicon.ico',
   organizationName: 'wcpos', // Usually your GitHub org/user name.
   projectName: 'docs', // Usually your repo name.
   themeConfig: {
+     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     docs: {
       sidebar: {
         // hideable: true,
@@ -24,6 +25,7 @@ module.exports = {
       logo: {
         alt: 'WooCommerce POS Logo',
         src: 'img/square-icon-512x512.png',
+        href: 'https://wcpos.com'
       },
       items: [
         {
@@ -111,6 +113,7 @@ module.exports = {
   presets: [
     [
       '@docusaurus/preset-classic',
+       /** @type {import('@docusaurus/preset-classic').Options} */
       {
         docs: {
           breadcrumbs: true,
