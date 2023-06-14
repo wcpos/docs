@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkwcpos=self.webpackChunkwcpos||[]).push([[6638],{3262:e=>{e.exports=JSON.parse('{"title":"Settings","slug":"/category/settings","permalink":"/es/0.4.x/category/settings","navigation":{"previous":{"title":"Opening Hours","permalink":"/es/0.4.x/stores/opening-hours"},"next":{"title":"General Settings","permalink":"/es/0.4.x/settings/general"}}}')}}]);

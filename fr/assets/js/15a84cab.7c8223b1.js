@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkwcpos=self.webpackChunkwcpos||[]).push([[2659],{6804:e=>{e.exports=JSON.parse('{"title":"Paiement","slug":"/category/checkout","permalink":"/fr/0.4.x/category/checkout","navigation":{"previous":{"title":"Parked Orders","permalink":"/fr/0.4.x/cart/parked-orders"},"next":{"title":"E-mails","permalink":"/fr/0.4.x/checkout/emails"}}}')}}]);
