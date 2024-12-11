@@ -85,10 +85,6 @@ module.exports = {
               label: 'Discord',
               href: 'https://wcpos.com/discord',
             },
-            {
-              label: 'Twitter',
-              href: 'https://twitter.com/wcpos',
-            },
           ],
         },
         {
@@ -97,6 +93,10 @@ module.exports = {
             {
               label: 'GitHub',
               href: 'https://github.com/wcpos',
+            },
+            {
+              label: 'WooCommerce POS',
+              href: 'https://wcpos.com',
             },
           ],
         },
