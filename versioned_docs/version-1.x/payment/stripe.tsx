@@ -1,0 +1,1 @@
+https://docs.stripe.com/terminal/designing-integration?platform=ios&integration-country=US&reader=S700
