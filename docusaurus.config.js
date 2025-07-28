@@ -2,7 +2,7 @@ const {themes} = require('prism-react-renderer');
 
 /** @type {import('@docusaurus/types').DocusaurusConfig} */
 module.exports = {
-  title: 'WooCommerce POS',
+  title: 'WCPOS - Point of Sale for WooCommerce',
   tagline: '',
   url: 'https://docs.wcpos.com',
   baseUrl: '/',
@@ -20,9 +20,9 @@ module.exports = {
       },
     },
     navbar: {
-      title: 'WooCommerce POS',
+      title: 'WCPOS',
       logo: {
-        alt: 'WooCommerce POS Logo',
+        alt: 'WCPOS Logo',
         src: 'img/square-icon-512x512.png',
         href: 'https://wcpos.com'
       },
@@ -95,13 +95,13 @@ module.exports = {
               href: 'https://github.com/wcpos',
             },
             {
-              label: 'WooCommerce POS',
+              label: 'WCPOS',
               href: 'https://wcpos.com',
             },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} WooCommerce POS. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} WCPOS. Built with Docusaurus.`,
     },
     prism: {
       theme: themes.github,
