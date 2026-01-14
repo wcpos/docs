@@ -1,0 +1,319 @@
+---
+title: Gateway Template
+description: Create your own custom WooCommerce POS payment gateway
+---
+
+# Gateway Template
+
+The WooCommerce Gateway Template provides a starting point for creating your own custom payment gateways for WooCommerce POS. This template includes all the necessary boilerplate code and structure to build a fully functional payment gateway.
+
+## Features
+
+- **Complete Template**: Ready-to-use gateway structure with all required methods
+- **POS Integration**: Pre-configured for WooCommerce POS compatibility
+- **Automated Setup**: Script-based template customization
+- **Best Practices**: Follows WordPress and WooCommerce coding standards
+- **Extensible**: Easy to modify and extend for specific payment providers
+
+## Getting Started
+
+### Option 1: Automated Template Generation
+
+The template includes a script that automatically customizes the template for your specific gateway:
+
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/wcpos/woocommerce-gateway-template.git
+   cd woocommerce-gateway-template
+   ```
+
+2. **Run the Setup Script**:
+   ```bash
+   ./create-gateway.sh
+   ```
+
+3. **Follow the Prompts**:
+   - Enter your gateway name (e.g., "My Payment Gateway")
+   - Enter a gateway slug (e.g., "my-payment")
+   - Provide a description
+   - The script will generate a customized plugin
+
+### Option 2: Manual Template Usage
+
+If you prefer manual customization:
+
+1. **Download the Template**:
+   - Visit the [Gateway Template repository](https://github.com/wcpos/woocommerce-gateway-template)
+   - Download the latest release or clone the repository
+
+2. **Customize the Template**:
+   - Replace `{{GATEWAY_NAME}}` with your gateway's display name
+   - Replace `{{GATEWAY_SLUG}}` with your gateway's unique identifier
+   - Replace `{{GATEWAY_DESCRIPTION}}` with your gateway's description
+
+3. **Rename Files**:
+   - Rename `wcpos-{{GATEWAY_SLUG}}.php` to match your gateway slug
+   - Update file headers and plugin information
+
+## Template Structure
+
+### Main Plugin File
+
+The main plugin file (`wcpos-{{GATEWAY_SLUG}}.php`) contains:
+
+- **Plugin Header**: WordPress plugin information
+- **Gateway Class**: Main payment gateway class
+- **Initialization**: Plugin setup and hooks
+- **Integration**: WooCommerce POS compatibility
+
+### Key Components
+
+**Gateway Class Structure**:
+```php
+class WCPOS_Gateway_{{GATEWAY_CLASS}} extends WC_Payment_Gateway {
+    // Gateway configuration
+    public function __construct() { }
+    
+    // Admin settings form
+    public function init_form_fields() { }
+    
+    // Process payment (main logic goes here)
+    public function process_payment( $order_id ) { }
+    
+    // POS-specific methods
+    public function payment_fields() { }
+}
+```
+
+## Customization Guide
+
+### Basic Configuration
+
+1. **Gateway Information**:
+   ```php
+   $this->id = 'your_gateway_id';
+   $this->title = 'Your Gateway Name';
+   $this->description = 'Gateway description for customers';
+   $this->method_title = 'Admin title';
+   $this->method_description = 'Admin description';
+   ```
+
+2. **Supported Features**:
+   ```php
+   $this->supports = array(
+       'products',
+       'refunds',
+       'subscriptions', // if applicable
+   );
+   ```
+
+### Payment Processing
+
+The core payment logic goes in the `process_payment()` method:
+
+```php
+public function process_payment( $order_id ) {
+    $order = wc_get_order( $order_id );
+    
+    // Your payment processing logic here
+    // Example: API calls, validation, etc.
+    
+    if ( $payment_successful ) {
+        $order->payment_complete();
+        return array(
+            'result' => 'success',
+            'redirect' => $this->get_return_url( $order )
+        );
+    } else {
+        wc_add_notice( 'Payment failed', 'error' );
+        return array(
+            'result' => 'failure'
+        );
+    }
+}
+```
+
+### Admin Settings
+
+Configure admin settings in `init_form_fields()`:
+
+```php
+public function init_form_fields() {
+    $this->form_fields = array(
+        'enabled' => array(
+            'title' => 'Enable/Disable',
+            'type' => 'checkbox',
+            'label' => 'Enable Your Gateway',
+            'default' => 'yes'
+        ),
+        'api_key' => array(
+            'title' => 'API Key',
+            'type' => 'text',
+            'description' => 'Enter your API key',
+            'default' => '',
+            'desc_tip' => true,
+        ),
+        // Add more settings as needed
+    );
+}
+```
+
+### POS Integration
+
+For POS-specific functionality, implement:
+
+```php
+public function payment_fields() {
+    // Custom payment form for POS
+    if ( is_admin() && isset( $_GET['page'] ) && $_GET['page'] === 'wc-pos' ) {
+        // POS-specific payment fields
+        echo '<div class="pos-payment-fields">';
+        // Your custom POS interface
+        echo '</div>';
+    } else {
+        // Standard web checkout fields
+        parent::payment_fields();
+    }
+}
+```
+
+## Development Best Practices
+
+### Code Standards
+
+- **WordPress Coding Standards**: Follow WordPress PHP coding standards
+- **WooCommerce Guidelines**: Adhere to WooCommerce development practices
+- **Security**: Sanitize inputs, validate data, use nonces
+- **Internationalization**: Make strings translatable using `__()` and `_e()`
+
+### Error Handling
+
+```php
+// Proper error handling
+try {
+    $result = $this->process_api_call( $data );
+    if ( is_wp_error( $result ) ) {
+        throw new Exception( $result->get_error_message() );
+    }
+} catch ( Exception $e ) {
+    $order->add_order_note( 'Payment failed: ' . $e->getMessage() );
+    wc_add_notice( 'Payment processing error', 'error' );
+    return array( 'result' => 'failure' );
+}
+```
+
+### Logging
+
+```php
+// Add logging for debugging
+if ( $this->debug ) {
+    $this->log( 'Payment processing started for order ' . $order_id );
+}
+
+private function log( $message ) {
+    if ( empty( $this->logger ) ) {
+        $this->logger = wc_get_logger();
+    }
+    $this->logger->info( $message, array( 'source' => $this->id ) );
+}
+```
+
+## Testing Your Gateway
+
+### Development Environment
+
+1. **Test Mode**: Always implement a test/sandbox mode
+2. **Debug Logging**: Include comprehensive logging for troubleshooting
+3. **Error Scenarios**: Test various failure conditions
+4. **POS Testing**: Test specifically in the POS environment
+
+### Test Cases
+
+- **Successful Payments**: Verify orders complete correctly
+- **Failed Payments**: Ensure proper error handling
+- **Refunds**: Test refund functionality if supported
+- **Edge Cases**: Test with various order amounts and configurations
+
+## Deployment
+
+### Plugin Packaging
+
+1. **Remove Development Files**: Clean up test files and development tools
+2. **Version Control**: Update version numbers in plugin header
+3. **Documentation**: Include README with installation instructions
+4. **Zip Package**: Create installable zip file
+
+### Distribution
+
+- **GitHub Releases**: Use GitHub releases for version management
+- **WordPress Plugin Directory**: Consider submitting to WordPress.org
+- **Private Distribution**: Host on your own servers if needed
+
+## Advanced Features
+
+### Webhooks
+
+For real-time payment updates:
+
+```php
+public function handle_webhook() {
+    $payload = file_get_contents( 'php://input' );
+    $data = json_decode( $payload, true );
+    
+    // Verify webhook signature
+    if ( $this->verify_webhook_signature( $payload ) ) {
+        $this->process_webhook_data( $data );
+    }
+}
+```
+
+### Subscriptions Support
+
+For recurring payments:
+
+```php
+// Add subscription support
+$this->supports[] = 'subscriptions';
+$this->supports[] = 'subscription_cancellation';
+$this->supports[] = 'subscription_suspension';
+```
+
+### Multi-currency
+
+For international payments:
+
+```php
+public function get_supported_currencies() {
+    return array( 'USD', 'EUR', 'GBP', 'CAD' );
+}
+```
+
+## Resources
+
+### Documentation
+
+- [WooCommerce Payment Gateway API](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html)
+- [WordPress Plugin Development](https://developer.wordpress.org/plugins/)
+- [WooCommerce POS Documentation](https://docs.wcpos.com/)
+
+### Template Repository
+
+- **GitHub**: [woocommerce-gateway-template](https://github.com/wcpos/woocommerce-gateway-template)
+- **Issues**: Report template issues or request features
+- **Contributions**: Submit improvements via pull requests
+
+### Getting Help
+
+For development support:
+- Visit the [GitHub repository](https://github.com/wcpos/woocommerce-gateway-template) for template-specific issues
+- Check WooCommerce developer documentation for API questions
+- Join the WooCommerce developer community for general guidance
+
+## Example Gateways
+
+Study these existing custom gateways for implementation examples:
+
+- **[Stripe Terminal](./stripe-terminal)**: Hardware integration example
+- **[SumUp Terminal](./sumup-terminal)**: API-based terminal integration
+- **[Email Invoice](./email-invoice)**: Simple email-based gateway
+- **[Web Checkout](./web-checkout)**: Web integration gateway
