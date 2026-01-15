@@ -76,7 +76,7 @@ ${content}`;
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-20240307',
+      model: 'claude-3-5-haiku-latest',
       max_tokens: 8192,
       system:
         translationContext ||

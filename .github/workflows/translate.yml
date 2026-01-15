@@ -10,9 +10,10 @@ on:
       mode:
         description: 'Translation mode'
         required: true
-        default: 'changed'
+        default: 'test'
         type: choice
         options:
+          - test
           - changed
           - all
 
@@ -45,7 +46,10 @@ jobs:
       - name: Get files to translate
         id: files
         run: |
-          if [ "${{ inputs.mode }}" = "all" ]; then
+          if [ "${{ inputs.mode }}" = "test" ]; then
+            # Test mode: just one small file to verify everything works
+            echo "M	versioned_docs/version-1.x/getting-started/index.mdx" > changed_files.txt
+          elif [ "${{ inputs.mode }}" = "all" ]; then
             # List all English source files
             find versioned_docs -name "*.mdx" -o -name "*.md" | sed 's/^/M\t/' > changed_files.txt
             find i18n/en -name "*.json" 2>/dev/null | sed 's/^/M\t/' >> changed_files.txt || true
@@ -79,10 +83,24 @@ jobs:
         run: node scripts/translate-with-claude.js changed_files.txt
       
       - name: Commit translations
-        if: steps.files.outputs.has_files == 'true'
+        if: steps.files.outputs.has_files == 'true' && inputs.mode != 'test'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add i18n/
           git commit -m "chore: translate documentation" || echo "No changes to commit"
           git push
+      
+      - name: Show test results (test mode only)
+        if: inputs.mode == 'test'
+        run: |
+          echo "=== Test mode - showing translated files (not committed) ==="
+          for locale in es fr de ja pt-BR ko it ar hi-IN zh-CN; do
+            file="i18n/$locale/docusaurus-plugin-content-docs/version-1.x/getting-started/index.mdx"
+            if [ -f "$file" ]; then
+              echo ""
+              echo "=== $locale ==="
+              head -30 "$file"
+              echo "..."
+            fi
+          done
