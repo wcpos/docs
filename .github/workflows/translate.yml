@@ -1,0 +1,89 @@
+name: Translate Docs
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to translate'
+        required: true
+        default: 'main'
+      mode:
+        description: 'Translation mode'
+        required: true
+        default: 'changed'
+        type: choice
+        options:
+          - changed
+          - all
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install
+      
+      - name: Get files to translate
+        id: files
+        run: |
+          if [ "${{ inputs.mode }}" = "all" ]; then
+            # List all English source files
+            find versioned_docs -name "*.mdx" -o -name "*.md" | sed 's/^/M\t/' > changed_files.txt
+            find i18n/en -name "*.json" 2>/dev/null | sed 's/^/M\t/' >> changed_files.txt || true
+          else
+            # Get files changed since last translation commit
+            LAST_TRANSLATE=$(git log --oneline --grep="chore: translate" -1 --format="%H" || echo "")
+            if [ -n "$LAST_TRANSLATE" ]; then
+              git diff --name-status $LAST_TRANSLATE...HEAD -- \
+                'versioned_docs/**' \
+                'i18n/en/**' > changed_files.txt
+            else
+              # No previous translation, translate all
+              find versioned_docs -name "*.mdx" -o -name "*.md" | sed 's/^/M\t/' > changed_files.txt
+              find i18n/en -name "*.json" 2>/dev/null | sed 's/^/M\t/' >> changed_files.txt || true
+            fi
+          fi
+          
+          echo "Files to translate:"
+          cat changed_files.txt
+          
+          if [ -s changed_files.txt ]; then
+            echo "has_files=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_files=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Run translation
+        if: steps.files.outputs.has_files == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/translate-with-claude.js changed_files.txt
+      
+      - name: Commit translations
+        if: steps.files.outputs.has_files == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add i18n/
+          git commit -m "chore: translate documentation" || echo "No changes to commit"
+          git push
