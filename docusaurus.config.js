@@ -173,13 +173,12 @@ module.exports = {
   ],
   i18n: {
     defaultLocale: 'en',
-    locales: ['en', 'es', 'fr', 'hi-IN', 'zh-CN'],
+    locales: ['en', 'es', 'fr', 'de', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'],
     localeConfigs: {
       en: {
         htmlLang: 'en-GB',
       },
-      // You can omit a locale (e.g. fr) if you don't need to override the defaults
-      fa: {
+      ar: {
         direction: 'rtl',
       },
     },

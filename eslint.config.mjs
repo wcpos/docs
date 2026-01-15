@@ -34,6 +34,7 @@ export default [
       'linebreak-style': ['error', 'unix'],
       quotes: ['error', 'single'],
       semi: ['error', 'always'],
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       'react/prop-types': 'off',
       'prettier/prettier': [
         'error',

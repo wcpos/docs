@@ -1,0 +1,102 @@
+name: Translate Docs
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  translate:
+    # Only run on PR comments with /translate command
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/translate')
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Get PR details
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            return {
+              head_ref: pr.data.head.ref,
+              base_ref: pr.data.base.ref
+            };
+      
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJSON(steps.pr.outputs.result).head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install
+      
+      - name: Get changed English files
+        id: changed
+        run: |
+          # Compare PR branch to base - ONLY English sources
+          BASE_REF="${{ fromJSON(steps.pr.outputs.result).base_ref }}"
+          git diff --name-status origin/$BASE_REF...HEAD -- \
+            'versioned_docs/**' \
+            'i18n/en/**' > changed_files.txt
+          
+          echo "Changed English files:"
+          cat changed_files.txt
+          
+          # Check if any changes found
+          if [ -s changed_files.txt ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Run translation
+        if: steps.changed.outputs.has_changes == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/translate-with-claude.js changed_files.txt
+      
+      - name: Commit translations
+        if: steps.changed.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add i18n/
+          git commit -m "chore: translate documentation" || echo "No changes to commit"
+          git push
+      
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const hasChanges = '${{ steps.changed.outputs.has_changes }}' === 'true';
+            const body = hasChanges 
+              ? '✅ Translations have been added to this PR. Please review the preview build.'
+              : '⚠️ No English documentation changes detected in this PR.';
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
