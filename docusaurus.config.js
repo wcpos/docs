@@ -105,7 +105,7 @@ module.exports = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} WCPOS. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} WCPOS.`,
     },
     prism: {
       theme: themes.github,
