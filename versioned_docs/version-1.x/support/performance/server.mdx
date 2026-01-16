@@ -1,0 +1,264 @@
+---
+title: Server Performance
+sidebar_label: Server Performance
+sidebar_position: 2
+---
+
+import Image from "@theme/IdealImage";
+
+Server performance directly impacts the speed and responsiveness of your WCPOS application. This guide helps you monitor, diagnose, and optimize server performance using the built-in metrics and troubleshooting techniques.
+
+## Understanding Server Metrics
+
+WCPOS automatically collects server performance metrics with each data fetch operation (products, orders, customers, etc.). You can view these metrics in the [Logs](/support/logs) screen.
+
+### Typical Server Metrics
+
+```json
+{
+  "total": "24692",
+  "execution_time": "76.64 ms",
+  "server_load": "[15.20605469,16.16357422,16.76806641]"
+}
+```
+
+**Breakdown:**
+- **`total`** - Number of records processed (24,692 product IDs)
+- **`execution_time`** - Time taken to complete the operation (76.64 milliseconds)
+- **`server_load`** - Server load averages for 1, 5, and 15 minutes
+
+## Server Load Explained
+
+Server load represents the average system load over different time periods:
+
+- **First value** - 1-minute average (15.21)
+- **Second value** - 5-minute average (16.16)
+- **Third value** - 15-minute average (16.77)
+
+### Load Interpretation
+
+| Load Range | Status | Description |
+|------------|--------|-------------|
+| **0.0 - 1.0** | Excellent | Server is underutilized |
+| **1.0 - 2.0** | Good | Normal load for single-core systems |
+| **2.0 - 4.0** | Moderate | Acceptable for multi-core systems |
+| **4.0 - 8.0** | High | Server is working hard |
+| **8.0+** | Critical | Server is overloaded |
+
+:::info CPU Cores Matter
+Load values should be interpreted relative to your server's CPU cores. A load of 4.0 is excellent on an 8-core server but critical on a 2-core server.
+:::
+
+## Performance Benchmarks
+
+### Execution Time Guidelines
+
+| Operation | Good | Acceptable | Poor | Critical |
+|-----------|------|------------|------|----------|
+| **Product fetch** | < 100ms | 100-500ms | 500ms-2s | > 2s |
+| **Order creation** | < 200ms | 200-800ms | 800ms-3s | > 3s |
+| **Customer sync** | < 50ms | 50-200ms | 200ms-1s | > 1s |
+| **Tax calculation** | < 30ms | 30-100ms | 100-500ms | > 500ms |
+
+### Record Count Considerations
+
+Execution time should scale reasonably with record count:
+
+```json
+// Good scaling examples
+{"total": "100", "execution_time": "15.2 ms"}    // 0.15ms per record
+{"total": "1000", "execution_time": "89.4 ms"}   // 0.09ms per record
+{"total": "10000", "execution_time": "234.1 ms"} // 0.02ms per record
+
+// Poor scaling examples
+{"total": "100", "execution_time": "500.0 ms"}   // 5.0ms per record
+{"total": "1000", "execution_time": "8000.0 ms"} // 8.0ms per record
+```
+
+## Diagnosing Performance Issues
+
+### Step 1: Monitor the Logs
+
+1. Open **Logs** from the navigation drawer
+2. Perform the slow operation (sync products, create order, etc.)
+3. Look for the corresponding log entry
+4. Expand the context to see metrics
+
+### Step 2: Analyze the Metrics
+
+**High execution time + High server load = Server resource issue**
+```json
+{
+  "total": "5000",
+  "execution_time": "3500.0 ms",
+  "server_load": "[12.45, 11.23, 10.87]"
+}
+```
+*Solution: Increase server resources or optimize server configuration*
+
+**High execution time + Normal server load = Plugin/database issue**
+```json
+{
+  "total": "1000",
+  "execution_time": "2800.0 ms",
+  "server_load": "[1.23, 1.45, 1.67]"
+}
+```
+*Solution: Identify slow plugins or optimize database queries*
+
+**Normal execution time + High server load = General server overload**
+```json
+{
+  "total": "2000",
+  "execution_time": "150.0 ms",
+  "server_load": "[8.90, 9.12, 8.45]"
+}
+```
+*Solution: Reduce server load from other processes or upgrade resources*
+
+## Common Performance Problems
+
+### 1. Insufficient Server Resources
+
+**Symptoms:**
+- Consistently high server load (> 4.0 on most servers)
+- Long execution times across all operations
+- Frequent timeouts
+
+**Solutions:**
+- **Upgrade CPU** - More cores handle concurrent requests better
+- **Increase RAM** - Reduces disk I/O and improves caching
+- **Use SSD storage** - Dramatically improves database performance
+- **Optimize PHP settings** - Increase memory_limit, max_execution_time
+
+### 2. Slow Database Queries
+
+**Symptoms:**
+- High execution times with normal server load
+- Particularly slow product/order fetching
+- Database-related error codes in logs
+
+**Solutions:**
+- **Optimize database tables** - Run `OPTIMIZE TABLE` on large tables
+- **Add database indexes** - Especially on frequently queried columns
+- **Clean up old data** - Remove unnecessary revisions, spam, trash
+- **Use database caching** - Redis or Memcached for query results
+
+### 3. Plugin Interference
+
+**Symptoms:**
+- Sudden performance degradation after plugin updates
+- Specific operations much slower than others
+- High execution times with normal server load
+
+**Troubleshooting:**
+1. **Test on staging** - Disable all plugins except WooCommerce and WCPOS
+2. **Measure baseline** - Record execution times with minimal plugins
+3. **Enable gradually** - Add plugins one by one to identify culprits
+4. **Check plugin hooks** - Look for plugins hooking into WooCommerce actions
+
+**Common problematic plugins:**
+- Heavy SEO plugins during product operations
+- Complex inventory management systems
+- Real-time analytics/tracking plugins
+- Poorly coded custom plugins
+
+### 4. WordPress/WooCommerce Configuration
+
+**Symptoms:**
+- Inconsistent performance
+- Memory-related errors in logs
+- Slow admin dashboard
+
+**Optimization checklist:**
+- **PHP version** - Use PHP 8.0+ for better performance
+- **WordPress caching** - Enable object caching and page caching
+- **WooCommerce settings** - Optimize product image sizes
+- **Database cleanup** - Remove unnecessary data and optimize tables
+
+## Server Monitoring Best Practices
+
+### 1. Regular Performance Checks
+
+- **Weekly reviews** - Check logs for performance trends
+- **Baseline measurements** - Record normal execution times
+- **Peak time monitoring** - Monitor during high-traffic periods
+
+### 2. Set Performance Alerts
+
+Monitor for these warning signs:
+- Execution times > 1000ms consistently
+- Server load > 5.0 for extended periods
+- Frequent timeout errors in logs
+
+### 3. Capacity Planning
+
+Track growth trends:
+- **Record count growth** - Products, orders, customers
+- **Performance degradation** - How execution time scales
+- **Resource utilization** - CPU, memory, disk usage
+
+## Server Optimization Strategies
+
+### 1. Immediate Improvements
+
+**PHP Configuration:**
+```ini
+memory_limit = 512M
+max_execution_time = 300
+max_input_vars = 3000
+post_max_size = 64M
+upload_max_filesize = 64M
+```
+
+**Database Optimization:**
+```sql
+-- Optimize WooCommerce tables
+OPTIMIZE TABLE wp_posts;
+OPTIMIZE TABLE wp_postmeta;
+OPTIMIZE TABLE wp_woocommerce_order_items;
+OPTIMIZE TABLE wp_woocommerce_order_itemmeta;
+```
+
+### 2. Caching Solutions
+
+**Object Caching:**
+- Redis or Memcached for database query results
+- Reduces database load significantly
+
+**Page Caching:**
+- Not directly beneficial for API calls
+- Helps reduce overall server load
+
+### 3. Database Indexing
+
+Add indexes for frequently queried fields:
+```sql
+-- Index for product queries
+ALTER TABLE wp_posts ADD INDEX idx_post_type_status (post_type, post_status);
+
+-- Index for order queries  
+ALTER TABLE wp_postmeta ADD INDEX idx_meta_key_value (meta_key, meta_value(10));
+```
+
+## When to Seek Help
+
+Contact your hosting provider or a WordPress developer if:
+
+- **Server load consistently > 8.0** despite optimization efforts
+- **Execution times > 5000ms** for simple operations
+- **Memory errors** appearing frequently in logs
+- **Database queries taking > 2 seconds** consistently
+
+Provide them with:
+- Server metrics from your logs
+- List of active plugins
+- Server specifications (CPU, RAM, storage type)
+- WordPress and WooCommerce versions
+
+## Related Documentation
+
+- [Logs](/support/logs) - How to access and interpret server metrics
+- [Checkout Performance](/support/performance/checkout) - Optimize payment processing
+- [Error Codes](/error-codes) - Understand performance-related error codes
+- [Troubleshooting](/support/troubleshooting) - General troubleshooting guides
