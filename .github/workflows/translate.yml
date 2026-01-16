@@ -3,114 +3,174 @@ name: Translate Docs
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: 'Source branch to translate from'
-        required: true
-        default: 'main'
-      target_branch:
-        description: 'Target branch to push translations to (leave empty to push to source branch)'
-        required: false
-        default: ''
       mode:
         description: 'Translation mode'
         required: true
-        default: 'test'
+        default: 'changed'
         type: choice
         options:
-          - test
-          - changed
-          - all
+          - test      # Single file, single language (for testing)
+          - changed   # Files changed since last translation
+          - all       # All files, all languages
+
+# Cancel in-progress runs of the same workflow
+concurrency:
+  group: translate-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  translate:
+  # First job: Determine what files need translation
+  prepare:
     runs-on: ubuntu-latest
-    
-    permissions:
-      contents: write
-    
+    outputs:
+      files: ${{ steps.files.outputs.files }}
+      has_files: ${{ steps.files.outputs.has_files }}
+      locales: ${{ steps.files.outputs.locales }}
     steps:
-      - name: Checkout branch
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Determine files to translate
+        id: files
+        run: |
+          if [ "${{ inputs.mode }}" = "test" ]; then
+            # Test mode: one small file
+            echo 'files=["versioned_docs/version-1.x/getting-started/index.mdx"]' >> $GITHUB_OUTPUT
+            echo 'locales=["de"]' >> $GITHUB_OUTPUT
+            echo "has_files=true" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.mode }}" = "all" ]; then
+            # All MDX and JSON files
+            FILES=$(find versioned_docs -name "*.mdx" -o -name "*.md" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            JSON_FILES=$(find i18n/en -name "*.json" 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+            COMBINED=$(echo "[$FILES, $JSON_FILES]" | jq -c 'add')
+            echo "files=$COMBINED" >> $GITHUB_OUTPUT
+            echo 'locales=["es","fr","de","ja","pt-BR","ko","it","ar","hi-IN","zh-CN"]' >> $GITHUB_OUTPUT
+            echo "has_files=true" >> $GITHUB_OUTPUT
+          else
+            # Changed mode: files since last translation
+            LAST_TRANSLATE=$(git log --oneline --grep="chore: translate" -1 --format="%H" || echo "")
+            if [ -n "$LAST_TRANSLATE" ]; then
+              FILES=$(git diff --name-only $LAST_TRANSLATE...HEAD -- 'versioned_docs/**' 'i18n/en/**' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            else
+              FILES=$(find versioned_docs -name "*.mdx" -o -name "*.md" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            fi
+            echo "files=$FILES" >> $GITHUB_OUTPUT
+            echo 'locales=["es","fr","de","ja","pt-BR","ko","it","ar","hi-IN","zh-CN"]' >> $GITHUB_OUTPUT
+            if [ "$FILES" = "[]" ] || [ -z "$FILES" ]; then
+              echo "has_files=false" >> $GITHUB_OUTPUT
+            else
+              echo "has_files=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+          echo "Mode: ${{ inputs.mode }}"
+          echo "Files: $(cat $GITHUB_OUTPUT | grep files)"
+
+  # Matrix job: One job per language (runs in parallel)
+  translate:
+    needs: prepare
+    if: needs.prepare.outputs.has_files == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false  # Don't cancel other languages if one fails
+      max-parallel: 10
+      matrix:
+        locale: ${{ fromJson(needs.prepare.outputs.locales) }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
+          cache: 'pnpm'
+
       - name: Install dependencies
         run: pnpm install
-      
-      - name: Get files to translate
-        id: files
-        run: |
-          if [ "${{ inputs.mode }}" = "test" ]; then
-            # Test mode: just one small file to verify everything works
-            echo "M	versioned_docs/version-1.x/getting-started/index.mdx" > changed_files.txt
-          elif [ "${{ inputs.mode }}" = "all" ]; then
-            # List all English source files
-            find versioned_docs -name "*.mdx" -o -name "*.md" | sed 's/^/M\t/' > changed_files.txt
-            find i18n/en -name "*.json" 2>/dev/null | sed 's/^/M\t/' >> changed_files.txt || true
-          else
-            # Get files changed since last translation commit
-            LAST_TRANSLATE=$(git log --oneline --grep="chore: translate" -1 --format="%H" || echo "")
-            if [ -n "$LAST_TRANSLATE" ]; then
-              git diff --name-status $LAST_TRANSLATE...HEAD -- \
-                'versioned_docs/**' \
-                'i18n/en/**' > changed_files.txt
-            else
-              # No previous translation, translate all
-              find versioned_docs -name "*.mdx" -o -name "*.md" | sed 's/^/M\t/' > changed_files.txt
-              find i18n/en -name "*.json" 2>/dev/null | sed 's/^/M\t/' >> changed_files.txt || true
-            fi
-          fi
-          
-          echo "Files to translate:"
-          cat changed_files.txt
-          
-          if [ -s changed_files.txt ]; then
-            echo "has_files=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_files=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Run translation
-        if: steps.files.outputs.has_files == 'true'
+
+      - name: Translate to ${{ matrix.locale }}
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: node scripts/translate-with-claude.js changed_files.txt
-      
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo "Translating to ${{ matrix.locale }}..."
+          echo '${{ needs.prepare.outputs.files }}' > files_to_translate.json
+          node scripts/translate-single-locale.js ${{ matrix.locale }} files_to_translate.json
+
+      - name: Upload translated files
+        uses: actions/upload-artifact@v4
+        with:
+          name: translations-${{ matrix.locale }}
+          path: i18n/${{ matrix.locale }}/
+          retention-days: 1
+
+  # Final job: Combine all translations and commit
+  commit:
+    needs: [prepare, translate]
+    if: always() && needs.prepare.outputs.has_files == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all translations
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-translations
+          pattern: translations-*
+
+      - name: Merge translations
+        run: |
+          # Move each locale's translations to the correct location
+          for dir in downloaded-translations/translations-*/; do
+            locale=$(basename "$dir" | sed 's/translations-//')
+            echo "Merging translations for $locale..."
+            
+            # Create target directory if needed
+            mkdir -p "i18n/$locale"
+            
+            # Copy all files from artifact to i18n directory
+            cp -r "$dir"* "i18n/$locale/" 2>/dev/null || true
+          done
+          
+          echo "Translation merge complete"
+          ls -la i18n/
+
       - name: Commit translations
-        if: steps.files.outputs.has_files == 'true' && inputs.mode != 'test'
+        if: inputs.mode != 'test'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # If target branch specified, create/switch to it
-          if [ -n "${{ inputs.target_branch }}" ]; then
-            git checkout -B "${{ inputs.target_branch }}"
-          fi
-          
           git add i18n/
-          git commit -m "chore: translate documentation" || echo "No changes to commit"
-          git push -u origin HEAD
-      
-      - name: Show test results (test mode only)
-        if: inputs.mode == 'test'
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: translate documentation
+
+          Mode: ${{ inputs.mode }}
+          Languages: ${{ needs.prepare.outputs.locales }}"
+            git push
+          fi
+
+      - name: Summary
         run: |
-          echo "=== Test mode - showing translated files (not committed) ==="
-          for locale in es fr de ja pt-BR ko it ar hi-IN zh-CN; do
-            file="i18n/$locale/docusaurus-plugin-content-docs/version-1.x/getting-started/index.mdx"
-            if [ -f "$file" ]; then
-              echo ""
-              echo "=== $locale ==="
-              head -30 "$file"
-              echo "..."
-            fi
-          done
+          echo "## Translation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode:** ${{ inputs.mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Files:** ${{ needs.prepare.outputs.files }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Languages:** ${{ needs.prepare.outputs.locales }}" >> $GITHUB_STEP_SUMMARY
