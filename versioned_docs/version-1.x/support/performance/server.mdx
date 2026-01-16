@@ -37,17 +37,21 @@ Server load represents the average system load over different time periods:
 
 ### Load Interpretation
 
-| Load Range | Status | Description |
-|------------|--------|-------------|
-| **0.0 - 1.0** | Excellent | Server is underutilized |
-| **1.0 - 2.0** | Good | Normal load for single-core systems |
-| **2.0 - 4.0** | Moderate | Acceptable for multi-core systems |
-| **4.0 - 8.0** | High | Server is working hard |
-| **8.0+** | Critical | Server is overloaded |
+Server load values can be misleading and should be interpreted carefully:
 
-:::info CPU Cores Matter
-Load values should be interpreted relative to your server's CPU cores. A load of 4.0 is excellent on an 8-core server but critical on a 2-core server.
+:::warning Load Values Can Be Misleading
+Server load averages don't always correlate directly with performance. A server with high load values (15+) can still be very responsive if it has sufficient resources and is well-optimized. **Focus on execution times rather than load values alone.**
 :::
+
+**General Guidelines:**
+- **Load relative to CPU cores** - A load of 8.0 on an 8-core server means full utilization
+- **Sustained vs. temporary** - Brief spikes are normal, sustained high load may indicate issues
+- **Performance matters more** - A responsive server with high load is better than a slow server with low load
+
+**What to watch for:**
+- **Execution times increasing** over time
+- **Load consistently growing** without explanation
+- **Both high load AND slow execution times** together
 
 ## Performance Benchmarks
 
@@ -139,10 +143,10 @@ Execution time should scale reasonably with record count:
 - Database-related error codes in logs
 
 **Solutions:**
-- **Optimize database tables** - Run `OPTIMIZE TABLE` on large tables
-- **Add database indexes** - Especially on frequently queried columns
-- **Clean up old data** - Remove unnecessary revisions, spam, trash
-- **Use database caching** - Redis or Memcached for query results
+- **Enable WooCommerce HPOS** - The single biggest database performance improvement
+- **Use object caching** - Redis or Memcached if available from your host
+- **Keep WordPress updated** - Core updates often include database optimizations
+- **Limit post revisions** - Add `define('WP_POST_REVISIONS', 3);` to wp-config.php
 
 ### 3. Plugin Interference
 
@@ -172,9 +176,30 @@ Execution time should scale reasonably with record count:
 
 **Optimization checklist:**
 - **PHP version** - Use PHP 8.0+ for better performance
-- **WordPress caching** - Enable object caching and page caching
+- **WooCommerce HPOS** - Enable High-Performance Order Storage (see below)
+- **WordPress caching** - Enable object caching if available
 - **WooCommerce settings** - Optimize product image sizes
-- **Database cleanup** - Remove unnecessary data and optimize tables
+
+### WooCommerce High-Performance Order Storage (HPOS)
+
+:::tip Biggest Performance Win
+**HPOS is one of the most significant performance improvements you can make for WooCommerce.** It stores orders in custom database tables instead of the WordPress posts table, dramatically improving performance for stores with many orders.
+:::
+
+**Benefits:**
+- **Faster order queries** - Orders stored in optimized database structure
+- **Reduced database load** - Separates orders from posts/pages
+- **Better scalability** - Handles large numbers of orders efficiently
+- **Improved admin performance** - Faster order management screens
+
+**How to Enable:**
+1. Go to `WooCommerce > Settings > Advanced > Features`
+2. Enable "High-performance order storage"
+3. Follow the migration process
+
+**Learn More:**
+- [WooCommerce HPOS Documentation](https://woocommerce.com/document/high-performance-order-storage/)
+- [HPOS Migration Guide](https://woocommerce.com/document/high-performance-order-storage/#section-3)
 
 ## Server Monitoring Best Practices
 
@@ -200,46 +225,41 @@ Track growth trends:
 
 ## Server Optimization Strategies
 
-### 1. Immediate Improvements
+### 1. WordPress/WooCommerce Best Practices
 
-**PHP Configuration:**
+**Enable HPOS:**
+- The single most impactful performance improvement for WooCommerce
+- See the HPOS section above for details
+
+**PHP Configuration (consult your host):**
 ```ini
 memory_limit = 512M
 max_execution_time = 300
 max_input_vars = 3000
-post_max_size = 64M
-upload_max_filesize = 64M
 ```
 
-**Database Optimization:**
-```sql
--- Optimize WooCommerce tables
-OPTIMIZE TABLE wp_posts;
-OPTIMIZE TABLE wp_postmeta;
-OPTIMIZE TABLE wp_woocommerce_order_items;
-OPTIMIZE TABLE wp_woocommerce_order_itemmeta;
+**WordPress Configuration:**
+```php
+// In wp-config.php - limit post revisions
+define('WP_POST_REVISIONS', 3);
+
+// Enable WordPress debug logging if needed
+define('WP_DEBUG_LOG', true);
 ```
 
-### 2. Caching Solutions
+### 2. Hosting-Level Optimizations
 
 **Object Caching:**
-- Redis or Memcached for database query results
-- Reduces database load significantly
+- Ask your host about Redis or Memcached availability
+- Many managed WordPress hosts provide this automatically
 
-**Page Caching:**
-- Not directly beneficial for API calls
-- Helps reduce overall server load
+**PHP Version:**
+- Use PHP 8.0+ for significant performance improvements
+- Most hosts allow easy PHP version switching
 
-### 3. Database Indexing
-
-Add indexes for frequently queried fields:
-```sql
--- Index for product queries
-ALTER TABLE wp_posts ADD INDEX idx_post_type_status (post_type, post_status);
-
--- Index for order queries  
-ALTER TABLE wp_postmeta ADD INDEX idx_meta_key_value (meta_key, meta_value(10));
-```
+**Server Resources:**
+- Ensure adequate RAM (minimum 1GB, preferably 2GB+)
+- SSD storage provides much better database performance than traditional drives
 
 ## When to Seek Help
 
