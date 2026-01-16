@@ -3,6 +3,10 @@ name: Translate Docs
 on:
   workflow_dispatch:
     inputs:
+      branch:
+        description: 'Target branch for translations (leave empty to create translations-YYYY-MM-DD)'
+        required: false
+        default: ''
       mode:
         description: 'Translation mode'
         required: true
@@ -154,6 +158,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Determine target branch
+          if [ -n "${{ inputs.branch }}" ]; then
+            TARGET_BRANCH="${{ inputs.branch }}"
+          else
+            TARGET_BRANCH="translations-$(date +%Y-%m-%d)"
+          fi
+          
+          echo "Target branch: $TARGET_BRANCH"
+          
+          # Create and switch to target branch
+          git checkout -B "$TARGET_BRANCH"
+          
           git add i18n/
           
           # Check if there are changes to commit
@@ -164,7 +180,13 @@ jobs:
 
           Mode: ${{ inputs.mode }}
           Languages: ${{ needs.prepare.outputs.locales }}"
-            git push
+            git push -u origin "$TARGET_BRANCH"
+            
+            echo "## 🎉 Translations Ready for Review" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Branch: \`$TARGET_BRANCH\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "[Create Pull Request](https://github.com/${{ github.repository }}/compare/main...$TARGET_BRANCH?expand=1)" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Summary
