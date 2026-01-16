@@ -1,0 +1,76 @@
+---
+title: Architettura
+sidebar_label: Architettura
+sidebar_position: 2
+---
+
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+
+Questa pagina spiega l'architettura tecnica di WCPOS per sviluppatori e utenti avanzati.
+
+## Sistema Bipartito
+
+WCPOS è progettato come un sistema bipartito:
+
+1. **Plugin PHP:** Ospitato sul tuo server, è un plugin relativamente piccolo che estende l'[API REST di WooCommerce](/reference/wc-rest-api).
+
+2. **Client JavaScript:** Viene eseguito localmente nel tuo browser o nell'app desktop, e successivamente nelle app iOS e Android.
+
+Puoi pensarlo come due mondi separati:
+
+- Il _mondo PHP_ è dove avviene la gestione dei dati utilizzando WordPress e WooCommerce.
+- Il _mondo JavaScript_ replica localmente il tuo negozio WooCommerce, ottimizzato per la ricerca veloce e l'uso offline.
+
+<LocalizedSVG svgName="pos-client-woo-server" />
+
+## Sincronizzazione dei Dati
+
+I dati vengono recuperati da WooCommerce utilizzando l'[API REST di WooCommerce](https://woocommerce.github.io/woocommerce-rest-api-docs/). Questo significa che il POS deve scaricare ogni prodotto, variazione, categoria di prodotti, cliente, aliquota fiscale e altro per archiviarli localmente.
+
+Sebbene inizialmente questo possa richiedere molto tempo, una volta scaricati, sono immediatamente disponibili senza la necessità di recuperarli continuamente dal server.
+
+### Cosa Viene Sincronizzato?
+
+- Prodotti e variazioni
+- Categorie e tag dei prodotti
+- Clienti
+- Aliquote fiscali e classi fiscali
+- Gateway di pagamento (per il checkout)
+- Ordini (per la cronologia degli ordini nella versione Pro)
+
+### Strategia di Sincronizzazione
+
+WCPOS utilizza una strategia di sincronizzazione incrementale:
+
+1. **Sincronizzazione iniziale:** Scarica tutti i dati al primo caricamento
+2. **Aggiornamenti incrementali:** Recupera solo le modifiche dall'ultima sincronizzazione
+3. **Sincronizzazione in background:** Verifica periodicamente la presenza di aggiornamenti
+4. **Sincronizzazione manuale:** L'utente può attivare una sincronizzazione in qualsiasi momento
+
+## Pro e Contro dell'Architettura
+
+| Vantaggi 😊 | Svantaggi 😟 |
+| ------------------------------------------------------------------ | -------------------------------------------------------- |
+| Ricerca di dati locali istantanea | Mantenere i dati sincronizzati è difficile |
+| Dati in cache disponibili offline | Limitato dall'API REST di WooCommerce |
+| Possibilità di creare app native migliori per desktop, iOS e Android | I temi WordPress e gli hook non possono personalizzare l'app POS |
+
+## Database Locale
+
+Il client JavaScript memorizza i dati in IndexedDB, un database basato su browser. Questo fornisce:
+
+- **Persistenza:** I dati sopravvivono ai riavvii del browser
+- **Prestazioni:** Query veloci senza latenza di rete
+- **Navigazione offline:** I dati memorizzati nella cache rimangono accessibili senza internet
+
+## Architettura del Checkout
+
+Il processo di checkout utilizza un iframe/webview che carica la pagina di pagamento dell'ordine di WooCommerce. Questo approccio:
+
+- **Sfrutta i gateway di pagamento esistenti:** Qualsiasi gateway di pagamento WooCommerce può funzionare nel POS
+- **Mantiene la sicurezza:** L'elaborazione dei pagamenti avviene attraverso l'infrastruttura sicura di WooCommerce
+- **Riduce la complessità:** Non è necessario reimplementare le integrazioni dei gateway di pagamento
+
+## Estensioni API
+
+Il plugin PHP estende l'API REST di WooCommerce con endpoint aggiuntivi per funzionalità specifiche del POS. Consulta [API REST di WooCommerce](/reference/wc-rest-api) per i dettagli.
