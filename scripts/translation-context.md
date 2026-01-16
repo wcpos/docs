@@ -72,14 +72,14 @@ Copy these elements exactly as they appear - character for character:
 title: "Translate this value"
 sidebar_label: "Translate this value"  
 description: "Translate this value"
-sidebar_position: 1          # NEVER change - keep exact number
-slug: /original-path         # NEVER translate - keep exact path
-custom_edit_url: ...         # NEVER translate
+sidebar_position: 1
+slug: /original-path
 ---
 ```
 
 **Translate:** title, sidebar_label, description
-**Keep exactly:** sidebar_position, slug, custom_edit_url, any other fields
+**Keep exactly (do not change the value):** sidebar_position, slug, custom_edit_url, id, pagination_prev, pagination_next
+**Do NOT add fields that don't exist in the source**
 
 ### 2. Import Statements
 ```javascript
@@ -159,8 +159,11 @@ Source: `list_users` → Translated: `listar_usuarios` ❌ WRONG
 [Translate this text](#keep-this-anchor)
 [Translate this text](https://keep.this.url)
 ```
-- Translate ONLY the text in square brackets
-- NEVER change anything in parentheses
+- Translate ONLY the text in square brackets `[...]`
+- NEVER change anything in parentheses `(...)`
+- Anchor IDs must stay English: `#display-settings` NOT `#显示设置`
+- Relative paths stay exactly: `./api` NOT `./api翻译`
+- Absolute paths stay exactly: `/support/troubleshooting` as-is
 
 ### 6. Admonitions
 ```markdown
