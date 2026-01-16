@@ -53,6 +53,32 @@ async function loadTranslationContext() {
 }
 
 /**
+ * Clean up common AI translation artifacts
+ */
+function cleanTranslatedContent(content, fileType) {
+  let cleaned = content;
+  
+  // Remove markdown code fences wrapping the entire content
+  if (cleaned.startsWith('```mdx\n') || cleaned.startsWith('```markdown\n') || cleaned.startsWith('```json\n')) {
+    cleaned = cleaned.replace(/^```(?:mdx|markdown|json)\n/, '');
+    cleaned = cleaned.replace(/\n```\s*$/, '');
+  }
+  
+  // For JSON: remove any trailing notes or comments
+  if (fileType === 'json') {
+    // Find the last } and truncate everything after
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (lastBrace !== -1) {
+      cleaned = cleaned.substring(0, lastBrace + 1);
+    }
+    // Remove any // comments (JSON doesn't support them)
+    cleaned = cleaned.replace(/^\s*\/\/.*$/gm, '');
+  }
+  
+  return cleaned.trim();
+}
+
+/**
  * Translate content using Claude Haiku
  */
 async function translateContent(content, targetLocale, fileType = 'mdx') {
@@ -61,15 +87,26 @@ async function translateContent(content, targetLocale, fileType = 'mdx') {
   let userPrompt;
   if (fileType === 'json') {
     userPrompt = `Translate the following JSON content to ${localeName}. 
-Only translate the "message" values. Keep all keys, structure, and placeholders (like {count}, {tagName}) exactly as they are.
-Do not include any explanation, just return the translated JSON.
+
+RULES:
+- Only translate the "message" values
+- Keep all keys, structure, and placeholders (like {count}, {tagName}) exactly as they are
+- Keep "description" values in English
+- Return ONLY valid JSON - no comments, no notes, no explanation
+- Translate the ENTIRE file - do not truncate
 
 ${content}`;
   } else {
     userPrompt = `Translate the following MDX documentation to ${localeName}.
-Preserve all markdown formatting, code blocks, links, JSX components, and frontmatter structure.
-For frontmatter: translate "title", "sidebar_label", and "description" if present, keep other fields as-is.
-Do not include any explanation, just return the translated content.
+
+RULES:
+- Preserve ALL frontmatter (the YAML between --- markers) - this is required
+- Preserve ALL import statements exactly as written
+- Preserve all markdown formatting, code blocks, links, and JSX components
+- For frontmatter: translate "title", "sidebar_label", and "description" values only
+- If a translated title contains quotes, wrap it in single quotes: title: 'Text "with quotes"'
+- NEVER translate file paths, URLs, anchor links (#section), or error codes
+- Return the raw content only - do NOT wrap in code fences
 
 ${content}`;
   }
@@ -84,7 +121,8 @@ ${content}`;
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    return response.content[0].text;
+    // Clean up common AI artifacts
+    return cleanTranslatedContent(response.content[0].text, fileType);
   } catch (error) {
     console.error(`Error translating to ${targetLocale}:`, error.message);
     throw error;
@@ -95,17 +133,36 @@ ${content}`;
  * Process MDX/MD file - translate content and frontmatter
  */
 async function processMdxFile(filePath, targetLocale) {
-  const content = await fs.readFile(filePath, 'utf8');
+  const sourceContent = await fs.readFile(filePath, 'utf8');
 
-  // Parse to validate frontmatter exists (Claude will handle translation)
-  matter(content);
+  // Parse source to get frontmatter and imports
+  const sourceParsed = matter(sourceContent);
+  const sourceImports = sourceContent.match(/^import .+$/gm) || [];
 
-  // Translate the full content (Claude will handle frontmatter appropriately)
-  const translatedContent = await translateContent(
-    content,
+  // Translate the full content
+  let translatedContent = await translateContent(
+    sourceContent,
     targetLocale,
     'mdx',
   );
+
+  // Validate frontmatter exists in translation
+  if (!translatedContent.startsWith('---')) {
+    console.warn(`WARNING: Translation lost frontmatter for ${filePath}, restoring...`);
+    // Reconstruct with original frontmatter
+    const translatedBody = translatedContent;
+    translatedContent = matter.stringify(translatedBody, sourceParsed.data);
+  }
+
+  // Validate imports are preserved
+  const translatedImports = translatedContent.match(/^import .+$/gm) || [];
+  if (sourceImports.length > 0 && translatedImports.length === 0) {
+    console.warn(`WARNING: Translation lost imports for ${filePath}, restoring...`);
+    // Insert imports after frontmatter
+    const parsed = matter(translatedContent);
+    const importsBlock = sourceImports.join('\n') + '\n\n';
+    translatedContent = matter.stringify(importsBlock + parsed.content, parsed.data);
+  }
 
   return translatedContent;
 }
@@ -121,14 +178,15 @@ async function processJsonFile(filePath, targetLocale) {
     'json',
   );
 
-  // Validate JSON
+  // Validate JSON - if invalid, fall back to source
   try {
     JSON.parse(translatedContent);
-  } catch (_error) {
-    console.error(`Warning: Translated JSON for ${filePath} may be malformed`);
+    return translatedContent;
+  } catch (error) {
+    console.error(`ERROR: Translated JSON for ${filePath} is malformed: ${error.message}`);
+    console.error('Falling back to source content to prevent build failure');
+    return content;
   }
-
-  return translatedContent;
 }
 
 /**

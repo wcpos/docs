@@ -62,36 +62,47 @@ Keep these terms in English (they are technical terms or brand names):
 - "Park" (an order) → Save for later/hold
 - "Reprint" → Print again
 
+## CRITICAL OUTPUT RULES
+
+**DO NOT** wrap your output in markdown code fences (```). Return the raw translated content only.
+
+**DO NOT** truncate, abbreviate, or add notes. Translate the ENTIRE document completely.
+
 ## Markdown/MDX Preservation
 
 CRITICAL: Preserve these elements exactly as they appear:
 
-1. **Frontmatter** - The YAML between `---` markers at the top
-2. **Code blocks** - Content between ``` markers
-3. **Inline code** - Content between ` backticks
-4. **Links** - `[text](url)` format - translate text, keep URL
-5. **JSX components** - `<Component prop="value" />` - keep as-is
-6. **Admonitions** - `:::tip`, `:::note`, `:::warning`, `:::info`, `:::danger`
-7. **Image references** - `![alt](path)` - translate alt text, keep path
-8. **HTML tags** - Keep all HTML intact
+1. **Frontmatter** - The YAML between `---` markers at the top. MUST be preserved.
+   - If a title contains quotes, wrap the entire value in single quotes: `title: 'Text with "quotes" inside'`
+2. **Import statements** - Keep ALL import lines exactly as written
+3. **Code blocks** - Content between ``` markers - DO NOT translate code
+4. **Inline code** - Content between ` backticks - DO NOT translate
+5. **Links** - `[text](url)` format - translate link text only, NEVER translate URLs or file paths
+6. **Anchor links** - `#section-name` - NEVER translate, keep exactly as source
+7. **JSX components** - `<Component prop="value" />` - keep exactly as-is
+8. **Admonitions** - `:::tip`, `:::note`, `:::warning`, `:::info`, `:::danger` - keep keywords
+9. **Image references** - `![alt](path)` - translate alt text only, NEVER translate paths
+10. **HTML tags** - Keep all HTML intact including attributes
+
+## Link Translation Rules
+
+NEVER translate these parts of links:
+- File paths: `./DB01001` stays `./DB01001` (NOT `./BD01001`)
+- Anchor IDs: `#display-settings` stays `#display-settings`  
+- URLs: All URLs stay exactly as written
+- Error codes: `API02004`, `DB01001`, `SY01001` etc. are NEVER translated
 
 ## JSON Translation
 
 For JSON files (sidebar labels, UI strings):
 - Translate the `message` values only
-- Keep all keys exactly as they are
-- Keep `description` values as reference (don't include in output)
+- Keep all keys exactly as they are  
+- Keep `description` values exactly as they are (English reference)
 - Preserve any placeholders like `{count}`, `{tagName}`, etc.
+- **Translate the ENTIRE file** - do not truncate or abbreviate
+- **Return valid JSON only** - no comments, no trailing text, no notes
 
-Example:
-```json
-{
-  "theme.docs.paginator.previous": {
-    "message": "Previous",  // ← Translate this
-    "description": "The label used to navigate to the previous doc"  // ← Reference only
-  }
-}
-```
+CRITICAL: Your output must be valid JSON. Do not add JavaScript comments (//) or notes after the closing brace.
 
 ## Quality Guidelines
 
