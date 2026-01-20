@@ -56,6 +56,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -148,8 +149,8 @@ jobs:
             ARGS="$ARGS --structural-only"
           fi
           
-          # Add fix generation if creating PR
-          if [ "${{ inputs.create_fix_pr }}" = "true" ]; then
+          # Always apply fixes on PRs, or when manually requested
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ inputs.create_fix_pr }}" = "true" ]; then
             ARGS="$ARGS --apply-fixes"
           fi
           
@@ -160,16 +161,33 @@ jobs:
           node scripts/qa-translations.js $ARGS || true
           
           # Check if any fixes were generated
-          if [ "${{ inputs.create_fix_pr }}" = "true" ]; then
-            if git diff --quiet i18n/; then
-              echo "has_fixes=false" >> $GITHUB_OUTPUT
-            else
-              echo "has_fixes=true" >> $GITHUB_OUTPUT
-            fi
+          if git diff --quiet i18n/; then
+            echo "has_fixes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_fixes=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create fix branch and PR
-        if: inputs.create_fix_pr == 'true' && steps.qa.outputs.has_fixes == 'true'
+      - name: Push fixes to PR branch
+        if: github.event_name == 'pull_request' && steps.qa.outputs.has_fixes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add i18n/
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "fix: improve translation quality (QA auto-corrections)"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+            
+            echo "## Translation Fixes Applied" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "QA corrections have been pushed to this PR." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Create fix branch (manual trigger)
+        if: github.event_name == 'workflow_dispatch' && inputs.create_fix_pr == 'true' && steps.qa.outputs.has_fixes == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -183,12 +201,9 @@ jobs:
           
           echo "Target branch: $TARGET_BRANCH"
           
-          # Create and switch to target branch
           git checkout -B "$TARGET_BRANCH"
-          
           git add i18n/
           
-          # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
