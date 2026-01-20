@@ -1,0 +1,217 @@
+name: Translation QA
+
+on:
+  # Automatic: Run on PRs that modify translations
+  pull_request:
+    paths:
+      - 'i18n/**/*.mdx'
+      - 'i18n/**/*.md'
+
+  # Manual: Audit specific files or locales
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'QA mode'
+        required: true
+        default: 'sample'
+        type: choice
+        options:
+          - sample      # Random sample of files
+          - locale      # All files for a specific locale
+          - all         # All files, all locales (parallel)
+          - changed     # Files changed in recent commits
+      locale:
+        description: 'Locale to audit (for locale mode, or to filter sample)'
+        required: false
+        default: ''
+      sample_size:
+        description: 'Number of files to sample (for sample mode)'
+        required: false
+        default: '10'
+      structural_only:
+        description: 'Skip back-translation (faster, structural checks only)'
+        required: false
+        default: 'false'
+        type: boolean
+      create_fix_pr:
+        description: 'Generate corrections and create a PR with fixes'
+        required: false
+        default: 'false'
+        type: boolean
+      branch:
+        description: 'Target branch for fixes (leave empty for translation-fixes-YYYY-MM-DD)'
+        required: false
+        default: ''
+
+concurrency:
+  group: qa-translations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Determine files to check
+        id: files
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Get files changed in this PR
+            FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} -- 'i18n/**/*.mdx' 'i18n/**/*.md' | head -20)
+            if [ -z "$FILES" ]; then
+              echo "has_files=false" >> $GITHUB_OUTPUT
+            else
+              echo "has_files=true" >> $GITHUB_OUTPUT
+              echo "mode=changed" >> $GITHUB_OUTPUT
+            fi
+          elif [ "${{ inputs.mode }}" = "sample" ]; then
+            echo "has_files=true" >> $GITHUB_OUTPUT
+            echo "mode=sample" >> $GITHUB_OUTPUT
+            echo "sample_size=${{ inputs.sample_size }}" >> $GITHUB_OUTPUT
+            echo "locale=${{ inputs.locale }}" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.mode }}" = "locale" ]; then
+            if [ -z "${{ inputs.locale }}" ]; then
+              echo "Error: locale is required for locale mode"
+              exit 1
+            fi
+            echo "has_files=true" >> $GITHUB_OUTPUT
+            echo "mode=locale" >> $GITHUB_OUTPUT
+            echo "locale=${{ inputs.locale }}" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.mode }}" = "all" ]; then
+            echo "has_files=true" >> $GITHUB_OUTPUT
+            echo "mode=all" >> $GITHUB_OUTPUT
+          else
+            echo "has_files=true" >> $GITHUB_OUTPUT
+            echo "mode=changed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Translation QA
+        id: qa
+        if: steps.files.outputs.has_files == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          ARGS=""
+          
+          # Build command based on mode
+          if [ "${{ steps.files.outputs.mode }}" = "sample" ]; then
+            ARGS="--sample ${{ steps.files.outputs.sample_size || '10' }}"
+            if [ -n "${{ steps.files.outputs.locale }}" ]; then
+              ARGS="$ARGS ${{ steps.files.outputs.locale }}"
+            fi
+          elif [ "${{ steps.files.outputs.mode }}" = "locale" ]; then
+            ARGS="${{ steps.files.outputs.locale }}"
+          elif [ "${{ steps.files.outputs.mode }}" = "all" ]; then
+            # Run all locales sequentially
+            for LOCALE in es fr de ja pt-BR ko it ar hi-IN zh-CN; do
+              echo "=== Checking $LOCALE ==="
+              LOCALE_ARGS="$LOCALE"
+              if [ "${{ inputs.structural_only }}" = "true" ]; then
+                LOCALE_ARGS="$LOCALE_ARGS --structural-only"
+              fi
+              if [ "${{ inputs.create_fix_pr }}" = "true" ]; then
+                LOCALE_ARGS="$LOCALE_ARGS --apply-fixes"
+              fi
+              node scripts/qa-translations.js $LOCALE_ARGS --github-summary || true
+            done
+            # Check if any fixes were generated across all locales
+            if [ "${{ inputs.create_fix_pr }}" = "true" ]; then
+              if git diff --quiet i18n/; then
+                echo "has_fixes=false" >> $GITHUB_OUTPUT
+              else
+                echo "has_fixes=true" >> $GITHUB_OUTPUT
+              fi
+            fi
+            exit 0
+          elif [ "${{ steps.files.outputs.mode }}" = "changed" ]; then
+            ARGS="--changed"
+          fi
+          
+          # Add structural-only flag if requested
+          if [ "${{ inputs.structural_only }}" = "true" ]; then
+            ARGS="$ARGS --structural-only"
+          fi
+          
+          # Add fix generation if creating PR
+          if [ "${{ inputs.create_fix_pr }}" = "true" ]; then
+            ARGS="$ARGS --apply-fixes"
+          fi
+          
+          # Add GitHub summary output
+          ARGS="$ARGS --github-summary"
+          
+          echo "Running: node scripts/qa-translations.js $ARGS"
+          node scripts/qa-translations.js $ARGS || true
+          
+          # Check if any fixes were generated
+          if [ "${{ inputs.create_fix_pr }}" = "true" ]; then
+            if git diff --quiet i18n/; then
+              echo "has_fixes=false" >> $GITHUB_OUTPUT
+            else
+              echo "has_fixes=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Create fix branch and PR
+        if: inputs.create_fix_pr == 'true' && steps.qa.outputs.has_fixes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Determine target branch
+          if [ -n "${{ inputs.branch }}" ]; then
+            TARGET_BRANCH="${{ inputs.branch }}"
+          else
+            TARGET_BRANCH="translation-fixes-$(date +%Y-%m-%d)"
+          fi
+          
+          echo "Target branch: $TARGET_BRANCH"
+          
+          # Create and switch to target branch
+          git checkout -B "$TARGET_BRANCH"
+          
+          git add i18n/
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "fix: improve translation quality
+
+          Auto-generated corrections from Translation QA workflow.
+          Mode: ${{ inputs.mode }}
+          Locale: ${{ inputs.locale || 'all' }}"
+            
+            git push -u origin "$TARGET_BRANCH" --force
+            
+            echo "## Translation Fixes Ready" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Branch: \`$TARGET_BRANCH\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "[Create Pull Request](https://github.com/${{ github.repository }}/compare/main...$TARGET_BRANCH?expand=1)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: No files to check
+        if: steps.files.outputs.has_files != 'true'
+        run: |
+          echo "No translation files to check"
+          echo "## Translation QA" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No translation files were modified in this PR." >> $GITHUB_STEP_SUMMARY

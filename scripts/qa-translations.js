@@ -38,30 +38,108 @@ const LOCALE_NAMES = {
   'zh-CN': 'Simplified Chinese',
 };
 
-// Quality thresholds
+// Quality thresholds (strict for technical docs - we want 100%)
 const THRESHOLDS = {
-  pass: 80,      // Overall score >= 80 is passing
-  warning: 60,   // 60-79 is warning
-  fail: 0,       // < 60 is failing
+  pass: 100,     // Only 100% is truly passing
+  warning: 90,   // 90-99 needs correction
+  fail: 0,       // < 90 is failing
 };
 
 /**
+ * Generate a corrected translation based on issues found
+ * Uses gpt-4o (not mini) for higher accuracy corrections
+ */
+async function generateCorrection(original, currentTranslation, issues, locale) {
+  const localeName = LOCALE_NAMES[locale] || locale;
+  
+  // Include ALL issues, not just medium/high - we want 100% accuracy
+  const issuesList = issues
+    .map(i => `- [${i.severity}] ${i.type}: ${i.description}${i.original_excerpt ? `\n  Original: "${i.original_excerpt}"` : ''}${i.backtranslated_excerpt ? `\n  Back-translated: "${i.backtranslated_excerpt}"` : ''}`)
+    .join('\n');
+  
+  if (!issuesList || issues.length === 0) {
+    return null; // No issues to fix
+  }
+  
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',  // Use full gpt-4o for better accuracy
+    max_tokens: 16384,
+    messages: [
+      {
+        role: 'system',
+        content: `You are an expert technical documentation translator specializing in ${localeName}. Your task is to produce a PERFECT translation that will score 100% on quality checks.
+
+ACCURACY REQUIREMENTS:
+1. **Semantic fidelity**: The meaning must be IDENTICAL to the English original
+2. **Technical terms**: Must match exactly (e.g., "Date Created" = "Date Created" concept, not "Creation Date")
+3. **UI labels**: Translate consistently - same English term = same translated term throughout
+4. **Completeness**: Every sentence, bullet point, and detail must be present
+5. **Structure**: Preserve all markdown, code blocks, links, admonitions exactly
+
+WHAT TO PRESERVE UNCHANGED:
+- All URLs and paths in links: [text](/path) - only translate "text"
+- All code in backticks: \`code\` stays as \`code\`
+- All code blocks: \`\`\`....\`\`\` copied exactly
+- Import statements
+- Component names: <Icon name="x" />
+- Frontmatter keys (only translate title, sidebar_label, description values)
+
+OUTPUT: The complete corrected ${localeName} document, starting with --- (frontmatter). No explanations.`
+      },
+      {
+        role: 'user',
+        content: `ORIGINAL ENGLISH DOCUMENT:
+${original}
+
+---
+
+CURRENT ${localeName.toUpperCase()} TRANSLATION (needs correction):
+${currentTranslation}
+
+---
+
+ISSUES IDENTIFIED BY QA:
+${issuesList}
+
+---
+
+Produce a corrected ${localeName} translation that fixes ALL issues above. The goal is 100% accuracy.`
+      }
+    ],
+  });
+
+  let text = response.choices[0].message.content;
+  
+  // Strip code fence wrapper if AI added it
+  if (text.startsWith('```') && text.endsWith('```')) {
+    text = text.replace(/^```(?:mdx|markdown)?\n?/, '').replace(/\n?```$/, '');
+  }
+  
+  return text;
+}
+
+/**
  * Back-translate content to English
+ * Uses gpt-4o for accurate back-translation
  */
 async function backTranslate(content, fromLocale) {
   const localeName = LOCALE_NAMES[fromLocale] || fromLocale;
   
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',  // Use full model for accurate back-translation
     max_tokens: 16384,
     messages: [
       { 
         role: 'system', 
-        content: 'You are a professional translator. Translate the following content back to English. Preserve all formatting, markdown syntax, and structure exactly. Output ONLY the translated content.'
+        content: `You are a professional translator performing back-translation for quality assurance. Translate the ${localeName} content back to English as LITERALLY as possible while maintaining readability.
+
+IMPORTANT: Translate literally to reveal any semantic drift in the original translation. If the ${localeName} says "Creation Date", translate it as "Creation Date" (not "Date Created") so we can detect the difference.
+
+Preserve all markdown formatting, code blocks, and structure exactly. Output ONLY the back-translated content.`
       },
       { 
         role: 'user', 
-        content: `Translate this ${localeName} document back to English. Preserve all markdown formatting:\n\n${content}`
+        content: `Back-translate this ${localeName} document to English:\n\n${content}`
       },
     ],
   });
@@ -78,33 +156,48 @@ async function backTranslate(content, fromLocale) {
 
 /**
  * Compare original English with back-translated English using LLM
+ * Uses gpt-4o for thorough evaluation
  */
 async function evaluateSimilarity(original, backTranslated) {
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    max_tokens: 2048,
+    model: 'gpt-4o',  // Use full model for accurate evaluation
+    max_tokens: 4096,
     response_format: { type: 'json_object' },
     messages: [
       {
         role: 'system',
-        content: `You are a translation quality evaluator. Compare the original English text with a back-translated version and score the quality.
+        content: `You are a STRICT translation quality evaluator for technical documentation. Compare the original English with a back-translated version.
 
-Output JSON with this structure:
+BE STRICT: Technical docs require 100% accuracy. Flag ANY difference, no matter how small.
+
+Score each category 0-100:
+- semantic_fidelity: Does EVERY sentence mean exactly the same thing?
+- completeness: Is EVERY piece of information present? Every bullet, every detail?
+- technical_accuracy: Are ALL technical terms, UI labels, and feature names identical?
+
+For 100% score, the back-translation should be nearly identical to the original.
+
+Output JSON:
 {
-  "semantic_fidelity": <0-100>,  // Does the meaning match?
-  "completeness": <0-100>,       // Is all content present?
-  "technical_accuracy": <0-100>, // Are technical terms correct?
-  "issues": [                    // Specific problems found
+  "semantic_fidelity": <0-100>,
+  "completeness": <0-100>,
+  "technical_accuracy": <0-100>,
+  "issues": [
     {
-      "type": "missing_content" | "semantic_drift" | "technical_error" | "truncation" | "hallucination",
+      "type": "missing_content" | "semantic_drift" | "technical_error" | "truncation" | "hallucination" | "term_inconsistency",
       "severity": "high" | "medium" | "low",
-      "description": "Brief description",
-      "original_excerpt": "relevant text from original",
-      "backtranslated_excerpt": "relevant text from back-translation"
+      "description": "Specific description of the problem",
+      "original_excerpt": "exact text from original",
+      "backtranslated_excerpt": "exact text from back-translation"
     }
   ],
-  "summary": "One sentence summary of translation quality"
-}`
+  "summary": "One sentence assessment"
+}
+
+SEVERITY GUIDE:
+- high: Missing content, wrong meaning, technical errors
+- medium: Term inconsistencies, phrasing that changes nuance  
+- low: Minor word order differences that don't affect meaning`
       },
       {
         role: 'user',
@@ -118,11 +211,7 @@ BACK-TRANSLATED TO ENGLISH:
 ${backTranslated}
 ---
 
-Evaluate the translation quality. Focus on:
-1. Missing or added content
-2. Meaning changes
-3. Technical term accuracy
-4. Structure preservation`
+Evaluate strictly. List ALL differences, even minor ones. We want 100% accuracy.`
       }
     ],
   });
@@ -389,7 +478,7 @@ async function evaluateFile(translatedPath, options = {}) {
   const status = score >= THRESHOLDS.pass ? 'pass' : 
                  score >= THRESHOLDS.warning ? 'warning' : 'fail';
   
-  return {
+  const result = {
     file: translatedPath,
     locale,
     sourcePath,
@@ -402,6 +491,22 @@ async function evaluateFile(translatedPath, options = {}) {
     status,
     backTranslated: options.includeBackTranslation ? backTranslated : undefined
   };
+  
+  // Generate correction if requested and score is not perfect
+  if (options.generateFixes && (score < 100 || allIssues.length > 0)) {
+    try {
+      console.log('  Generating correction...');
+      const correction = await generateCorrection(original, translated, allIssues, locale);
+      if (correction) {
+        result.correction = correction;
+        result.hasCorrection = true;
+      }
+    } catch (error) {
+      console.warn(`  ⚠️ Could not generate correction: ${error.message}`);
+    }
+  }
+  
+  return result;
 }
 
 /**
@@ -556,6 +661,37 @@ function formatGitHubSummary(results) {
 }
 
 /**
+ * Write corrections to files
+ */
+async function writeCorrections(results, outputDir = null) {
+  const corrections = results.filter(r => r.hasCorrection && r.correction);
+  
+  if (corrections.length === 0) {
+    console.log('\nNo corrections to write.');
+    return [];
+  }
+  
+  const written = [];
+  
+  for (const result of corrections) {
+    const targetPath = outputDir 
+      ? path.join(outputDir, result.file)
+      : result.file;
+    
+    try {
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.writeFile(targetPath, result.correction);
+      written.push(targetPath);
+      console.log(`  ✓ Wrote correction: ${targetPath}`);
+    } catch (error) {
+      console.error(`  ❌ Failed to write ${targetPath}: ${error.message}`);
+    }
+  }
+  
+  return written;
+}
+
+/**
  * Main entry point
  */
 async function main() {
@@ -569,7 +705,10 @@ async function main() {
   let files = [];
   let options = {
     skipBackTranslation: false,
-    outputFormat: 'console'
+    outputFormat: 'console',
+    generateFixes: false,
+    applyFixes: false,
+    fixOutputDir: null
   };
   
   // Parse arguments
@@ -590,6 +729,14 @@ async function main() {
       options.outputFormat = 'github';
     } else if (arg === '--json') {
       options.outputFormat = 'json';
+    } else if (arg === '--fix') {
+      options.generateFixes = true;
+    } else if (arg === '--apply-fixes') {
+      options.generateFixes = true;
+      options.applyFixes = true;
+    } else if (arg === '--fix-output') {
+      options.generateFixes = true;
+      options.fixOutputDir = args[++i];
     } else if (!arg.startsWith('-')) {
       // Treat as file path or locale
       if (arg.includes('/')) {
@@ -611,6 +758,11 @@ async function main() {
     console.log('  node qa-translations.js --changed             # Files changed in PR');
     console.log('  node qa-translations.js --structural-only ... # Skip back-translation');
     console.log('  node qa-translations.js --github-summary ...  # Output for GitHub Actions');
+    console.log('');
+    console.log('Fix options:');
+    console.log('  node qa-translations.js --fix ...             # Generate corrections (show only)');
+    console.log('  node qa-translations.js --apply-fixes ...     # Generate and apply corrections in-place');
+    console.log('  node qa-translations.js --fix-output <dir> ...# Write corrections to separate directory');
     process.exit(0);
   }
   
@@ -647,6 +799,37 @@ async function main() {
     }
   } else {
     console.log(formatResults(results));
+  }
+  
+  // Handle corrections
+  const correctionsNeeded = results.filter(r => r.hasCorrection);
+  
+  if (options.generateFixes && correctionsNeeded.length > 0) {
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`CORRECTIONS GENERATED: ${correctionsNeeded.length} files`);
+    console.log('='.repeat(70));
+    
+    if (options.applyFixes) {
+      console.log('\nApplying corrections in-place...');
+      const written = await writeCorrections(results);
+      console.log(`\n✓ Applied ${written.length} corrections`);
+    } else if (options.fixOutputDir) {
+      console.log(`\nWriting corrections to ${options.fixOutputDir}...`);
+      const written = await writeCorrections(results, options.fixOutputDir);
+      console.log(`\n✓ Wrote ${written.length} corrections to ${options.fixOutputDir}`);
+    } else {
+      console.log('\nCorrections generated but not applied.');
+      console.log('Use --apply-fixes to apply in-place, or --fix-output <dir> to write to a separate directory.');
+      
+      // Show preview of what would change
+      for (const result of correctionsNeeded) {
+        console.log(`\n📝 ${result.file} (score: ${result.score}/100)`);
+        console.log('   Issues fixed:');
+        for (const issue of result.issues.filter(i => i.severity !== 'low').slice(0, 3)) {
+          console.log(`   - ${issue.description}`);
+        }
+      }
+    }
   }
   
   // Exit with error if any failures
