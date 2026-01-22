@@ -18,10 +18,15 @@ on:
         options:
           - sample      # Random sample of files
           - locale      # All files for a specific locale
+          - files       # Specific files (provide paths in 'files' input)
           - all         # All files, all locales (parallel)
           - changed     # Files changed in recent commits
       locale:
         description: 'Locale to audit (for locale mode, or to filter sample)'
+        required: false
+        default: ''
+      files:
+        description: 'Specific files to QA (for files mode, space or newline separated)'
         required: false
         default: ''
       sample_size:
@@ -33,10 +38,10 @@ on:
         required: false
         default: 'false'
         type: boolean
-      create_fix_pr:
-        description: 'Generate corrections and create a PR with fixes'
+      apply_fixes:
+        description: 'Generate corrections and commit them (REQUIRED to save work!)'
         required: false
-        default: 'false'
+        default: 'true'
         type: boolean
       branch:
         description: 'Target branch for fixes (leave empty for translation-fixes-YYYY-MM-DD)'
@@ -69,6 +74,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Determine files to check
         id: files
         run: |
@@ -94,6 +104,13 @@ jobs:
             echo "has_files=true" >> $GITHUB_OUTPUT
             echo "mode=locale" >> $GITHUB_OUTPUT
             echo "locale=${{ inputs.locale }}" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.mode }}" = "files" ]; then
+            if [ -z "${{ inputs.files }}" ]; then
+              echo "Error: files input is required for files mode"
+              exit 1
+            fi
+            echo "has_files=true" >> $GITHUB_OUTPUT
+            echo "mode=files" >> $GITHUB_OUTPUT
           elif [ "${{ inputs.mode }}" = "all" ]; then
             echo "has_files=true" >> $GITHUB_OUTPUT
             echo "mode=all" >> $GITHUB_OUTPUT
@@ -118,6 +135,9 @@ jobs:
             fi
           elif [ "${{ steps.files.outputs.mode }}" = "locale" ]; then
             ARGS="${{ steps.files.outputs.locale }}"
+          elif [ "${{ steps.files.outputs.mode }}" = "files" ]; then
+            # Pass files directly - handle both space and newline separated
+            ARGS=$(echo "${{ inputs.files }}" | tr '\n' ' ')
           elif [ "${{ steps.files.outputs.mode }}" = "all" ]; then
             # Run all locales sequentially
             for LOCALE in es fr de ja pt-BR ko it ar hi-IN zh-CN; do
@@ -126,18 +146,24 @@ jobs:
               if [ "${{ inputs.structural_only }}" = "true" ]; then
                 LOCALE_ARGS="$LOCALE_ARGS --structural-only"
               fi
-              if [ "${{ inputs.create_fix_pr }}" = "true" ]; then
+              # Apply fixes by default (apply_fixes defaults to true)
+              if [ "${{ inputs.apply_fixes }}" != "false" ]; then
                 LOCALE_ARGS="$LOCALE_ARGS --apply-fixes"
               fi
               node scripts/qa-translations.js $LOCALE_ARGS --github-summary || true
+              
+              # Commit after each locale to avoid losing work on failure
+              if [ "${{ inputs.apply_fixes }}" != "false" ] && ! git diff --quiet i18n/; then
+                echo "Committing fixes for $LOCALE..."
+                git add i18n/
+                git commit -m "fix($LOCALE): improve translation quality (QA auto-corrections)" || true
+              fi
             done
             # Check if any fixes were generated across all locales
-            if [ "${{ inputs.create_fix_pr }}" = "true" ]; then
-              if git diff --quiet i18n/; then
-                echo "has_fixes=false" >> $GITHUB_OUTPUT
-              else
-                echo "has_fixes=true" >> $GITHUB_OUTPUT
-              fi
+            if git log --oneline origin/HEAD..HEAD 2>/dev/null | grep -q "improve translation quality"; then
+              echo "has_fixes=true" >> $GITHUB_OUTPUT
+            else
+              echo "has_fixes=false" >> $GITHUB_OUTPUT
             fi
             exit 0
           elif [ "${{ steps.files.outputs.mode }}" = "changed" ]; then
@@ -149,8 +175,8 @@ jobs:
             ARGS="$ARGS --structural-only"
           fi
           
-          # Always apply fixes on PRs, or when manually requested
-          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ inputs.create_fix_pr }}" = "true" ]; then
+          # Apply fixes by default for PRs and manual runs (apply_fixes defaults to true)
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ inputs.apply_fixes }}" != "false" ]; then
             ARGS="$ARGS --apply-fixes"
           fi
           
@@ -167,12 +193,19 @@ jobs:
             echo "has_fixes=true" >> $GITHUB_OUTPUT
           fi
 
+      # Save corrections as artifact BEFORE attempting to commit
+      # This ensures work is never lost even if push fails
+      - name: Save corrections as artifact
+        if: steps.qa.outputs.has_fixes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: translation-corrections-${{ inputs.locale || 'mixed' }}-${{ github.run_number }}
+          path: i18n/
+          retention-days: 30
+
       - name: Push fixes to PR branch
         if: github.event_name == 'pull_request' && steps.qa.outputs.has_fixes == 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
           git add i18n/
           
           if git diff --staged --quiet; then
@@ -187,11 +220,8 @@ jobs:
           fi
 
       - name: Create fix branch (manual trigger)
-        if: github.event_name == 'workflow_dispatch' && inputs.create_fix_pr == 'true' && steps.qa.outputs.has_fixes == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.apply_fixes != 'false' && steps.qa.outputs.has_fixes == 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
           # Determine target branch
           if [ -n "${{ inputs.branch }}" ]; then
             TARGET_BRANCH="${{ inputs.branch }}"
@@ -201,26 +231,29 @@ jobs:
           
           echo "Target branch: $TARGET_BRANCH"
           
-          git checkout -B "$TARGET_BRANCH"
-          git add i18n/
-          
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "fix: improve translation quality
+          # For single-locale mode, commit any uncommitted changes first
+          if [ "${{ inputs.mode }}" != "all" ]; then
+            git add i18n/
+            if ! git diff --staged --quiet; then
+              git commit -m "fix: improve translation quality
 
-          Auto-generated corrections from Translation QA workflow.
-          Mode: ${{ inputs.mode }}
-          Locale: ${{ inputs.locale || 'all' }}"
-            
-            git push -u origin "$TARGET_BRANCH" --force
-            
-            echo "## Translation Fixes Ready" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Branch: \`$TARGET_BRANCH\`" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "[Create Pull Request](https://github.com/${{ github.repository }}/compare/main...$TARGET_BRANCH?expand=1)" >> $GITHUB_STEP_SUMMARY
+Auto-generated corrections from Translation QA workflow.
+Mode: ${{ inputs.mode }}
+Locale: ${{ inputs.locale || 'all' }}"
+            fi
           fi
+          
+          # Create/update the target branch with all commits
+          git checkout -B "$TARGET_BRANCH"
+          git push -u origin "$TARGET_BRANCH" --force
+          
+          echo "## Translation Fixes Ready" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: \`$TARGET_BRANCH\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[Create Pull Request](https://github.com/${{ github.repository }}/compare/main...$TARGET_BRANCH?expand=1)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** Corrections were also saved as a downloadable artifact in case you need to recover them." >> $GITHUB_STEP_SUMMARY
 
       - name: No files to check
         if: steps.files.outputs.has_files != 'true'
@@ -229,3 +262,12 @@ jobs:
           echo "## Translation QA" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "No translation files were modified in this PR." >> $GITHUB_STEP_SUMMARY
+      
+      - name: Warn if corrections not saved
+        if: steps.qa.outputs.has_fixes == 'true' && inputs.apply_fixes == 'false'
+        run: |
+          echo "::warning::Corrections were generated but apply_fixes was disabled. Changes have NOT been saved!"
+          echo "## ⚠️ Warning: Corrections Not Saved" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Corrections were generated but \`apply_fixes\` was set to false." >> $GITHUB_STEP_SUMMARY
+          echo "Re-run with \`apply_fixes: true\` to save the corrections." >> $GITHUB_STEP_SUMMARY
