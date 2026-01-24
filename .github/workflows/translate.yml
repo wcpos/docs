@@ -231,48 +231,11 @@ jobs:
   qa:
     needs: [prepare, commit]
     if: always() && needs.prepare.outputs.has_files == 'true' && inputs.mode != 'test'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Pull latest changes
-        run: |
-          git fetch origin
-          # Try to checkout the translation branch
-          TARGET_BRANCH="${{ inputs.branch }}"
-          if [ -z "$TARGET_BRANCH" ]; then
-            TARGET_BRANCH="translations-$(date +%Y-%m-%d)"
-          fi
-          git checkout "$TARGET_BRANCH" 2>/dev/null || git checkout main
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Run Translation QA (sample)
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          echo "Running QA on sample of translated files..."
-          # Run structural checks only (faster) on a sample of 5 files
-          node scripts/qa-translations.js --sample 5 --structural-only --github-summary || true
-
-      - name: QA Summary
-        run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "💡 **Tip:** Run full QA with back-translation using:" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "node scripts/qa-translations.js --sample 10" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+    uses: ./.github/workflows/qa-translations.yml
+    with:
+      mode: sample
+      sample_size: '5'
+      structural_only: true
+      apply_fixes: false
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

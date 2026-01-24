@@ -1,13 +1,44 @@
 name: Translation QA
 
 on:
-  # Automatic: Run on PRs that modify translations
-  pull_request:
-    paths:
-      - 'i18n/**/*.mdx'
-      - 'i18n/**/*.md'
+  # Called by translate.yml after translation completes
+  workflow_call:
+    inputs:
+      mode:
+        description: 'QA mode'
+        required: false
+        type: string
+        default: 'sample'
+      locale:
+        description: 'Locale to audit'
+        required: false
+        type: string
+        default: ''
+      sample_size:
+        description: 'Number of files to sample'
+        required: false
+        type: string
+        default: '10'
+      structural_only:
+        description: 'Skip back-translation'
+        required: false
+        type: boolean
+        default: false
+      apply_fixes:
+        description: 'Generate and commit corrections'
+        required: false
+        type: boolean
+        default: true
+      branch:
+        description: 'Target branch for fixes'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      OPENAI_API_KEY:
+        required: true
 
-  # Manual: Audit specific files or locales
+  # Manual trigger
   workflow_dispatch:
     inputs:
       mode:
@@ -61,7 +92,6 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -82,16 +112,7 @@ jobs:
       - name: Determine files to check
         id: files
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # Get files changed in this PR
-            FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} -- 'i18n/**/*.mdx' 'i18n/**/*.md' | head -20)
-            if [ -z "$FILES" ]; then
-              echo "has_files=false" >> $GITHUB_OUTPUT
-            else
-              echo "has_files=true" >> $GITHUB_OUTPUT
-              echo "mode=changed" >> $GITHUB_OUTPUT
-            fi
-          elif [ "${{ inputs.mode }}" = "sample" ]; then
+          if [ "${{ inputs.mode }}" = "sample" ]; then
             echo "has_files=true" >> $GITHUB_OUTPUT
             echo "mode=sample" >> $GITHUB_OUTPUT
             echo "sample_size=${{ inputs.sample_size }}" >> $GITHUB_OUTPUT
@@ -175,8 +196,8 @@ jobs:
             ARGS="$ARGS --structural-only"
           fi
           
-          # Apply fixes by default for PRs and manual runs (apply_fixes defaults to true)
-          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ inputs.apply_fixes }}" != "false" ]; then
+          # Apply fixes if requested (defaults to true)
+          if [ "${{ inputs.apply_fixes }}" != "false" ]; then
             ARGS="$ARGS --apply-fixes"
           fi
           
@@ -203,24 +224,8 @@ jobs:
           path: i18n/
           retention-days: 30
 
-      - name: Push fixes to PR branch
-        if: github.event_name == 'pull_request' && steps.qa.outputs.has_fixes == 'true'
-        run: |
-          git add i18n/
-          
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "fix: improve translation quality (QA auto-corrections)"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-            
-            echo "## Translation Fixes Applied" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "QA corrections have been pushed to this PR." >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Create fix branch (manual trigger)
-        if: github.event_name == 'workflow_dispatch' && inputs.apply_fixes != 'false' && steps.qa.outputs.has_fixes == 'true'
+      - name: Create fix branch
+        if: inputs.apply_fixes != 'false' && steps.qa.outputs.has_fixes == 'true'
         run: |
           # Determine target branch
           if [ -n "${{ inputs.branch }}" ]; then
@@ -257,7 +262,7 @@ jobs:
           echo "No translation files to check"
           echo "## Translation QA" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "No translation files were modified in this PR." >> $GITHUB_STEP_SUMMARY
+          echo "No translation files to check." >> $GITHUB_STEP_SUMMARY
       
       - name: Warn if corrections not saved
         if: steps.qa.outputs.has_fixes == 'true' && inputs.apply_fixes == 'false'
