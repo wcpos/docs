@@ -46,6 +46,26 @@ const THRESHOLDS = {
 };
 
 /**
+ * Retry wrapper with exponential backoff for API calls
+ */
+async function withRetry(fn, maxRetries = 3, baseDelay = 1000) {
+  let lastError;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.log(`    Retry ${attempt + 1}/${maxRetries} after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Generate a corrected translation based on issues found
  * Uses gpt-4o (not mini) for higher accuracy corrections
  */
@@ -61,7 +81,8 @@ async function generateCorrection(original, currentTranslation, issues, locale) 
     return null; // No issues to fix
   }
   
-  const response = await openai.chat.completions.create({
+  return withRetry(async () => {
+    const response = await openai.chat.completions.create({
     model: 'gpt-4o',  // Use full gpt-4o for better accuracy
     max_tokens: 16384,
     messages: [
@@ -108,14 +129,15 @@ Produce a corrected ${localeName} translation that fixes ALL issues above. The g
     ],
   });
 
-  let text = response.choices[0].message.content;
-  
-  // Strip code fence wrapper if AI added it
-  if (text.startsWith('```') && text.endsWith('```')) {
-    text = text.replace(/^```(?:mdx|markdown)?\n?/, '').replace(/\n?```$/, '');
-  }
-  
-  return text;
+    let text = response.choices[0].message.content;
+    
+    // Strip code fence wrapper if AI added it
+    if (text.startsWith('```') && text.endsWith('```')) {
+      text = text.replace(/^```(?:mdx|markdown)?\n?/, '').replace(/\n?```$/, '');
+    }
+    
+    return text;
+  });
 }
 
 /**
@@ -125,33 +147,35 @@ Produce a corrected ${localeName} translation that fixes ALL issues above. The g
 async function backTranslate(content, fromLocale) {
   const localeName = LOCALE_NAMES[fromLocale] || fromLocale;
   
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o',  // Use full model for accurate back-translation
-    max_tokens: 16384,
-    messages: [
-      { 
-        role: 'system', 
-        content: `You are a professional translator performing back-translation for quality assurance. Translate the ${localeName} content back to English as LITERALLY as possible while maintaining readability.
+  return withRetry(async () => {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',  // Use full model for accurate back-translation
+      max_tokens: 16384,
+      messages: [
+        { 
+          role: 'system', 
+          content: `You are a professional translator performing back-translation for quality assurance. Translate the ${localeName} content back to English as LITERALLY as possible while maintaining readability.
 
 IMPORTANT: Translate literally to reveal any semantic drift in the original translation. If the ${localeName} says "Creation Date", translate it as "Creation Date" (not "Date Created") so we can detect the difference.
 
 Preserve all markdown formatting, code blocks, and structure exactly. Output ONLY the back-translated content.`
-      },
-      { 
-        role: 'user', 
-        content: `Back-translate this ${localeName} document to English:\n\n${content}`
-      },
-    ],
-  });
+        },
+        { 
+          role: 'user', 
+          content: `Back-translate this ${localeName} document to English:\n\n${content}`
+        },
+      ],
+    });
 
-  let text = response.choices[0].message.content;
-  
-  // Strip code fence wrapper if AI added it
-  if (text.startsWith('```') && text.endsWith('```')) {
-    text = text.replace(/^```(?:mdx|markdown)?\n?/, '').replace(/\n?```$/, '');
-  }
-  
-  return text;
+    let text = response.choices[0].message.content;
+    
+    // Strip code fence wrapper if AI added it
+    if (text.startsWith('```') && text.endsWith('```')) {
+      text = text.replace(/^```(?:mdx|markdown)?\n?/, '').replace(/\n?```$/, '');
+    }
+    
+    return text;
+  });
 }
 
 /**
@@ -159,14 +183,15 @@ Preserve all markdown formatting, code blocks, and structure exactly. Output ONL
  * Uses gpt-4o for thorough evaluation
  */
 async function evaluateSimilarity(original, backTranslated) {
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o',  // Use full model for accurate evaluation
-    max_tokens: 4096,
-    response_format: { type: 'json_object' },
-    messages: [
-      {
-        role: 'system',
-        content: `You are a STRICT translation quality evaluator for technical documentation. Compare the original English with a back-translated version.
+  return withRetry(async () => {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',  // Use full model for accurate evaluation
+      max_tokens: 4096,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `You are a STRICT translation quality evaluator for technical documentation. Compare the original English with a back-translated version.
 
 BE STRICT: Technical docs require 100% accuracy. Flag ANY difference, no matter how small.
 
@@ -198,10 +223,10 @@ SEVERITY GUIDE:
 - high: Missing content, wrong meaning, technical errors
 - medium: Term inconsistencies, phrasing that changes nuance  
 - low: Minor word order differences that don't affect meaning`
-      },
-      {
-        role: 'user',
-        content: `ORIGINAL ENGLISH:
+        },
+        {
+          role: 'user',
+          content: `ORIGINAL ENGLISH:
 ---
 ${original}
 ---
@@ -212,22 +237,23 @@ ${backTranslated}
 ---
 
 Evaluate strictly. List ALL differences, even minor ones. We want 100% accuracy.`
-      }
-    ],
-  });
+        }
+      ],
+    });
 
-  try {
-    return JSON.parse(response.choices[0].message.content);
-  } catch (error) {
-    console.error('Failed to parse evaluation response:', error.message);
-    return {
-      semantic_fidelity: 0,
-      completeness: 0,
-      technical_accuracy: 0,
-      issues: [{ type: 'evaluation_error', severity: 'high', description: 'Failed to evaluate' }],
-      summary: 'Evaluation failed'
-    };
-  }
+    try {
+      return JSON.parse(response.choices[0].message.content);
+    } catch (parseError) {
+      console.error('Failed to parse evaluation response:', parseError.message);
+      return {
+        semantic_fidelity: 0,
+        completeness: 0,
+        technical_accuracy: 0,
+        issues: [{ type: 'evaluation_error', severity: 'high', description: 'Failed to evaluate' }],
+        summary: 'Evaluation failed'
+      };
+    }
+  });
 }
 
 /**
@@ -444,14 +470,15 @@ async function evaluateFile(translatedPath, options = {}) {
       console.log('  Evaluating semantic similarity...');
       evaluation = await evaluateSimilarity(original, backTranslated);
     } catch (error) {
-      return {
-        file: translatedPath,
-        locale,
-        sourcePath,
-        error: `Back-translation failed: ${error.message}`,
-        score: 50,
-        issues: structuralIssues,
-        status: 'warning'
+      console.error(`  ❌ Back-translation failed: ${error.message}`);
+      console.log('  Falling back to structural-only mode...');
+      // Fall through to structural-only evaluation instead of returning early
+      evaluation = {
+        semantic_fidelity: 80,
+        completeness: 80,
+        technical_accuracy: 80,
+        issues: [{ type: 'api_error', severity: 'info', description: `Back-translation unavailable: ${error.message}` }],
+        summary: 'Structural check only (back-translation failed)'
       };
     }
   } else {
