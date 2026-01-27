@@ -224,14 +224,16 @@ jobs:
           path: i18n/
           retention-days: 30
 
-      - name: Create fix branch
+      - name: Create fix branch and PR
         if: inputs.apply_fixes != 'false' && steps.qa.outputs.has_fixes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Determine target branch
           if [ -n "${{ inputs.branch }}" ]; then
             TARGET_BRANCH="${{ inputs.branch }}"
           else
-            TARGET_BRANCH="translation-fixes-$(date +%Y-%m-%d)"
+            TARGET_BRANCH="qa-fixes-${{ inputs.locale || 'mixed' }}-$(date +%Y-%m-%d)"
           fi
           
           echo "Target branch: $TARGET_BRANCH"
@@ -248,13 +250,55 @@ jobs:
           git checkout -B "$TARGET_BRANCH"
           git push -u origin "$TARGET_BRANCH" --force
           
-          echo "## Translation Fixes Ready" >> $GITHUB_STEP_SUMMARY
+          # Build PR body
+          PR_TITLE="fix: QA corrections for ${{ inputs.locale || 'translations' }}"
+          
+          cat > /tmp/pr-body.md << EOF
+          ## Translation QA Corrections
+
+          This PR contains automated quality corrections from the Translation QA workflow.
+
+          ### Run Details
+          - **Mode:** ${{ inputs.mode }}
+          - **Locale:** ${{ inputs.locale || 'all' }}
+          - **Structural only:** ${{ inputs.structural_only }}
+          - **Workflow run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          ### Commits
+          EOF
+          
+          # Add commit summaries
+          git log --oneline origin/main..HEAD >> /tmp/pr-body.md
+          
+          # Add QA summary if it exists
+          if [ -f "qa-summary.md" ]; then
+            echo "" >> /tmp/pr-body.md
+            echo "---" >> /tmp/pr-body.md
+            echo "" >> /tmp/pr-body.md
+            cat qa-summary.md >> /tmp/pr-body.md
+          fi
+          
+          # Check if PR already exists for this branch
+          EXISTING_PR=$(gh pr list --head "$TARGET_BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists, updating..."
+            gh pr edit "$EXISTING_PR" --body-file /tmp/pr-body.md
+            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
+          else
+            echo "Creating new PR..."
+            PR_URL=$(gh pr create \
+              --title "$PR_TITLE" \
+              --body-file /tmp/pr-body.md \
+              --base main \
+              --head "$TARGET_BRANCH")
+          fi
+          
+          echo "## Translation Fixes PR Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** $PR_URL" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Branch: \`$TARGET_BRANCH\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "[Create Pull Request](https://github.com/${{ github.repository }}/compare/main...$TARGET_BRANCH?expand=1)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Note:** Corrections were also saved as a downloadable artifact in case you need to recover them." >> $GITHUB_STEP_SUMMARY
 
       - name: No files to check
         if: steps.files.outputs.has_files != 'true'

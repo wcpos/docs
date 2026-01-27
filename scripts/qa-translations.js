@@ -870,6 +870,10 @@ async function main() {
     if (process.env.GITHUB_STEP_SUMMARY) {
       await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary);
     }
+    
+    // Also write to qa-summary.md for PR body
+    await fs.writeFile('qa-summary.md', summary);
+    console.log('\nSummary written to qa-summary.md');
   } else {
     console.log(formatResults(results));
   }
