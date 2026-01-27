@@ -471,14 +471,15 @@ async function evaluateFile(translatedPath, options = {}) {
       evaluation = await evaluateSimilarity(original, backTranslated);
     } catch (error) {
       console.error(`  ❌ Back-translation failed: ${error.message}`);
-      console.log('  Falling back to structural-only mode...');
-      // Fall through to structural-only evaluation instead of returning early
-      evaluation = {
-        semantic_fidelity: 80,
-        completeness: 80,
-        technical_accuracy: 80,
-        issues: [{ type: 'api_error', severity: 'info', description: `Back-translation unavailable: ${error.message}` }],
-        summary: 'Structural check only (back-translation failed)'
+      return {
+        file: translatedPath,
+        locale,
+        sourcePath,
+        error: `Back-translation failed: ${error.message}`,
+        score: null,
+        issues: structuralIssues,
+        status: 'error',
+        needsManualQA: true
       };
     }
   } else {
@@ -601,13 +602,17 @@ function formatResults(results) {
     const statusResults = results.filter(r => r.status === status);
     if (statusResults.length === 0) continue;
     
-    const icon = status === 'pass' ? '✅' : status === 'warning' ? '⚠️' : status === 'error' ? '❓' : '❌';
+    const icon = status === 'pass' ? '✅' : status === 'warning' ? '⚠️' : status === 'error' ? '❌' : '❌';
     lines.push(`\n${icon} ${status.toUpperCase()} (${statusResults.length} files):\n`);
     
     for (const result of statusResults) {
       const shortPath = result.file.replace('i18n/', '').replace('docusaurus-plugin-content-docs/', '');
       lines.push(`  ${shortPath}`);
-      lines.push(`    Score: ${result.score}/100 | ${result.summary || result.error || ''}`);
+      if (result.score !== null) {
+        lines.push(`    Score: ${result.score}/100 | ${result.summary || result.error || ''}`);
+      } else {
+        lines.push(`    ${result.error || 'API error - needs manual QA'}`);
+      }
       
       if (result.issues && result.issues.length > 0) {
         const topIssues = result.issues.slice(0, 3);
@@ -622,15 +627,29 @@ function formatResults(results) {
     }
   }
   
-  // Overall score
-  const avgScore = results.length > 0 
-    ? Math.round(results.reduce((sum, r) => sum + (r.score || 0), 0) / results.length)
+  // Overall score (excluding errors)
+  const scoredResults = results.filter(r => r.score !== null);
+  const avgScore = scoredResults.length > 0 
+    ? Math.round(scoredResults.reduce((sum, r) => sum + (r.score || 0), 0) / scoredResults.length)
     : 0;
   
   lines.push('='.repeat(70));
-  lines.push(`Overall Average Score: ${avgScore}/100`);
+  lines.push(`Overall Average Score: ${avgScore}/100 (${scoredResults.length} files scored)`);
   lines.push(`Threshold: ${THRESHOLDS.pass} (pass), ${THRESHOLDS.warning} (warning)`);
   lines.push('='.repeat(70));
+  
+  // List files that need manual QA
+  const needsManualQA = results.filter(r => r.needsManualQA || r.status === 'error');
+  if (needsManualQA.length > 0) {
+    lines.push('\n⚠️  FILES NEED MANUAL QA:');
+    lines.push('Re-run QA on these files with:\n');
+    lines.push('node scripts/qa-translations.js --apply-fixes \\');
+    for (let i = 0; i < needsManualQA.length; i++) {
+      const suffix = i < needsManualQA.length - 1 ? ' \\' : '';
+      lines.push(`  "${needsManualQA[i].file}"${suffix}`);
+    }
+    lines.push('');
+  }
   
   return lines.join('\n');
 }
@@ -644,9 +663,11 @@ function formatGitHubSummary(results) {
   const passed = results.filter(r => r.status === 'pass').length;
   const warnings = results.filter(r => r.status === 'warning').length;
   const failed = results.filter(r => r.status === 'fail').length;
+  const errors = results.filter(r => r.status === 'error').length;
   
-  const avgScore = results.length > 0 
-    ? Math.round(results.reduce((sum, r) => sum + (r.score || 0), 0) / results.length)
+  const scoredResults = results.filter(r => r.score !== null);
+  const avgScore = scoredResults.length > 0 
+    ? Math.round(scoredResults.reduce((sum, r) => sum + (r.score || 0), 0) / scoredResults.length)
     : 0;
   
   lines.push('## Translation Quality Report\n');
@@ -657,7 +678,32 @@ function formatGitHubSummary(results) {
   lines.push(`| Passed | ${passed} |`);
   lines.push(`| Warnings | ${warnings} |`);
   lines.push(`| Failed | ${failed} |`);
+  if (errors > 0) {
+    lines.push(`| **API Errors** | **${errors}** |`);
+  }
   lines.push('');
+  
+  // Show files that need manual QA due to API errors
+  const needsManualQA = results.filter(r => r.needsManualQA || r.status === 'error');
+  if (needsManualQA.length > 0) {
+    lines.push('### ⚠️ Files Need Manual QA\n');
+    lines.push('The following files failed to process due to API errors. Re-run QA on these files:\n');
+    lines.push('```');
+    lines.push('node scripts/qa-translations.js --apply-fixes \\');
+    for (let i = 0; i < needsManualQA.length; i++) {
+      const suffix = i < needsManualQA.length - 1 ? ' \\' : '';
+      lines.push(`  "${needsManualQA[i].file}"${suffix}`);
+    }
+    lines.push('```\n');
+    
+    lines.push('| File | Error |');
+    lines.push('|------|-------|');
+    for (const result of needsManualQA) {
+      const shortPath = result.file.replace('i18n/', '').replace('docusaurus-plugin-content-docs/', '');
+      lines.push(`| ${shortPath} | ${(result.error || 'Unknown error').substring(0, 50)} |`);
+    }
+    lines.push('');
+  }
   
   if (failed > 0) {
     lines.push('### Failed Files\n');
