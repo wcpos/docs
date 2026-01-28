@@ -35,6 +35,7 @@ import {
   faFileInvoice,
   faChartPie,
   faCalculator,
+  faArrowRotateRight,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Map of icon names to FontAwesome icons
@@ -77,6 +78,8 @@ const iconMap = {
   'file-invoice': faFileInvoice,
   'chart-pie': faChartPie,
   'calculator': faCalculator,
+  'arrow-rotate-right': faArrowRotateRight,
+  'sync': faArrowRotateRight,
 };
 
 export default function Icon({ name, size = '1x', color, className, ...props }) {
