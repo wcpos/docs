@@ -26,6 +26,14 @@ import {
   faCircleInfo,
   faGlobe,
   faBuilding,
+  faDesktop,
+  faMobileScreen,
+  faWifi,
+  faCreditCard,
+  faStore,
+  faBox,
+  faFileInvoice,
+  faChartPie,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Map of icon names to FontAwesome icons
@@ -58,6 +66,15 @@ const iconMap = {
   'info': faCircleInfo,
   'globe': faGlobe,
   'building': faBuilding,
+  'desktop': faDesktop,
+  'mobile': faMobileScreen,
+  'mobile-screen': faMobileScreen,
+  'wifi': faWifi,
+  'credit-card': faCreditCard,
+  'store': faStore,
+  'box': faBox,
+  'file-invoice': faFileInvoice,
+  'chart-pie': faChartPie,
 };
 
 export default function Icon({ name, size = '1x', color, className, ...props }) {
