@@ -5,6 +5,8 @@ const {
   fixPartialQuoting,
   fixBackslashEscapedQuotes,
   fixFrontmatter,
+  findBrokenLinks,
+  fixBrokenLinks,
 } = require('../validate-frontmatter');
 
 describe('validateFrontmatter', () => {
@@ -234,5 +236,109 @@ Content`;
     const result = fixFrontmatter(content);
     expect(result.fixed).toBe(true);
     expect(validateFrontmatter(result.content).valid).toBe(true);
+  });
+});
+
+describe('findBrokenLinks', () => {
+  it('detects double parentheses in links', () => {
+    // Real case from hi-IN/response-error.mdx
+    const content = 'Visit [our Pro page]((https://wcpos.com/pro)) for more info.';
+    const issues = findBrokenLinks(content);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].pattern).toBe('double-parentheses');
+    expect(issues[0].matches).toContain(']((https://wcpos.com/pro))');
+  });
+
+  it('detects double brackets in links', () => {
+    const content = 'Click [[here]](https://example.com) to continue.';
+    const issues = findBrokenLinks(content);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].pattern).toBe('double-brackets');
+  });
+
+  it('detects space before parenthesis', () => {
+    const content = 'Visit [our page] (https://example.com) for info.';
+    const issues = findBrokenLinks(content);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].pattern).toBe('space-before-paren');
+  });
+
+  it('returns empty array for valid links', () => {
+    const content = 'Visit [our page](https://example.com) and [another](https://test.com).';
+    const issues = findBrokenLinks(content);
+
+    expect(issues).toHaveLength(0);
+  });
+
+  it('detects multiple issues in same content', () => {
+    const content = `
+      [link1]((https://a.com))
+      [[link2]](https://b.com)
+    `;
+    const issues = findBrokenLinks(content);
+
+    expect(issues).toHaveLength(2);
+  });
+});
+
+describe('fixBrokenLinks', () => {
+  it('fixes double parentheses', () => {
+    // Real case from hi-IN/response-error.mdx
+    const content = 'Visit [our Pro page]((https://wcpos.com/pro)) for more info.';
+    const result = fixBrokenLinks(content);
+
+    expect(result.fixed).toBe(true);
+    expect(result.content).toBe('Visit [our Pro page](https://wcpos.com/pro) for more info.');
+    expect(result.fixes).toHaveLength(1);
+  });
+
+  it('fixes double brackets', () => {
+    const content = 'Click [[here]](https://example.com) to continue.';
+    const result = fixBrokenLinks(content);
+
+    expect(result.fixed).toBe(true);
+    expect(result.content).toBe('Click [here](https://example.com) to continue.');
+  });
+
+  it('fixes space before parenthesis', () => {
+    const content = 'Visit [our page] (https://example.com) for info.';
+    const result = fixBrokenLinks(content);
+
+    expect(result.fixed).toBe(true);
+    expect(result.content).toBe('Visit [our page](https://example.com) for info.');
+  });
+
+  it('returns unfixed for valid content', () => {
+    const content = 'Visit [our page](https://example.com) for info.';
+    const result = fixBrokenLinks(content);
+
+    expect(result.fixed).toBe(false);
+    expect(result.content).toBe(content);
+    expect(result.fixes).toHaveLength(0);
+  });
+
+  it('fixes multiple issues in same content', () => {
+    const content = `
+Visit [Pro]((https://wcpos.com/pro)) and [[docs]](https://docs.wcpos.com).
+`;
+    const result = fixBrokenLinks(content);
+
+    expect(result.fixed).toBe(true);
+    expect(result.content).toContain('[Pro](https://wcpos.com/pro)');
+    expect(result.content).toContain('[docs](https://docs.wcpos.com)');
+    expect(result.fixes).toHaveLength(2);
+  });
+
+  it('handles real Hindi translation case', () => {
+    const content = `कृपया अधिक जानकारी के लिए [हमारे प्रो पृष्ठ]((https://wcpos.com/pro)) पर जाएँ।`;
+    const result = fixBrokenLinks(content);
+
+    expect(result.fixed).toBe(true);
+    expect(result.content).toBe(
+      'कृपया अधिक जानकारी के लिए [हमारे प्रो पृष्ठ](https://wcpos.com/pro) पर जाएँ।'
+    );
   });
 });
