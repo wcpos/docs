@@ -18,11 +18,12 @@ const path = require('path');
 const glob = require('glob');
 
 // Convert heading text to Docusaurus anchor ID
-// Matches Docusaurus's slugify behavior
+// Matches Docusaurus's slugify behavior (preserves Unicode)
 function textToAnchor(text) {
   return text
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '') // Remove special chars except hyphens
+    // Keep alphanumeric (including Unicode letters), spaces, hyphens
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
     .replace(/\s+/g, '-') // Spaces to hyphens
     .replace(/-+/g, '-') // Collapse multiple hyphens
     .replace(/^-|-$/g, ''); // Trim hyphens
@@ -58,6 +59,58 @@ function extractHeadings(content) {
   return headings;
 }
 
+// Fix internal anchor links that were incorrectly translated
+// e.g., ](#errores-de-tarjeta) should be ](#card-errors)
+function fixInternalAnchorLinks(content, sourceAnchors, translatedHeadings) {
+  // Build a map: what the anchor WOULD be (from heading text) → source anchor
+  // This catches links that use translated heading slugs
+  const anchorMap = new Map();
+  for (let i = 0; i < translatedHeadings.length; i++) {
+    const th = translatedHeadings[i];
+    const sourceAnchor = sourceAnchors[i];
+    if (!sourceAnchor) continue;
+
+    // Compute what the anchor would be from the heading text alone
+    const wouldBeAnchor = textToAnchor(th.text);
+
+    // If it differs from the source anchor, map it
+    if (wouldBeAnchor !== sourceAnchor) {
+      anchorMap.set(wouldBeAnchor, sourceAnchor);
+    }
+  }
+
+  if (anchorMap.size === 0) {
+    return { modified: false, content, fixes: [] };
+  }
+
+  const fixes = [];
+  let fixedContent = content;
+
+  // Find all internal anchor links: ](#anchor-id)
+  // Replace translated anchors with source anchors
+  for (const [translatedAnchor, sourceAnchor] of anchorMap) {
+    // Escape special regex characters in the anchor
+    const escapedAnchor = translatedAnchor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`\\]\\(#${escapedAnchor}\\)`, 'g');
+    const matches = fixedContent.match(pattern);
+    if (matches) {
+      fixedContent = fixedContent.replace(pattern, `](#${sourceAnchor})`);
+      fixes.push({
+        type: 'link',
+        from: `](#${translatedAnchor})`,
+        to: `](#${sourceAnchor})`,
+        count: matches.length,
+      });
+    }
+  }
+
+  return {
+    modified: fixes.length > 0,
+    content: fixedContent,
+    fixes,
+  };
+}
+
 // Add explicit anchor IDs to translated content based on source headings
 function addAnchorIds(sourceContent, translatedContent) {
   const sourceHeadings = extractHeadings(sourceContent);
@@ -81,15 +134,17 @@ function addAnchorIds(sourceContent, translatedContent) {
   const lines = translatedContent.split('\n');
   const fixes = [];
   const levelCountsT = {};
+  const sourceAnchors = []; // Track source anchors in order
 
   for (const th of translatedHeadings) {
-    // Skip if already has explicit ID
-    if (th.hasExplicitId) continue;
-
     // Find corresponding source heading by position
     levelCountsT[th.level] = (levelCountsT[th.level] || 0) + 1;
     const key = `${th.level}-${levelCountsT[th.level]}`;
     const sourceHeading = sourceByPosition.get(key);
+    sourceAnchors.push(sourceHeading?.anchor);
+
+    // Skip if already has explicit ID
+    if (th.hasExplicitId) continue;
 
     if (!sourceHeading) continue;
 
@@ -100,6 +155,7 @@ function addAnchorIds(sourceContent, translatedContent) {
       const newLine = `${'#'.repeat(th.level)} ${th.text} {#${sourceHeading.anchor}}`;
       lines[th.line] = newLine;
       fixes.push({
+        type: 'heading',
         line: th.line + 1,
         from: th.raw,
         to: newLine,
@@ -108,11 +164,24 @@ function addAnchorIds(sourceContent, translatedContent) {
     }
   }
 
+  let resultContent = lines.join('\n');
+
+  // Also fix internal anchor links
+  const linkResult = fixInternalAnchorLinks(
+    resultContent,
+    sourceAnchors,
+    translatedHeadings
+  );
+  if (linkResult.modified) {
+    resultContent = linkResult.content;
+    fixes.push(...linkResult.fixes);
+  }
+
   if (fixes.length === 0) {
     return { modified: false, content: translatedContent, fixes: [] };
   }
 
-  return { modified: true, content: lines.join('\n'), fixes };
+  return { modified: true, content: resultContent, fixes };
 }
 
 // Get source file path for a translated file
@@ -183,7 +252,11 @@ function processAll(options = { dryRun: false, locale: null, quiet: false }) {
         if (!options.quiet) {
           console.log(`🔧 ${file}`);
           result.fixes.forEach((f) => {
-            console.log(`   L${f.line}: Added {#${f.anchor}}`);
+            if (f.type === 'link') {
+              console.log(`   Link: ${f.from} → ${f.to} (${f.count}x)`);
+            } else {
+              console.log(`   L${f.line}: Added {#${f.anchor}}`);
+            }
           });
         }
         results.details.push({ file, fixes: result.fixes });
@@ -220,6 +293,7 @@ if (require.main === module) {
 module.exports = {
   textToAnchor,
   extractHeadings,
+  fixInternalAnchorLinks,
   addAnchorIds,
   getSourcePath,
   processFile,
