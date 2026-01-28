@@ -176,19 +176,34 @@ Keep `:::info`, `:::tip`, `:::warning`, `:::note`, `:::danger` exactly.
 ### 7. Error Codes and Technical Terms
 Never translate: `API02004`, `DB01001`, `SY01001`, `PY01002`
 
-## FRONTMATTER QUOTING RULES
+## FRONTMATTER QUOTING RULES - CRITICAL
 
-If a translated title contains quotation marks, wrap the entire value in single quotes:
+YAML frontmatter values with special characters must be quoted correctly. **ALWAYS use double quotes** and escape internal double quotes with backslash:
 
 ```yaml
-# Original
-title: Troubleshooting "Critical Error" Messages
+# Original (no quotes needed)
+title: Simple Title
 
-# Correct translation (Spanish)
-title: 'Solución de problemas de mensajes de "Error Crítico"'
+# If title contains double quotes, use double-quoted string with escaped quotes
+title: "Troubleshooting \"Critical Error\" Messages"
 
-# Correct translation (German) 
-title: 'Fehlerbehebung bei "Kritischer Fehler" Meldungen'
+# If title contains single quotes, use double-quoted string (no escaping needed)
+title: "Cannot read property 'data' of undefined"
+
+# If title contains BOTH single and double quotes, use double-quoted with escapes
+title: "Troubleshooting \"Cannot read 'data'\" Error"
+```
+
+**NEVER use single-quoted strings** for frontmatter values that contain quotes. Single-quoted YAML strings cannot properly escape internal quotes and will break the build.
+
+✅ CORRECT:
+```yaml
+title: "Fehlerbehebung bei \"Kann 'data' nicht lesen\" Fehler"
+```
+
+❌ WRONG (will break build):
+```yaml
+title: 'Fehlerbehebung bei "Kann 'data' nicht lesen" Fehler'
 ```
 
 ## TERMINOLOGY
