@@ -176,35 +176,86 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Validate frontmatter YAML
+      - name: Validate and fix frontmatter YAML
         run: |
-          echo "Validating MDX frontmatter across all i18n files..."
+          echo "Validating and fixing MDX frontmatter across all i18n files..."
           node -e "
           const matter = require('gray-matter');
+          const yaml = require('js-yaml');
           const fs = require('fs');
           const glob = require('glob');
 
-          const files = glob.sync('i18n/**/*.mdx');
-          const broken = [];
-
-          for (const file of files) {
+          // Fix common YAML quoting issues
+          function fixFrontmatter(content) {
+            const match = content.match(/^---\n([\\s\\S]*?)\n---/);
+            if (!match) return null;
+            
+            let fm = match[1];
+            
+            // Fix: single-quoted strings with unescaped internal quotes
+            // Convert to double-quoted with escaped internal double quotes
+            fm = fm.replace(/^(\\w+):\\s*'(.*)'$/gm, (m, key, val) => {
+              if (val.includes(\"'\") && !val.includes(\"''\")) {
+                const escaped = val.replace(/\"/g, '\\\\\"');
+                return key + ': \"' + escaped + '\"';
+              }
+              return m;
+            });
+            
+            // Fix: partial quoting like: title: \"quoted part\" rest
+            // Wrap entire value in quotes
+            fm = fm.replace(/^(\\w+):\\s*\"([^\"]+)\"\\s+(.+)$/gm, (m, key, quoted, rest) => {
+              return key + ': \"\\\\\"' + quoted + '\\\\\" ' + rest + '\"';
+            });
+            
             try {
-              const content = fs.readFileSync(file, 'utf8');
-              matter(content);
+              yaml.load(fm);
+              return content.replace(/^---\n[\\s\\S]*?\n---/, '---\n' + fm + '\n---');
             } catch (e) {
-              broken.push({ file, error: e.message.split('\n')[0] });
+              return null;
             }
           }
 
-          if (broken.length > 0) {
-            console.log('❌ Found', broken.length, 'files with invalid frontmatter:');
-            broken.forEach(b => console.log('  -', b.file));
-            console.log('\nErrors:');
-            broken.forEach(b => console.log(b.file + ':', b.error));
+          const files = glob.sync('i18n/**/*.mdx');
+          const fixed = [];
+          const unfixable = [];
+
+          for (const file of files) {
+            const content = fs.readFileSync(file, 'utf8');
+            try {
+              matter(content);
+            } catch (e) {
+              // Try to fix
+              const fixedContent = fixFrontmatter(content);
+              if (fixedContent) {
+                try {
+                  matter(fixedContent);
+                  fs.writeFileSync(file, fixedContent);
+                  fixed.push(file);
+                } catch (e2) {
+                  unfixable.push({ file, error: e.message.split('\n')[0] });
+                }
+              } else {
+                unfixable.push({ file, error: e.message.split('\n')[0] });
+              }
+            }
+          }
+
+          if (fixed.length > 0) {
+            console.log('🔧 Auto-fixed', fixed.length, 'files:');
+            fixed.forEach(f => console.log('  -', f));
+          }
+
+          if (unfixable.length > 0) {
+            console.log('❌ Could not fix', unfixable.length, 'files:');
+            unfixable.forEach(b => console.log('  -', b.file + ':', b.error));
             process.exit(1);
           }
 
           console.log('✅ All', files.length, 'MDX files have valid frontmatter');
+          if (fixed.length > 0) {
+            console.log('   (' + fixed.length + ' were auto-fixed)');
+          }
           "
 
       - name: Clean orphaned translations
