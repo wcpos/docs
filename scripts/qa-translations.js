@@ -867,33 +867,38 @@ async function main() {
     }
   }
   
-  // Convert source files to translated paths if locale specified
+  // Convert source files to translated paths
   if (sourceFiles.length > 0) {
-    if (!targetLocale) {
-      console.error('Error: Source file paths detected. You must specify a locale with --locale <code> or just the locale code.');
-      console.error('');
-      console.error('Example:');
-      console.error('  node qa-translations.js --locale de versioned_docs/version-1.x/file.mdx');
-      console.error('  node qa-translations.js de versioned_docs/version-1.x/file.mdx');
-      console.error('');
-      console.error('Available locales:', Object.keys(LOCALE_NAMES).join(', '));
-      process.exit(1);
+    // If no locale specified, check ALL locales (default behaviour)
+    const localesToCheck = targetLocale 
+      ? [targetLocale] 
+      : Object.keys(LOCALE_NAMES);
+    
+    if (targetLocale) {
+      console.log(`Converting ${sourceFiles.length} source paths to ${LOCALE_NAMES[targetLocale]} translations...\n`);
+    } else {
+      console.log(`Converting ${sourceFiles.length} source paths to translations for ALL locales...\n`);
     }
     
-    console.log(`Converting ${sourceFiles.length} source paths to ${LOCALE_NAMES[targetLocale] || targetLocale} translations...\n`);
-    
-    for (const sourcePath of sourceFiles) {
-      const translatedPath = sourceToTranslatedPath(sourcePath, targetLocale);
-      if (translatedPath) {
-        // Check if the translated file exists
-        try {
-          await fs.access(translatedPath);
-          files.push(translatedPath);
-        } catch {
-          console.warn(`  ⚠️ Skipping (no translation): ${sourcePath}`);
+    for (const locale of localesToCheck) {
+      let localeFileCount = 0;
+      
+      for (const sourcePath of sourceFiles) {
+        const translatedPath = sourceToTranslatedPath(sourcePath, locale);
+        if (translatedPath) {
+          // Check if the translated file exists
+          try {
+            await fs.access(translatedPath);
+            files.push(translatedPath);
+            localeFileCount++;
+          } catch {
+            // Translation doesn't exist for this locale - silently skip
+          }
         }
-      } else {
-        console.warn(`  ⚠️ Could not convert path: ${sourcePath}`);
+      }
+      
+      if (localeFileCount > 0) {
+        console.log(`  ${LOCALE_NAMES[locale] || locale}: ${localeFileCount} files`);
       }
     }
     
@@ -902,7 +907,7 @@ async function main() {
       process.exit(1);
     }
     
-    console.log(`Found ${files.length} translated files to check.\n`);
+    console.log(`\nFound ${files.length} total translated files to check.\n`);
   }
   
   if (files.length === 0) {
@@ -915,9 +920,9 @@ async function main() {
     console.log('  node qa-translations.js --structural-only ... # Skip back-translation');
     console.log('  node qa-translations.js --github-summary ...  # Output for GitHub Actions');
     console.log('');
-    console.log('Source file conversion (from translation workflow output):');
-    console.log('  node qa-translations.js de versioned_docs/version-1.x/file.mdx ...');
-    console.log('  node qa-translations.js --locale de versioned_docs/version-1.x/file.mdx ...');
+    console.log('Source files (from translation workflow output):');
+    console.log('  node qa-translations.js versioned_docs/version-1.x/file.mdx ...  # All locales (default)');
+    console.log('  node qa-translations.js de versioned_docs/version-1.x/file.mdx   # Specific locale only');
     console.log('');
     console.log('Fix options:');
     console.log('  node qa-translations.js --fix ...             # Generate corrections (show only)');
