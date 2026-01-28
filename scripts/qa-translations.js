@@ -408,6 +408,35 @@ function getSourcePath(translatedPath) {
 }
 
 /**
+ * Convert source path to translated path for a given locale
+ */
+function sourceToTranslatedPath(sourcePath, locale) {
+  // versioned_docs/version-1.x/file.mdx
+  // -> i18n/<locale>/docusaurus-plugin-content-docs/version-1.x/file.mdx
+  const match = sourcePath.match(/versioned_docs\/(.+)/);
+  if (match) {
+    return path.join('i18n', locale, 'docusaurus-plugin-content-docs', match[1]);
+  }
+  
+  // docs/file.mdx (current version)
+  // -> i18n/<locale>/docusaurus-plugin-content-docs/current/file.mdx
+  const docsMatch = sourcePath.match(/^docs\/(.+)/);
+  if (docsMatch) {
+    return path.join('i18n', locale, 'docusaurus-plugin-content-docs', 'current', docsMatch[1]);
+  }
+  
+  return null;
+}
+
+/**
+ * Check if a path is a source file (not a translated file)
+ */
+function isSourcePath(filePath) {
+  return filePath.startsWith('versioned_docs/') || 
+         (filePath.startsWith('docs/') && !filePath.startsWith('docs/i18n/'));
+}
+
+/**
  * Evaluate a single translated file
  */
 async function evaluateFile(translatedPath, options = {}) {
@@ -776,6 +805,8 @@ async function main() {
   }
   
   let files = [];
+  let sourceFiles = []; // Source files that need locale conversion
+  let targetLocale = null;
   let options = {
     skipBackTranslation: false,
     outputFormat: 'console',
@@ -810,27 +841,83 @@ async function main() {
     } else if (arg === '--fix-output') {
       options.generateFixes = true;
       options.fixOutputDir = args[++i];
+    } else if (arg === '--locale' || arg === '-l') {
+      targetLocale = args[++i];
     } else if (!arg.startsWith('-')) {
       // Treat as file path or locale
       if (arg.includes('/')) {
-        files.push(arg);
+        // Check if it's a source path or translated path
+        if (isSourcePath(arg)) {
+          sourceFiles.push(arg);
+        } else {
+          files.push(arg);
+        }
+      } else if (LOCALE_NAMES[arg]) {
+        // It's a locale code
+        targetLocale = arg;
       } else {
-        // It's a locale - get all files for that locale
+        // Unknown argument - might be a locale, try to get files
         const localeFiles = await glob(`i18n/${arg}/docusaurus-plugin-content-docs/**/*.mdx`);
-        files.push(...localeFiles);
+        if (localeFiles.length > 0) {
+          files.push(...localeFiles);
+        } else {
+          console.warn(`Warning: Unknown argument or locale with no files: ${arg}`);
+        }
       }
     }
+  }
+  
+  // Convert source files to translated paths if locale specified
+  if (sourceFiles.length > 0) {
+    if (!targetLocale) {
+      console.error('Error: Source file paths detected. You must specify a locale with --locale <code> or just the locale code.');
+      console.error('');
+      console.error('Example:');
+      console.error('  node qa-translations.js --locale de versioned_docs/version-1.x/file.mdx');
+      console.error('  node qa-translations.js de versioned_docs/version-1.x/file.mdx');
+      console.error('');
+      console.error('Available locales:', Object.keys(LOCALE_NAMES).join(', '));
+      process.exit(1);
+    }
+    
+    console.log(`Converting ${sourceFiles.length} source paths to ${LOCALE_NAMES[targetLocale] || targetLocale} translations...\n`);
+    
+    for (const sourcePath of sourceFiles) {
+      const translatedPath = sourceToTranslatedPath(sourcePath, targetLocale);
+      if (translatedPath) {
+        // Check if the translated file exists
+        try {
+          await fs.access(translatedPath);
+          files.push(translatedPath);
+        } catch {
+          console.warn(`  ⚠️ Skipping (no translation): ${sourcePath}`);
+        }
+      } else {
+        console.warn(`  ⚠️ Could not convert path: ${sourcePath}`);
+      }
+    }
+    
+    if (files.length === 0) {
+      console.error('\nError: No translated files found. Have the translations been created yet?');
+      process.exit(1);
+    }
+    
+    console.log(`Found ${files.length} translated files to check.\n`);
   }
   
   if (files.length === 0) {
     console.log('Usage:');
     console.log('  node qa-translations.js <locale>              # All files for locale');
-    console.log('  node qa-translations.js <file.mdx>            # Specific file');
+    console.log('  node qa-translations.js <file.mdx>            # Specific translated file');
     console.log('  node qa-translations.js --sample 5            # Random 5 files');
     console.log('  node qa-translations.js --sample 5 de         # Random 5 German files');
     console.log('  node qa-translations.js --changed             # Files changed in PR');
     console.log('  node qa-translations.js --structural-only ... # Skip back-translation');
     console.log('  node qa-translations.js --github-summary ...  # Output for GitHub Actions');
+    console.log('');
+    console.log('Source file conversion (from translation workflow output):');
+    console.log('  node qa-translations.js de versioned_docs/version-1.x/file.mdx ...');
+    console.log('  node qa-translations.js --locale de versioned_docs/version-1.x/file.mdx ...');
     console.log('');
     console.log('Fix options:');
     console.log('  node qa-translations.js --fix ...             # Generate corrections (show only)');
@@ -923,6 +1010,8 @@ module.exports = {
   validateStructure,
   formatResults,
   formatGitHubSummary,
+  sourceToTranslatedPath,
+  isSourcePath,
   THRESHOLDS,
 };
 
