@@ -49,7 +49,12 @@ import {
   faRocket,
   faDownload,
 } from '@fortawesome/free-solid-svg-icons';
-import { faDiscord } from '@fortawesome/free-brands-svg-icons';
+import {
+  faDiscord,
+  faWindows,
+  faApple,
+  faAndroid,
+} from '@fortawesome/free-brands-svg-icons';
 
 // Map of icon names to FontAwesome icons
 const iconMap = {
@@ -106,6 +111,9 @@ const iconMap = {
   'keyboard': faKeyboard,
   'rocket': faRocket,
   'download': faDownload,
+  'windows': faWindows,
+  'apple': faApple,
+  'android': faAndroid,
 };
 
 export default function Icon({ name, size = '1x', color, className, ...props }) {
