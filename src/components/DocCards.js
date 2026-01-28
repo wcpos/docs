@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from '@docusaurus/Link';
-import { useCurrentSidebarCategory } from '@docusaurus/plugin-content-docs/client';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Icon from '@site/src/components/Icon';
 
 // Map of category/doc paths to icons
@@ -24,35 +24,28 @@ const iconMap = {
   'default': 'file-lines',
 };
 
-function getIconForItem(item) {
-  // Try to match by docId or label
-  const id = item.docId || item.href || '';
-  const label = (item.label || '').toLowerCase();
-  
+function getIconForPath(path) {
+  const pathLower = (path || '').toLowerCase();
   for (const [key, icon] of Object.entries(iconMap)) {
-    if (id.includes(key) || label.includes(key)) {
+    if (pathLower.includes(key)) {
       return icon;
     }
   }
   return iconMap.default;
 }
 
-function DocCard({ item }) {
-  const href = item.href || (item.docId ? `/${item.docId.replace(/\//g, '/')}` : '#');
-  const icon = getIconForItem(item);
+function DocCard({ to, title, description, icon }) {
+  const resolvedIcon = icon || getIconForPath(to);
   
   return (
-    <Link to={href} className="link-card">
+    <Link to={to} className="link-card">
       <div className="link-card__icon">
-        <Icon name={icon} />
+        <Icon name={resolvedIcon} />
       </div>
       <div className="link-card__content">
-        <span className="link-card__title">{item.label}</span>
-        {item.description && (
-          <span className="link-card__description">{item.description}</span>
-        )}
-        {item.customProps?.description && (
-          <span className="link-card__description">{item.customProps.description}</span>
+        <span className="link-card__title">{title}</span>
+        {description && (
+          <span className="link-card__description">{description}</span>
         )}
       </div>
       <div className="link-card__arrow">
@@ -62,20 +55,12 @@ function DocCard({ item }) {
   );
 }
 
-export default function DocCards({ items }) {
-  // If no items provided, get from current sidebar category
-  const category = useCurrentSidebarCategory();
-  const itemsToRender = items || category?.items || [];
-
-  if (!itemsToRender.length) {
-    return null;
-  }
-
+export default function DocCards({ children }) {
   return (
     <div className="link-cards">
-      {itemsToRender.map((item, index) => (
-        <DocCard key={item.docId || item.href || index} item={item} />
-      ))}
+      {children}
     </div>
   );
 }
+
+export { DocCard };
