@@ -45,6 +45,7 @@ import {
   faTerminal,
   faPuzzlePiece,
   faCrown,
+  faKeyboard,
 } from '@fortawesome/free-solid-svg-icons';
 import { faDiscord } from '@fortawesome/free-brands-svg-icons';
 
@@ -100,6 +101,7 @@ const iconMap = {
   'puzzle-piece': faPuzzlePiece,
   'crown': faCrown,
   'discord': faDiscord,
+  'keyboard': faKeyboard,
 };
 
 export default function Icon({ name, size = '1x', color, className, ...props }) {
