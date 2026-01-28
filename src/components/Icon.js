@@ -36,6 +36,12 @@ import {
   faChartPie,
   faCalculator,
   faArrowRotateRight,
+  faBolt,
+  faShield,
+  faLink,
+  faCode,
+  faTerminal,
+  faPuzzlePiece,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Map of icon names to FontAwesome icons
@@ -80,6 +86,12 @@ const iconMap = {
   'calculator': faCalculator,
   'arrow-rotate-right': faArrowRotateRight,
   'sync': faArrowRotateRight,
+  'bolt': faBolt,
+  'shield': faShield,
+  'link': faLink,
+  'code': faCode,
+  'terminal': faTerminal,
+  'puzzle-piece': faPuzzlePiece,
 };
 
 export default function Icon({ name, size = '1x', color, className, ...props }) {
