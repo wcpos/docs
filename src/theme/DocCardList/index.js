@@ -11,7 +11,7 @@ function DocCardListForCurrentSidebarCategory({className, title}) {
 }
 
 export default function DocCardList(props) {
-  const {items, className, title = 'In This Section'} = props;
+  const {items, className} = props;
   
   if (!items) {
     return <DocCardListForCurrentSidebarCategory {...props} />;
@@ -21,7 +21,6 @@ export default function DocCardList(props) {
   
   return (
     <section className={className}>
-      {title && <h2>{title}</h2>}
       <div className="link-cards">
         {filteredItems.map((item, index) => (
           <DocCard key={index} item={item} />
