@@ -53,7 +53,7 @@ on:
           - all         # All files, all locales (parallel)
           - changed     # Files changed in recent commits
       locale:
-        description: 'Locale to audit (for locale mode, or to filter sample)'
+        description: 'Locale to audit (required for files mode with source paths)'
         required: false
         default: ''
       files:
@@ -136,6 +136,14 @@ jobs:
               echo "Error: files input is required for files mode"
               exit 1
             fi
+            # Check if files are source paths (versioned_docs/) - locale is required
+            if echo "${{ inputs.files }}" | grep -q "versioned_docs/"; then
+              if [ -z "${{ inputs.locale }}" ]; then
+                echo "Error: locale is required when using source file paths (versioned_docs/...)"
+                echo "Specify the locale to QA the translations for."
+                exit 1
+              fi
+            fi
             echo "has_files=true" >> $GITHUB_OUTPUT
             echo "mode=files" >> $GITHUB_OUTPUT
           elif [ "${{ inputs.mode }}" = "all" ]; then
@@ -164,7 +172,12 @@ jobs:
             ARGS="${{ steps.files.outputs.locale }}"
           elif [ "${{ steps.files.outputs.mode }}" = "files" ]; then
             # Pass files directly - handle both space and newline separated
-            ARGS=$(echo "${{ inputs.files }}" | tr '\n' ' ')
+            # If a locale is provided, prepend it (needed for source file paths)
+            if [ -n "${{ inputs.locale }}" ]; then
+              ARGS="${{ inputs.locale }} $(echo "${{ inputs.files }}" | tr '\n' ' ')"
+            else
+              ARGS=$(echo "${{ inputs.files }}" | tr '\n' ' ')
+            fi
           elif [ "${{ steps.files.outputs.mode }}" = "all" ]; then
             # Run all locales sequentially
             for LOCALE in es fr de ja pt-BR ko it ar hi-IN zh-CN; do
