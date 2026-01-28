@@ -3,6 +3,7 @@ const {themes} = require('prism-react-renderer');
 /** @type {import('@docusaurus/types').DocusaurusConfig} */
 module.exports = {
   title: 'WCPOS - Point of Sale for WooCommerce',
+  clientModules: [require.resolve('./src/fontawesome.js')],
   tagline: '',
   url: 'https://docs.wcpos.com',
   baseUrl: '/',

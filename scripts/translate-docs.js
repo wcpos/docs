@@ -13,6 +13,7 @@ const OpenAI = require('openai').default;
 const fs = require('fs').promises;
 const path = require('path');
 const matter = require('gray-matter');
+const yaml = require('js-yaml');
 
 // Get languages from docusaurus.config.js
 const docusaurusConfig = require('../docusaurus.config.js');
@@ -98,6 +99,68 @@ ${content}`;
 }
 
 /**
+ * Fix YAML frontmatter quoting issues
+ * Converts single-quoted strings with internal quotes to double-quoted strings
+ */
+function fixFrontmatterQuoting(content) {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!frontmatterMatch) return content;
+
+  const frontmatter = frontmatterMatch[1];
+  
+  // Try to parse the frontmatter as YAML first
+  try {
+    yaml.load(frontmatter);
+    return content; // Already valid, no fix needed
+  } catch (_error) {
+    // Frontmatter is invalid, try to fix it
+  }
+
+  // Fix pattern: single-quoted strings containing unescaped quotes
+  // Convert to double-quoted strings with escaped internal double quotes
+  let fixedFrontmatter = frontmatter;
+  
+  // Match lines like: key: 'value with 'nested' quotes'
+  // Replace with: key: "value with 'nested' quotes"
+  fixedFrontmatter = fixedFrontmatter.replace(
+    /^(\w+):\s*'(.*)'$/gm,
+    (match, key, value) => {
+      // Check if value contains unescaped internal single quotes
+      // (indicated by quotes that aren't doubled)
+      if (value.includes("'") && !value.includes("''")) {
+        // Convert to double-quoted, escaping any internal double quotes
+        const escapedValue = value.replace(/"/g, '\\"');
+        return `${key}: "${escapedValue}"`;
+      }
+      return match;
+    }
+  );
+
+  // Verify the fix worked
+  try {
+    yaml.load(fixedFrontmatter);
+    console.log('  Fixed frontmatter quoting issues');
+    return content.replace(/^---\n[\s\S]*?\n---/, `---\n${fixedFrontmatter}\n---`);
+  } catch (error) {
+    console.warn(`  WARNING: Could not auto-fix frontmatter: ${error.message}`);
+    return content;
+  }
+}
+
+/**
+ * Validate MDX frontmatter can be parsed
+ * Returns { valid: boolean, error?: string }
+ */
+function validateFrontmatter(content) {
+  try {
+    matter(content);
+    return { valid: true };
+  } catch (error) {
+    return { valid: false, error: error.message };
+  }
+}
+
+/**
  * Restore code blocks from source - AI often translates code comments
  * This ensures code blocks are identical to source
  */
@@ -147,6 +210,24 @@ async function processMdxFile(filePath, targetLocale) {
     // Reconstruct with original frontmatter
     const translatedBody = translatedContent;
     translatedContent = matter.stringify(translatedBody, sourceParsed.data);
+  }
+
+  // Validate and fix frontmatter YAML
+  let validation = validateFrontmatter(translatedContent);
+  if (!validation.valid) {
+    console.warn(`  WARNING: Invalid frontmatter YAML, attempting to fix...`);
+    translatedContent = fixFrontmatterQuoting(translatedContent);
+    
+    // Re-validate after fix attempt
+    validation = validateFrontmatter(translatedContent);
+    if (!validation.valid) {
+      console.error(`  ERROR: Could not fix frontmatter for ${filePath}: ${validation.error}`);
+      console.error(`  Falling back to source frontmatter with translated body`);
+      // Extract translated body and use source frontmatter
+      const bodyMatch = translatedContent.match(/^---[\s\S]*?---\n([\s\S]*)$/);
+      const translatedBody = bodyMatch ? bodyMatch[1] : translatedContent;
+      translatedContent = matter.stringify(translatedBody, sourceParsed.data);
+    }
   }
 
   // Validate imports are preserved
