@@ -176,6 +176,37 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Validate frontmatter YAML
+        run: |
+          echo "Validating MDX frontmatter across all i18n files..."
+          node -e "
+          const matter = require('gray-matter');
+          const fs = require('fs');
+          const glob = require('glob');
+
+          const files = glob.sync('i18n/**/*.mdx');
+          const broken = [];
+
+          for (const file of files) {
+            try {
+              const content = fs.readFileSync(file, 'utf8');
+              matter(content);
+            } catch (e) {
+              broken.push({ file, error: e.message.split('\n')[0] });
+            }
+          }
+
+          if (broken.length > 0) {
+            console.log('❌ Found', broken.length, 'files with invalid frontmatter:');
+            broken.forEach(b => console.log('  -', b.file));
+            console.log('\nErrors:');
+            broken.forEach(b => console.log(b.file + ':', b.error));
+            process.exit(1);
+          }
+
+          console.log('✅ All', files.length, 'MDX files have valid frontmatter');
+          "
+
       - name: Clean orphaned translations
         run: |
           echo "Removing orphaned translation files..."
