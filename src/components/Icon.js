@@ -34,6 +34,7 @@ import {
   faBox,
   faFileInvoice,
   faChartPie,
+  faCalculator,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Map of icon names to FontAwesome icons
@@ -75,6 +76,7 @@ const iconMap = {
   'box': faBox,
   'file-invoice': faFileInvoice,
   'chart-pie': faChartPie,
+  'calculator': faCalculator,
 };
 
 export default function Icon({ name, size = '1x', color, className, ...props }) {
