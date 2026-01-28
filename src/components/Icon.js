@@ -24,6 +24,8 @@ import {
   faClock,
   faExclamationTriangle,
   faCircleInfo,
+  faGlobe,
+  faBuilding,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Map of icon names to FontAwesome icons
@@ -54,6 +56,8 @@ const iconMap = {
   'clock': faClock,
   'warning': faExclamationTriangle,
   'info': faCircleInfo,
+  'globe': faGlobe,
+  'building': faBuilding,
 };
 
 export default function Icon({ name, size = '1x', color, className, ...props }) {
