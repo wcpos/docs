@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from '@docusaurus/Link';
-import { useCurrentSidebarCategory } from '@docusaurus/theme-common';
+import { useCurrentSidebarCategory } from '@docusaurus/plugin-content-docs/client';
 import Icon from '@site/src/components/Icon';
 
 // Map of category/doc paths to icons
