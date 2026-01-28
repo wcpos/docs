@@ -42,7 +42,9 @@ import {
   faCode,
   faTerminal,
   faPuzzlePiece,
+  faCrown,
 } from '@fortawesome/free-solid-svg-icons';
+import { faDiscord } from '@fortawesome/free-brands-svg-icons';
 
 // Map of icon names to FontAwesome icons
 const iconMap = {
@@ -92,6 +94,8 @@ const iconMap = {
   'code': faCode,
   'terminal': faTerminal,
   'puzzle-piece': faPuzzlePiece,
+  'crown': faCrown,
+  'discord': faDiscord,
 };
 
 export default function Icon({ name, size = '1x', color, className, ...props }) {
