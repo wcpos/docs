@@ -1,6 +1,7 @@
 const {
   validateFrontmatter,
   extractFrontmatter,
+  fixMissingClosingDelimiter,
   fixSingleQuotedStrings,
   fixPartialQuoting,
   fixBackslashEscapedQuotes,
@@ -74,6 +75,92 @@ Body content`;
   it('returns null for content without frontmatter', () => {
     const content = 'Just some content without frontmatter';
     expect(extractFrontmatter(content)).toBeNull();
+  });
+});
+
+describe('fixMissingClosingDelimiter', () => {
+  it('adds missing closing --- before import statement', () => {
+    const content = `---
+title: Test Title
+sidebar_label: Test
+
+import Image from "@theme/IdealImage";
+
+Content here`;
+
+    const result = fixMissingClosingDelimiter(content);
+    expect(result.fixed).toBe(true);
+    expect(result.content).toContain('---\nimport');
+    expect(validateFrontmatter(result.content).valid).toBe(true);
+  });
+
+  it('adds missing closing --- before JSX component', () => {
+    const content = `---
+title: Test Title
+description: Test description
+
+<div class="container">
+  Content
+</div>`;
+
+    const result = fixMissingClosingDelimiter(content);
+    expect(result.fixed).toBe(true);
+    expect(result.content).toContain('---\n<div');
+    expect(validateFrontmatter(result.content).valid).toBe(true);
+  });
+
+  it('adds missing closing --- before markdown heading', () => {
+    const content = `---
+title: Test Title
+
+## First Section
+
+Content here`;
+
+    const result = fixMissingClosingDelimiter(content);
+    expect(result.fixed).toBe(true);
+    expect(result.content).toContain('---\n## First');
+    expect(validateFrontmatter(result.content).valid).toBe(true);
+  });
+
+  it('does not modify content with valid frontmatter', () => {
+    const content = `---
+title: Test Title
+---
+
+import Image from "@theme/IdealImage";
+
+Content here`;
+
+    const result = fixMissingClosingDelimiter(content);
+    expect(result.fixed).toBe(false);
+    expect(result.content).toBe(content);
+  });
+
+  it('does not modify content without opening ---', () => {
+    const content = `Just some content
+without frontmatter`;
+
+    const result = fixMissingClosingDelimiter(content);
+    expect(result.fixed).toBe(false);
+    expect(result.content).toBe(content);
+  });
+
+  it('handles real Arabic translation case', () => {
+    const content = `---
+title: استكشاف الأخطاء وإصلاحها
+sidebar_label: خطأ حرج
+description: إصلاح الخطأ الحرج في ووردبريس
+
+import Image from "@theme/IdealImage";
+
+<div class="image-container">
+  <Image alt="خطأ" img="https://example.com/error.png" />
+</div>`;
+
+    const result = fixMissingClosingDelimiter(content);
+    expect(result.fixed).toBe(true);
+    expect(validateFrontmatter(result.content).valid).toBe(true);
   });
 });
 
@@ -235,6 +322,35 @@ Content`;
 
     const result = fixFrontmatter(content);
     expect(result.fixed).toBe(true);
+    expect(validateFrontmatter(result.content).valid).toBe(true);
+  });
+
+  it('fixes missing closing delimiter', () => {
+    const content = `---
+title: Test Title
+sidebar_label: Test
+
+import Image from "@theme/IdealImage";
+
+Content here`;
+
+    const result = fixFrontmatter(content);
+    expect(result.fixed).toBe(true);
+    expect(validateFrontmatter(result.content).valid).toBe(true);
+  });
+
+  it('fixes both missing delimiter and quote issues together', () => {
+    const content = `---
+title: 'Text with 'nested' quotes'
+sidebar_label: Label
+
+import Something from "@site/Component";
+
+Body content`;
+
+    const result = fixFrontmatter(content);
+    expect(result.fixed).toBe(true);
+    expect(result.content).toContain('title: "');
     expect(validateFrontmatter(result.content).valid).toBe(true);
   });
 });

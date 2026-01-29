@@ -50,6 +50,61 @@ function extractFrontmatter(content) {
 }
 
 /**
+ * Fix missing closing --- in frontmatter
+ *
+ * Problem: Frontmatter starts with --- but is missing the closing ---
+ * This often happens when AI translations lose the delimiter.
+ *
+ * @param {string} content - Full MDX file content
+ * @returns {{ fixed: boolean, content: string }}
+ */
+function fixMissingClosingDelimiter(content) {
+  // Check if we have opening --- but no closing ---
+  if (!content.startsWith('---\n')) {
+    return { fixed: false, content };
+  }
+
+  // Check if frontmatter is already valid
+  const validFm = content.match(/^---\n[\s\S]*?\n---/);
+  if (validFm) {
+    return { fixed: false, content };
+  }
+
+  // Find where frontmatter likely ends:
+  // Look for first 'import' statement or first component/heading
+  const lines = content.split('\n');
+  let fmEndLine = -1;
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Frontmatter ends when we hit:
+    // - import statement
+    // - JSX component (<...)
+    // - markdown heading (##)
+    // - another --- (correctly placed closing)
+    if (
+      line.startsWith('import ') ||
+      line.startsWith('<') ||
+      line.startsWith('#') ||
+      line === '---'
+    ) {
+      fmEndLine = i;
+      break;
+    }
+  }
+
+  if (fmEndLine === -1) {
+    return { fixed: false, content };
+  }
+
+  // Insert closing --- before the content line
+  lines.splice(fmEndLine, 0, '---');
+
+  return { fixed: true, content: lines.join('\n') };
+}
+
+/**
  * Fix single-quoted YAML strings containing unescaped internal quotes
  *
  * Problem: title: 'Text with 'nested' quotes'
@@ -122,7 +177,17 @@ function fixBackslashEscapedQuotes(frontmatter) {
  * @returns {{ fixed: boolean, content: string, error?: string }}
  */
 function fixFrontmatter(content) {
-  const frontmatter = extractFrontmatter(content);
+  let workingContent = content;
+  let wasFixed = false;
+
+  // First, try to fix missing closing delimiter
+  const delimiterResult = fixMissingClosingDelimiter(workingContent);
+  if (delimiterResult.fixed) {
+    workingContent = delimiterResult.content;
+    wasFixed = true;
+  }
+
+  const frontmatter = extractFrontmatter(workingContent);
   if (!frontmatter) {
     return { fixed: false, content, error: 'No frontmatter found' };
   }
@@ -136,7 +201,7 @@ function fixFrontmatter(content) {
   // Verify the fix worked
   try {
     yaml.load(fixedFm);
-    const fixedContent = content.replace(
+    const fixedContent = workingContent.replace(
       /^---\n[\s\S]*?\n---/,
       `---\n${fixedFm}\n---`
     );
@@ -144,7 +209,12 @@ function fixFrontmatter(content) {
     // Double-check with gray-matter
     matter(fixedContent);
 
-    return { fixed: true, content: fixedContent };
+    // Check if we actually made any string fixes
+    if (fixedFm !== frontmatter) {
+      wasFixed = true;
+    }
+
+    return { fixed: wasFixed, content: fixedContent };
   } catch (error) {
     return { fixed: false, content, error: error.message };
   }
@@ -366,6 +436,7 @@ if (require.main === module) {
 module.exports = {
   validateFrontmatter,
   extractFrontmatter,
+  fixMissingClosingDelimiter,
   fixSingleQuotedStrings,
   fixPartialQuoting,
   fixBackslashEscapedQuotes,
