@@ -48,6 +48,7 @@ import {
   faKeyboard,
   faRocket,
   faDownload,
+  faPhone,
 } from '@fortawesome/free-solid-svg-icons';
 import {
   faDiscord,
@@ -113,6 +114,7 @@ const iconMap = {
   'download': faDownload,
   'windows': faWindows,
   'apple': faApple,
+  'phone': faPhone,
   'android': faAndroid,
 };
 
