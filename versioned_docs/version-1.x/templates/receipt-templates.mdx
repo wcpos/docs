@@ -10,6 +10,10 @@ import AccordionItem from '@site/src/components/AccordionItem';
 
 Receipt templates control what your customers see when you print or display a receipt from the POS. You can write them in PHP (full WordPress/WooCommerce access) or use a simple logicless syntax with `{{variable}}` placeholders.
 
+:::tip Offline Printing
+Logicless templates can render entirely on the device — no server connection required. If your internet drops mid-shift, receipts still print. For retail environments where network reliability is a concern, this matters a lot. See [Choosing an Engine](#choosing-an-engine) below.
+:::
+
 ## Quick Start
 
 The fastest way to get going is to install one of the **Starter Templates** that ship with the plugin:
@@ -122,33 +126,127 @@ Always include `do_action( 'woocommerce_pos_receipt_head' )` in the `<head>` sec
 
 ### Logicless Templates
 
-A simpler option that uses `{{key.path}}` placeholders substituted from the `$receipt_data` array. No PHP knowledge required — just HTML and CSS.
+A simpler option that uses `{{key.path}}` placeholders substituted directly from the `$receipt_data` array. No PHP, no programming — just HTML, CSS, and placeholder tags.
 
 ```html
 <!DOCTYPE html>
 <html>
 <head>
     <style>
-        body { font-family: sans-serif; }
+        body { font-family: sans-serif; font-size: 13px; max-width: 300px; margin: 0 auto; }
+        .label { color: #666; }
     </style>
 </head>
 <body>
     <h1>{{store.name}}</h1>
-    <p>Order #{{meta.order_number}}</p>
-    <p>Date: {{meta.created_at_gmt}}</p>
-    <p>Cashier: {{cashier.name}}</p>
+    <p>{{store.address_lines}}</p>
+    <p>{{store.phone}}</p>
 
     <hr>
-    <p>Total: {{totals.grand_total_incl}}</p>
+    <p>Order #{{meta.order_number}}</p>
+    <p>Date: {{meta.created_at_gmt}}</p>
+    <p>Served by: {{cashier.name}}</p>
+    <p>Customer: {{customer.name}}</p>
+
+    <hr>
+    <p><span class="label">Subtotal:</span> {{totals.subtotal_incl}}</p>
+    <p><span class="label">Tax:</span> {{totals.tax_total}}</p>
+    <p><strong>Total: {{totals.grand_total_incl}}</strong></p>
+    <p><span class="label">Paid:</span> {{totals.paid_total}}</p>
+    <p><span class="label">Change:</span> {{totals.change_total}}</p>
+
+    <hr>
+    <p>Thank you for your purchase!</p>
 </body>
 </html>
 ```
 
 To use a logicless template, set the **Engine** to `logicless` in the Template Settings panel.
 
-:::tip
-Logicless templates work well for simple receipts. If you need loops (iterating over line items), conditional logic, or formatted currency values, use a PHP template instead.
+#### How It Works
+
+The renderer flattens the `$receipt_data` array into dot-path keys and replaces every `{{key.path}}` placeholder with the matching value. Missing keys produce an empty string — no errors, no broken output.
+
+- **Dot notation** maps directly to nested array keys: `{{store.name}}` → `$receipt_data['store']['name']`
+- **Simple arrays** (like `store.address_lines`) are joined with commas automatically
+- **Output is sanitised** through `wp_kses_post()` — safe by default
+
+#### Available Variables
+
+Every scalar value in `$receipt_data` is accessible via its dot path. Here's the full list:
+
+| Placeholder | Example Output | Description |
+|-------------|---------------|-------------|
+| `{{meta.order_number}}` | `456` | Display order number |
+| `{{meta.order_id}}` | `456` | WooCommerce order ID |
+| `{{meta.currency}}` | `USD` | ISO 4217 currency code |
+| `{{meta.created_at_gmt}}` | `2026-03-04 09:15:00` | Order timestamp (GMT) |
+| `{{meta.mode}}` | `live` | Receipt mode (`live` or `fiscal`) |
+| `{{store.name}}` | `My Shop` | Store name |
+| `{{store.address_lines}}` | `123 Main St, Suite 4, London` | Address (comma-joined) |
+| `{{store.phone}}` | `+44 20 1234 5678` | Store phone |
+| `{{store.email}}` | `shop@example.com` | Store email |
+| `{{store.tax_id}}` | `GB123456789` | Store tax/VAT number |
+| `{{cashier.id}}` | `2` | Cashier user ID |
+| `{{cashier.name}}` | `Jane Smith` | Cashier display name |
+| `{{customer.id}}` | `12` | Customer ID (empty for guests) |
+| `{{customer.name}}` | `John Doe` | Customer full name |
+| `{{customer.tax_id}}` | | Customer tax ID |
+| `{{customer.billing_address.first_name}}` | `John` | Billing first name |
+| `{{customer.billing_address.city}}` | `London` | Billing city |
+| `{{customer.shipping_address.city}}` | `London` | Shipping city |
+| `{{totals.subtotal_incl}}` | `49.98` | Subtotal inc. tax |
+| `{{totals.subtotal_excl}}` | `41.65` | Subtotal exc. tax |
+| `{{totals.discount_total_incl}}` | `5.00` | Discount inc. tax |
+| `{{totals.tax_total}}` | `7.50` | Total tax |
+| `{{totals.grand_total_incl}}` | `44.98` | Grand total inc. tax |
+| `{{totals.grand_total_excl}}` | `37.48` | Grand total exc. tax |
+| `{{totals.paid_total}}` | `44.98` | Amount paid |
+| `{{totals.change_total}}` | `5.02` | Change given |
+| `{{fiscal.receipt_number}}` | `R-000123` | Fiscal receipt number |
+| `{{fiscal.qr_payload}}` | *(QR data string)* | Fiscal QR code data |
+| `{{presentation_hints.locale}}` | `en_GB` | WordPress locale |
+
+:::info What's Not Available
+Logicless templates cannot iterate over arrays. This means **individual line items**, **tax breakdowns**, **fee lines**, and **payment methods** are not directly accessible. If your receipt needs to list each product the customer bought, use a PHP template.
+
+This is by design — logicless templates prioritise simplicity and offline safety over completeness.
 :::
+
+#### Limitations
+
+Because there's no loop or conditional syntax, logicless templates are best suited for:
+
+- **Summary receipts** — store info, order number, totals, and a thank-you message
+- **Gift receipts** — store info and order reference without line-item detail
+- **Quick receipts** — a minimal proof-of-purchase for the customer
+- **Fiscal receipt headers/footers** — store details and fiscal compliance fields
+
+They're not the right tool for detailed, itemised receipts. That's what PHP templates are for.
+
+## Choosing an Engine
+
+The two engines serve different needs. Pick the one that fits your situation.
+
+| | PHP Templates | Logicless Templates |
+|---|---|---|
+| **Skill required** | Basic PHP and HTML | HTML and CSS only |
+| **Line items** | Yes — full loop support | No — summary totals only |
+| **Conditionals** | Yes — `if`/`else`, ternary | No |
+| **Currency formatting** | Yes — `wc_price()` | No — raw numbers only |
+| **Custom logic** | Anything PHP can do | Simple placeholder substitution |
+| **Offline rendering** | No — requires server | **Yes — renders on the device** |
+| **Security surface** | PHP execution (sandboxed) | No code execution at all |
+| **Editing difficulty** | Moderate | Very low |
+| **Best for** | Full itemised receipts | Summary receipts, offline environments |
+
+### Why Offline Matters
+
+POS systems live in the real world. Wi-Fi drops, servers go down, and the lunch rush doesn't wait. With PHP templates, the receipt has to round-trip to your WordPress server to render — if that connection is unavailable, no receipt.
+
+Logicless templates flip that around. Because they're just HTML with placeholders and the receipt data is already on the device, the POS app can substitute the values and render the receipt locally. No network required.
+
+For stores that operate in areas with unreliable internet, use mobile POS setups, or simply want a safety net for connectivity issues, logicless templates are worth the trade-off of not having itemised line items.
 
 ## Working with Currency
 
