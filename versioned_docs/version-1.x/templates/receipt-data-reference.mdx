@@ -1,0 +1,319 @@
+---
+title: Receipt Data Reference
+sidebar_label: Receipt Data Reference
+sidebar_position: 2
+description: Complete reference for the $receipt_data array available in WCPOS receipt templates — every field, type, and example value.
+---
+
+This page documents the full structure of the `$receipt_data` array that every receipt template receives. Use this as a reference when building or modifying templates.
+
+## Top-Level Structure
+
+```php
+$receipt_data = array(
+    'meta'               => array( ... ),
+    'store'              => array( ... ),
+    'cashier'            => array( ... ),
+    'customer'           => array( ... ),
+    'lines'              => array( ... ),
+    'fees'               => array( ... ),
+    'shipping'           => array( ... ),
+    'discounts'          => array( ... ),
+    'totals'             => array( ... ),
+    'tax_summary'        => array( ... ),
+    'payments'           => array( ... ),
+    'fiscal'             => array( ... ),
+    'presentation_hints' => array( ... ),
+);
+```
+
+---
+
+## `meta`
+
+Order-level metadata.
+
+| Key | Type | Example | Description |
+|-----|------|---------|-------------|
+| `schema_version` | `string` | `"1.0.0"` | Receipt data schema version |
+| `mode` | `string` | `"live"` | Receipt mode (`live` or `fiscal`) |
+| `created_at_gmt` | `string` | `"2026-03-04 09:15:00"` | Timestamp in GMT (MySQL format) |
+| `order_id` | `int` | `456` | WooCommerce order ID |
+| `order_number` | `string` | `"456"` | Display-friendly order number |
+| `currency` | `string` | `"USD"` | ISO 4217 currency code |
+
+```php
+// Example usage
+echo 'Order #' . esc_html( $receipt_data['meta']['order_number'] );
+echo wp_date( 'M j, Y g:i a', strtotime( $receipt_data['meta']['created_at_gmt'] ) );
+```
+
+---
+
+## `store`
+
+Store/business details pulled from WooCommerce settings.
+
+| Key | Type | Example | Description |
+|-----|------|---------|-------------|
+| `name` | `string` | `"My Shop"` | Site name (`bloginfo('name')`) |
+| `address_lines` | `string[]` | `["123 Main St", "Suite 4", "London N1 2AB", "GB"]` | Non-empty address lines |
+| `tax_id` | `string` | `"GB123456789"` | Store tax/VAT number (if set) |
+| `phone` | `string` | `"+44 20 1234 5678"` | Store phone number |
+| `email` | `string` | `"shop@example.com"` | Admin email address |
+
+```php
+// Example usage
+echo esc_html( $receipt_data['store']['name'] );
+echo esc_html( implode( ', ', $receipt_data['store']['address_lines'] ) );
+```
+
+---
+
+## `cashier`
+
+The POS operator who created the order.
+
+| Key | Type | Example | Description |
+|-----|------|---------|-------------|
+| `id` | `int` | `2` | WordPress user ID (0 if unknown) |
+| `name` | `string` | `"Jane Smith"` | Display name of the cashier |
+
+```php
+if ( ! empty( $receipt_data['cashier']['name'] ) ) {
+    echo 'Served by: ' . esc_html( $receipt_data['cashier']['name'] );
+}
+```
+
+---
+
+## `customer`
+
+Customer details from the order.
+
+| Key | Type | Example | Description |
+|-----|------|---------|-------------|
+| `id` | `int\|null` | `12` | Customer ID, `null` for guests |
+| `name` | `string` | `"John Doe"` | Full billing name |
+| `billing_address` | `array` | *(WC address array)* | Billing address fields |
+| `shipping_address` | `array` | *(WC address array)* | Shipping address fields |
+| `tax_id` | `string` | `""` | Customer tax ID (if applicable) |
+
+The address arrays follow the standard WooCommerce address format with keys like `first_name`, `last_name`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`.
+
+---
+
+## `lines`
+
+Array of line items (products) in the order. Each entry:
+
+| Key | Type | Example | Description |
+|-----|------|---------|-------------|
+| `key` | `string` | `"42"` | WooCommerce line item ID |
+| `sku` | `string` | `"TSHIRT-BLK-M"` | Product SKU (empty string if none) |
+| `name` | `string` | `"Black T-Shirt - Medium"` | Product/variation name |
+| `qty` | `float` | `2.0` | Quantity ordered |
+| `unit_price_incl` | `float` | `24.99` | Unit price including tax |
+| `unit_price_excl` | `float` | `20.83` | Unit price excluding tax |
+| `line_subtotal_incl` | `float` | `49.98` | Line subtotal inc. tax (before discounts) |
+| `line_subtotal_excl` | `float` | `41.65` | Line subtotal exc. tax (before discounts) |
+| `discounts_incl` | `float` | `5.00` | Discount on this line inc. tax |
+| `discounts_excl` | `float` | `4.17` | Discount on this line exc. tax |
+| `line_total_incl` | `float` | `44.98` | Final line total inc. tax |
+| `line_total_excl` | `float` | `37.48` | Final line total exc. tax |
+| `taxes` | `array` | *(see below)* | Per-rate tax breakdown |
+
+### `lines[].taxes`
+
+Each entry in the `taxes` array:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `code` | `string` | Tax rate ID |
+| `rate` | `float\|null` | Tax rate percentage |
+| `label` | `string` | Tax rate label |
+| `amount` | `float` | Tax amount for this line |
+
+```php
+// Example: loop through line items
+foreach ( $receipt_data['lines'] as $line ) {
+    echo esc_html( $line['name'] );
+    echo ' × ' . esc_html( $line['qty'] );
+    echo ' = ' . wp_kses_post( wc_price( $line['line_total_incl'] ) );
+}
+```
+
+---
+
+## `fees`
+
+Array of fee items. Each entry:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `label` | `string` | Fee name |
+| `total_incl` | `float` | Fee amount including tax |
+| `total_excl` | `float` | Fee amount excluding tax |
+
+Empty array if no fees were applied.
+
+---
+
+## `shipping`
+
+Array of shipping entries. Each entry:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `label` | `string` | Shipping method name |
+| `total_incl` | `float` | Shipping cost including tax |
+| `total_excl` | `float` | Shipping cost excluding tax |
+
+Empty array if no shipping was charged.
+
+---
+
+## `discounts`
+
+Array of order-level discounts. Each entry:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `label` | `string` | Discount label (e.g. "Discount") |
+| `total_incl` | `float` | Discount amount including tax |
+| `total_excl` | `float` | Discount amount excluding tax |
+
+Empty array if no discounts were applied.
+
+---
+
+## `totals`
+
+All the order-level financial totals.
+
+| Key | Type | Example | Description |
+|-----|------|---------|-------------|
+| `subtotal_incl` | `float` | `49.98` | Subtotal including tax |
+| `subtotal_excl` | `float` | `41.65` | Subtotal excluding tax |
+| `discount_total_incl` | `float` | `5.00` | Total discount including tax |
+| `discount_total_excl` | `float` | `4.17` | Total discount excluding tax |
+| `tax_total` | `float` | `7.50` | Total tax amount |
+| `grand_total_incl` | `float` | `44.98` | Grand total including tax |
+| `grand_total_excl` | `float` | `37.48` | Grand total excluding tax |
+| `paid_total` | `float` | `44.98` | Amount paid |
+| `change_total` | `float` | `5.02` | Change given (cash payments) |
+
+```php
+// Example: display totals
+echo 'Subtotal: ' . wp_kses_post( wc_price( $receipt_data['totals']['subtotal_incl'] ) );
+echo 'Tax: ' . wp_kses_post( wc_price( $receipt_data['totals']['tax_total'] ) );
+echo 'Total: ' . wp_kses_post( wc_price( $receipt_data['totals']['grand_total_incl'] ) );
+```
+
+---
+
+## `tax_summary`
+
+Array of tax rate summaries for the entire order. Each entry:
+
+| Key | Type | Example | Description |
+|-----|------|---------|-------------|
+| `code` | `string` | `"4"` | Tax rate ID |
+| `rate` | `float\|null` | `20.0` | Tax rate percentage, `null` if unknown |
+| `label` | `string` | `"VAT"` | Human-readable tax label |
+| `taxable_amount_excl` | `float\|null` | `37.48` | Taxable base (exc. tax) |
+| `tax_amount` | `float` | `7.50` | Tax collected at this rate |
+| `taxable_amount_incl` | `float\|null` | `44.98` | Taxable base (inc. tax) |
+
+```php
+// Example: show tax breakdown
+foreach ( $receipt_data['tax_summary'] as $tax ) {
+    echo esc_html( $tax['label'] );
+    if ( $tax['rate'] ) {
+        echo ' (' . esc_html( $tax['rate'] ) . '%)';
+    }
+    echo ': ' . wp_kses_post( wc_price( $tax['tax_amount'] ) );
+}
+```
+
+---
+
+## `payments`
+
+Array of payment methods used. Each entry:
+
+| Key | Type | Example | Description |
+|-----|------|---------|-------------|
+| `method_id` | `string` | `"pos_cash"` | Payment gateway ID |
+| `method_title` | `string` | `"Cash"` | Display name of the payment method |
+| `amount` | `float` | `44.98` | Amount charged to this method |
+| `reference` | `string` | `""` | Transaction reference (if any) |
+| `tendered` | `float` | `50.00` | Amount tendered (cash payments) |
+| `change` | `float` | `5.02` | Change given back |
+
+```php
+// Example: show payment info
+foreach ( $receipt_data['payments'] as $payment ) {
+    echo esc_html( $payment['method_title'] );
+    if ( $payment['tendered'] > 0 ) {
+        echo ' — Tendered: ' . wp_kses_post( wc_price( $payment['tendered'] ) );
+        echo ', Change: ' . wp_kses_post( wc_price( $payment['change'] ) );
+    }
+}
+```
+
+---
+
+## `fiscal`
+
+Fiscal receipt data for tax-compliant jurisdictions. All fields are empty strings or `null` by default — they're populated by fiscal compliance extensions.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `immutable_id` | `string` | Unique fiscal receipt identifier |
+| `receipt_number` | `string` | Sequential receipt number |
+| `sequence` | `int\|null` | Sequence number |
+| `hash` | `string` | Cryptographic hash for tamper detection |
+| `qr_payload` | `string` | Data for QR code generation |
+| `tax_agency_code` | `string` | Tax authority identifier |
+| `signed_at` | `string` | Timestamp when the receipt was signed |
+
+---
+
+## `presentation_hints`
+
+Settings that help templates decide how to display data.
+
+| Key | Type | Example | Description |
+|-----|------|---------|-------------|
+| `display_tax` | `string` | `"itemized"` | How to show tax: `"itemized"`, `"single"`, or `"hidden"` |
+| `prices_entered_with_tax` | `bool` | `true` | Whether store prices include tax |
+| `rounding_mode` | `string` | `"no"` | WooCommerce tax rounding setting |
+| `locale` | `string` | `"en_GB"` | WordPress locale |
+
+```php
+// Example: conditionally show tax
+$hints = $receipt_data['presentation_hints'];
+if ( 'hidden' !== $hints['display_tax'] && $receipt_data['totals']['tax_total'] > 0 ) {
+    // Show tax summary
+    foreach ( $receipt_data['tax_summary'] as $tax ) {
+        echo esc_html( $tax['label'] ) . ': ';
+        echo wp_kses_post( wc_price( $tax['tax_amount'] ) );
+    }
+}
+```
+
+---
+
+## Using `$receipt_data` vs `$order`
+
+Both variables are always available. Here's when to use which:
+
+| Use `$receipt_data` when… | Use `$order` when… |
+|---------------------------|---------------------|
+| Displaying standard receipt fields | You need WooCommerce methods not in the payload |
+| Building templates that might work with fiscal snapshots | You need to call `do_action()` hooks |
+| You want pre-calculated tax-inclusive/exclusive totals | You need to access raw item meta or custom fields |
+| You're building a logicless template | You need to format addresses with `get_formatted_billing_address()` |
+
+In practice, most templates use a mix of both. The starter templates demonstrate this approach.

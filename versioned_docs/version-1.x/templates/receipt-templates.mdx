@@ -2,233 +2,261 @@
 title: Receipt Templates
 sidebar_label: Receipt Templates
 sidebar_position: 1
-description: Customise WCPOS receipt templates using HTML, CSS, and template variables for printed and emailed receipts.
+description: Build custom POS receipts with PHP or logicless templates. Full access to the WooCommerce order object and a structured receipt data payload.
 ---
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
 
-The Receipt Template editor allows you to customise the appearance and content of receipts printed from your POS system. You can access the template editor by navigating to: `WP Admin > POS > Templates`
+Receipt templates control what your customers see when you print or display a receipt from the POS. You can write them in PHP (full WordPress/WooCommerce access) or use a simple logicless syntax with `{{variable}}` placeholders.
 
-## Overview
+## Quick Start
 
-The template system provides two types of templates:
+The fastest way to get going is to install one of the **Starter Templates** that ship with the plugin:
 
-- **Default Templates**: Automatically detected from your plugin and theme files. These cannot be deleted but can be copied to create custom versions.
-- **Custom Templates**: User-created templates that you can fully customise, edit, and manage.
+1. Go to **WP Admin > POS > Templates**
+2. Find the **Starter Templates** section
+3. Click **Install** on the one that fits your use case
+4. Edit the template in the code editor, then click **Activate** when you're happy
 
-## Accessing the Template Editor
+Three starters are included out of the box:
 
-1. Navigate to your WordPress Admin dashboard
-2. Go to **POS > Templates**
-3. You'll see a list of available templates organized into two sections:
-   - **Default Templates** (from plugin/theme files)
-   - **Custom Templates** (your custom creations)
+| Starter | What it demonstrates |
+|---------|---------------------|
+| **Minimal Receipt** | Clean layout using `$receipt_data` — good starting point for most stores |
+| **Thermal Printer** | Monospace, narrow-width design for 80mm/58mm thermal printers |
+| **Gift Receipt** | Items without prices, customer note displayed as a gift message |
 
-## Default Templates
+## Template Variables
 
-The system automatically detects receipt templates from three sources:
+Every receipt template receives two variables automatically:
 
-### Template Sources
+### `$order` — The WooCommerce Order
 
-| Source         | Description                                         | Status                               |
-| -------------- | --------------------------------------------------- | ------------------------------------ |
-| **Plugin**     | Core receipt template included with WCPOS     | Always available                     |
-| **Pro Plugin** | Enhanced template from WCPOS Pro              | Available with active license        |
-| **Theme**      | Custom template from your active theme              | Available if theme includes template |
+This is the standard `WC_Abstract_Order` object. You can call any method you'd normally use in WooCommerce:
 
-### Template Actions
+```php
+$order->get_order_number();
+$order->get_total();
+$order->get_items();
+$order->get_billing_email();
+// … any WC_Order method
+```
 
-For each default template, you can:
+### `$receipt_data` — The Structured Receipt Payload
 
-- **Preview**: View how the template looks with sample data
-- **Copy**: Create a custom copy that you can edit
-- **Activate**: Set as the active template for your POS
+A pre-calculated array containing everything you'd typically need on a receipt, organised into logical sections. This is the recommended way to build new templates because the data is already formatted and consistent.
 
-## Creating Custom Templates
+```php
+$receipt_data['store']['name']                // Store name
+$receipt_data['meta']['order_number']         // Order number
+$receipt_data['lines']                        // Array of line items
+$receipt_data['totals']['grand_total_incl']   // Grand total inc. tax
+$receipt_data['payments'][0]['method_title']   // Payment method
+```
 
-### Method 1: Copy from Default Template
+See the [Receipt Data Reference](./receipt-data-reference) for the complete schema with every field documented.
 
-1. In the **Default Templates** section, find the template you want to customise
-2. Click the **Copy** button
-3. Enter a name for your custom template
-4. Click **Copy Template**
-5. Edit the newly created custom template
+## Creating a Template
 
-### Method 2: Create from Scratch
+### From a Starter
 
-1. Click **Add New Template** at the top of the page
-2. Enter a template name
-3. Select **Receipt** as the template type
-4. Start coding your template in the editor
+1. Navigate to **WP Admin > POS > Templates**
+2. In the **Starter Templates** section, click **Install**
+3. The template opens in the editor — make your changes
+4. Click **Activate** in the Template Actions panel to make it live
 
-## Template Editor Features
+### From a Default Template
 
-The template editor provides:
+1. In the **Default Templates** section, click **Copy** next to the template you want
+2. Edit the copy as needed
+3. Activate when ready
 
-### Code Editor
+### From Scratch
 
-- **Syntax Highlighting**: PHP syntax highlighting for better code readability
-- **Line Numbers**: Easy navigation and debugging
-- **Full-Screen Editing**: Distraction-free editing environment
+1. Click **Add New Template** at the top of the Templates page
+2. Give it a name
+3. Set **Template Type** to Receipt
+4. Write your template code in the editor
 
-### Template Settings Panel
+## Template Engines
 
-- **Language**: Set to PHP for proper syntax highlighting
-- **Template Type**: Choose between Receipt or Report templates
-- **Status**: Publish/Draft status management
-- **Visibility**: Control template visibility
+### PHP Templates (default)
 
-### Template Actions
-
-- **Preview**: See how your template renders with sample data
-- **Set as Active**: Make this template the default for your POS
-- **Update**: Save your changes
-- **Move to Trash**: Delete custom templates
-
-## Template Structure
-
-Receipt templates are PHP files that generate HTML output. Here's the basic structure:
+Full PHP with access to all WordPress and WooCommerce functions. This is what the default template and all starters use.
 
 ```php
 <?php
-/**
- * Custom Receipt Template
- */
-
 if ( ! defined( 'ABSPATH' ) ) {
-    exit; // Exit if accessed directly
+    exit;
 }
+
+$store = $receipt_data['store'];
+$lines = $receipt_data['lines'];
 ?>
 <!DOCTYPE html>
-<html <?php language_attributes(); ?>>
+<html>
 <head>
-    <meta charset="<?php bloginfo( 'charset' ); ?>">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        /* Your custom CSS styles */
-        body { font-family: sans-serif; font-size: 14px; }
-        .receipt-header { text-align: center; margin-bottom: 20px; }
-        /* Add more styles as needed */
+        body { font-family: sans-serif; font-size: 13px; }
     </style>
+    <?php do_action( 'woocommerce_pos_receipt_head' ); ?>
 </head>
 <body>
-    <!-- Your receipt content -->
-    <div class="receipt-header">
-        <h1><?php echo get_bloginfo( 'name' ); ?></h1>
-        <p><?php echo get_bloginfo( 'description' ); ?></p>
-    </div>
+    <h1><?php echo esc_html( $store['name'] ); ?></h1>
 
-    <!-- Order details, items, totals, etc. -->
-
+    <?php foreach ( $lines as $line ) : ?>
+        <div>
+            <?php echo esc_html( $line['name'] ); ?>
+            — <?php echo esc_html( $line['qty'] ); ?>
+            × <?php echo wp_kses_post( wc_price( $line['unit_price_incl'] ) ); ?>
+        </div>
+    <?php endforeach; ?>
 </body>
 </html>
 ```
 
-## Available Template Variables
+:::warning Important
+Always include `do_action( 'woocommerce_pos_receipt_head' )` in the `<head>` section. This injects the JavaScript that lets the POS app trigger printing.
+:::
 
-When creating custom templates, you have access to various WordPress and WooCommerce functions and data:
+### Logicless Templates
 
-### Store Information
+A simpler option that uses `{{key.path}}` placeholders substituted from the `$receipt_data` array. No PHP knowledge required — just HTML and CSS.
 
-- `get_bloginfo( 'name' )` - Store name
-- `get_bloginfo( 'description' )` - Store tagline
-- `get_bloginfo( 'url' )` - Store URL
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: sans-serif; }
+    </style>
+</head>
+<body>
+    <h1>{{store.name}}</h1>
+    <p>Order #{{meta.order_number}}</p>
+    <p>Date: {{meta.created_at_gmt}}</p>
+    <p>Cashier: {{cashier.name}}</p>
 
-### Order Data
+    <hr>
+    <p>Total: {{totals.grand_total_incl}}</p>
+</body>
+</html>
+```
 
-The current order data is available through standard WooCommerce order functions when the template is rendered.
+To use a logicless template, set the **Engine** to `logicless` in the Template Settings panel.
 
-### WCPOS Functions
+:::tip
+Logicless templates work well for simple receipts. If you need loops (iterating over line items), conditional logic, or formatted currency values, use a PHP template instead.
+:::
 
-You can use WCPOS-specific functions (prefixed with `wcpos_`) to access POS-related data and functionality.
+## Working with Currency
+
+In PHP templates, use `wc_price()` to format currency values from `$receipt_data`:
+
+```php
+<?php echo wp_kses_post( wc_price( $receipt_data['totals']['grand_total_incl'] ) ); ?>
+```
+
+If you need plain text (no HTML tags), strip them:
+
+```php
+<?php
+$currency = $receipt_data['meta']['currency'];
+$amount   = $receipt_data['totals']['grand_total_incl'];
+echo esc_html(
+    html_entity_decode(
+        wp_strip_all_tags( wc_price( $amount, array( 'currency' => $currency ) ) )
+    )
+);
+?>
+```
+
+## Template Editor Features
+
+The built-in editor provides:
+
+- **Syntax highlighting** — PHP and HTML colour-coded with CodeMirror
+- **Live preview** — See how your template renders with the most recent POS order
+- **Revision history** — WordPress saves revisions each time you update, so you can roll back
+- **Activate/Deactivate** — Switch between templates without deleting anything
+
+## Default Template Sources
+
+The system automatically detects filesystem templates from three sources, in priority order:
+
+| Source | Location | Priority |
+|--------|----------|----------|
+| **Theme** | `your-theme/woocommerce-pos/receipt.php` | Highest |
+| **Pro Plugin** | Ships with WCPOS Pro (requires active licence) | Medium |
+| **Core Plugin** | Ships with WCPOS | Lowest |
+
+If multiple sources exist, the highest-priority template is used as the default. You can always override this by activating a different template.
+
+## Hooks and Filters
+
+| Hook | Type | Description |
+|------|------|-------------|
+| `woocommerce_pos_receipt_head` | Action | Fires in `<head>` — injects print JavaScript |
+| `woocommerce_pos_before_template_render` | Action | Fires before the template is rendered |
+| `woocommerce_pos_after_template_render` | Action | Fires after the template is rendered |
+| `woocommerce_pos_active_receipt_template` | Filter | Override which template is used |
+| `woocommerce_pos_print_receipt_path` | Filter | Override the filesystem template path |
 
 ## Best Practices
 
-### Template Development
-
-1. **Start with a Copy**: Always start by copying a default template rather than creating from scratch
-2. **Test Thoroughly**: Use the preview function to test your template before activating
-3. **Keep Backups**: Export your custom templates or keep copies of your code
-4. **Mobile-Friendly**: Ensure your templates work well on different screen sizes
-
-### Code Quality
-
-1. **Validate HTML**: Ensure your HTML is well-formed
-2. **Escape Output**: Use WordPress escaping functions for security
-3. **Error Handling**: Include proper error checking in your PHP code
-4. **Comments**: Document your customizations for future reference
-
-### Performance
-
-1. **Optimise CSS**: Keep styles minimal and efficient
-2. **Minimize PHP**: Avoid complex logic in templates
-3. **Test Printing**: Verify templates work well with your receipt printers
+1. **Start from a starter or copy** — modifying a working template is faster and safer than building from nothing
+2. **Test with Preview** — use the preview button before activating; it renders with your most recent POS order
+3. **Escape output** — always use `esc_html()`, `esc_attr()`, or `wp_kses_post()` when outputting data
+4. **Keep CSS minimal** — receipt printers have limited rendering capabilities; avoid gradients, web fonts, and complex layouts
+5. **Include the print hook** — without `do_action( 'woocommerce_pos_receipt_head' )`, the POS app can't trigger printing
 
 ## Troubleshooting
 
-### Common Issues
-
 <Accordion>
-  <AccordionItem question="Template not showing changes">
+  <AccordionItem question="I see a 'Receipt Template Error' page">
 
-  - Ensure you've clicked "Update" to save your changes
-  - Check that the template is set as "Active"
-  - Clear any caching plugins
+  This means your template has a PHP fatal error. If you're logged in as an admin (or `WP_DEBUG` is on), you'll see the exact error message, file, and line number. Common causes:
 
-  </AccordionItem>
+  - Missing semicolons or brackets
+  - Calling a function that doesn't exist
+  - Using a variable that hasn't been defined
 
-  <AccordionItem question="Syntax errors">
-
-  - Use the syntax highlighting to identify issues
-  - Check for missing semicolons, brackets, or quotes
-  - Validate your PHP syntax
+  Fix the error in the template editor, or activate a different template to restore receipts while you debug.
 
   </AccordionItem>
 
-  <AccordionItem question="Styling issues">
+  <AccordionItem question="Changes aren't showing up">
 
-  - Test your CSS in the preview mode
-  - Ensure styles are compatible with receipt printers
-  - Keep print-friendly design principles in mind
+  - Make sure you clicked **Update** to save
+  - Confirm the template is **Active** (check the Status column)
+  - Clear any page caching or object caching plugins
+  - Try opening the receipt URL directly in a new browser tab
 
   </AccordionItem>
 
-  <AccordionItem question="Template not available">
+  <AccordionItem question="Receipt prints blank or with missing data">
 
-  - Check that the template type is set to "Receipt"
-  - Verify the template status is "Published"
-  - Ensure you have proper permissions
+  - Check that `do_action( 'woocommerce_pos_receipt_head' )` is in the `<head>` — without it the print trigger won't work
+  - Verify you're accessing `$receipt_data` keys correctly — use the [Receipt Data Reference](./receipt-data-reference) to check key names
+  - Look at the browser console for JavaScript errors
+
+  </AccordionItem>
+
+  <AccordionItem question="Template not available in the list">
+
+  - Make sure the template type is set to **Receipt**
+  - Check that the post status is **Published** (not Draft)
+  - Verify you have the `manage_woocommerce_pos` capability
 
   </AccordionItem>
 </Accordion>
 
 ### Getting Help
 
-If you encounter issues with template customisation:
+If you're stuck:
 
 1. Check the template preview for error messages
-2. Review the WordPress debug log for PHP errors
-3. Test with a copy of the default template first
-4. **AI Assistance**: Modern AI tools like [Gemini](https://gemini.google.com), ChatGPT, and Claude are excellent at helping with simple WordPress templates like these. You can paste your template code and describe what you want to achieve.
-5. Consult the WCPOS documentation for advanced customisation
-
-## Advanced Customisation
-
-For advanced users who need more control over receipt templates:
-
-### Theme Integration
-
-You can override the default template by placing a custom `receipt.php` file in your theme:
-
-```
-your-theme/woocommerce-pos/receipt.php
-```
-
-### Hooks and Filters
-
-WCPOS provides various hooks and filters for template customisation. Consult the developer documentation for available options.
-
-### Custom Fields
-
-You can include custom order fields, product attributes, and other metadata in your receipt templates using appropriate WordPress and WooCommerce functions.
+2. Review the WordPress debug log (`wp-content/debug.log`) for PHP errors
+3. Start with a starter template and modify incrementally
+4. **AI tools** like ChatGPT, Claude, or Gemini are good at helping with straightforward WordPress PHP templates — paste your code and describe what you want
