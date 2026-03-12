@@ -10,10 +10,12 @@ module.exports = {
   onBrokenLinks: 'throw',
   favicon: 'img/favicon.ico',
   markdown: {
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'warn',
     },
   },
+  themes: ['@docusaurus/theme-mermaid'],
   organizationName: 'wcpos', // Usually your GitHub org/user name.
   projectName: 'docs', // Usually your repo name.
   themeConfig: {
@@ -107,6 +109,9 @@ module.exports = {
         },
       ],
       copyright: `Copyright © ${new Date().getFullYear()} WCPOS.`,
+    },
+    mermaid: {
+      theme: {light: 'neutral', dark: 'dark'},
     },
     prism: {
       theme: themes.github,
