@@ -1,0 +1,202 @@
+---
+title: Thermal Printer Templates
+sidebar_label: Thermal Templates
+sidebar_position: 4
+description: Create XML-based receipt templates for ESC/POS thermal printers with Epson and Star support.
+---
+
+Thermal templates use an XML format that produces both a screen preview and ESC/POS printer commands from the same template. They use the same `{{variable}}` placeholders as [HTML templates](/templates/html-templates) for data binding.
+
+Choose this engine if you have a receipt printer connected via the [Printer Setup](/templates/printer-setup).
+
+## XML Elements
+
+### Root Element
+
+Every thermal template starts with a `<receipt>` root:
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### Text and Formatting
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### Alignment
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### Text Size
+
+Scale text width and height independently:
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### Tabular Layout
+
+Use `<row>` and `<col>` for aligned columns:
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+Column widths are in characters. Use `width="*"` for a flex column that absorbs remaining space — this makes templates work across different paper widths without modification:
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### Separators and Spacing
+
+```xml
+<line />            <!-- Horizontal line across full width -->
+<feed lines="2" />  <!-- Blank lines -->
+```
+
+### Printer Commands
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### Barcodes and QR Codes
+
+```xml
+<barcode type="ean13">{{meta.order_number}}</barcode>
+<qrcode>{{fiscal.qr_payload}}</qrcode>
+```
+
+## Example: Simple 80mm Receipt
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{meta.order_number}}</text>
+  <text>Date: {{meta.created_at}}</text>
+  <text>Cashier: {{cashier.display_name}}</text>
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{quantity}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_display}}</col>
+  </row>
+  {{/totals.tax}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.grand_total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## Star-Width Columns
+
+The `width="*"` feature makes templates paper-width-agnostic. Instead of hardcoding column widths for a specific paper size, use `*` for the column that should stretch:
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+On an 80mm printer (48 chars), the item name gets 38 characters. On a 58mm printer (32 chars), it gets 22 characters. Fixed columns stay the same size on both.
+
+## Template Preview
+
+The template editor shows a **live thermal preview** as you edit. The preview renders your XML as styled monospace HTML, simulating how the receipt will look on paper. Changes update after a short delay.
+
+## Tips
+
+- **Start from a gallery template** — the thermal templates in the gallery are designed for common receipt layouts
+- **Use `width="*"`** for at least one column per row to handle different paper widths
+- **Use `_display` fields** for currency values — they're already formatted
+- **Test both paper sizes** if your stores use different printers
+- **Keep it simple** — thermal printers have limited formatting compared to HTML

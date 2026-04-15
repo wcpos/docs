@@ -1,0 +1,187 @@
+---
+title: Printer Setup
+sidebar_label: Printer Setup
+sidebar_position: 1
+description: Connect a receipt printer to WCPOS — Epson and Star on the web app, any network printer on the desktop app.
+---
+
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+Printer settings are found in the POS under **Settings > Printer**. Each device manages its own printer configuration — printers are stored locally and not synced between devices.
+
+## Supported Printers by Platform
+
+| Platform | Supported Printers | Connection |
+|----------|--------------------|------------|
+| **Web app** | Epson and Star printers with built-in web server | Network (HTTP) |
+| **Desktop app** | Any network receipt printer | Network (TCP) |
+| **iOS app** | Epson and Star (Bonjour discovery) | Network |
+
+:::info Why only Epson and Star on the web?
+Web browsers cannot open raw TCP connections. Epson and Star receipt printers include a built-in web server that accepts print jobs over HTTP — this is the only way to send ESC/POS commands from a browser. The desktop app doesn't have this limitation because it can connect directly via TCP.
+:::
+
+## Adding a Printer
+
+<Steps>
+  <StepCard number="1" title="Open Printer Settings">
+
+Go to **Settings > Printer** in the POS. If no printers are configured, you'll see an empty state with an **Add Printer** button.
+
+  </StepCard>
+  <StepCard number="2" title="Enter Printer Details">
+
+You only need two things:
+
+**Printer Name** — a label for this printer (auto-generated as "Receipt Printer", "Receipt Printer 2", etc.)
+
+**IP Address** — the network IP of your printer (e.g., `192.168.1.100`)
+
+  </StepCard>
+  <StepCard number="3" title="Automatic Vendor Detection">
+
+After entering the IP address, WCPOS automatically probes the printer to detect whether it's an Epson or Star device. You'll see a "Detected: Epson" or "Detected: Star" label once detection completes.
+
+This also auto-fills the correct port, command language, and vendor settings.
+
+If detection fails, you can manually configure these in **Advanced Settings**.
+
+  </StepCard>
+  <StepCard number="4" title="Save and Test" isLast>
+
+Click **Save** to test the connection automatically. If the test fails, you'll see an error with likely causes. You can also click **Save without testing** to skip the test.
+
+  </StepCard>
+</Steps>
+
+### Advanced Settings
+
+Expand **Advanced Settings** to manually configure:
+
+| Setting | Options | Description |
+|---------|---------|-------------|
+| **Vendor** | Epson, Star, Generic (desktop only) | Printer manufacturer |
+| **Port** | Auto-detected | Network port for the printer |
+| **Language** | ESC/POS, StarPRNT, StarLine | Command protocol |
+| **Paper Width** | 58mm, 80mm | Receipt paper size (58mm = 32 characters, 80mm = 48 characters) |
+
+### Printer Options
+
+| Option | Description |
+|--------|-------------|
+| **Auto-cut** | Automatically cut the paper after printing |
+| **Open cash drawer** | Send a kick command to open the cash drawer after printing |
+| **Auto-print** | Automatically print a receipt after checkout completes |
+
+## Network Discovery (Desktop Only)
+
+The desktop app can scan your local network for printers:
+
+1. Click **Scan Network** in the printer settings
+2. WCPOS discovers printers advertising themselves via mDNS (Bonjour)
+3. Discovered printers show their name, IP address, and detected vendor
+4. Click **Add** next to a discovered printer to pre-fill the setup form
+
+## Finding Your Printer's IP Address
+
+Most receipt printers can print a self-test page that includes the IP address:
+
+- **Epson**: Hold the feed button while powering on
+- **Star**: Hold the feed button for 5 seconds while powered on
+
+Alternatively, check your router's connected devices list or your printer's configuration utility.
+
+### Static IP Recommended
+
+Receipt printers should use a **static IP address** to prevent the address from changing when the printer restarts. Configure this either:
+
+- In your printer's built-in web interface (usually accessible at `http://<printer-ip>`)
+- In your router's DHCP settings (assign a reserved IP to the printer's MAC address)
+
+## Epson Printers
+
+Epson printers with ePOS support communicate over HTTP. WCPOS sends SOAP/XML requests to the printer's built-in web server.
+
+**Connection details:**
+- Port `8008` (HTTP) or `8043` (HTTPS)
+- Endpoint: `/cgi-bin/epos/service.cgi`
+
+**Confirmed working models:**
+- Epson TM-T70-i 2 (network)
+- Epson TM-m30iii (with Printus middleware)
+
+:::tip
+Make sure your Epson printer has ePOS enabled in its configuration. Access the printer's web interface at `http://<printer-ip>` to check and enable ePOS settings.
+:::
+
+## Star Printers
+
+Star printers with WebPRNT support communicate over HTTP. WCPOS sends commands to the Star WebPRNT endpoint.
+
+**Connection details:**
+- HTTPS or HTTP
+- Endpoint: `/StarWebPRNT/SendMessage`
+
+## Generic Printers (Desktop Only)
+
+The desktop app supports any network receipt printer via raw TCP. Enter the printer's IP address and port (usually `9100`). This works with most thermal printers regardless of manufacturer, as long as they accept ESC/POS commands.
+
+## Cash Drawers
+
+Cash drawers connected to a receipt printer can be triggered automatically after each sale:
+
+1. Enable **Open cash drawer** in the printer options
+2. The POS sends an ESC/POS kick command after printing
+
+:::note
+Cash drawer control requires a thermal printer profile — the browser print dialog cannot trigger cash drawers.
+:::
+
+## Troubleshooting
+
+<Accordion>
+  <AccordionItem question="Printer not detected during setup">
+
+  - Confirm the printer is powered on and connected to the same network as your device
+  - Check the IP address is correct (print a self-test page)
+  - For web app: confirm the printer is an Epson or Star model with ePOS/WebPRNT support
+  - For desktop app: try the Generic vendor option with port 9100
+  - Check that no firewall is blocking the connection
+
+  </AccordionItem>
+
+  <AccordionItem question="Printer detected but nothing prints">
+
+  - Check the paper roll — it may be empty or jammed
+  - Verify the paper width setting matches your paper (58mm or 80mm)
+  - Try printing a self-test from the printer itself to confirm it works
+  - Check the command language matches your printer (ESC/POS for Epson, StarPRNT for Star)
+
+  </AccordionItem>
+
+  <AccordionItem question="Receipt is garbled or has wrong characters">
+
+  - The command language setting may be wrong — try switching between ESC/POS, StarPRNT, and StarLine
+  - Ensure the paper width setting is correct
+
+  </AccordionItem>
+
+  <AccordionItem question="Cash drawer doesn't open">
+
+  - Confirm **Open cash drawer** is enabled in printer options
+  - Check the drawer is connected to the printer's DK port (not a separate power source)
+  - Not all printers support the drawer kick command — consult your printer's documentation
+
+  </AccordionItem>
+
+  <AccordionItem question="Cannot connect from the web app">
+
+  - The web app can only connect to Epson and Star printers with built-in web servers
+  - Generic/USB printers are not supported on the web — use the desktop app instead
+  - Check that HTTPS is not blocking mixed content if your site uses HTTPS but the printer uses HTTP
+
+  </AccordionItem>
+</Accordion>
