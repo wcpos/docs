@@ -239,6 +239,9 @@ module.exports = {
           { from: '/settings/pos/section/customers-settings', to: '/customers' },
           { from: '/settings/pos/section/reports-settings', to: '/reports' },
 
+          // Templates restructure
+          { from: '/templates/receipt-templates', to: '/templates' },
+
           // Troubleshooting → Support
           { from: '/troubleshooting/critical-error', to: '/support/troubleshooting/critical-error' },
           { from: '/troubleshooting/response-error', to: '/support/troubleshooting/response-error' },
