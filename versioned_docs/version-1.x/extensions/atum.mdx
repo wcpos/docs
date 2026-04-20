@@ -32,6 +32,9 @@ ATUM Multi-Inventory lets you split a product's stock across multiple inventory 
   <FeatureCard icon="sync" title="Audit-Safe Stock Movement">
     Orders deduct and restore stock at the correct ATUM location, with full audit trail in `atum_inventory_orders`.
   </FeatureCard>
+  <FeatureCard icon="arrow-right" title="Product Edit Write-Back">
+    POS edits to stock, price, and SKU sync back to the mapped ATUM inventory row for that location.
+  </FeatureCard>
 </FeatureGrid>
 
 ## Installation
@@ -74,7 +77,7 @@ When a store has an ATUM location assigned, the product data served to the POS i
 - **Prices** come from the configured pricing source.
 - **SKUs** are swapped to the ATUM location SKU if override is enabled.
 
-All adjustments happen transparently through the WCPOS REST API — no changes are needed on the POS app side.
+All adjustments happen transparently through the WCPOS REST API — no changes are needed on the POS app side. Product edits made from the POS are also written back to the mapped ATUM inventory row; see [Product Edit Write-Back](#product-edit-write-back) below.
 
 ## Stock Management
 
@@ -84,6 +87,31 @@ For POS orders placed at stores with a mapped ATUM location, the plugin lets ATU
 2. **Location-scoped inventory filter.** The plugin filters ATUM's candidate inventory list to only those linked to the store's mapped location term, ensuring the right one is picked on both reduction and restoration.
 
 ATUM itself performs the actual stock change on order and refund, writing rows to `atum_inventory_orders` with the real `order_id` — preserving ATUM's audit trail.
+
+## Product Edit Write-Back
+
+When a cashier or manager edits a product or variation from the POS, the changes sync back to the mapped ATUM inventory row for that store's location — not just the main WooCommerce product. This keeps each location's stock, price, and SKU in sync with ATUM without manual updates in `WP Admin`.
+
+The write-back is triggered on WCPOS product and variation REST updates (`POST`, `PUT`, `PATCH` to `/wcpos/v1/products/...`) that include a `store_id`. The plugin looks up the store's mapped ATUM location and updates only the inventory row for that location — other locations are untouched.
+
+### What Syncs
+
+The write-back respects each store's configuration so ATUM data only changes when the store actually owns that data:
+
+| Field | When it syncs |
+| --- | --- |
+| **Stock quantity** | Always — every store with a mapped ATUM location keeps its location row in sync. |
+| **Regular price / Sale price / Price** | Only when the store's **Pricing Source** is set to *ATUM*. |
+| **SKU** | Only when **SKU Override** is enabled for the store. |
+
+If the store uses *Default* or *WCPOS Pro* pricing, ATUM price fields are left alone so ATUM continues to serve as a reference price rather than the source of truth. The same applies to SKUs when override is off.
+
+### What Doesn't Trigger Write-Back
+
+- Product creation (only updates write back — new products fall through to WooCommerce's normal save path).
+- Requests without a `store_id` — the POS has to tell the plugin which location to write to.
+- Stores without a mapped ATUM location.
+- Products without an existing ATUM inventory row for the store's location — the plugin will not create new inventory rows, only update existing ones.
 
 ## Requirements
 
