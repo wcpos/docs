@@ -186,6 +186,7 @@ module.exports = {
     localeConfigs: {
       en: {
         htmlLang: 'en-GB',
+        label: 'English',
       },
       ar: {
         direction: 'rtl',
