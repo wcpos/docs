@@ -10,7 +10,7 @@ const SOURCE_PATTERNS = [
 ];
 
 function uniqueStable(paths) {
-  return [...new Set(paths.filter(Boolean))];
+  return [...new Set(paths.filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
 function filterTranslationSourceFiles(paths) {
