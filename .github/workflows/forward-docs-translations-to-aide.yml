@@ -1,0 +1,107 @@
+name: Forward Docs Translations to Aide
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'versioned_docs/**/*.md'
+      - 'versioned_docs/**/*.mdx'
+      - 'i18n/en/**/*.json'
+      - 'versioned_sidebars/**/*.json'
+      - 'sidebars.js'
+      - 'docusaurus.config.js'
+  workflow_dispatch:
+    inputs:
+      files:
+        description: 'Specific changed source files to forward (space or newline separated)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-translation-forward-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  forward:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Generate English source translations
+        run: pnpm write-translations --locale en
+
+      - name: Detect changed translation source files
+        id: changes
+        env:
+          BASE_REF: ${{ github.event.before }}
+          HEAD_REF: ${{ github.sha }}
+          FILES: ${{ inputs.files }}
+        run: |
+          FILES_JSON=$(node scripts/detect-doc-translation-changes.js)
+          echo "files=$FILES_JSON" >> "$GITHUB_OUTPUT"
+          if [ "$FILES_JSON" = "[]" ]; then
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_files=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Detected files: $FILES_JSON"
+
+      - name: Require OpenClaw secrets
+        if: steps.changes.outputs.has_files == 'true'
+        env:
+          OPENCLAW_HOOKS_TOKEN: ${{ secrets.OPENCLAW_HOOKS_TOKEN }}
+          TRANSLATION_STATUS_TOKEN: ${{ secrets.TRANSLATION_STATUS_TOKEN }}
+        run: |
+          test -n "$OPENCLAW_HOOKS_TOKEN" || { echo "OPENCLAW_HOOKS_TOKEN secret is required"; exit 1; }
+          test -n "$TRANSLATION_STATUS_TOKEN" || { echo "TRANSLATION_STATUS_TOKEN secret is required"; exit 1; }
+
+      - name: Forward translation changes to Aide
+        if: steps.changes.outputs.has_files == 'true'
+        env:
+          OPENCLAW_BASE_URL: ${{ vars.OPENCLAW_BASE_URL }}
+          OPENCLAW_HOOKS_TOKEN: ${{ secrets.OPENCLAW_HOOKS_TOKEN }}
+          FILES_JSON: ${{ steps.changes.outputs.files }}
+        run: |
+          : "${OPENCLAW_BASE_URL:=https://openclaw.wcpos.com}"
+          node - <<'NODE' > /tmp/aide_payload.json
+          const fs = require('node:fs');
+          const payload = {
+            project: 'docs',
+            repo: 'wcpos/docs',
+            head_sha: process.env.GITHUB_SHA,
+            changed_files: JSON.parse(process.env.FILES_JSON || '[]'),
+          };
+          fs.writeFileSync('/tmp/aide_payload.json', JSON.stringify(payload));
+          NODE
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --url "$OPENCLAW_BASE_URL/translation/webhook" \
+            --header "Authorization: Bearer $OPENCLAW_HOOKS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data @/tmp/aide_payload.json \
+            --output /tmp/aide_response.json
+
+      - name: Wait for Aide translation task
+        if: steps.changes.outputs.has_files == 'true'
+        env:
+          OPENCLAW_BASE_URL: ${{ vars.OPENCLAW_BASE_URL }}
+          TRANSLATION_STATUS_TOKEN: ${{ secrets.TRANSLATION_STATUS_TOKEN }}
+        run: node scripts/wait-for-openclaw-task.js /tmp/aide_response.json
