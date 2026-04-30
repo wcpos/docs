@@ -4,7 +4,7 @@ const {
   gitLines,
   resolveChangedFiles,
 } = require('../detect-doc-translation-changes');
-const { resolvePollUrl } = require('../wait-for-openclaw-task');
+const { pollTaskUntilTerminal, resolvePollUrl } = require('../wait-for-openclaw-task');
 
 describe('filterTranslationSourceFiles', () => {
   it('keeps docs, English i18n JSON, sidebars, and Docusaurus config', () => {
@@ -112,5 +112,55 @@ describe('resolvePollUrl', () => {
     ).toThrow(
       'OpenClaw poll_url origin https://attacker.example does not match configured OPENCLAW_BASE_URL origin https://openclaw.example'
     );
+  });
+});
+
+
+describe('pollTaskUntilTerminal', () => {
+  it('caps request timeout and sleep to the remaining global deadline', async () => {
+    const originalNow = Date.now;
+    let now = 1000;
+    const signals = [];
+    const sleeps = [];
+    let fetchCalls = 0;
+
+    Date.now = () => now;
+
+    try {
+      await expect(
+        pollTaskUntilTerminal({
+          pollUrl: 'https://openclaw.example/tasks/123',
+          apiToken: 'test-token',
+          timeoutMs: 50,
+          intervalMs: 10000,
+          logger: { log() {} },
+          createTimeoutSignal(ms) {
+            signals.push(ms);
+            return undefined;
+          },
+          async fetchImpl() {
+            fetchCalls += 1;
+            return {
+              ok: true,
+              async json() {
+                return { status: 'running' };
+              },
+            };
+          },
+          async sleep(ms) {
+            sleeps.push(ms);
+            now += ms;
+          },
+        })
+      ).rejects.toThrow(
+        'Timed out waiting for OpenClaw task at https://openclaw.example/tasks/123 to reach a terminal state; last status=running'
+      );
+    } finally {
+      Date.now = originalNow;
+    }
+
+    expect(fetchCalls).toBe(1);
+    expect(signals).toEqual([50]);
+    expect(sleeps).toEqual([50]);
   });
 });

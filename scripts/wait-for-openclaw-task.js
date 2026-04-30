@@ -149,6 +149,13 @@ async function pollTaskUntilTerminal({
   let lastStatus = null;
 
   while (true) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Timed out waiting for OpenClaw task at ${pollUrl} to reach a terminal state; last status=${lastStatus || 'unknown'}`
+      );
+    }
+
     attempt += 1;
 
     let response;
@@ -159,7 +166,7 @@ async function pollTaskUntilTerminal({
           Authorization: `Bearer ${apiToken}`,
           Accept: 'application/json',
         },
-        signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
+        signal: createTimeoutSignal(Math.min(REQUEST_TIMEOUT_MS, remainingMs)),
       });
     } catch (error) {
       throw new Error(
@@ -204,13 +211,14 @@ async function pollTaskUntilTerminal({
       );
     }
 
-    if (Date.now() >= deadline) {
+    const postPollRemainingMs = deadline - Date.now();
+    if (postPollRemainingMs <= 0) {
       throw new Error(
         `Timed out waiting for OpenClaw task at ${pollUrl} to reach a terminal state; last status=${status}`
       );
     }
 
-    await sleep(intervalMs);
+    await sleep(Math.min(intervalMs, postPollRemainingMs));
   }
 }
 
