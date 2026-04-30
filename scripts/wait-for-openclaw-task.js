@@ -1,11 +1,12 @@
 #!/usr/bin/env node
+/* global globalThis */
 
 const fs = require('node:fs');
 
 const DEFAULT_BASE_URL = 'https://openclaw.wcpos.com';
-const DEFAULT_INTERVAL_MS = 10_000;
+const DEFAULT_INTERVAL_MS = 10000;
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 30000;
 const TERMINAL_SUCCESS_STATUS = 'completed';
 const TERMINAL_FAILURE_STATUSES = new Set(['failed', 'relay_failed']);
 
@@ -14,13 +15,17 @@ function readJsonFile(filePath) {
   try {
     raw = fs.readFileSync(filePath, 'utf8');
   } catch (error) {
-    throw new Error(`Unable to read OpenClaw response file ${filePath}: ${error.message}`);
+    throw new Error(
+      `Unable to read OpenClaw response file ${filePath}: ${error.message}`
+    );
   }
 
   try {
     return JSON.parse(raw);
   } catch (error) {
-    throw new Error(`OpenClaw response file ${filePath} does not contain valid JSON: ${error.message}`);
+    throw new Error(
+      `OpenClaw response file ${filePath} does not contain valid JSON: ${error.message}`
+    );
   }
 }
 
@@ -35,10 +40,13 @@ function parseAcceptedJob(payload) {
   }
 
   const jobId = typeof payload.job_id === 'string' ? payload.job_id.trim() : '';
-  const pollUrl = typeof payload.poll_url === 'string' ? payload.poll_url.trim() : '';
+  const pollUrl =
+    typeof payload.poll_url === 'string' ? payload.poll_url.trim() : '';
 
   if (!jobId || !pollUrl) {
-    throw new Error('Accepted OpenClaw response must include job_id and poll_url');
+    throw new Error(
+      'Accepted OpenClaw response must include job_id and poll_url'
+    );
   }
 
   return { jobId, pollUrl };
@@ -59,7 +67,7 @@ function maybeParseJson(value) {
 
   try {
     return JSON.parse(value);
-  } catch {
+  } catch (_error) {
     return value;
   }
 }
@@ -100,7 +108,8 @@ async function pollTaskUntilTerminal({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   logger = console,
-  createTimeoutSignal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+  createTimeoutSignal = typeof AbortSignal !== 'undefined' &&
+  typeof AbortSignal.timeout === 'function'
     ? (ms) => AbortSignal.timeout(ms)
     : () => undefined,
 }) {
@@ -108,10 +117,14 @@ async function pollTaskUntilTerminal({
     throw new Error('pollUrl is required');
   }
   if (!apiToken) {
-    throw new Error('TRANSLATION_STATUS_TOKEN or OPENCLAW_API_TOKEN is required to poll OpenClaw task status');
+    throw new Error(
+      'TRANSLATION_STATUS_TOKEN or OPENCLAW_API_TOKEN is required to poll OpenClaw task status'
+    );
   }
   if (typeof fetchImpl !== 'function') {
-    throw new Error('A fetch implementation is required to poll OpenClaw task status');
+    throw new Error(
+      'A fetch implementation is required to poll OpenClaw task status'
+    );
   }
 
   const deadline = Date.now() + timeoutMs;
@@ -132,7 +145,9 @@ async function pollTaskUntilTerminal({
         signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
       });
     } catch (error) {
-      throw new Error(`Failed to poll OpenClaw task at ${pollUrl}: ${error.message}`);
+      throw new Error(
+        `Failed to poll OpenClaw task at ${pollUrl}: ${error.message}`
+      );
     }
 
     if (!response.ok) {
@@ -143,10 +158,13 @@ async function pollTaskUntilTerminal({
     try {
       task = await readJsonResponse(response);
     } catch (error) {
-      throw new Error(`OpenClaw task poll did not return valid JSON: ${error.message}`);
+      throw new Error(
+        `OpenClaw task poll did not return valid JSON: ${error.message}`
+      );
     }
 
-    const status = typeof task?.status === 'string' ? task.status.trim() : '';
+    const status =
+      task && typeof task.status === 'string' ? task.status.trim() : '';
     if (!status) {
       throw new Error('OpenClaw task payload is missing a status field');
     }
@@ -157,16 +175,22 @@ async function pollTaskUntilTerminal({
     }
 
     if (status === TERMINAL_SUCCESS_STATUS) {
-      logger.log(`OpenClaw task reached terminal success: ${formatTaskDetails(task)}`);
+      logger.log(
+        `OpenClaw task reached terminal success: ${formatTaskDetails(task)}`
+      );
       return task;
     }
 
     if (TERMINAL_FAILURE_STATUSES.has(status)) {
-      throw new Error(`OpenClaw task ended with status ${status}: ${formatTaskDetails(task)}`);
+      throw new Error(
+        `OpenClaw task ended with status ${status}: ${formatTaskDetails(task)}`
+      );
     }
 
     if (Date.now() >= deadline) {
-      throw new Error(`Timed out waiting for OpenClaw task at ${pollUrl} to reach a terminal state; last status=${status}`);
+      throw new Error(
+        `Timed out waiting for OpenClaw task at ${pollUrl} to reach a terminal state; last status=${status}`
+      );
     }
 
     await sleep(intervalMs);
@@ -176,7 +200,9 @@ async function pollTaskUntilTerminal({
 async function main(argv = process.argv.slice(2), env = process.env) {
   const responsePath = argv[0];
   if (!responsePath) {
-    throw new Error('Usage: node scripts/wait-for-openclaw-task.js <response-json-path>');
+    throw new Error(
+      'Usage: node scripts/wait-for-openclaw-task.js <response-json-path>'
+    );
   }
 
   const payload = readJsonFile(responsePath);
@@ -193,8 +219,14 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const task = await pollTaskUntilTerminal({
     pollUrl: resolvedPollUrl,
     apiToken,
-    intervalMs: Number.isFinite(intervalMs) && intervalMs >= 0 ? intervalMs : DEFAULT_INTERVAL_MS,
-    timeoutMs: Number.isFinite(timeoutMs) && timeoutMs >= 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
+    intervalMs:
+      Number.isFinite(intervalMs) && intervalMs >= 0
+        ? intervalMs
+        : DEFAULT_INTERVAL_MS,
+    timeoutMs:
+      Number.isFinite(timeoutMs) && timeoutMs >= 0
+        ? timeoutMs
+        : DEFAULT_TIMEOUT_MS,
   });
 
   console.log(`OpenClaw job ${jobId} finished with status ${task.status}`);
