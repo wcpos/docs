@@ -53,11 +53,28 @@ function parseAcceptedJob(payload) {
 }
 
 function resolvePollUrl(pollUrl, baseUrl = DEFAULT_BASE_URL) {
+  let base;
+  let resolved;
+
   try {
-    return new URL(pollUrl, baseUrl).toString();
+    base = new URL(baseUrl);
+  } catch (error) {
+    throw new Error(`Invalid OpenClaw base URL: ${error.message}`);
+  }
+
+  try {
+    resolved = new URL(pollUrl, base);
   } catch (error) {
     throw new Error(`Invalid poll_url returned by OpenClaw: ${error.message}`);
   }
+
+  if (resolved.origin !== base.origin) {
+    throw new Error(
+      `OpenClaw poll_url origin ${resolved.origin} does not match configured OPENCLAW_BASE_URL origin ${base.origin}`
+    );
+  }
+
+  return resolved.toString();
 }
 
 function maybeParseJson(value) {

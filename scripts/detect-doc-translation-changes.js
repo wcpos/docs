@@ -26,14 +26,21 @@ function splitInput(value) {
     .filter(Boolean);
 }
 
-function gitLines(args) {
+function formatGitError(error) {
+  const stderr = error && error.stderr ? String(error.stderr).trim() : '';
+  return stderr || (error && error.message) || 'unknown error';
+}
+
+function gitLines(args, execFileSyncImpl = execFileSync) {
   try {
-    return execFileSync('git', args, { encoding: 'utf8' })
+    return execFileSyncImpl('git', args, { encoding: 'utf8' })
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
-  } catch (_error) {
-    return [];
+  } catch (error) {
+    throw new Error(
+      `Git command failed (git ${args.join(' ')}): ${formatGitError(error)}`
+    );
   }
 }
 
@@ -48,14 +55,22 @@ function resolveChangedFiles({ explicitFiles, diffFiles, allFiles }) {
 }
 
 function main(env = process.env) {
-  const baseRef = env.BASE_REF || 'origin/main~1';
+  const baseRef = env.BASE_REF || '';
   const headRef = env.HEAD_REF || 'HEAD';
   const explicitFiles = splitInput(env.FILES || '');
-  const diffFiles = gitLines([
-    'diff',
-    '--name-only',
-    `${baseRef}...${headRef}`,
-  ]);
+  const explicit = filterTranslationSourceFiles(explicitFiles);
+  if (explicit.length > 0) {
+    process.stdout.write(JSON.stringify(explicit));
+    return;
+  }
+
+  const diffFiles = baseRef
+    ? gitLines([
+        'diff',
+        '--name-only',
+        `${baseRef}...${headRef}`,
+      ])
+    : [];
   const allFiles = gitLines([
     'ls-files',
     'versioned_docs',
@@ -70,6 +85,8 @@ function main(env = process.env) {
 
 module.exports = {
   filterTranslationSourceFiles,
+  gitLines,
+  main,
   resolveChangedFiles,
   splitInput,
 };

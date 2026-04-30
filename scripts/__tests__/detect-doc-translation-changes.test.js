@@ -1,8 +1,10 @@
 /* global describe, it, expect */
 const {
   filterTranslationSourceFiles,
+  gitLines,
   resolveChangedFiles,
 } = require('../detect-doc-translation-changes');
+const { resolvePollUrl } = require('../wait-for-openclaw-task');
 
 describe('filterTranslationSourceFiles', () => {
   it('keeps docs, English i18n JSON, sidebars, and Docusaurus config', () => {
@@ -65,5 +67,50 @@ describe('resolveChangedFiles', () => {
         allFiles: ['versioned_docs/version-1.x/b.mdx'],
       })
     ).toEqual(['versioned_docs/version-1.x/b.mdx']);
+  });
+});
+
+describe('gitLines', () => {
+  it('throws a clear error when git diff fails instead of returning an empty list', () => {
+    const failingGit = () => {
+      const error = new Error('Command failed: git diff');
+      error.stderr = 'fatal: bad revision origin/main...HEAD';
+      throw error;
+    };
+
+    expect(() =>
+      gitLines(['diff', '--name-only', 'origin/main...HEAD'], failingGit)
+    ).toThrow(
+      'Git command failed (git diff --name-only origin/main...HEAD): fatal: bad revision origin/main...HEAD'
+    );
+  });
+});
+
+
+describe('resolvePollUrl', () => {
+  it('resolves relative poll URLs against the configured OpenClaw base URL', () => {
+    expect(
+      resolvePollUrl('/translation/tasks/123', 'https://openclaw.example/base')
+    ).toBe('https://openclaw.example/translation/tasks/123');
+  });
+
+  it('allows absolute poll URLs on the configured OpenClaw origin', () => {
+    expect(
+      resolvePollUrl(
+        'https://openclaw.example/translation/tasks/123',
+        'https://openclaw.example/base'
+      )
+    ).toBe('https://openclaw.example/translation/tasks/123');
+  });
+
+  it('rejects absolute poll URLs on a different origin before polling', () => {
+    expect(() =>
+      resolvePollUrl(
+        'https://attacker.example/translation/tasks/123',
+        'https://openclaw.example/base'
+      )
+    ).toThrow(
+      'OpenClaw poll_url origin https://attacker.example does not match configured OPENCLAW_BASE_URL origin https://openclaw.example'
+    );
   });
 });
