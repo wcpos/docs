@@ -1,0 +1,128 @@
+---
+title: WCPOS ATUM 連携
+sidebar_label: ATUM
+description: WCPOS Pro 店舗を ATUM Multi-Inventory のロケーションと連携し、POS でロケーション別の在庫、価格、SKU を管理できます。
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# WCPOS ATUM 連携 {#wcpos-atum-integration}
+
+[ATUM Multi-Inventory](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/) を [WCPOS Pro](/getting-started/pro-license) と統合し、POS でロケーション別の在庫、価格、SKU を利用できるようにします。
+
+ATUM Multi-Inventory を使うと、商品の在庫を複数の在庫ロケーション（倉庫、店舗など）に分けて管理できます。本プラグインは、これらの ATUM ロケーションを WCPOS Pro の[店舗](/stores)に接続し、各 POS 端末がその物理的な所在地に応じた正しい在庫数、価格、SKU を表示できるようにします。
+
+## 機能 {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="box" title="ロケーション別在庫">
+    各店舗は、WooCommerce の合算在庫ではなく、割り当てられた ATUM 在庫ロケーションから在庫数を取得します。
+  </FeatureCard>
+  <FeatureCard icon="store" title="柔軟な価格設定">
+    WooCommerce のデフォルト、WCPOS Pro の店舗別価格、または ATUM のロケーション別価格から価格設定を選択できます。
+  </FeatureCard>
+  <FeatureCard icon="barcode" title="ロケーション別 SKU">
+    必要に応じて、POSで商品のメインSKUをATUMロケーション固有のSKUに切り替えます。
+  </FeatureCard>
+  <FeatureCard icon="sync" title="監査対応の在庫移動">
+    注文は正しいATUMロケーションで在庫を減算・復元し、`atum_inventory_orders`に完全な監査証跡を残します。
+  </FeatureCard>
+  <FeatureCard icon="arrow-right" title="商品編集の書き戻し">
+    POSでの在庫、価格、SKUの編集は、該当ロケーションにマッピングされたATUM在庫行に同期されます。
+  </FeatureCard>
+</FeatureGrid>
+
+## インストール {#installation}
+
+<Steps>
+  <StepCard number="1" title="ATUMおよびMulti-Inventoryのインストール">
+
+[ATUM Inventory Management](https://wordpress.org/plugins/atum-stock-manager-for-woocommerce/)と[ATUM Multi-Inventoryアドオン](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/)をインストールします。ATUMで在庫ロケーションを設定してください。
+
+  </StepCard>
+  <StepCard number="2" title="WCPOS ATUM連携のインストール">
+
+`WP Admin > POS > Settings > Extensions`からインストールするか、[GitHubリリースページ](https://github.com/wcpos/wcpos-atum/releases)から最新版をダウンロードし、`Plugins > Add New > Upload Plugin`からアップロードしてください。
+
+  </StepCard>
+  <StepCard number="3" title="店舗をATUMロケーションにマッピング" isLast>
+
+`POS > Stores`に移動して店舗を編集し、**ATUM Inventory**サイドバーセクションを設定します。店舗で使用する在庫ロケーションを選択し、価格ソースを指定し、必要に応じてSKUオーバーライドを有効にします。
+
+  </StepCard>
+</Steps>
+
+## 店舗設定 {#store-configuration}
+
+このプラグインは、WCPOS Pro の店舗エディターサイドバーに **ATUM Inventory** セクションを追加し、店舗ごとに 3 つの設定を提供します。
+
+- **在庫ロケーション** — この店舗が在庫を取得する ATUM ロケーション。
+- **価格ソース** — 商品価格の取得元。
+  - *デフォルト* — 標準の WooCommerce 価格
+  - *WCPOS Pro* — WCPOS Pro で設定された店舗ごとの価格
+  - *ATUM* — ATUM 在庫から取得するロケーション別価格
+- **SKU オーバーライド** — 商品のメイン SKU の代わりに、ATUM のロケーション別 SKU を任意で使用します。
+
+## POS の動作 {#pos-behavior}
+
+店舗に ATUM ロケーションが割り当てられている場合、POS に提供される商品データは自動的に調整されます。
+
+- **在庫数** は WooCommerce の合計在庫ではなく、該当ロケーションの在庫を反映します。
+- **在庫ステータス** はロケーションの在庫数に基づいて再計算されます。
+- **価格**は設定された価格ソースから取得されます。
+- **SKU** は、オーバーライドが有効な場合に ATUM ロケーションの SKU に置き換えられます。
+
+すべての調整は WCPOS REST API を通じて透過的に行われ、POS アプリ側での変更は不要です。POS から行われた商品の編集も、マッピングされた ATUM 在庫行に書き戻されます。詳細は下記の [商品編集の書き戻し](#product-edit-write-back) を参照してください。
+
+## 在庫管理 {#stock-management}
+
+マッピングされた ATUM ロケーションを持つ店舗で発生した POS 注文については、本プラグインは ATUM 本来の在庫減算フローに書き込みを任せつつ、正しいロケーションへ誘導します。
+
+1. **REST ペイロードの注入。** POS が注文を作成または更新する際、本プラグインは各明細行に `mi_inventories` エントリを注入し、ATUM がどのロケーションから引き当てるべきかを認識できるようにします。これがない場合、ATUM はメイン在庫にフォールバックしてしまいます。
+2. **ロケーションでスコープされた在庫フィルター。** 本プラグインは、ATUM の候補在庫リストを店舗のマッピング済みロケーションタームに紐づくものだけにフィルタリングし、減算時と復元時の双方で適切なものが選択されるようにします。
+
+実際の在庫変動は注文時および返金時に ATUM 自身が実行し、`atum_inventory_orders` に実際の `order_id` を含む行を書き込むため、ATUM の監査証跡が保持されます。
+
+## 商品編集の書き戻し {#product-edit-write-back}
+
+レジ係や管理者が POS から商品またはバリエーションを編集すると、その変更はメインの WooCommerce 商品だけでなく、その店舗のロケーションにマッピングされた ATUM 在庫行にも同期されます。これにより、`WP Admin` での手動更新を行わずに、各ロケーションの在庫、価格、SKU を ATUM と同期した状態に保てます。
+
+書き戻しは、`POST`, `PUT`, `PATCH` を `/wcpos/v1/products/...` へ送信し、`store_id`を含むWCPOS商品およびバリエーションのREST更新でトリガーされます。本プラグインは店舗のマッピング済みATUMロケーションを参照し、そのロケーションの在庫行のみを更新します。他のロケーションには影響しません。
+
+### 同期される項目 {#what-syncs}
+
+書き戻しは各店舗の設定を尊重するため、ATUM のデータは実際にその店舗が所有している場合にのみ変更されます:
+
+| フィールド | 同期されるタイミング |
+| --- | --- |
+| **在庫数量** | 常時 — ATUM ロケーションがマッピングされたすべての店舗で、そのロケーションの行が同期されます。 |
+| **通常価格 / セール価格 / 価格** | 店舗の**価格ソース**が *ATUM* に設定されている場合のみ。 |
+| **SKU** | 店舗で **SKU 上書き**が有効になっている場合のみ。 |
+
+店舗で *デフォルト* または *WCPOS Pro* の価格設定を使用している場合、ATUM の価格フィールドは変更されないため、ATUM は信頼できる情報源ではなく参考価格として機能し続けます。SKU についても、上書きが無効の場合は同様です。
+
+### 書き戻しがトリガーされないケース {#what-doesn-t-trigger-write-back}
+
+- 商品の作成 (書き戻しは更新のみ対象です — 新規商品は WooCommerce の通常の保存処理に委ねられます)。
+- `store_id` を含まないリクエスト — POS はどのロケーションに書き込むかをプラグインに伝える必要があります。
+- ATUM ロケーションがマッピングされていない店舗。
+- 店舗のロケーションに対応する既存の ATUM 在庫行がない商品 — プラグインは新しい在庫行を作成せず、既存の行のみを更新します。
+
+## 必要要件 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WordPress">WordPress 5.9 以上、PHP 7.4 以上</RequirementItem>
+  <RequirementItem label="WooCommerce">WooCommerce のインストールおよび有効化</RequirementItem>
+  <RequirementItem label="ATUM">ATUM Inventory Management および ATUM Multi-Inventory アドオン</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro — 複数店舗は Pro 機能です</RequirementItem>
+</RequirementsList>
+
+## 関連項目 {#related}
+
+- [複数店舗](/stores) — 店舗ごとの価格、住所、レジ担当者の割り当て
+- ソース: [github.com/wcpos/wcpos-atum](https://github.com/wcpos/wcpos-atum)
