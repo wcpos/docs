@@ -1,0 +1,128 @@
+---
+title: Integración WCPOS ATUM
+sidebar_label: ATUM
+description: Vincula tiendas WCPOS Pro con ubicaciones de ATUM Multi-Inventory para gestionar stock, precios y SKUs por ubicación en el POS.
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# Integración WCPOS ATUM {#wcpos-atum-integration}
+
+Integra [ATUM Multi-Inventory](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/) con [WCPOS Pro](/getting-started/pro-license), habilitando inventario, precios y SKUs basados en la ubicación en el punto de venta.
+
+ATUM Multi-Inventory permite dividir el stock de un producto entre varias ubicaciones de inventario: almacenes, tiendas minoristas, etc. Este plugin conecta esas ubicaciones de ATUM con las [tiendas](/stores) de WCPOS Pro para que cada terminal POS vea los niveles de stock, precios y SKUs correctos según su ubicación física.
+
+## Características {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="box" title="Stock por ubicación">
+    Cada tienda obtiene las cantidades de stock de la ubicación de inventario de ATUM asignada en lugar del stock agregado de WooCommerce.
+  </FeatureCard>
+  <FeatureCard icon="store" title="Precios flexibles">
+    Elige los precios entre los predeterminados de WooCommerce, los precios por tienda de WCPOS Pro o los precios específicos por ubicación de ATUM.
+  </FeatureCard>
+  <FeatureCard icon="barcode" title="SKUs por ubicación">
+    Opcionalmente, sustituye el SKU principal del producto por un SKU específico de la ubicación de ATUM en el POS.
+  </FeatureCard>
+  <FeatureCard icon="sync" title="Movimiento de stock auditable">
+    Los pedidos descuentan y restauran el stock en la ubicación correcta de ATUM, con un registro de auditoría completo en `atum_inventory_orders`.
+  </FeatureCard>
+  <FeatureCard icon="arrow-right" title="Sincronización inversa de ediciones de producto">
+    Las ediciones del POS sobre stock, precio y SKU se sincronizan con la fila de inventario de ATUM asignada a esa ubicación.
+  </FeatureCard>
+</FeatureGrid>
+
+## Instalación {#installation}
+
+<Steps>
+  <StepCard number="1" title="Instalar ATUM y Multi-Inventory">
+
+Instala [ATUM Inventory Management](https://wordpress.org/plugins/atum-stock-manager-for-woocommerce/) y el [complemento ATUM Multi-Inventory](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/). Configura tus ubicaciones de inventario en ATUM.
+
+  </StepCard>
+  <StepCard number="2" title="Instalar la integración WCPOS con ATUM">
+
+Instálalo desde `WP Admin > POS > Settings > Extensions`, o descarga la última versión desde la [página de releases de GitHub](https://github.com/wcpos/wcpos-atum/releases) y súbelo mediante `Plugins > Add New > Upload Plugin`.
+
+  </StepCard>
+  <StepCard number="3" title="Asignar tiendas a ubicaciones de ATUM" isLast>
+
+Ve a `POS > Stores`, edita una tienda y configura la sección **Inventario ATUM** de la barra lateral. Selecciona la ubicación de inventario que debe usar la tienda, elige una fuente de precios y, opcionalmente, habilita los reemplazos de SKU.
+
+  </StepCard>
+</Steps>
+
+## Configuración de la tienda {#store-configuration}
+
+El plugin añade una sección **Inventario ATUM** a la barra lateral del editor de tiendas de WCPOS Pro con tres ajustes por tienda:
+
+- **Ubicación del inventario** — la ubicación de ATUM desde la cual esta tienda obtiene el stock.
+- **Origen de precios** — de dónde provienen los precios de los productos:
+  - *Predeterminado* — precios estándar de WooCommerce
+  - *WCPOS Pro* — precios por tienda configurados en WCPOS Pro
+  - *ATUM* — precios específicos de la ubicación desde el inventario de ATUM
+- **Sustitución de SKU** — opcionalmente, usar SKUs específicos de la ubicación desde ATUM en lugar del SKU principal del producto.
+
+## Comportamiento del POS {#pos-behavior}
+
+Cuando una tienda tiene una ubicación de ATUM asignada, los datos del producto enviados al POS se ajustan automáticamente:
+
+- Las **cantidades de stock** reflejan el inventario de la ubicación específica, no el stock agregado de WooCommerce.
+- El **estado del stock** se recalcula según la cantidad de la ubicación.
+- Los **precios** provienen de la fuente de precios configurada.
+- Los **SKU** se sustituyen por el SKU de la ubicación ATUM si la sustitución está habilitada.
+
+Todos los ajustes se realizan de forma transparente a través de la API REST de WCPOS, sin necesidad de cambios en la aplicación POS. Las ediciones de productos realizadas desde el POS también se escriben de vuelta en la fila de inventario ATUM mapeada; consulta [Escritura de Ediciones de Productos](#product-edit-write-back) más abajo.
+
+## Gestión de stock {#stock-management}
+
+Para los pedidos del POS realizados en tiendas con una ubicación ATUM mapeada, el plugin permite que el flujo nativo de descuento de stock de ATUM gestione la escritura, pero lo dirige a la ubicación correcta:
+
+1. **Inyección de carga útil REST.** Cuando el POS crea o actualiza un pedido, el plugin inyecta una entrada `mi_inventories` en cada línea de producto para que ATUM sepa de qué ubicación debe extraer. Sin esto, ATUM recurriría al inventario principal.
+2. **Filtro de inventario por ubicación.** El plugin filtra la lista de inventarios candidatos de ATUM para incluir únicamente aquellos vinculados al término de ubicación mapeado de la tienda, garantizando que se seleccione el correcto tanto en la reducción como en la restauración.
+
+ATUM realiza el cambio de stock real en pedidos y reembolsos, escribiendo filas en `atum_inventory_orders` con el `order_id` real, preservando el registro de auditoría de ATUM.
+
+## Escritura de ediciones de productos {#product-edit-write-back}
+
+Cuando un cajero o gerente edita un producto o variación desde el POS, los cambios se sincronizan de vuelta a la fila de inventario ATUM mapeada para la ubicación de esa tienda, no solo al producto principal de WooCommerce. Esto mantiene el stock, precio y SKU de cada ubicación sincronizados con ATUM sin actualizaciones manuales en `WP Admin`.
+
+La escritura de vuelta se activa en las actualizaciones REST de productos y variaciones de WCPOS (`POST`, `PUT`, `PATCH` a `/wcpos/v1/products/...`) que incluyen un `store_id`. El plugin busca la ubicación ATUM mapeada de la tienda y actualiza únicamente la fila de inventario de esa ubicación; las demás ubicaciones permanecen intactas.
+
+### Qué se sincroniza {#what-syncs}
+
+La escritura de retorno respeta la configuración de cada tienda, de modo que los datos de ATUM solo cambian cuando la tienda realmente es propietaria de esos datos:
+
+| Campo | Cuándo se sincroniza |
+| --- | --- |
+| **Cantidad de stock** | Siempre — cada tienda con una ubicación de ATUM asignada mantiene sincronizada la fila de su ubicación. |
+| **Precio normal / Precio rebajado / Precio** | Solo cuando la **Fuente de precios** de la tienda está configurada como *ATUM*. |
+| **SKU** | Solo cuando **Sobrescritura de SKU** está habilitada para la tienda. |
+
+Si la tienda utiliza precios *Predeterminados* o *WCPOS Pro*, los campos de precio de ATUM no se modifican, de modo que ATUM continúa funcionando como precio de referencia y no como fuente de verdad. Lo mismo aplica a los SKU cuando la sobrescritura está desactivada.
+
+### Qué no activa la escritura de retorno {#what-doesn-t-trigger-write-back}
+
+- Creación de productos (solo las actualizaciones se escriben de vuelta — los productos nuevos siguen la ruta de guardado habitual de WooCommerce).
+- Solicitudes sin un `store_id` — el POS debe indicar al plugin en qué ubicación escribir.
+- Tiendas sin una ubicación de ATUM asignada.
+- Productos sin una fila de inventario de ATUM existente para la ubicación de la tienda — el plugin no creará nuevas filas de inventario, solo actualizará las existentes.
+
+## Requisitos {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WordPress">WordPress 5.9+ con PHP 7.4+</RequirementItem>
+  <RequirementItem label="WooCommerce">WooCommerce instalado y activado</RequirementItem>
+  <RequirementItem label="ATUM">ATUM Inventory Management y el complemento ATUM Multi-Inventory</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro — multitienda es una función Pro</RequirementItem>
+</RequirementsList>
+
+## Relacionado {#related}
+
+- [Multitienda](/stores) — precios, direcciones y asignación de cajeros por tienda
+- Fuente: [github.com/wcpos/wcpos-atum](https://github.com/wcpos/wcpos-atum)
