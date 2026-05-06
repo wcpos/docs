@@ -1,0 +1,99 @@
+name: Aide CodeRabbit Status
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - edited
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  validate-aide-coderabbit-status:
+    name: Validate Aide CodeRabbit status
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Publish guarded CodeRabbit status for automated docs translation PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          publish_status() {
+            local state="$1"
+            local description="$2"
+
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+              -f state="$state" \
+              -f context=CodeRabbit \
+              -f description="$description" \
+              -f target_url="$RUN_URL"
+          }
+
+          is_aide_candidate=false
+          if [[ "$PR_AUTHOR" == 'wcpos-bot[bot]' ]] || [[ "$HEAD_REF" == aide/docs-translations-* ]]; then
+            is_aide_candidate=true
+          fi
+
+          if [[ "$is_aide_candidate" != 'true' ]]; then
+            echo "PR author is $PR_AUTHOR and head ref is $HEAD_REF. Leaving CodeRabbit to the CodeRabbit app."
+            exit 0
+          fi
+
+          if [[ "$PR_AUTHOR" != 'wcpos-bot[bot]' ]]; then
+            publish_status failure 'Invalid Aide translation PR author.'
+            echo "Unexpected automated docs translation PR author: $PR_AUTHOR" >&2
+            exit 1
+          fi
+
+          if [[ "$PR_TITLE" != 'feat(aide): update docs translations' ]]; then
+            publish_status failure 'Invalid Aide translation PR title.'
+            echo "Unexpected automated docs translation PR title: $PR_TITLE" >&2
+            exit 1
+          fi
+
+          if [[ "$BASE_REF" != 'main' ]]; then
+            publish_status failure 'Invalid Aide translation PR base branch.'
+            echo "Unexpected automated docs translation PR base branch: $BASE_REF" >&2
+            exit 1
+          fi
+
+          if [[ "$HEAD_REF" != aide/docs-translations-* ]]; then
+            publish_status failure 'Invalid Aide translation PR branch.'
+            echo "Unexpected automated docs translation PR head branch: $HEAD_REF" >&2
+            exit 1
+          fi
+
+          mapfile -t changed_files < <(gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --name-only)
+          printf 'Changed files:\n'
+          printf ' - %s\n' "${changed_files[@]}"
+
+          if (( ${#changed_files[@]} == 0 )); then
+            publish_status failure 'Aide translation PR has no changed files.'
+            echo "Automated docs translation PR has no changed files." >&2
+            exit 1
+          fi
+
+          for changed_file in "${changed_files[@]}"; do
+            if [[ "$changed_file" != i18n/* ]]; then
+              publish_status failure 'Invalid Aide translation PR file set.'
+              echo "Automated docs translation CodeRabbit status is only allowed for i18n/ translation files; found: $changed_file" >&2
+              exit 1
+            fi
+          done
+
+          publish_status success 'Automated docs translation PR validated.'
