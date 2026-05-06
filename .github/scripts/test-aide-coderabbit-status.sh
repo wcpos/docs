@@ -58,6 +58,11 @@ if grep -Fq 'gh pr diff' "$WORKFLOW_FILE" \
   exit 1
 fi
 
+if ! grep -Fq 'previous_filename' "$WORKFLOW_FILE"; then
+  echo "Expected workflow to validate previous filenames for renamed PR files" >&2
+  exit 1
+fi
+
 if ! grep -Fq 'i18n/' "$WORKFLOW_FILE"; then
   echo "Expected workflow to limit the bypass to docs translation files under i18n/" >&2
   exit 1
