@@ -23,6 +23,7 @@ jobs:
       - name: Publish guarded CodeRabbit status for automated docs translation PRs
         env:
           GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -45,19 +46,15 @@ jobs:
           }
 
           is_aide_candidate=false
-          if [[ "$PR_AUTHOR" == 'wcpos-bot[bot]' ]] || [[ "$HEAD_REF" == aide/docs-translations-* ]]; then
+          if [[ "$ACTOR" == 'wcpos-bot[bot]' ]] \
+            && [[ "$PR_AUTHOR" == 'wcpos-bot[bot]' ]] \
+            && [[ "$HEAD_REF" == aide/docs-translations-* ]]; then
             is_aide_candidate=true
           fi
 
           if [[ "$is_aide_candidate" != 'true' ]]; then
-            echo "PR author is $PR_AUTHOR and head ref is $HEAD_REF. Leaving CodeRabbit to the CodeRabbit app."
+            echo "Actor is $ACTOR, PR author is $PR_AUTHOR, and head ref is $HEAD_REF. Leaving CodeRabbit to the CodeRabbit app."
             exit 0
-          fi
-
-          if [[ "$PR_AUTHOR" != 'wcpos-bot[bot]' ]]; then
-            publish_status failure 'Invalid Aide translation PR author.'
-            echo "Unexpected automated docs translation PR author: $PR_AUTHOR" >&2
-            exit 1
           fi
 
           if [[ "$PR_TITLE" != 'feat(aide): update docs translations' ]]; then
@@ -72,13 +69,16 @@ jobs:
             exit 1
           fi
 
-          if [[ "$HEAD_REF" != aide/docs-translations-* ]]; then
-            publish_status failure 'Invalid Aide translation PR branch.'
-            echo "Unexpected automated docs translation PR head branch: $HEAD_REF" >&2
+          if ! changed_files_payload="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')"; then
+            publish_status failure 'Unable to read changed files for Aide translation PR.'
+            echo "Failed to fetch changed files via GitHub API for PR #$PR_NUMBER" >&2
             exit 1
           fi
 
-          mapfile -t changed_files < <(gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --name-only)
+          changed_files=()
+          if [[ -n "$changed_files_payload" ]]; then
+            mapfile -t changed_files <<< "$changed_files_payload"
+          fi
           printf 'Changed files:\n'
           printf ' - %s\n' "${changed_files[@]}"
 

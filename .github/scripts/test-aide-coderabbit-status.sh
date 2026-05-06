@@ -30,8 +30,10 @@ if grep -Fq 'name: CodeRabbit' "$WORKFLOW_FILE"; then
   exit 1
 fi
 
-if ! grep -Fq 'wcpos-bot[bot]' "$WORKFLOW_FILE"; then
-  echo "Expected workflow to limit the bypass to WCPOS Bot PRs" >&2
+if ! grep -Fq 'wcpos-bot[bot]' "$WORKFLOW_FILE" \
+  || ! grep -Fq 'ACTOR: ${{ github.actor }}' "$WORKFLOW_FILE" \
+  || ! grep -Fq "[[ \"\$ACTOR\" == 'wcpos-bot[bot]' ]]" "$WORKFLOW_FILE"; then
+  echo "Expected workflow to limit the bypass to WCPOS Bot actor-scoped PRs" >&2
   exit 1
 fi
 
@@ -45,8 +47,14 @@ if ! grep -Fq 'aide/docs-translations-' "$WORKFLOW_FILE"; then
   exit 1
 fi
 
-if ! grep -Fq 'BASE_REF' "$WORKFLOW_FILE" || ! grep -Fq "main" "$WORKFLOW_FILE"; then
+if ! grep -Fq "[[ \"\$BASE_REF\" != 'main' ]]" "$WORKFLOW_FILE"; then
   echo "Expected workflow to require main as the PR base branch" >&2
+  exit 1
+fi
+
+if grep -Fq 'gh pr diff' "$WORKFLOW_FILE" \
+  || ! grep -Fq "pulls/\${PR_NUMBER}/files" "$WORKFLOW_FILE"; then
+  echo "Expected workflow to list PR files through the pull request files API" >&2
   exit 1
 fi
 
