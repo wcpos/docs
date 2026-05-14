@@ -2,225 +2,362 @@
 title: Receipt Data Reference
 sidebar_label: Receipt Data
 sidebar_position: 4
-description: Complete reference for all template variables available in WCPOS receipt templates.
+description: Complete reference for the canonical data contract available in WCPOS receipt templates.
 ---
 
-Every receipt template has access to a standardised data payload with 13 sections. Use `{{section.field}}` syntax in HTML and thermal templates.
+WCPOS logicless HTML templates and thermal XML templates render from the same canonical receipt payload. Use Mustache dot paths such as `{{order.number}}`, `{{store.name}}`, and `{{totals.total_display}}`. Arrays are rendered with sections:
 
-All currency fields have a corresponding `_display` variant (e.g., `grand_total` → `grand_total_display`) that contains a locale-aware formatted string like `$12.50`.
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} — {{line_total_display}}
+{{/lines}}
+```
 
-## Display Convenience Fields
+The canonical contract is produced by the WCPOS receipt data builder on the server and mirrored by the offline receipt renderer in the app. Receipts open immediately from local data, then upgrade to the server response when it is available, so custom templates should use the fields below rather than PHP order methods.
 
-Line items, fees, and totals include convenience fields that automatically resolve to the tax-inclusive or tax-exclusive value based on your WooCommerce tax display setting:
+## Rendering rules
 
-| Convenience field | Resolves to |
-|-------------------|-------------|
-| `unit_price` | `unit_price_incl` or `unit_price_excl` |
-| `line_total` | `line_total_incl` or `line_total_excl` |
-| `subtotal` | `subtotal_incl` or `subtotal_excl` |
-| `grand_total` | `grand_total_incl` or `grand_total_excl` |
-| `unit_subtotal` | Pre-coupon unit price (for showing original vs discounted) |
+### Currency fields
 
-**Use these convenience fields in templates** — they respect your store's tax display configuration automatically.
+Numeric money fields are preserved as numbers and the renderer adds locale-aware `_display` fields for template output:
 
-## meta
+| Numeric field | Display field |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
 
-Order metadata.
+Prefer `_display` fields when printing receipts. Use numeric fields only for conditional sections or machine-readable output.
 
-| Field | Type | Example |
-|-------|------|---------|
-| `meta.schema_version` | string | `"1.0.0"` |
-| `meta.mode` | string | `"fiscal"` or `"live"` |
-| `meta.created_at` | string | `"2026-04-15T10:30:00"` |
-| `meta.order_id` | number | `1234` |
-| `meta.order_number` | string | `"1234"` |
-| `meta.currency` | string | `"USD"` |
+### Tax display-aware fields
+
+Several fields have inclusive and exclusive variants plus a display-side convenience value. The convenience value follows the store's cart tax display setting.
+
+| Convenience field | Inclusive field | Exclusive field |
+|-------------------|-----------------|-----------------|
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+### Date objects
+
+Date fields are objects with multiple preformatted variants. This avoids doing date formatting inside Mustache.
+
+| Field | Description |
+|-------|-------------|
+| `datetime`, `date`, `time` | Default date/time strings |
+| `datetime_short`, `datetime_long`, `datetime_full` | Locale-aware combined formats |
+| `date_short`, `date_long`, `date_full` | Locale-aware date-only formats |
+| `date_ymd`, `date_dmy`, `date_mdy` | Fixed-order date formats |
+| `weekday_short`, `weekday_long` | Day names |
+| `day`, `month`, `month_short`, `month_long`, `year` | Individual date parts |
+
+Available date objects: `order.created`, `order.paid`, `order.completed`, `order.printed`, and `refunds[].date`. `order.printed` is refreshed at render time, which is useful for reprints.
+
+## Top-level sections
+
+| Section | Type | Description |
+|---------|------|-------------|
+| `order` | object | Order identity, status, dates, note, and payment URL information |
+| `store` | object | Store identity, address, contact details, tax IDs, logo, hours, and footer text |
+| `cashier` | object | User who processed the order |
+| `customer` | object | Customer display name, addresses, and tax IDs |
+| `lines` | array | Product line items |
+| `fees` | array | Fee rows |
+| `shipping` | array | Shipping rows |
+| `discounts` | array | Coupon/discount rows |
+| `totals` | object | Order totals, payment totals, refund summary, and item counts |
+| `tax` | object | Tax display mode flags for section guards |
+| `tax_summary` | array | Per-rate tax summary rows |
+| `has_tax_summary` | boolean | Convenience guard for `tax_summary` |
+| `payments` | array | Payment rows |
+| `refunds` | array | Refund records applied to the order |
+| `fiscal` | object | Fiscal snapshot fields populated by fiscal integrations |
+| `presentation_hints` | object | Formatting and renderer hints |
+| `i18n` | object | Translated labels for bundled and custom templates |
+
+## order
+
+| Field | Type | Example / description |
+|-------|------|-----------------------|
+| `order.id` | number | `1234` |
+| `order.number` | string | Human-facing order number, e.g. `"10045"` |
+| `order.currency` | string | ISO currency code, e.g. `"USD"` |
+| `order.customer_note` | string | Customer/order note |
+| `order.wc_status` | string | Raw WooCommerce status slug, e.g. `"processing"` |
+| `order.status_label` | string | Localised status label, including custom statuses |
+| `order.created_via` | string | Source/channel, e.g. `"woocommerce-pos"` |
+| `order.needs_payment` | boolean | Whether a payment section should be shown |
+| `order.payment_url` | string | Order payment URL when available |
+| `order.created` | date object | Order creation date |
+| `order.paid` | date object | Paid date, empty strings when not paid |
+| `order.completed` | date object | Completed date, empty strings when incomplete |
+| `order.printed` | date object | Render-time print/reprint timestamp |
 
 ## store
 
-Store information. In multi-store setups (Pro), this reflects the store the order was placed at.
+| Field | Type | Example / description |
+|-------|------|-----------------------|
+| `store.id` | number | Store ID, or historical ID for deleted stores |
+| `store.name` | string | Store display name |
+| `store.address.address_1` | string | Street address line 1 |
+| `store.address.address_2` | string | Suite/unit line |
+| `store.address.city` | string | City/locality |
+| `store.address.state` | string | State/region |
+| `store.address.postcode` | string | Postal code |
+| `store.address.country` | string | ISO country code |
+| `store.address_lines` | array | Preformatted address lines; recommended for most templates |
+| `store.tax_ids` | array | Structured business tax IDs; loop this instead of using a single tax ID |
+| `store.phone` | string | Store phone |
+| `store.email` | string | Store email |
+| `store.logo` | string/null | Store logo URL or data URI |
+| `store.opening_hours` | string/null | Compact opening-hours text |
+| `store.opening_hours_vertical` | string/null | Multi-line opening-hours block |
+| `store.opening_hours_inline` | string/null | Comma-separated opening-hours text |
+| `store.opening_hours_notes` | string/null | Free-text opening-hours notes |
+| `store.personal_notes` | string/null | Receipt footer/personal note |
+| `store.policies_and_conditions` | string/null | Refund, returns, or terms text |
+| `store.footer_imprint` | string/null | Legal footer imprint |
 
-| Field | Type | Example |
-|-------|------|---------|
-| `store.name` | string | `"My Shop"` |
-| `store.address_1` | string | `"123 Main St"` |
-| `store.address_2` | string | `"Suite 100"` |
-| `store.city` | string | `"Portland"` |
-| `store.state` | string | `"OR"` |
-| `store.postcode` | string | `"97201"` |
-| `store.country` | string | `"US"` |
-| `store.tax_id` | string | `"123-456-789"` |
-| `store.phone` | string | `"+1 555-0100"` |
-| `store.email` | string | `"store@example.com"` |
-| `store.logo` | string | URL to store logo |
-| `store.opening_hours` | string | Formatted opening hours |
+### Tax ID objects
+
+`store.tax_ids` and `customer.tax_ids` contain objects with the same shape:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Identifier such as `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein`, or `other` |
+| `value` | string | Tax ID value to print |
+| `country` | string/null | ISO country code when known |
+| `label` | string/null | Localised display label, resolved before rendering |
+
+Example:
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
 
 ## cashier
 
-The user who processed the order.
-
-| Field | Type | Example |
-|-------|------|---------|
-| `cashier.id` | number | `1` |
-| `cashier.display_name` | string | `"Jane Smith"` |
+| Field | Type | Example / description |
+|-------|------|-----------------------|
+| `cashier.id` | number | WordPress user ID, `0` when unknown |
+| `cashier.name` | string | Cashier display name |
 
 ## customer
 
-Customer details. Empty for guest orders.
+| Field | Type | Example / description |
+|-------|------|-----------------------|
+| `customer.id` | number/null | Customer ID, or `null` for guests |
+| `customer.name` | string | Customer display name, or guest label |
+| `customer.billing_address.*` | object | WooCommerce billing address fields |
+| `customer.shipping_address.*` | object | WooCommerce shipping address fields |
+| `customer.tax_ids` | array | Structured customer tax IDs snapshotted from the order |
 
-| Field | Type | Example |
-|-------|------|---------|
-| `customer.id` | number | `42` |
-| `customer.first_name` | string | `"John"` |
-| `customer.last_name` | string | `"Doe"` |
-| `customer.billing.address_1` | string | `"456 Oak Ave"` |
-| `customer.billing.city` | string | `"Portland"` |
-| `customer.billing.state` | string | `"OR"` |
-| `customer.billing.postcode` | string | `"97201"` |
-| `customer.billing.country` | string | `"US"` |
-| `customer.billing.email` | string | `"john@example.com"` |
-| `customer.billing.phone` | string | `"+1 555-0200"` |
-| `customer.shipping.*` | | Same fields as billing |
-| `customer.tax_id` | string | `"987-654-321"` |
+Common address keys include `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email`, and `phone`.
 
 ## lines
 
-Array of line items. Loop with `{{#lines}}...{{/lines}}`.
+Loop with `{{#lines}}...{{/lines}}`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Product name |
-| `quantity` | number | Quantity ordered |
+| `key` | string | Stable line key/order item ID |
 | `sku` | string | Product SKU |
-| `unit_price` | number | Unit price (tax display aware) |
-| `unit_price_display` | string | Formatted unit price |
-| `unit_price_incl` | number | Unit price including tax |
-| `unit_price_excl` | number | Unit price excluding tax |
-| `unit_subtotal` | number | Pre-coupon unit price |
-| `unit_subtotal_display` | string | Formatted pre-coupon unit price |
-| `subtotal` | number | Line subtotal before discounts |
-| `discount` | number | Discount amount |
-| `discount_display` | string | Formatted discount |
-| `line_total` | number | Line total (tax display aware) |
-| `line_total_display` | string | Formatted line total |
-| `line_total_incl` | number | Line total including tax |
-| `line_total_excl` | number | Line total excluding tax |
-| `tax_breakdown` | array | Per-rate tax breakdown (same structure as [`tax_summary`](#tax_summary): `code`, `rate`, `label`, `taxable`, `tax_amount`, `tax_amount_display`) |
+| `name` | string | Product or line display name |
+| `qty` | number | Quantity sold |
+| `qty_refunded` | number | Quantity refunded for this line |
+| `unit_subtotal` / `_incl` / `_excl` | number | Pre-discount unit price |
+| `unit_price` / `_incl` / `_excl` | number | Post-discount unit price |
+| `line_subtotal` / `_incl` / `_excl` | number | Pre-discount line subtotal |
+| `discounts` / `_incl` / `_excl` | number | Discount amount as a positive value |
+| `line_total` / `_incl` / `_excl` | number | Final line total |
+| `total_refunded` | number | Total refunded for this line as a positive value |
+| `taxes` | array | Per-rate tax rows for this line |
+| `meta` | array | Order item meta as `{key, value}` pairs |
+| `attributes` | array | Product/variation attributes as `{key, value}` pairs |
 
-## fees
+Formatted variants include `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display`, and inclusive/exclusive `_display` variants.
 
-Array of fee items. Loop with `{{#fees}}...{{/fees}}`.
+## fees and shipping
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Fee name |
-| `total_incl` | number | Fee total including tax |
-| `total_excl` | number | Fee total excluding tax |
-| `total_incl_display` | string | Formatted inclusive total |
-| `total_excl_display` | string | Formatted exclusive total |
-
-## shipping
-
-Array of shipping items. Loop with `{{#shipping}}...{{/shipping}}`.
+Loop with `{{#fees}}...{{/fees}}` and `{{#shipping}}...{{/shipping}}`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Shipping method name |
-| `total_incl` | number | Shipping total including tax |
-| `total_excl` | number | Shipping total excluding tax |
+| `label` | string | Fee label or shipping method name |
+| `method_id` | string | Shipping method ID (shipping only) |
+| `total` / `_incl` / `_excl` | number | Display-side, inclusive, and exclusive totals |
+| `taxes` | array | Per-rate tax rows |
+| `meta` | array | `{key, value}` meta pairs |
+
+Formatted variants: `total_display`, `total_incl_display`, and `total_excl_display`.
 
 ## discounts
 
-Discount totals for the order.
+Loop with `{{#discounts}}...{{/discounts}}`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `discounts.total_incl` | number | Total discount including tax |
-| `discounts.total_excl` | number | Total discount excluding tax |
-| `discounts.total_incl_display` | string | Formatted inclusive discount |
-| `discounts.total_excl_display` | string | Formatted exclusive discount |
+| `label` | string | Coupon description or code fallback |
+| `code` | string | Coupon code |
+| `codes` | string | Legacy/display fallback for joined codes |
+| `total` / `_incl` / `_excl` | number | Discount amount as a positive value |
+
+Formatted variants: `total_display`, `total_incl_display`, and `total_excl_display`. Add your own minus sign in the template if you want discounts shown as negative rows.
 
 ## totals
 
-Order totals.
+| Field | Type | Description |
+|-------|------|-------------|
+| `totals.subtotal` / `_incl` / `_excl` | number | Order subtotal before discounts |
+| `totals.discount_total` / `_incl` / `_excl` | number | Order discount total as a positive value |
+| `totals.tax_total` | number | Total tax amount |
+| `totals.total` / `_incl` / `_excl` | number | Order grand total |
+| `totals.paid_total` | number | Amount paid/applied |
+| `totals.change_total` | number | Change returned to the customer |
+| `totals.refund_total` | number | Total refunded as a positive value |
+| `totals.net_total` | number | `total - refund_total`, clamped to zero |
+| `totals.total_qty` | number | Sum of line item quantities |
+| `totals.line_count` | number | Count of product line rows |
+
+Formatted variants include `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display`, and `net_total_display`, plus inclusive/exclusive variants where applicable.
+
+## tax and tax_summary
+
+Use `tax` for display-mode guards and `tax_summary` for itemized rate rows.
+
+| Tax field | Type | Description |
+|-----------|------|-------------|
+| `tax.display` | string | `incl` or `excl` |
+| `tax.display_incl` | boolean | True when prices display inclusive of tax |
+| `tax.display_excl` | boolean | True when prices display exclusive of tax |
+| `tax.breakdown` | string | `hidden`, `single`, or `itemized` |
+| `tax.breakdown_hidden` | boolean | True when tax rows should be hidden |
+| `tax.breakdown_single` | boolean | True when a single tax total is preferred |
+| `tax.breakdown_itemized` | boolean | True when per-rate rows are preferred |
+| `has_tax_summary` | boolean | True when `tax_summary` contains rows |
+
+Loop `tax_summary` with `{{#tax_summary}}...{{/tax_summary}}`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `totals.subtotal` | number | Order subtotal |
-| `totals.subtotal_display` | string | Formatted subtotal |
-| `totals.discount_total_incl` | number | Total discount including tax |
-| `totals.discount_total_excl` | number | Total discount excluding tax |
-| `totals.tax` | number | Total tax amount |
-| `totals.tax_display` | string | Formatted tax |
-| `totals.grand_total` | number | Grand total (tax display aware) |
-| `totals.grand_total_display` | string | Formatted grand total |
-| `totals.grand_total_incl` | number | Grand total including tax |
-| `totals.grand_total_excl` | number | Grand total excluding tax |
-| `totals.paid_total` | number | Amount paid |
-| `totals.paid_total_display` | string | Formatted amount paid |
-| `totals.change_total` | number | Change given |
-| `totals.change_total_display` | string | Formatted change |
-
-## tax_summary
-
-Array of per-rate tax breakdowns. Loop with `{{#tax_summary}}...{{/tax_summary}}`.
-
-| Field | Type | Example |
-|-------|------|---------|
-| `code` | string | `"US-OR-TAX-1"` |
-| `rate` | number | `10` |
-| `label` | string | `"Sales Tax"` |
-| `taxable` | number | Taxable amount |
+| `code` | string | Tax rate ID/code |
+| `rate` | number/null | Rate percentage when resolved |
+| `label` | string | Tax rate label |
+| `compound` | boolean | Whether the rate is compounded |
+| `taxable_amount_excl` | number/null | Taxable base excluding tax |
 | `tax_amount` | number | Tax collected |
-| `tax_amount_display` | string | Formatted tax amount |
+| `taxable_amount_incl` | number/null | Taxable base including tax |
+
+Formatted variants: `taxable_amount_excl_display`, `tax_amount_display`, and `taxable_amount_incl_display`.
 
 ## payments
 
-Array of payment methods used. Loop with `{{#payments}}...{{/payments}}`.
+Loop with `{{#payments}}...{{/payments}}`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `method` | string | Payment gateway ID |
-| `title` | string | Display name (e.g., "Cash") |
-| `amount` | number | Amount paid via this method |
-| `amount_display` | string | Formatted amount |
-| `tendered` | number | Amount tendered (cash payments) |
-| `tendered_display` | string | Formatted tendered amount |
-| `change` | number | Change given |
-| `change_display` | string | Formatted change |
+| `method_id` | string | Payment method identifier |
+| `method_title` | string | Payment method display title |
+| `amount` | number | Amount applied to the order |
+| `transaction_id` | string | Gateway transaction ID |
+| `tendered` | number | Cash amount tendered when present |
+| `change` | number | Cash change returned when present |
+
+Formatted variants: `amount_display`, `tendered_display`, and `change_display`.
+
+## refunds
+
+Loop with `{{#refunds}}...{{/refunds}}`. Refund amounts are positive magnitudes; templates decide whether to prepend a minus sign or render a separate returned-items block.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Refund record ID |
+| `date` | date object | Refund creation date |
+| `amount` | number | Refund total |
+| `subtotal` | number | Refunded line subtotal |
+| `tax_total` | number | Tax refunded |
+| `shipping_total` | number | Shipping amount refunded |
+| `shipping_tax` | number | Shipping tax refunded |
+| `reason` | string | Refund reason |
+| `refunded_by_id` | number/null | User ID that issued the refund |
+| `refunded_by_name` | string | User display name that issued the refund |
+| `refunded_payment` | boolean | Whether the payment was refunded through the gateway |
+| `destination` | string | `original_method`, `cash`, or `manual` |
+| `gateway_id` | string | Gateway ID used for the refund |
+| `gateway_title` | string | Gateway display title |
+| `processing_mode` | string | Provider/manual processing mode |
+| `lines` | array | Refunded product rows |
+| `fees` | array | Refunded fee rows |
+| `shipping` | array | Refunded shipping rows |
+
+Refund line fields include `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl`, `line_total`, `unit_total`, and `taxes`. Refund fee and shipping rows use `label`, `total`, `total_incl`, `total_excl`, and `taxes`. Display variants are added for totals and tax amounts.
 
 ## fiscal
 
-Fiscal compliance fields. Populated by Pro via the `woocommerce_pos_fiscal_snapshot_enrich` filter.
+Fiscal fields are empty by default and populated by fiscal integrations or WCPOS Pro snapshot enrichment.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `fiscal.immutable_id` | string | Unique fiscal receipt ID |
-| `fiscal.receipt_number` | string | Sequential receipt number |
-| `fiscal.sequence` | number | Sequence counter |
-| `fiscal.hash` | string | SHA-256 checksum |
-| `fiscal.qr_payload` | string | QR code data |
+| `fiscal.immutable_id` | string | Immutable fiscal identifier |
+| `fiscal.receipt_number` | string | Fiscal receipt number |
+| `fiscal.sequence` | number/null | Sequence counter |
+| `fiscal.hash` | string | Hash/signature value |
+| `fiscal.qr_payload` | string | QR payload for fiscal verification |
 | `fiscal.tax_agency_code` | string | Tax authority code |
-| `fiscal.signed_timestamp` | string | Signed timestamp |
-| `fiscal.signature_excerpt` | string | Signature excerpt for display |
-| `fiscal.document_label` | string | Document type label |
-| `fiscal.is_reprint` | boolean | Whether this is a reprint |
-| `fiscal.reprint_count` | number | Number of reprints |
-| `fiscal.extra_fields` | array | Country-specific label/value pairs |
+| `fiscal.signed_at` | string | Fiscal signing timestamp |
+| `fiscal.signature_excerpt` | string | Truncated signature for display |
+| `fiscal.document_label` | string | Document label, e.g. Tax Invoice |
+| `fiscal.is_reprint` | boolean | Whether this render is a reprint |
+| `fiscal.reprint_count` | number | Reprint count |
+| `fiscal.extra_fields` | array/object | Jurisdiction-specific values |
 
 ## presentation_hints
 
-Display configuration from WooCommerce settings.
+These fields are mainly consumed by the renderer and formatter. They are available to templates when needed.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `presentation_hints.tax_display` | string | `"incl"` or `"excl"` |
+| `presentation_hints.display_tax` | string | `incl`, `excl`, `hidden`, `itemized`, or `single` |
 | `presentation_hints.prices_entered_with_tax` | boolean | Whether catalogue prices include tax |
-| `presentation_hints.rounding_mode` | string | Tax rounding method |
-| `presentation_hints.locale` | string | Store locale (e.g., `"en-US"`) |
+| `presentation_hints.rounding_mode` | string | WooCommerce tax rounding setting |
+| `presentation_hints.locale` | string | Locale used for formatting |
+| `presentation_hints.timezone` | string | Receipt timezone |
+| `presentation_hints.currency_position` | string | Currency symbol position |
+| `presentation_hints.currency_symbol` | string | Currency symbol |
+| `presentation_hints.price_thousand_separator` | string | Thousands separator |
+| `presentation_hints.price_decimal_separator` | string | Decimal separator |
+| `presentation_hints.price_num_decimals` | number | Decimal places |
+| `presentation_hints.price_display_suffix` | string | WooCommerce price display suffix |
+| `presentation_hints.order_barcode_type` | string | Barcode type used by gallery templates |
 
 ## i18n
 
-Translatable labels. Use `{{i18n.key}}` in templates.
+Use `i18n` labels instead of hardcoding text where possible:
 
-Common keys include: `subtotal`, `tax`, `total`, `discount`, `quantity`, `price`, `date`, `order_number`, `cashier`, `customer`, `payment_method`, `change`, `tendered`.
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+Common keys include `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, and the tax-ID label keys such as `store_tax_id_label_eu_vat` and `customer_tax_id_label_other`. Extra keys may be added by extensions.
+
+## Migration notes
+
+- New custom templates should use `order.*`, not the older `meta.*` fields.
+- Use `store.tax_ids` and `customer.tax_ids` arrays for business/customer tax IDs. A single `store.tax_id` or `customer.tax_id` only represents legacy/fallback data in older templates.
+- Use display-side fields (`total`, `line_total`, etc.) unless your receipt must explicitly show inclusive and exclusive columns.
+- Use `has_tax_summary` or `tax.breakdown_*` guards before rendering tax-summary sections.
+- Refund amounts are positive. Add `-` in the template if you want credit-note style rows.
