@@ -1,0 +1,355 @@
+---
+title: Riferimento dati scontrino
+sidebar_label: Dati scontrino
+sidebar_position: 4
+description: Riferimento completo per il contratto dati canonico disponibile nei modelli di scontrino WCPOS.
+---
+
+I modelli HTML logicless e i modelli XML termici di WCPOS eseguono il rendering dallo stesso payload canonico dello scontrino. Utilizzare i percorsi dot Mustache come `{{order.number}}`, `{{store.name}}` e `{{totals.total_display}}`. Gli array vengono renderizzati con le sezioni:
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} — {{line_total_display}}
+{{/lines}}
+```
+
+Il contratto canonico è prodotto dal builder dei dati scontrino WCPOS sul server e replicato dal renderer offline degli scontrini nell'app. Gli scontrini si aprono immediatamente dai dati locali, poi vengono aggiornati con la risposta del server quando disponibile, pertanto i modelli personalizzati dovrebbero utilizzare i campi indicati di seguito anziché i metodi PHP per gli ordini.
+
+## Regole di rendering {#rendering-rules}
+
+### Campi valuta {#currency-fields}
+
+I campi monetari numerici vengono preservati come numeri e il renderer aggiunge campi `_display` localizzati per l'output del modello:
+
+| Campo numerico | Campo di visualizzazione |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+Preferire i campi `_display` per la stampa degli scontrini. Utilizzare i campi numerici solo per sezioni condizionali o output leggibili dalla macchina.
+
+### Campi con visualizzazione imposte {#tax-display-aware-fields}
+
+Diversi campi dispongono di varianti con imposte incluse ed escluse, oltre a un valore di comodo per la visualizzazione. Il valore di comodo segue l'impostazione di visualizzazione imposte del carrello del negozio.
+
+| Campo di comodo | Campo imposte incluse | Campo imposte escluse |
+|-------------------|-----------------|-----------------|
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+### Oggetti data {#date-objects}
+
+I campi data sono oggetti con più varianti preformattate. Questo evita di eseguire la formattazione delle date all'interno di Mustache.
+
+| Campo | Descrizione |
+|-------|-------------|
+| `datetime`, `date`, `time` | Stringhe predefinite di data/ora |
+| `datetime_short`, `datetime_long`, `datetime_full` | Formati combinati adattati alla localizzazione |
+| `date_short`, `date_long`, `date_full` | Formati solo data in base alla lingua |
+| `date_ymd`, `date_dmy`, `date_mdy` | Formati data con ordine fisso |
+| `weekday_short`, `weekday_long` | Nomi dei giorni |
+| `day`, `month`, `month_short`, `month_long`, `year` | Singole parti della data |
+
+Oggetti data disponibili: `order.created`, `order.paid`, `order.completed`, `order.printed` e `refunds[].date`. `order.printed` viene aggiornato al momento del rendering, utile per le ristampe.
+
+## Sezioni principali {#top-level-sections}
+
+| Sezione | Tipo | Descrizione |
+|---------|------|-------------|
+| `order` | object | Identità dell'ordine, stato, date, nota e informazioni sull'URL di pagamento |
+| `store` | object | Identità del negozio, indirizzo, recapiti, codici fiscali/partita IVA, logo, orari e testo a piè di pagina |
+| `cashier` | object | Utente che ha elaborato l'ordine |
+| `customer` | object | Nome visualizzato del cliente, indirizzi e codici fiscali/partita IVA |
+| `lines` | array | Righe prodotto |
+| `fees` | array | Righe commissioni |
+| `shipping` | array | Righe spedizione |
+| `discounts` | array | Righe coupon/sconti |
+| `totals` | object | Totali ordine, totali pagamento, riepilogo rimborsi e conteggio articoli |
+| `tax` | object | Flag modalità di visualizzazione imposte per le sezioni condizionali |
+| `tax_summary` | array | Righe riepilogo imposte per aliquota |
+| `has_tax_summary` | boolean | Guard di convenienza per `tax_summary` |
+| `payments` | array | Righe pagamento |
+| `refunds` | array | Record di rimborso applicati all'ordine |
+| `fiscal` | object | Campi snapshot fiscale popolati dalle integrazioni fiscali |
+| `presentation_hints` | object | Suggerimenti di formattazione e rendering |
+| `i18n` | object | Etichette tradotte per i modelli predefiniti e personalizzati |
+
+## order {#order}
+
+| Campo | Tipo | Esempio / descrizione |
+|-------|------|-----------------------|
+| `order.id` | number | `1234` |
+| `order.number` | string | Numero ordine visibile al cliente, ad es. `"10045"` |
+| `order.currency` | string | Codice valuta ISO, ad es. `"USD"` |
+| `order.customer_note` | string | Nota del cliente/ordine |
+| `order.wc_status` | string | Slug dello stato WooCommerce grezzo, ad es. `"processing"` |
+| `order.status_label` | string | Etichetta dello stato localizzata, inclusi gli stati personalizzati |
+| `order.created_via` | string | Origine/canale, ad es. `"woocommerce-pos"` |
+| `order.needs_payment` | boolean | Indica se deve essere visualizzata la sezione di pagamento |
+| `order.payment_url` | string | URL di pagamento dell'ordine, quando disponibile |
+| `order.created` | date object | Data di creazione dell'ordine |
+| `order.paid` | date object | Data di pagamento, stringhe vuote se non pagato |
+| `order.completed` | date object | Data di completamento, stringhe vuote se incompleto |
+| `order.printed` | date object | Timestamp di stampa/ristampa al momento del rendering |
+
+## negozio {#store}
+
+| Campo | Tipo | Esempio / descrizione |
+|-------|------|-----------------------|
+| `store.id` | number | ID del negozio, o ID storico per i negozi eliminati |
+| `store.name` | string | Nome visualizzato del negozio |
+| `store.address.address_1` | string | Indirizzo, riga 1 |
+| `store.address.address_2` | string | Interno/unità |
+| `store.address.city` | string | Città/località |
+| `store.address.state` | string | Stato/regione |
+| `store.address.postcode` | string | Codice postale |
+| `store.address.country` | string | Codice paese ISO |
+| `store.address_lines` | array | Righe di indirizzo preformattate; consigliato per la maggior parte dei template |
+| `store.tax_ids` | array | Identificativi fiscali strutturati; iterare questo array anziché utilizzare un singolo identificativo fiscale |
+| `store.phone` | string | Telefono del negozio |
+| `store.email` | string | Email del negozio |
+| `store.logo` | string/null | URL o data URI del logo del negozio |
+| `store.opening_hours` | string/null | Testo compatto degli orari di apertura |
+| `store.opening_hours_vertical` | string/null | Blocco orari di apertura su più righe |
+| `store.opening_hours_inline` | string/null | Testo degli orari di apertura separati da virgola |
+| `store.opening_hours_notes` | string/null | Note testuali sugli orari di apertura |
+| `store.personal_notes` | string/null | Nota personale/piè di pagina dello scontrino |
+| `store.policies_and_conditions` | string/null | Testo su rimborsi, resi o termini e condizioni |
+| `store.footer_imprint` | string/null | Impronta legale nel piè di pagina |
+
+### Oggetti codice fiscale/partita IVA {#tax-id-objects}
+
+`store.tax_ids` e `customer.tax_ids` contengono oggetti con la stessa struttura:
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `type` | string | Identificatore come `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein` o `other` |
+| `value` | string | Valore del codice fiscale/partita IVA da stampare |
+| `country` | string/null | Codice paese ISO, se disponibile |
+| `label` | string/null | Etichetta di visualizzazione localizzata, risolta prima del rendering |
+
+Esempio:
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+## cashier {#cashier}
+
+| Campo | Tipo | Esempio / descrizione |
+|-------|------|-----------------------|
+| `cashier.id` | number | ID utente WordPress, `0` quando sconosciuto |
+| `cashier.name` | string | Nome visualizzato del cassiere |
+
+## customer {#customer}
+
+| Campo | Tipo | Esempio / descrizione |
+|-------|------|-----------------------|
+| `customer.id` | number/null | ID del cliente, oppure `null` per gli ospiti |
+| `customer.name` | string | Nome visualizzato del cliente, o etichetta ospite |
+| `customer.billing_address.*` | object | Campi dell'indirizzo di fatturazione WooCommerce |
+| `customer.shipping_address.*` | object | Campi dell'indirizzo di spedizione WooCommerce |
+| `customer.tax_ids` | array | ID fiscali del cliente acquisiti dall'ordine |
+
+Le chiavi di indirizzo più comuni includono `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email` e `phone`.
+
+## lines {#lines}
+
+Iterare con `{{#lines}}...{{/lines}}`.
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `key` | string | Chiave stabile della riga/ID articolo dell'ordine |
+| `sku` | string | SKU del prodotto |
+| `name` | string | Nome visualizzato del prodotto o della riga |
+| `qty` | number | Quantità venduta |
+| `qty_refunded` | number | Quantità rimborsata per questa riga |
+| `unit_subtotal` / `_incl` / `_excl` | number | Prezzo unitario prima dello sconto |
+| `unit_price` / `_incl` / `_excl` | number | Prezzo unitario dopo lo sconto |
+| `line_subtotal` / `_incl` / `_excl` | number | Subtotale riga prima dello sconto |
+| `discounts` / `_incl` / `_excl` | number | Importo dello sconto come valore positivo |
+| `line_total` / `_incl` / `_excl` | number | Totale finale della riga |
+| `total_refunded` | number | Totale rimborsato per questa riga come valore positivo |
+| `taxes` | array | Righe di imposta per aliquota per questa riga |
+| `meta` | array | Metadati dell'elemento ordine come coppie `{key, value}` |
+| `attributes` | array | Attributi del prodotto/variante come coppie `{key, value}` |
+
+Le varianti formattate includono `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display` e le varianti `_display` con e senza imposte.
+
+## commissioni e spedizione {#fees-and-shipping}
+
+Iterare con `{{#fees}}...{{/fees}}` e `{{#shipping}}...{{/shipping}}`.
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `label` | string | Etichetta della commissione o nome del metodo di spedizione |
+| `method_id` | string | ID del metodo di spedizione (solo spedizione) |
+| `total` / `_incl` / `_excl` | number | Totali lato visualizzazione, IVA inclusa e IVA esclusa |
+| `taxes` | array | Righe imposta per aliquota |
+| `meta` | array | Coppie meta `{key, value}` |
+
+Varianti formattate: `total_display`, `total_incl_display` e `total_excl_display`.
+
+## discounts {#discounts}
+
+Iterare con `{{#discounts}}...{{/discounts}}`.
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `label` | string | Descrizione del coupon o codice di riserva |
+| `code` | string | Codice coupon |
+| `codes` | string | Fallback legacy/visualizzazione per codici concatenati |
+| `total` / `_incl` / `_excl` | number | Importo dello sconto come valore positivo |
+
+Varianti formattate: `total_display`, `total_incl_display` e `total_excl_display`. Aggiungere il proprio segno meno nel template per visualizzare gli sconti come righe negative.
+
+## totals {#totals}
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `totals.subtotal` / `_incl` / `_excl` | number | Subtotale dell'ordine prima degli sconti |
+| `totals.discount_total` / `_incl` / `_excl` | number | Totale sconti dell'ordine come valore positivo |
+| `totals.tax_total` | number | Importo totale delle imposte |
+| `totals.total` / `_incl` / `_excl` | number | Totale generale dell'ordine |
+| `totals.paid_total` | number | Importo pagato/applicato |
+| `totals.change_total` | number | Resto restituito al cliente |
+| `totals.refund_total` | number | Totale rimborsato come valore positivo |
+| `totals.net_total` | number | `total - refund_total`, limitato a zero |
+| `totals.total_qty` | number | Somma delle quantità degli articoli |
+| `totals.line_count` | number | Numero di righe prodotto |
+
+Le varianti formattate includono `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` e `net_total_display`, oltre alle varianti inclusive/esclusive dove applicabile.
+
+## tax e tax_summary {#tax-and-taxsummary}
+
+Utilizzare `tax` per i controlli della modalità di visualizzazione e `tax_summary` per le righe dettagliate delle aliquote.
+
+| Campo imposta | Tipo | Descrizione |
+|---------------|------|-------------|
+| `tax.display` | string | `incl` o `excl` |
+| `tax.display_incl` | boolean | True quando i prezzi sono visualizzati con imposta inclusa |
+| `tax.display_excl` | boolean | True quando i prezzi sono visualizzati al netto dell'imposta |
+| `tax.breakdown` | string | `hidden`, `single` o `itemized` |
+| `tax.breakdown_hidden` | boolean | True quando le righe dell'imposta devono essere nascoste |
+| `tax.breakdown_single` | boolean | True quando è preferito un totale imposta singolo |
+| `tax.breakdown_itemized` | boolean | True quando sono preferite le righe per singola aliquota |
+| `has_tax_summary` | boolean | True quando `tax_summary` contiene righe |
+
+Iterare `tax_summary` con `{{#tax_summary}}...{{/tax_summary}}`.
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `code` | string | ID/codice dell'aliquota fiscale |
+| `rate` | number/null | Percentuale dell'aliquota quando disponibile |
+| `label` | string | Etichetta dell'aliquota fiscale |
+| `compound` | boolean | Indica se l'aliquota è composta |
+| `taxable_amount_excl` | number/null | Imponibile al netto dell'imposta |
+| `tax_amount` | number | Imposta applicata |
+| `taxable_amount_incl` | number/null | Imponibile comprensivo di imposta |
+
+Varianti formattate: `taxable_amount_excl_display`, `tax_amount_display` e `taxable_amount_incl_display`.
+
+## payments {#payments}
+
+Iterare con `{{#payments}}...{{/payments}}`.
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `method_id` | string | Identificativo del metodo di pagamento |
+| `method_title` | string | Nome visualizzato del metodo di pagamento |
+| `amount` | number | Importo applicato all'ordine |
+| `transaction_id` | string | ID transazione del gateway |
+| `tendered` | number | Importo in contanti consegnato, se presente |
+| `change` | number | Resto in contanti restituito, se presente |
+
+Varianti formattate: `amount_display`, `tendered_display` e `change_display`.
+
+## rimborsi {#refunds}
+
+Iterare con `{{#refunds}}...{{/refunds}}`. Gli importi dei rimborsi sono valori assoluti positivi; i template decidono se anteporre un segno meno o visualizzare un blocco separato per gli articoli restituiti.
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `id` | number | ID del record di rimborso |
+| `date` | date object | Data di creazione del rimborso |
+| `amount` | number | Totale del rimborso |
+| `subtotal` | number | Subtotale della riga rimborsata |
+| `tax_total` | number | Imposta rimborsata |
+| `shipping_total` | number | Importo di spedizione rimborsato |
+| `shipping_tax` | number | Imposta di spedizione rimborsata |
+| `reason` | string | Motivo del rimborso |
+| `refunded_by_id` | number/null | ID utente che ha emesso il rimborso |
+| `refunded_by_name` | string | Nome visualizzato dell'utente che ha emesso il rimborso |
+| `refunded_payment` | boolean | Indica se il pagamento è stato rimborsato tramite il gateway |
+| `destination` | string | `original_method`, `cash` o `manual` |
+| `gateway_id` | string | ID del gateway utilizzato per il rimborso |
+| `gateway_title` | string | Titolo visualizzato del gateway |
+| `processing_mode` | string | Modalità di elaborazione provider/manuale |
+| `lines` | array | Righe prodotto rimborsate |
+| `fees` | array | Righe commissioni rimborsate |
+| `shipping` | array | Righe spedizione rimborsate |
+
+I campi delle righe di rimborso includono `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl`, `line_total`, `unit_total` e `taxes`. Le righe di rimborso per commissioni e spedizioni utilizzano `label`, `total`, `total_incl`, `total_excl` e `taxes`. Per i totali e gli importi delle imposte vengono aggiunte varianti di visualizzazione.
+
+## fiscal {#fiscal}
+
+I campi fiscali sono vuoti per impostazione predefinita e vengono compilati dalle integrazioni fiscali o dall'arricchimento snapshot di WCPOS Pro.
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `fiscal.immutable_id` | string | Identificativo fiscale immutabile |
+| `fiscal.receipt_number` | string | Numero scontrino fiscale |
+| `fiscal.sequence` | number/null | Contatore di sequenza |
+| `fiscal.hash` | string | Valore hash/firma |
+| `fiscal.qr_payload` | string | Payload QR per la verifica fiscale |
+| `fiscal.tax_agency_code` | string | Codice dell'autorità fiscale |
+| `fiscal.signed_at` | string | Timestamp della firma fiscale |
+| `fiscal.signature_excerpt` | string | Firma troncata per la visualizzazione |
+| `fiscal.document_label` | string | Etichetta del documento, ad es. Fattura fiscale |
+| `fiscal.is_reprint` | boolean | Indica se questa resa è una ristampa |
+| `fiscal.reprint_count` | number | Conteggio delle ristampe |
+| `fiscal.extra_fields` | array/object | Valori specifici per giurisdizione |
+
+## presentation_hints {#presentationhints}
+
+Questi campi sono utilizzati principalmente dal renderer e dal formatter. Sono disponibili per i template quando necessario.
+
+| Campo | Tipo | Descrizione |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | string | `incl`, `excl`, `hidden`, `itemized` o `single` |
+| `presentation_hints.prices_entered_with_tax` | boolean | Indica se i prezzi a catalogo includono le imposte |
+| `presentation_hints.rounding_mode` | string | Impostazione di arrotondamento imposte di WooCommerce |
+| `presentation_hints.locale` | string | Locale utilizzato per la formattazione |
+| `presentation_hints.timezone` | string | Fuso orario dello scontrino |
+| `presentation_hints.currency_position` | string | Posizione del simbolo di valuta |
+| `presentation_hints.currency_symbol` | string | Simbolo di valuta |
+| `presentation_hints.price_thousand_separator` | string | Separatore delle migliaia |
+| `presentation_hints.price_decimal_separator` | string | Separatore decimale |
+| `presentation_hints.price_num_decimals` | number | Cifre decimali |
+| `presentation_hints.price_display_suffix` | string | Suffisso di visualizzazione prezzo di WooCommerce |
+| `presentation_hints.order_barcode_type` | string | Tipo di codice a barre utilizzato dai modelli galleria |
+
+## i18n {#i18n}
+
+Utilizzare le etichette `i18n` invece di inserire il testo direttamente nel codice, ove possibile:
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+Le chiavi comuni includono `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours` e le chiavi delle etichette per il codice fiscale/partita IVA come `store_tax_id_label_eu_vat` e `customer_tax_id_label_other`. Ulteriori chiavi possono essere aggiunte dalle estensioni.
