@@ -1,0 +1,355 @@
+---
+title: レシートデータリファレンス
+sidebar_label: レシートデータ
+sidebar_position: 4
+description: WCPOSレシートテンプレートで使用できる正規データコントラクトの完全なリファレンスです。
+---
+
+WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレートは、同一の正規レシートペイロードからレンダリングされます。`{{order.number}}`、`{{store.name}}`、`{{totals.total_display}}`のようなMustacheドットパスを使用します。配列はセクションでレンダリングされます：
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} — {{line_total_display}}
+{{/lines}}
+```
+
+正規コントラクトはサーバー上のWCPOSレシートデータビルダーによって生成され、アプリ内のオフラインレシートレンダラーによってミラーリングされます。レシートはローカルデータからすぐに表示され、サーバーレスポンスが利用可能になると更新されるため、カスタムテンプレートではPHPの注文メソッドではなく以下のフィールドを使用してください。
+
+## レンダリングルール {#rendering-rules}
+
+### 通貨フィールド {#currency-fields}
+
+数値の金額フィールドは数値として保持され、レンダラーがテンプレート出力用にロケール対応の`_display`フィールドを追加します：
+
+| 数値フィールド | 表示フィールド |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+レシート印刷時は `_display` フィールドを使用してください。数値フィールドは条件付きセクションや機械可読出力にのみ使用します。
+
+### 税表示対応フィールド {#tax-display-aware-fields}
+
+いくつかのフィールドには税込・税抜のバリアントに加え、表示用の便利な値があります。この便利な値は、店舗のカート税表示設定に従います。
+
+| 便利フィールド | 税込フィールド | 税抜フィールド |
+|-------------------|-----------------|-----------------|
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+### 日付オブジェクト {#date-objects}
+
+日付フィールドは、複数のフォーマット済みバリアントを持つオブジェクトです。これにより、Mustache 内での日付フォーマット処理が不要になります。
+
+| フィールド | 説明 |
+|-------|-------------|
+| `datetime`、`date`、`time` | デフォルトの日付/時刻文字列 |
+| `datetime_short`、`datetime_long`、`datetime_full` | ロケール対応の結合フォーマット |
+| `date_short`, `date_long`, `date_full` | ロケール対応の日付のみのフォーマット |
+| `date_ymd`, `date_dmy`, `date_mdy` | 固定順序の日付フォーマット |
+| `weekday_short`, `weekday_long` | 曜日名 |
+| `day`, `month`, `month_short`, `month_long`, `year` | 個別の日付要素 |
+
+利用可能な日付オブジェクト: `order.created`、`order.paid`、`order.completed`、`order.printed`、および `refunds[].date`。`order.printed` はレンダリング時に更新されるため、再印刷時に便利です。
+
+## トップレベルセクション {#top-level-sections}
+
+| セクション | 型 | 説明 |
+|---------|------|-------------|
+| `order` | object | 注文のID、ステータス、日付、メモ、および決済URL情報 |
+| `store` | object | 店舗のID、住所、連絡先、税務ID、ロゴ、営業時間、およびフッターテキスト |
+| `cashier` | object | 注文を処理したユーザー |
+| `customer` | object | 顧客の表示名、住所、および税務ID |
+| `lines` | array | 商品明細行 |
+| `fees` | array | 手数料行 |
+| `shipping` | array | 配送料行 |
+| `discounts` | array | クーポン／割引行 |
+| `totals` | object | 注文合計、支払合計、返金概要、および項目数 |
+| `tax` | object | セクションガード用の税表示モードフラグ |
+| `tax_summary` | array | 税率別の税概要行 |
+| `has_tax_summary` | boolean | `tax_summary` の有無を示す簡易ガード |
+| `payments` | array | 支払行 |
+| `refunds` | array | 注文に適用された返金レコード |
+| `fiscal` | object | 財務連携により設定されるフィスカルスナップショットフィールド |
+| `presentation_hints` | object | 書式設定およびレンダラーヒント |
+| `i18n` | object | 組み込みテンプレートおよびカスタムテンプレート用の翻訳ラベル |
+
+## order {#order}
+
+| フィールド | 型 | 例 / 説明 |
+|-------|------|-----------------------|
+| `order.id` | number | `1234` |
+| `order.number` | string | 表示用の注文番号（例: `"10045"`） |
+| `order.currency` | string | ISO 通貨コード（例: `"USD"`） |
+| `order.customer_note` | string | 顧客メモ / 注文メモ |
+| `order.wc_status` | string | WooCommerce のステータススラッグ（例: `"processing"`） |
+| `order.status_label` | string | ローカライズされたステータスラベル（カスタムステータスを含む） |
+| `order.created_via` | string | 作成元 / チャネル（例: `"woocommerce-pos"`） |
+| `order.needs_payment` | boolean | 支払いセクションを表示するかどうか |
+| `order.payment_url` | string | 利用可能な場合の注文決済 URL |
+| `order.created` | date object | 注文作成日 |
+| `order.paid` | date object | 支払日、未払いの場合は空文字列 |
+| `order.completed` | date object | 完了日、未完了の場合は空文字列 |
+| `order.printed` | date object | レンダリング時の印刷／再印刷タイムスタンプ |
+
+## 店舗 {#store}
+
+| フィールド | 型 | 例 / 説明 |
+|-------|------|-----------------------|
+| `store.id` | number | 店舗 ID、削除済み店舗の場合は過去の ID |
+| `store.name` | string | 店舗の表示名 |
+| `store.address.address_1` | string | 住所1行目 |
+| `store.address.address_2` | string | 建物名・部屋番号 |
+| `store.address.city` | string | 市区町村 |
+| `store.address.state` | string | 都道府県/地域 |
+| `store.address.postcode` | string | 郵便番号 |
+| `store.address.country` | string | ISO 国コード |
+| `store.address_lines` | array | フォーマット済みの住所行。ほとんどのテンプレートで推奨 |
+| `store.tax_ids` | array | 構造化された事業者税務ID。単一の税務IDではなくループで使用 |
+| `store.phone` | string | 店舗電話番号 |
+| `store.email` | string | 店舗メールアドレス |
+| `store.logo` | string/null | 店舗ロゴのURLまたはデータURI |
+| `store.opening_hours` | string/null | 営業時間テキスト（コンパクト形式） |
+| `store.opening_hours_vertical` | string/null | 営業時間ブロック（複数行形式） |
+| `store.opening_hours_inline` | string/null | 営業時間テキスト（カンマ区切り形式） |
+| `store.opening_hours_notes` | string/null | 営業時間に関する自由記述メモ |
+| `store.personal_notes` | string/null | レシートフッター／個人メモ |
+| `store.policies_and_conditions` | string/null | 返金・返品・利用規約テキスト |
+| `store.footer_imprint` | string/null | 法的フッターインプリント |
+
+### 税務IDオブジェクト {#tax-id-objects}
+
+`store.tax_ids` と `customer.tax_ids` は同じ構造のオブジェクトを含みます：
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `type` | string | `eu_vat`、`de_steuernummer`、`au_abn`、`br_cpf`、`us_ein`、`other` などの識別子 |
+| `value` | string | 印刷する税務ID値 |
+| `country` | string/null | 判明している場合のISO国コード |
+| `label` | string/null | ローカライズされた表示ラベル（レンダリング前に解決済み） |
+
+例：
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+## cashier {#cashier}
+
+| フィールド | 型 | 例 / 説明 |
+|-------|------|-----------------------|
+| `cashier.id` | number | WordPress ユーザー ID、不明な場合は `0` |
+| `cashier.name` | string | レジ担当者の表示名 |
+
+## customer {#customer}
+
+| フィールド | 型 | 例 / 説明 |
+|-------|------|-----------------------|
+| `customer.id` | number/null | 顧客 ID、ゲストの場合は `null` |
+| `customer.name` | string | 顧客の表示名、またはゲストラベル |
+| `customer.billing_address.*` | object | WooCommerce の請求先住所フィールド |
+| `customer.shipping_address.*` | object | WooCommerce の配送先住所フィールド |
+| `customer.tax_ids` | array | 注文からスナップショットされた顧客の税 ID（構造化データ） |
+
+一般的な住所キーには `first_name`、`last_name`、`company`、`address_1`、`address_2`、`city`、`state`、`postcode`、`country`、`email`、`phone` があります。
+
+## lines {#lines}
+
+`{{#lines}}...{{/lines}}` でループします。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `key` | string | 固定の明細キー／注文アイテム ID |
+| `sku` | string | 商品 SKU |
+| `name` | string | 商品名または明細の表示名 |
+| `qty` | number | 販売数量 |
+| `qty_refunded` | number | この明細の返金数量 |
+| `unit_subtotal` / `_incl` / `_excl` | number | 割引前単価 |
+| `unit_price` / `_incl` / `_excl` | number | 割引後単価 |
+| `line_subtotal` / `_incl` / `_excl` | number | 割引前明細小計 |
+| `discounts` / `_incl` / `_excl` | number | 割引額（正の値） |
+| `line_total` / `_incl` / `_excl` | number | 明細合計 |
+| `total_refunded` | number | この明細の返金合計（正の値） |
+| `taxes` | array | この明細の税率別税額行 |
+| `meta` | array | 注文項目メタ（`{key, value}` ペア） |
+| `attributes` | array | 商品／バリエーション属性（`{key, value}` ペア） |
+
+フォーマット済みバリアントには `unit_subtotal_display`、`unit_price_display`、`line_subtotal_display`、`discounts_display`、`line_total_display`、および税込／税抜の `_display` バリアントがあります。
+
+## 手数料と配送 {#fees-and-shipping}
+
+`{{#fees}}...{{/fees}}` および `{{#shipping}}...{{/shipping}}` でループします。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `label` | string | 手数料ラベルまたは配送方法名 |
+| `method_id` | string | 配送方法ID（配送のみ） |
+| `total` / `_incl` / `_excl` | number | 表示用、税込、税抜の合計 |
+| `taxes` | array | 税率ごとの税額行 |
+| `meta` | array | `{key, value}` メタデータのペア |
+
+フォーマット済みバリアント: `total_display`、`total_incl_display`、`total_excl_display`。
+
+## discounts {#discounts}
+
+`{{#discounts}}...{{/discounts}}` でループします。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `label` | string | クーポンの説明またはコードのフォールバック |
+| `code` | string | クーポンコード |
+| `codes` | string | 結合されたコードのレガシー/表示フォールバック |
+| `total` / `_incl` / `_excl` | number | 正の値としての割引額 |
+
+フォーマット済みバリアント: `total_display`、`total_incl_display`、`total_excl_display`。割引をマイナス行として表示する場合は、テンプレート内で独自にマイナス記号を追加してください。
+
+## totals {#totals}
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `totals.subtotal` / `_incl` / `_excl` | number | 割引前の注文小計 |
+| `totals.discount_total` / `_incl` / `_excl` | number | 正の値としての注文割引合計 |
+| `totals.tax_total` | number | 税額合計 |
+| `totals.total` / `_incl` / `_excl` | number | 注文総計 |
+| `totals.paid_total` | number | 支払済み／適用済み金額 |
+| `totals.change_total` | number | 顧客へのお釣り |
+| `totals.refund_total` | number | 返金合計（正の値） |
+| `totals.net_total` | number | `total - refund_total`（ゼロ以上に制限） |
+| `totals.total_qty` | number | 明細数量の合計 |
+| `totals.line_count` | number | 商品明細行の数 |
+
+フォーマット済みバリアントとして `subtotal_display`、`discount_total_display`、`tax_total_display`、`total_display`、`paid_total_display`、`change_total_display`、`refund_total_display`、`net_total_display` があり、該当する場合は税込／税抜バリアントも含まれます。
+
+## tax と tax_summary {#tax-and-taxsummary}
+
+表示モードの判定には `tax` を、税率別の明細行には `tax_summary` を使用します。
+
+| 税フィールド | 型 | 説明 |
+|-----------|------|-------------|
+| `tax.display` | string | `incl` または `excl` |
+| `tax.display_incl` | boolean | 価格が税込みで表示される場合に true |
+| `tax.display_excl` | boolean | 価格が税抜きで表示される場合に true |
+| `tax.breakdown` | string | `hidden`、`single`、または `itemized` |
+| `tax.breakdown_hidden` | boolean | 税の行を非表示にする場合に true |
+| `tax.breakdown_single` | boolean | 税合計を一行で表示する場合に true |
+| `tax.breakdown_itemized` | boolean | 税率ごとの行を表示する場合に true |
+| `has_tax_summary` | boolean | `tax_summary` に行が含まれる場合に true |
+
+`tax_summary` を `{{#tax_summary}}...{{/tax_summary}}` でループします。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `code` | string | 税率 ID／コード |
+| `rate` | number/null | 解決済みの場合の税率（パーセント） |
+| `label` | string | 税率ラベル |
+| `compound` | boolean | 複合税率かどうか |
+| `taxable_amount_excl` | number/null | 税抜課税対象額 |
+| `tax_amount` | number | 徴収税額 |
+| `taxable_amount_incl` | number/null | 税込課税対象額 |
+
+フォーマット済みバリアント: `taxable_amount_excl_display`、`tax_amount_display`、`taxable_amount_incl_display`。
+
+## payments {#payments}
+
+`{{#payments}}...{{/payments}}` でループします。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `method_id` | string | 決済方法の識別子 |
+| `method_title` | string | 決済方法の表示名 |
+| `amount` | number | 注文に適用された金額 |
+| `transaction_id` | string | ゲートウェイのトランザクション ID |
+| `tendered` | number | 現金の預かり金額（存在する場合） |
+| `change` | number | 現金のお釣り（存在する場合） |
+
+フォーマット済みバリアント: `amount_display`、`tendered_display`、`change_display`。
+
+## 返金 {#refunds}
+
+`{{#refunds}}...{{/refunds}}` でループします。返金額は正の絶対値です。マイナス記号を付けるか、返品ブロックとして別に表示するかはテンプレート側で決定します。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `id` | number | 返金レコード ID |
+| `date` | date object | 返金作成日 |
+| `amount` | number | 返金合計 |
+| `subtotal` | number | 返金された明細小計 |
+| `tax_total` | number | 返金された税額 |
+| `shipping_total` | number | 返金された送料 |
+| `shipping_tax` | number | 返金された送料税 |
+| `reason` | string | 返金理由 |
+| `refunded_by_id` | number/null | 返金を実行したユーザーのID |
+| `refunded_by_name` | string | 返金を実行したユーザーの表示名 |
+| `refunded_payment` | boolean | ゲートウェイ経由で返金が処理されたかどうか |
+| `destination` | string | `original_method`、`cash`、または `manual` |
+| `gateway_id` | string | 返金に使用されたゲートウェイID |
+| `gateway_title` | string | ゲートウェイの表示タイトル |
+| `processing_mode` | string | プロバイダー/手動処理モード |
+| `lines` | array | 返金対象の商品行 |
+| `fees` | array | 返金対象の手数料行 |
+| `shipping` | array | 返金対象の配送料行 |
+
+返金明細行のフィールドには `name`、`sku`、`qty`、`total`、`total_incl`、`total_excl`、`line_total`、`unit_total`、および `taxes` があります。返金手数料行および配送料行では `label`、`total`、`total_incl`、`total_excl`、および `taxes` が使用されます。合計金額および税額には表示用のバリアントが追加されます。
+
+## fiscal {#fiscal}
+
+fiscal フィールドはデフォルトでは空であり、財務連携機能または WCPOS Pro のスナップショットエンリッチメントによって値が設定されます。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `fiscal.immutable_id` | string | 不変の財務識別子 |
+| `fiscal.receipt_number` | string | 財務レシート番号 |
+| `fiscal.sequence` | number/null | シーケンスカウンター |
+| `fiscal.hash` | string | ハッシュ／署名値 |
+| `fiscal.qr_payload` | string | 財務検証用QRペイロード |
+| `fiscal.tax_agency_code` | string | 税務当局コード |
+| `fiscal.signed_at` | string | 財務署名タイムスタンプ |
+| `fiscal.signature_excerpt` | string | 表示用の短縮署名 |
+| `fiscal.document_label` | string | ドキュメントラベル（例：Tax Invoice） |
+| `fiscal.is_reprint` | boolean | 再印刷かどうか |
+| `fiscal.reprint_count` | number | 再印刷回数 |
+| `fiscal.extra_fields` | array/object | 管轄区域固有の値 |
+
+## presentation_hints {#presentationhints}
+
+これらのフィールドは主にレンダラーとフォーマッターによって使用されます。必要に応じてテンプレートからも利用できます。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | string | `incl`、`excl`、`hidden`、`itemized`、または `single` |
+| `presentation_hints.prices_entered_with_tax` | boolean | カタログ価格に税が含まれているかどうか |
+| `presentation_hints.rounding_mode` | string | WooCommerce の税端数処理設定 |
+| `presentation_hints.locale` | string | フォーマットに使用されるロケール |
+| `presentation_hints.timezone` | string | レシートのタイムゾーン |
+| `presentation_hints.currency_position` | string | 通貨記号の位置 |
+| `presentation_hints.currency_symbol` | string | 通貨記号 |
+| `presentation_hints.price_thousand_separator` | string | 桁区切り文字 |
+| `presentation_hints.price_decimal_separator` | string | 小数点記号 |
+| `presentation_hints.price_num_decimals` | number | 小数点以下の桁数 |
+| `presentation_hints.price_display_suffix` | string | WooCommerce の価格表示サフィックス |
+| `presentation_hints.order_barcode_type` | string | ギャラリーテンプレートで使用されるバーコードの種類 |
+
+## i18n {#i18n}
+
+テキストをハードコードせず、可能な限り `i18n` ラベルを使用してください：
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+一般的なキーには `order`、`date`、`cashier`、`customer`、`item`、`sku`、`qty`、`unit_price`、`discount`、`subtotal`、`total`、`tax`、`paid`、`tendered`、`change`、`tax_summary`、`refunded`、`net_total`、`customer_note`、`thank_you_purchase`、`opening_hours`、および `store_tax_id_label_eu_vat` や `customer_tax_id_label_other` などの税 ID ラベルキーがあります。拡張機能によってキーが追加される場合もあります。
