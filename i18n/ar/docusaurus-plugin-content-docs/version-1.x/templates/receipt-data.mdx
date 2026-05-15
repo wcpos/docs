@@ -1,0 +1,355 @@
+---
+title: مرجع بيانات الإيصال
+sidebar_label: بيانات الإيصال
+sidebar_position: 4
+description: مرجع شامل لعقد البيانات القياسي المتاح في قوالب إيصالات WCPOS.
+---
+
+تُعرض قوالب HTML بدون منطق وقوالب XML الحرارية في WCPOS من نفس حمولة بيانات الإيصال القياسية. استخدم مسارات Mustache النقطية مثل `{{order.number}}` و`{{store.name}}` و`{{totals.total_display}}`. تُعرض المصفوفات باستخدام الأقسام:
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} — {{line_total_display}}
+{{/lines}}
+```
+
+يُنتَج العقد القياسي بواسطة منشئ بيانات الإيصال في WCPOS على الخادم ويُنسخ بواسطة عارض الإيصالات في وضع عدم الاتصال داخل التطبيق. تُفتح الإيصالات فورًا من البيانات المحلية، ثم تُحدَّث باستجابة الخادم عند توفرها، لذا يجب أن تستخدم القوالب المخصصة الحقول أدناه بدلاً من دوال طلبات PHP.
+
+## قواعد العرض {#rendering-rules}
+
+### حقول العملة {#currency-fields}
+
+تُحفظ حقول المبالغ الرقمية كأرقام ويُضيف العارض حقول `_display` المتوافقة مع الإعدادات المحلية لمخرجات القالب:
+
+| الحقل الرقمي | حقل العرض |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+يُفضَّل استخدام حقول `_display` عند طباعة الإيصالات. تُستخدَم الحقول الرقمية فقط للأقسام الشرطية أو المخرجات القابلة للقراءة آليًا.
+
+### حقول العرض المتوافقة مع الضريبة {#tax-display-aware-fields}
+
+تتوفر لعدة حقول صيغ شاملة وحصرية للضريبة بالإضافة إلى قيمة عرض مُيسَّرة. تتبع قيمة العرض المُيسَّرة إعداد عرض ضريبة سلة التسوق في المتجر.
+
+| الحقل المُيسَّر | الحقل الشامل للضريبة | الحقل الحصري للضريبة |
+|-------------------|-----------------|-----------------|
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+### كائنات التاريخ {#date-objects}
+
+حقول التاريخ هي كائنات تحتوي على عدة صيغ منسّقة مسبقًا. يتيح ذلك تجنّب تنسيق التاريخ داخل Mustache.
+
+| الحقل | الوصف |
+|-------|-------------|
+| `datetime`، `date`، `time` | سلاسل التاريخ/الوقت الافتراضية |
+| `datetime_short`، `datetime_long`، `datetime_full` | صيغ مُجمَّعة مُراعية للإعدادات المحلية |
+| `date_short`, `date_long`, `date_full` | تنسيقات التاريخ فقط حسب الإعدادات المحلية |
+| `date_ymd`, `date_dmy`, `date_mdy` | تنسيقات التاريخ بترتيب ثابت |
+| `weekday_short`, `weekday_long` | أسماء الأيام |
+| `day`, `month`, `month_short`, `month_long`, `year` | أجزاء التاريخ الفردية |
+
+كائنات التاريخ المتاحة: `order.created` و`order.paid` و`order.completed` و`order.printed` و`refunds[].date`. يتم تحديث `order.printed` في وقت العرض، وهو مفيد لإعادة الطباعة.
+
+## الأقسام الرئيسية {#top-level-sections}
+
+| القسم | النوع | الوصف |
+|---------|------|-------------|
+| `order` | كائن | هوية الطلب وحالته وتواريخه وملاحظاته ومعلومات رابط الدفع |
+| `store` | كائن | هوية المتجر وعنوانه وبيانات الاتصال والأرقام الضريبية والشعار وساعات العمل ونص التذييل |
+| `cashier` | كائن | المستخدم الذي قام بمعالجة الطلب |
+| `customer` | كائن | الاسم المعروض للعميل والعناوين والأرقام الضريبية |
+| `lines` | array | عناصر بنود المنتجات |
+| `fees` | array | صفوف الرسوم |
+| `shipping` | array | صفوف الشحن |
+| `discounts` | array | صفوف القسائم/الخصومات |
+| `totals` | object | إجماليات الطلب، وإجماليات الدفع، وملخص الاسترداد، وعدد العناصر |
+| `tax` | object | علامات وضع عرض الضريبة لحراسة الأقسام |
+| `tax_summary` | array | صفوف ملخص الضريبة حسب المعدل |
+| `has_tax_summary` | boolean | حارس مختصر لـ `tax_summary` |
+| `payments` | array | صفوف المدفوعات |
+| `refunds` | array | سجلات الاسترداد المطبّقة على الطلب |
+| `fiscal` | object | حقول اللقطة المالية التي تملؤها تكاملات الضرائب |
+| `presentation_hints` | object | تلميحات التنسيق والعرض |
+| `i18n` | object | تسميات مترجمة للقوالب المُضمّنة والمخصصة |
+
+## order {#order}
+
+| الحقل | النوع | مثال / وصف |
+|-------|------|-----------------------|
+| `order.id` | number | `1234` |
+| `order.number` | string | رقم الطلب الظاهر للعميل، مثال: `"10045"` |
+| `order.currency` | string | رمز العملة وفق معيار ISO، مثال: `"USD"` |
+| `order.customer_note` | string | ملاحظة العميل/الطلب |
+| `order.wc_status` | string | رمز حالة WooCommerce الأصلي، مثال: `"processing"` |
+| `order.status_label` | string | تسمية الحالة المترجمة، بما في ذلك الحالات المخصصة |
+| `order.created_via` | string | المصدر/القناة، مثال: `"woocommerce-pos"` |
+| `order.needs_payment` | boolean | ما إذا كان يجب عرض قسم الدفع |
+| `order.payment_url` | string | رابط دفع الطلب عند توفره |
+| `order.created` | date object | تاريخ إنشاء الطلب |
+| `order.paid` | date object | تاريخ الدفع، سلاسل نصية فارغة عند عدم الدفع |
+| `order.completed` | date object | تاريخ الإكمال، سلاسل نصية فارغة عند عدم الإكمال |
+| `order.printed` | date object | الطابع الزمني للطباعة/إعادة الطباعة عند العرض |
+
+## المتجر {#store}
+
+| الحقل | النوع | مثال / وصف |
+|-------|------|-----------------------|
+| `store.id` | number | معرّف المتجر، أو المعرّف السابق للمتاجر المحذوفة |
+| `store.name` | string | اسم المتجر المعروض |
+| `store.address.address_1` | string | سطر العنوان 1 |
+| `store.address.address_2` | string | سطر الجناح/الوحدة |
+| `store.address.city` | string | المدينة/المنطقة المحلية |
+| `store.address.state` | string | الولاية/المنطقة |
+| `store.address.postcode` | string | الرمز البريدي |
+| `store.address.country` | string | رمز الدولة بتنسيق ISO |
+| `store.address_lines` | array | أسطر العنوان المنسّقة مسبقًا؛ يُوصى باستخدامها في معظم القوالب |
+| `store.tax_ids` | array | معرّفات الضريبة المنظّمة للنشاط التجاري؛ يُنصح بالتكرار عبر هذه المصفوفة بدلاً من استخدام معرّف ضريبي واحد |
+| `store.phone` | string | هاتف المتجر |
+| `store.email` | string | البريد الإلكتروني للمتجر |
+| `store.logo` | string/null | عنوان URL لشعار المتجر أو معرّف URI للبيانات |
+| `store.opening_hours` | string/null | نص مختصر لساعات العمل |
+| `store.opening_hours_vertical` | string/null | كتلة ساعات العمل متعددة الأسطر |
+| `store.opening_hours_inline` | string/null | نص ساعات العمل مفصول بفواصل |
+| `store.opening_hours_notes` | string/null | ملاحظات نصية حرة حول ساعات العمل |
+| `store.personal_notes` | string/null | ملاحظة شخصية / تذييل الإيصال |
+| `store.policies_and_conditions` | string/null | نص الاسترجاع أو الإرجاع أو الشروط |
+| `store.footer_imprint` | string/null | البصمة القانونية في التذييل |
+
+### كائنات المعرّف الضريبي {#tax-id-objects}
+
+يحتوي `store.tax_ids` و`customer.tax_ids` على كائنات بنفس البنية:
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `type` | string | معرّف مثل `eu_vat` أو `de_steuernummer` أو `au_abn` أو `br_cpf` أو `us_ein` أو `other` |
+| `value` | string | قيمة المعرّف الضريبي المراد طباعتها |
+| `country` | string/null | رمز الدولة وفق معيار ISO عند توفره |
+| `label` | string/null | تسمية العرض المحلية، تُحَلّ قبل العرض |
+
+مثال:
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+## أمين الصندوق {#cashier}
+
+| الحقل | النوع | مثال / وصف |
+|-------|------|-----------------------|
+| `cashier.id` | number | معرّف مستخدم WordPress، `0` عندما يكون غير معروف |
+| `cashier.name` | string | الاسم المعروض لأمين الصندوق |
+
+## العميل {#customer}
+
+| الحقل | النوع | مثال / وصف |
+|-------|------|-----------------------|
+| `customer.id` | number/null | معرّف العميل، أو `null` للزوار |
+| `customer.name` | string | الاسم المعروض للعميل، أو تسمية الزائر |
+| `customer.billing_address.*` | object | حقول عنوان الفوترة في WooCommerce |
+| `customer.shipping_address.*` | object | حقول عنوان الشحن في WooCommerce |
+| `customer.tax_ids` | array | معرّفات الضريبة المنظمة للعميل المأخوذة كلقطة من الطلب |
+
+تشمل مفاتيح العنوان الشائعة `first_name` و`last_name` و`company` و`address_1` و`address_2` و`city` و`state` و`postcode` و`country` و`email` و`phone`.
+
+## lines {#lines}
+
+يتم التكرار باستخدام `{{#lines}}...{{/lines}}`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `key` | string | مفتاح البند الثابت / معرّف عنصر الطلب |
+| `sku` | string | رمز SKU للمنتج |
+| `name` | string | اسم العرض للمنتج أو البند |
+| `qty` | number | الكمية المباعة |
+| `qty_refunded` | number | الكمية المستردة لهذا البند |
+| `unit_subtotal` / `_incl` / `_excl` | number | سعر الوحدة قبل الخصم |
+| `unit_price` / `_incl` / `_excl` | number | سعر الوحدة بعد الخصم |
+| `line_subtotal` / `_incl` / `_excl` | number | المجموع الفرعي للسطر قبل الخصم |
+| `discounts` / `_incl` / `_excl` | number | مبلغ الخصم كقيمة موجبة |
+| `line_total` / `_incl` / `_excl` | number | إجمالي السطر النهائي |
+| `total_refunded` | number | إجمالي المبلغ المسترد لهذا السطر كقيمة موجبة |
+| `taxes` | array | صفوف الضريبة حسب المعدل لهذا السطر |
+| `meta` | array | بيانات وصفية لعنصر الطلب كأزواج `{key, value}` |
+| `attributes` | array | سمات المنتج/التنويعة كأزواج `{key, value}` |
+
+تتضمن المتغيرات المنسّقة `unit_subtotal_display` و`unit_price_display` و`line_subtotal_display` و`discounts_display` و`line_total_display`، بالإضافة إلى متغيرات `_display` الشاملة والحصرية للضريبة.
+
+## الرسوم والشحن {#fees-and-shipping}
+
+استخدم الحلقة التكرارية `{{#fees}}...{{/fees}}` و`{{#shipping}}...{{/shipping}}`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `label` | string | تسمية الرسوم أو اسم طريقة الشحن |
+| `method_id` | string | معرّف طريقة الشحن (للشحن فقط) |
+| `total` / `_incl` / `_excl` | number | الإجماليات المعروضة، شاملة الضريبة، وغير شاملة الضريبة |
+| `taxes` | array | صفوف الضرائب حسب المعدل |
+| `meta` | array | أزواج بيانات وصفية بصيغة `{key, value}` |
+
+المتغيرات المنسّقة: `total_display` و`total_incl_display` و`total_excl_display`.
+
+## الخصومات {#discounts}
+
+التكرار باستخدام `{{#discounts}}...{{/discounts}}`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `label` | string | وصف القسيمة أو الرمز كقيمة بديلة |
+| `code` | string | رمز القسيمة |
+| `codes` | string | قيمة بديلة قديمة/للعرض للرموز المدمجة |
+| `total` / `_incl` / `_excl` | number | مبلغ الخصم كقيمة موجبة |
+
+المتغيرات المنسّقة: `total_display` و`total_incl_display` و`total_excl_display`. أضف علامة السالب الخاصة بك في القالب إذا كنت تريد عرض الخصومات كصفوف سالبة.
+
+## الإجماليات {#totals}
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `totals.subtotal` / `_incl` / `_excl` | number | المجموع الفرعي للطلب قبل الخصومات |
+| `totals.discount_total` / `_incl` / `_excl` | number | إجمالي خصم الطلب كقيمة موجبة |
+| `totals.tax_total` | number | إجمالي مبلغ الضريبة |
+| `totals.total` / `_incl` / `_excl` | number | المجموع الإجمالي للطلب |
+| `totals.paid_total` | number | المبلغ المدفوع/المُطبَّق |
+| `totals.change_total` | number | الباقي المُعاد للعميل |
+| `totals.refund_total` | number | إجمالي المبلغ المُسترد كقيمة موجبة |
+| `totals.net_total` | number | `total - refund_total`، مع تقييد الحد الأدنى بالصفر |
+| `totals.total_qty` | number | مجموع كميات بنود الطلب |
+| `totals.line_count` | number | عدد صفوف بنود المنتجات |
+
+تتضمن المتغيرات المنسَّقة `subtotal_display` و`discount_total_display` و`tax_total_display` و`total_display` و`paid_total_display` و`change_total_display` و`refund_total_display` و`net_total_display`، بالإضافة إلى متغيرات شاملة/غير شاملة للضريبة حيثما ينطبق ذلك.
+
+## tax و tax_summary {#tax-and-taxsummary}
+
+استخدم `tax` للتحقق من وضع العرض و`tax_summary` لصفوف معدلات الضريبة المفصَّلة.
+
+| حقل الضريبة | النوع | الوصف |
+|-----------|------|-------------|
+| `tax.display` | string | `incl` أو `excl` |
+| `tax.display_incl` | boolean | صحيح عندما تُعرض الأسعار شاملة الضريبة |
+| `tax.display_excl` | boolean | صحيح عندما تُعرض الأسعار غير شاملة الضريبة |
+| `tax.breakdown` | string | `hidden` أو `single` أو `itemized` |
+| `tax.breakdown_hidden` | boolean | صحيح عندما يجب إخفاء صفوف الضريبة |
+| `tax.breakdown_single` | boolean | صحيح عندما يُفضَّل عرض إجمالي ضريبة واحد |
+| `tax.breakdown_itemized` | boolean | صحيح عندما يُفضَّل عرض صفوف لكل معدل ضريبي |
+| `has_tax_summary` | boolean | صحيح عندما يحتوي `tax_summary` على صفوف |
+
+كرّر `tax_summary` باستخدام `{{#tax_summary}}...{{/tax_summary}}`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `code` | string | معرّف/رمز معدل الضريبة |
+| `rate` | number/null | النسبة المئوية للمعدل عند تحديدها |
+| `label` | string | تسمية معدل الضريبة |
+| `compound` | boolean | ما إذا كان المعدل مركبًا |
+| `taxable_amount_excl` | number/null | الوعاء الضريبي بدون الضريبة |
+| `tax_amount` | number | الضريبة المحصّلة |
+| `taxable_amount_incl` | number/null | الوعاء الضريبي شاملًا الضريبة |
+
+المتغيرات المنسّقة: `taxable_amount_excl_display` و`tax_amount_display` و`taxable_amount_incl_display`.
+
+## المدفوعات {#payments}
+
+التكرار باستخدام `{{#payments}}...{{/payments}}`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `method_id` | string | معرّف طريقة الدفع |
+| `method_title` | string | الاسم المعروض لطريقة الدفع |
+| `amount` | number | المبلغ المطبّق على الطلب |
+| `transaction_id` | string | معرّف معاملة بوابة الدفع |
+| `tendered` | number | المبلغ النقدي المقدَّم عند توفّره |
+| `change` | number | باقي المبلغ النقدي المُعاد عند توفّره |
+
+المتغيّرات المنسَّقة: `amount_display` و`tendered_display` و`change_display`.
+
+## المبالغ المستردّة {#refunds}
+
+يتمّ التكرار باستخدام `{{#refunds}}...{{/refunds}}`. مبالغ الاسترداد هي قيم مطلقة موجبة؛ تحدّد القوالب ما إذا كان يُضاف رمز سالب أو يُعرَض قسم منفصل للأصناف المُعادة.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `id` | number | معرّف سجلّ الاسترداد |
+| `date` | date object | تاريخ إنشاء الاسترداد |
+| `amount` | number | إجمالي الاسترداد |
+| `subtotal` | number | المجموع الفرعي للبند المسترد |
+| `tax_total` | number | الضريبة المستردة |
+| `shipping_total` | number | مبلغ الشحن المسترد |
+| `shipping_tax` | number | ضريبة الشحن المستردة |
+| `reason` | string | سبب الاسترداد |
+| `refunded_by_id` | number/null | معرّف المستخدم الذي أصدر الاسترداد |
+| `refunded_by_name` | string | الاسم المعروض للمستخدم الذي أصدر الاسترداد |
+| `refunded_payment` | boolean | ما إذا تم استرداد الدفعة عبر بوابة الدفع |
+| `destination` | string | `original_method` أو `cash` أو `manual` |
+| `gateway_id` | string | معرّف بوابة الدفع المستخدمة للاسترداد |
+| `gateway_title` | string | العنوان المعروض لبوابة الدفع |
+| `processing_mode` | string | وضع المعالجة عبر المزوّد/يدوي |
+| `lines` | array | صفوف المنتجات المستردة |
+| `fees` | array | صفوف الرسوم المستردة |
+| `shipping` | array | صفوف الشحن المستردة |
+
+تتضمن حقول بند الاسترداد `name` و`sku` و`qty` و`total` و`total_incl` و`total_excl` و`line_total` و`unit_total` و`taxes`. تستخدم صفوف الرسوم والشحن المستردة `label` و`total` و`total_incl` و`total_excl` و`taxes`. تُضاف صيغ عرض بديلة للإجماليات ومبالغ الضرائب.
+
+## fiscal {#fiscal}
+
+تكون الحقول المالية فارغة افتراضيًا ويتم ملؤها بواسطة تكاملات الفوترة المالية أو إثراء لقطات WCPOS Pro.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `fiscal.immutable_id` | string | المعرّف المالي الثابت |
+| `fiscal.receipt_number` | string | رقم الإيصال المالي |
+| `fiscal.sequence` | number/null | عدّاد التسلسل |
+| `fiscal.hash` | string | قيمة التجزئة/التوقيع |
+| `fiscal.qr_payload` | string | حمولة رمز QR للتحقق الضريبي |
+| `fiscal.tax_agency_code` | string | رمز الجهة الضريبية |
+| `fiscal.signed_at` | string | الطابع الزمني للتوقيع الضريبي |
+| `fiscal.signature_excerpt` | string | مقتطف التوقيع المختصر للعرض |
+| `fiscal.document_label` | string | تسمية المستند، مثل فاتورة ضريبية |
+| `fiscal.is_reprint` | boolean | ما إذا كان هذا العرض إعادة طباعة |
+| `fiscal.reprint_count` | number | عدد مرات إعادة الطباعة |
+| `fiscal.extra_fields` | array/object | قيم خاصة بالولاية القضائية |
+
+## presentation_hints {#presentationhints}
+
+تُستهلك هذه الحقول بشكل أساسي بواسطة المُصيِّر والمُنسِّق. وهي متاحة للقوالب عند الحاجة.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | string | `incl`، `excl`، `hidden`، `itemized`، أو `single` |
+| `presentation_hints.prices_entered_with_tax` | boolean | ما إذا كانت أسعار الكتالوج تشمل الضريبة |
+| `presentation_hints.rounding_mode` | string | إعداد تقريب الضريبة في WooCommerce |
+| `presentation_hints.locale` | string | الإعدادات المحلية المستخدمة للتنسيق |
+| `presentation_hints.timezone` | string | المنطقة الزمنية للإيصال |
+| `presentation_hints.currency_position` | string | موضع رمز العملة |
+| `presentation_hints.currency_symbol` | string | رمز العملة |
+| `presentation_hints.price_thousand_separator` | string | فاصل الآلاف |
+| `presentation_hints.price_decimal_separator` | string | الفاصل العشري |
+| `presentation_hints.price_num_decimals` | number | عدد المنازل العشرية |
+| `presentation_hints.price_display_suffix` | string | لاحقة عرض السعر في WooCommerce |
+| `presentation_hints.order_barcode_type` | string | نوع الباركود المستخدم في قوالب المعرض |
+
+## i18n {#i18n}
+
+استخدم تسميات `i18n` بدلاً من كتابة النصوص مباشرةً في الكود كلما أمكن ذلك:
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+تتضمن المفاتيح الشائعة `order` و`date` و`cashier` و`customer` و`item` و`sku` و`qty` و`unit_price` و`discount` و`subtotal` و`total` و`tax` و`paid` و`tendered` و`change` و`tax_summary` و`refunded` و`net_total` و`customer_note` و`thank_you_purchase` و`opening_hours`، ومفاتيح تسميات المعرّف الضريبي مثل `store_tax_id_label_eu_vat` و`customer_tax_id_label_other`. يمكن أن تُضيف الإضافات مفاتيح إضافية.

@@ -1,0 +1,355 @@
+---
+title: रसीद डेटा संदर्भ
+sidebar_label: रसीद डेटा
+sidebar_position: 4
+description: WCPOS रसीद टेम्पलेट में उपलब्ध कैनोनिकल डेटा कॉन्ट्रैक्ट का संपूर्ण संदर्भ।
+---
+
+WCPOS लॉजिकलेस HTML टेम्पलेट और थर्मल XML टेम्पलेट एक ही कैनोनिकल रसीद पेलोड से रेंडर होते हैं। Mustache डॉट पाथ जैसे `{{order.number}}`, `{{store.name}}`, और `{{totals.total_display}}` का उपयोग करें। ऐरे को सेक्शन के साथ रेंडर किया जाता है:
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} — {{line_total_display}}
+{{/lines}}
+```
+
+कैनोनिकल कॉन्ट्रैक्ट सर्वर पर WCPOS रसीद डेटा बिल्डर द्वारा तैयार किया जाता है और ऐप में ऑफ़लाइन रसीद रेंडरर द्वारा मिरर किया जाता है। रसीदें स्थानीय डेटा से तुरंत खुलती हैं, फिर सर्वर प्रतिक्रिया उपलब्ध होने पर उसमें अपग्रेड हो जाती हैं, इसलिए कस्टम टेम्पलेट को PHP ऑर्डर मेथड के बजाय नीचे दिए गए फ़ील्ड का उपयोग करना चाहिए।
+
+## रेंडरिंग नियम {#rendering-rules}
+
+### मुद्रा फ़ील्ड {#currency-fields}
+
+संख्यात्मक मुद्रा फ़ील्ड संख्याओं के रूप में संरक्षित रहते हैं और रेंडरर टेम्पलेट आउटपुट के लिए लोकेल-अवेयर `_display` फ़ील्ड जोड़ता है:
+
+| संख्यात्मक फ़ील्ड | प्रदर्शन फ़ील्ड |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+रसीद प्रिंट करते समय `_display` फ़ील्ड को प्राथमिकता दें। संख्यात्मक फ़ील्ड का उपयोग केवल सशर्त अनुभागों या मशीन-पठनीय आउटपुट के लिए करें।
+
+### कर प्रदर्शन-सचेत फ़ील्ड {#tax-display-aware-fields}
+
+कई फ़ील्ड के समावेशी और अनन्य वैरिएंट तथा एक प्रदर्शन-पक्ष सुविधा मान होता है। सुविधा मान स्टोर की कार्ट कर प्रदर्शन सेटिंग का अनुसरण करता है।
+
+| सुविधा फ़ील्ड | समावेशी फ़ील्ड | अनन्य फ़ील्ड |
+|-------------------|-----------------|-----------------|
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+### दिनांक ऑब्जेक्ट {#date-objects}
+
+दिनांक फ़ील्ड कई पूर्व-स्वरूपित वेरिएंट वाले ऑब्जेक्ट हैं। इससे Mustache के अंदर दिनांक फ़ॉर्मेटिंग करने की आवश्यकता नहीं रहती।
+
+| फ़ील्ड | विवरण |
+|-------|-------------|
+| `datetime`, `date`, `time` | डिफ़ॉल्ट दिनांक/समय स्ट्रिंग |
+| `datetime_short`, `datetime_long`, `datetime_full` | लोकेल-अनुकूल संयुक्त फ़ॉर्मेट |
+| `date_short`, `date_long`, `date_full` | लोकेल-अनुकूल केवल-तिथि प्रारूप |
+| `date_ymd`, `date_dmy`, `date_mdy` | निश्चित-क्रम तिथि प्रारूप |
+| `weekday_short`, `weekday_long` | दिन के नाम |
+| `day`, `month`, `month_short`, `month_long`, `year` | तिथि के अलग-अलग भाग |
+
+उपलब्ध तिथि ऑब्जेक्ट: `order.created`, `order.paid`, `order.completed`, `order.printed`, और `refunds[].date`। `order.printed` रेंडर समय पर रिफ़्रेश होता है, जो पुनर्मुद्रण के लिए उपयोगी है।
+
+## शीर्ष-स्तरीय अनुभाग {#top-level-sections}
+
+| अनुभाग | प्रकार | विवरण |
+|---------|------|-------------|
+| `order` | object | ऑर्डर पहचान, स्थिति, तिथियाँ, नोट, और भुगतान URL जानकारी |
+| `store` | object | स्टोर पहचान, पता, संपर्क विवरण, कर ID, लोगो, समय, और फ़ुटर टेक्स्ट |
+| `cashier` | object | वह उपयोगकर्ता जिसने ऑर्डर प्रोसेस किया |
+| `customer` | object | ग्राहक प्रदर्शन नाम, पते, और कर ID |
+| `lines` | array | उत्पाद लाइन आइटम |
+| `fees` | array | शुल्क पंक्तियाँ |
+| `shipping` | array | शिपिंग पंक्तियाँ |
+| `discounts` | array | कूपन/छूट पंक्तियाँ |
+| `totals` | object | ऑर्डर कुल, भुगतान कुल, रिफ़ंड सारांश, और आइटम गणना |
+| `tax` | object | सेक्शन गार्ड के लिए कर प्रदर्शन मोड फ़्लैग |
+| `tax_summary` | array | प्रति-दर कर सारांश पंक्तियाँ |
+| `has_tax_summary` | boolean | `tax_summary` के लिए सुविधा गार्ड |
+| `payments` | array | भुगतान पंक्तियाँ |
+| `refunds` | array | ऑर्डर पर लागू रिफ़ंड रिकॉर्ड |
+| `fiscal` | object | फ़िस्कल एकीकरण द्वारा भरे गए फ़िस्कल स्नैपशॉट फ़ील्ड |
+| `presentation_hints` | object | फ़ॉर्मेटिंग और रेंडरर संकेत |
+| `i18n` | object | बंडल और कस्टम टेम्पलेट्स के लिए अनुवादित लेबल |
+
+## order {#order}
+
+| फ़ील्ड | प्रकार | उदाहरण / विवरण |
+|-------|------|-----------------------|
+| `order.id` | number | `1234` |
+| `order.number` | string | उपयोगकर्ता को दिखने वाला ऑर्डर नंबर, जैसे `"10045"` |
+| `order.currency` | string | ISO मुद्रा कोड, जैसे `"USD"` |
+| `order.customer_note` | string | ग्राहक/ऑर्डर नोट |
+| `order.wc_status` | string | WooCommerce की रॉ स्टेटस स्लग, जैसे `"processing"` |
+| `order.status_label` | string | स्थानीयकृत स्थिति लेबल, कस्टम स्थितियों सहित |
+| `order.created_via` | string | स्रोत/चैनल, जैसे `"woocommerce-pos"` |
+| `order.needs_payment` | boolean | भुगतान अनुभाग दिखाया जाना चाहिए या नहीं |
+| `order.payment_url` | string | उपलब्ध होने पर ऑर्डर भुगतान URL |
+| `order.created` | date object | ऑर्डर निर्माण तिथि |
+| `order.paid` | date object | भुगतान तिथि, भुगतान न होने पर खाली स्ट्रिंग |
+| `order.completed` | date object | पूर्ण होने की तिथि, अपूर्ण होने पर खाली स्ट्रिंग |
+| `order.printed` | date object | रेंडर-टाइम प्रिंट/रीप्रिंट टाइमस्टैम्प |
+
+## स्टोर {#store}
+
+| फ़ील्ड | प्रकार | उदाहरण / विवरण |
+|-------|------|-----------------------|
+| `store.id` | number | स्टोर ID, या हटाए गए स्टोर के लिए ऐतिहासिक ID |
+| `store.name` | string | स्टोर प्रदर्शन नाम |
+| `store.address.address_1` | string | सड़क का पता पंक्ति 1 |
+| `store.address.address_2` | string | सुइट/यूनिट पंक्ति |
+| `store.address.city` | string | शहर/स्थानीयता |
+| `store.address.state` | string | राज्य/क्षेत्र |
+| `store.address.postcode` | string | पिन कोड |
+| `store.address.country` | string | ISO देश कोड |
+| `store.address_lines` | array | पूर्व-स्वरूपित पता पंक्तियाँ; अधिकांश टेम्पलेट्स के लिए अनुशंसित |
+| `store.tax_ids` | array | संरचित व्यापार कर ID; एकल कर ID के बजाय इसे लूप करें |
+| `store.phone` | string | स्टोर फ़ोन |
+| `store.email` | string | स्टोर ईमेल |
+| `store.logo` | string/null | स्टोर लोगो URL या डेटा URI |
+| `store.opening_hours` | string/null | संक्षिप्त कार्य-समय टेक्स्ट |
+| `store.opening_hours_vertical` | string/null | बहु-पंक्ति कार्य-समय ब्लॉक |
+| `store.opening_hours_inline` | string/null | अल्पविराम-पृथक कार्य-समय टेक्स्ट |
+| `store.opening_hours_notes` | string/null | खुलने के समय संबंधी फ्री-टेक्स्ट नोट्स |
+| `store.personal_notes` | string/null | रसीद फुटर/व्यक्तिगत नोट |
+| `store.policies_and_conditions` | string/null | रिफंड, वापसी, या नियम एवं शर्तों का टेक्स्ट |
+| `store.footer_imprint` | string/null | कानूनी फुटर इम्प्रिंट |
+
+### कर ID ऑब्जेक्ट {#tax-id-objects}
+
+`store.tax_ids` और `customer.tax_ids` में समान संरचना वाले ऑब्जेक्ट होते हैं:
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `type` | string | पहचानकर्ता जैसे `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein`, या `other` |
+| `value` | string | प्रिंट करने के लिए कर ID मान |
+| `country` | string/null | ज्ञात होने पर ISO देश कोड |
+| `label` | string/null | स्थानीयकृत प्रदर्शन लेबल, रेंडरिंग से पहले रिज़ॉल्व किया गया |
+
+उदाहरण:
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+## cashier {#cashier}
+
+| फ़ील्ड | प्रकार | उदाहरण / विवरण |
+|-------|------|-----------------------|
+| `cashier.id` | number | WordPress उपयोगकर्ता ID, अज्ञात होने पर `0` |
+| `cashier.name` | string | कैशियर का प्रदर्शन नाम |
+
+## customer {#customer}
+
+| फ़ील्ड | प्रकार | उदाहरण / विवरण |
+|-------|------|-----------------------|
+| `customer.id` | number/null | ग्राहक ID, या अतिथि के लिए `null` |
+| `customer.name` | string | ग्राहक का प्रदर्शन नाम, या अतिथि लेबल |
+| `customer.billing_address.*` | object | WooCommerce बिलिंग पता फ़ील्ड |
+| `customer.shipping_address.*` | object | WooCommerce शिपिंग पता फ़ील्ड |
+| `customer.tax_ids` | array | ऑर्डर से स्नैपशॉट किए गए संरचित ग्राहक कर ID |
+
+सामान्य पता कुंजियों में `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email`, और `phone` शामिल हैं।
+
+## lines {#lines}
+
+`{{#lines}}...{{/lines}}` के साथ लूप करें।
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `key` | string | स्थिर लाइन कुंजी/ऑर्डर आइटम ID |
+| `sku` | string | उत्पाद SKU |
+| `name` | string | उत्पाद या लाइन प्रदर्शन नाम |
+| `qty` | number | बेची गई मात्रा |
+| `qty_refunded` | number | इस लाइन के लिए वापस की गई मात्रा |
+| `unit_subtotal` / `_incl` / `_excl` | number | छूट-पूर्व इकाई मूल्य |
+| `unit_price` / `_incl` / `_excl` | number | छूट-पश्चात इकाई मूल्य |
+| `line_subtotal` / `_incl` / `_excl` | number | छूट-पूर्व लाइन उप-कुल |
+| `discounts` / `_incl` / `_excl` | number | छूट राशि एक धनात्मक मान के रूप में |
+| `line_total` / `_incl` / `_excl` | number | अंतिम लाइन कुल |
+| `total_refunded` | number | इस लाइन के लिए कुल रिफंड राशि एक धनात्मक मान के रूप में |
+| `taxes` | array | इस लाइन के लिए प्रति-दर कर पंक्तियाँ |
+| `meta` | array | ऑर्डर आइटम मेटा `{key, value}` जोड़ियों के रूप में |
+| `attributes` | array | उत्पाद/वेरिएशन विशेषताएँ `{key, value}` जोड़ियों के रूप में |
+
+फ़ॉर्मेट किए गए वेरिएंट में `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display`, और समावेशी/अपवर्जी `_display` वेरिएंट शामिल हैं।
+
+## शुल्क और शिपिंग {#fees-and-shipping}
+
+`{{#fees}}...{{/fees}}` और `{{#shipping}}...{{/shipping}}` के साथ लूप करें।
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `label` | string | शुल्क लेबल या शिपिंग विधि का नाम |
+| `method_id` | string | शिपिंग विधि ID (केवल शिपिंग) |
+| `total` / `_incl` / `_excl` | number | प्रदर्शन-पक्ष, समावेशी, और अनन्य योग |
+| `taxes` | array | प्रति-दर कर पंक्तियाँ |
+| `meta` | array | `{key, value}` मेटा जोड़ियाँ |
+
+स्वरूपित संस्करण: `total_display`, `total_incl_display`, और `total_excl_display`।
+
+## छूट {#discounts}
+
+`{{#discounts}}...{{/discounts}}` के साथ लूप करें।
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `label` | string | कूपन विवरण या कोड फ़ॉलबैक |
+| `code` | string | कूपन कोड |
+| `codes` | string | जुड़े हुए कोड के लिए लीगेसी/डिस्प्ले फ़ॉलबैक |
+| `total` / `_incl` / `_excl` | number | छूट राशि धनात्मक मान के रूप में |
+
+स्वरूपित वेरिएंट: `total_display`, `total_incl_display`, और `total_excl_display`। यदि आप छूट को ऋणात्मक पंक्तियों के रूप में दिखाना चाहते हैं तो टेम्पलेट में अपना माइनस चिह्न जोड़ें।
+
+## योग {#totals}
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `totals.subtotal` / `_incl` / `_excl` | number | छूट से पहले ऑर्डर उप-कुल |
+| `totals.discount_total` / `_incl` / `_excl` | number | ऑर्डर छूट कुल धनात्मक मान के रूप में |
+| `totals.tax_total` | number | कुल कर राशि |
+| `totals.total` / `_incl` / `_excl` | number | ऑर्डर कुल योग |
+| `totals.paid_total` | number | भुगतान/लागू की गई राशि |
+| `totals.change_total` | number | ग्राहक को लौटाई गई शेष राशि |
+| `totals.refund_total` | number | कुल वापसी राशि, धनात्मक मान के रूप में |
+| `totals.net_total` | number | `total - refund_total`, शून्य तक सीमित |
+| `totals.total_qty` | number | लाइन आइटम मात्राओं का योग |
+| `totals.line_count` | number | उत्पाद लाइन पंक्तियों की संख्या |
+
+स्वरूपित संस्करणों में `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display`, और `net_total_display` शामिल हैं, साथ ही जहाँ लागू हो वहाँ समावेशी/अनन्य संस्करण भी उपलब्ध हैं।
+
+## tax और tax_summary {#tax-and-taxsummary}
+
+प्रदर्शन-मोड गार्ड के लिए `tax` और मदवार दर पंक्तियों के लिए `tax_summary` का उपयोग करें।
+
+| कर फ़ील्ड | प्रकार | विवरण |
+|-----------|------|-------------|
+| `tax.display` | string | `incl` या `excl` |
+| `tax.display_incl` | boolean | जब कीमतें कर सहित प्रदर्शित होती हैं तो True |
+| `tax.display_excl` | boolean | जब कीमतें कर रहित प्रदर्शित होती हैं तो True |
+| `tax.breakdown` | string | `hidden`, `single`, या `itemized` |
+| `tax.breakdown_hidden` | boolean | जब कर पंक्तियाँ छिपी होनी चाहिए तो True |
+| `tax.breakdown_single` | boolean | जब एकल कर कुल योग प्राथमिक हो तो True |
+| `tax.breakdown_itemized` | boolean | जब प्रति-दर पंक्तियाँ प्राथमिक हों तो True |
+| `has_tax_summary` | boolean | जब `tax_summary` में पंक्तियाँ हों तो True |
+
+`tax_summary` को `{{#tax_summary}}...{{/tax_summary}}` के साथ लूप करें।
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `code` | string | कर दर ID/कोड |
+| `rate` | number/null | हल होने पर दर प्रतिशत |
+| `label` | string | कर दर लेबल |
+| `compound` | boolean | क्या दर संयुक्त (compounded) है |
+| `taxable_amount_excl` | number/null | कर-रहित कर योग्य आधार |
+| `tax_amount` | number | एकत्रित कर |
+| `taxable_amount_incl` | number/null | कर-सहित कर योग्य आधार |
+
+स्वरूपित (formatted) संस्करण: `taxable_amount_excl_display`, `tax_amount_display`, और `taxable_amount_incl_display`।
+
+## भुगतान {#payments}
+
+`{{#payments}}...{{/payments}}` के साथ लूप करें।
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `method_id` | string | भुगतान विधि पहचानकर्ता |
+| `method_title` | string | भुगतान विधि प्रदर्शन शीर्षक |
+| `amount` | number | ऑर्डर पर लागू की गई राशि |
+| `transaction_id` | string | गेटवे ट्रांज़ैक्शन ID |
+| `tendered` | number | उपलब्ध होने पर दी गई नकद राशि |
+| `change` | number | उपलब्ध होने पर लौटाई गई नकद शेष राशि |
+
+स्वरूपित वेरिएंट: `amount_display`, `tendered_display`, और `change_display`।
+
+## रिफ़ंड {#refunds}
+
+`{{#refunds}}...{{/refunds}}` के साथ लूप करें। रिफ़ंड राशियाँ धनात्मक परिमाण होती हैं; टेम्पलेट यह तय करते हैं कि ऋण चिह्न लगाना है या एक अलग लौटाई-गई-वस्तुओं का ब्लॉक प्रदर्शित करना है।
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `id` | number | रिफ़ंड रिकॉर्ड ID |
+| `date` | date object | रिफ़ंड निर्माण तिथि |
+| `amount` | number | रिफ़ंड कुल |
+| `subtotal` | number | रिफंड की गई लाइन उप-कुल |
+| `tax_total` | number | रिफंड किया गया कर |
+| `shipping_total` | number | रिफंड की गई शिपिंग राशि |
+| `shipping_tax` | number | रिफंड किया गया शिपिंग कर |
+| `reason` | string | रिफंड का कारण |
+| `refunded_by_id` | number/null | रिफंड जारी करने वाले उपयोगकर्ता का ID |
+| `refunded_by_name` | string | रिफंड जारी करने वाले उपयोगकर्ता का प्रदर्शन नाम |
+| `refunded_payment` | boolean | क्या भुगतान गेटवे के माध्यम से रिफंड किया गया |
+| `destination` | string | `original_method`, `cash`, या `manual` |
+| `gateway_id` | string | रिफंड के लिए उपयोग किया गया गेटवे ID |
+| `gateway_title` | string | गेटवे प्रदर्शन शीर्षक |
+| `processing_mode` | string | प्रदाता/मैन्युअल प्रोसेसिंग मोड |
+| `lines` | array | रिफंड किए गए उत्पाद पंक्तियाँ |
+| `fees` | array | रिफंड किए गए शुल्क पंक्तियाँ |
+| `shipping` | array | रिफंड की गई शिपिंग पंक्तियाँ |
+
+रिफंड लाइन फ़ील्ड में `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl`, `line_total`, `unit_total`, और `taxes` शामिल हैं। रिफंड शुल्क और शिपिंग पंक्तियाँ `label`, `total`, `total_incl`, `total_excl`, और `taxes` का उपयोग करती हैं। कुल और कर राशियों के लिए प्रदर्शन वेरिएंट जोड़े जाते हैं।
+
+## फ़िस्कल {#fiscal}
+
+फ़िस्कल फ़ील्ड डिफ़ॉल्ट रूप से खाली होती हैं और फ़िस्कल एकीकरण या WCPOS Pro स्नैपशॉट संवर्धन द्वारा भरी जाती हैं।
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `fiscal.immutable_id` | string | अपरिवर्तनीय फ़िस्कल पहचानकर्ता |
+| `fiscal.receipt_number` | string | फ़िस्कल रसीद संख्या |
+| `fiscal.sequence` | number/null | अनुक्रम काउंटर |
+| `fiscal.hash` | string | हैश/हस्ताक्षर मान |
+| `fiscal.qr_payload` | string | राजकोषीय सत्यापन के लिए QR पेलोड |
+| `fiscal.tax_agency_code` | string | कर प्राधिकरण कोड |
+| `fiscal.signed_at` | string | राजकोषीय हस्ताक्षर टाइमस्टैम्प |
+| `fiscal.signature_excerpt` | string | प्रदर्शन के लिए संक्षिप्त हस्ताक्षर |
+| `fiscal.document_label` | string | दस्तावेज़ लेबल, जैसे कर चालान |
+| `fiscal.is_reprint` | boolean | क्या यह रेंडर पुनर्मुद्रण है |
+| `fiscal.reprint_count` | number | पुनर्मुद्रण संख्या |
+| `fiscal.extra_fields` | array/object | क्षेत्राधिकार-विशिष्ट मान |
+
+## presentation_hints {#presentationhints}
+
+ये फ़ील्ड मुख्य रूप से रेंडरर और फ़ॉर्मेटर द्वारा उपयोग किए जाते हैं। आवश्यकता होने पर ये टेम्पलेट्स में उपलब्ध होते हैं।
+
+| फ़ील्ड | प्रकार | विवरण |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | string | `incl`, `excl`, `hidden`, `itemized`, या `single` |
+| `presentation_hints.prices_entered_with_tax` | boolean | कैटलॉग मूल्यों में कर शामिल है या नहीं |
+| `presentation_hints.rounding_mode` | string | WooCommerce कर राउंडिंग सेटिंग |
+| `presentation_hints.locale` | string | फ़ॉर्मेटिंग के लिए उपयोग किया जाने वाला लोकेल |
+| `presentation_hints.timezone` | string | रसीद का समय क्षेत्र |
+| `presentation_hints.currency_position` | string | मुद्रा चिह्न की स्थिति |
+| `presentation_hints.currency_symbol` | string | मुद्रा चिह्न |
+| `presentation_hints.price_thousand_separator` | string | हज़ार विभाजक |
+| `presentation_hints.price_decimal_separator` | string | दशमलव विभाजक |
+| `presentation_hints.price_num_decimals` | number | दशमलव स्थान |
+| `presentation_hints.price_display_suffix` | string | WooCommerce मूल्य प्रदर्शन प्रत्यय |
+| `presentation_hints.order_barcode_type` | string | गैलरी टेम्पलेट द्वारा उपयोग किया जाने वाला बारकोड प्रकार |
+
+## i18n {#i18n}
+
+जहाँ संभव हो, टेक्स्ट को हार्डकोड करने के बजाय `i18n` लेबल का उपयोग करें:
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+सामान्य कुंजियों में `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, और tax-ID लेबल कुंजियाँ जैसे `store_tax_id_label_eu_vat` और `customer_tax_id_label_other` शामिल हैं। एक्सटेंशन द्वारा अतिरिक्त कुंजियाँ जोड़ी जा सकती हैं।
