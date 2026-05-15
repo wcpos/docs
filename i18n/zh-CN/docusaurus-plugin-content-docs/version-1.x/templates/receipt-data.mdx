@@ -1,0 +1,355 @@
+---
+title: 收据数据参考
+sidebar_label: 收据数据
+sidebar_position: 4
+description: WCPOS 收据模板中可用的规范数据契约完整参考。
+---
+
+WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲染。使用 Mustache 点路径，如 `{{order.number}}`、`{{store.name}}` 和 `{{totals.total_display}}`。数组通过区块渲染：
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} — {{line_total_display}}
+{{/lines}}
+```
+
+规范契约由服务器端的 WCPOS 收据数据构建器生成，并由应用中的离线收据渲染器镜像。收据会立即从本地数据打开，然后在服务器响应可用时升级为服务器数据，因此自定义模板应使用以下字段，而非 PHP 订单方法。
+
+## 渲染规则 {#rendering-rules}
+
+### 货币字段 {#currency-fields}
+
+数值型金额字段保留为数字，渲染器会添加支持本地化的 `_display` 字段用于模板输出：
+
+| 数值字段 | 显示字段 |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+打印收据时优先使用 `_display` 字段。仅在条件判断或机器可读输出中使用数值字段。
+
+### 税额显示感知字段 {#tax-display-aware-fields}
+
+多个字段提供了含税和不含税变体，以及一个显示端的便捷值。该便捷值遵循店铺的购物车税额显示设置。
+
+| 便捷字段 | 含税字段 | 不含税字段 |
+|-------------------|-----------------|-----------------|
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+### 日期对象 {#date-objects}
+
+日期字段是包含多种预格式化变体的对象。这样可以避免在 Mustache 中进行日期格式化。
+
+| 字段 | 说明 |
+|-------|-------------|
+| `datetime`、`date`、`time` | 默认日期/时间字符串 |
+| `datetime_short`、`datetime_long`、`datetime_full` | 本地化的组合格式 |
+| `date_short`、`date_long`、`date_full` | 区域感知的纯日期格式 |
+| `date_ymd`、`date_dmy`、`date_mdy` | 固定顺序的日期格式 |
+| `weekday_short`、`weekday_long` | 星期名称 |
+| `day`、`month`、`month_short`、`month_long`、`year` | 单独的日期部分 |
+
+可用的日期对象：`order.created`、`order.paid`、`order.completed`、`order.printed` 和 `refunds[].date`。`order.printed` 在渲染时会刷新，适用于重新打印的场景。
+
+## 顶级部分 {#top-level-sections}
+
+| 部分 | 类型 | 描述 |
+|---------|------|-------------|
+| `order` | object | 订单标识、状态、日期、备注和付款 URL 信息 |
+| `store` | object | 店铺标识、地址、联系方式、税号、Logo、营业时间和页脚文本 |
+| `cashier` | object | 处理订单的用户 |
+| `customer` | object | 客户显示名称、地址和税号 |
+| `lines` | array | 商品行项目 |
+| `fees` | array | 费用行 |
+| `shipping` | array | 运费行 |
+| `discounts` | array | 优惠券/折扣行 |
+| `totals` | object | 订单合计、支付合计、退款摘要及项目数量 |
+| `tax` | object | 用于区块条件判断的税费显示模式标志 |
+| `tax_summary` | array | 按税率汇总的税费行 |
+| `has_tax_summary` | boolean | `tax_summary` 的便捷判断标志 |
+| `payments` | array | 支付行 |
+| `refunds` | array | 应用于该订单的退款记录 |
+| `fiscal` | object | 由财税集成填充的财税快照字段 |
+| `presentation_hints` | object | 格式化与渲染器提示 |
+| `i18n` | object | 内置和自定义模板的翻译标签 |
+
+## order {#order}
+
+| 字段 | 类型 | 示例／说明 |
+|-------|------|-----------------------|
+| `order.id` | number | `1234` |
+| `order.number` | string | 面向用户的订单编号，例如 `"10045"` |
+| `order.currency` | string | ISO 货币代码，例如 `"USD"` |
+| `order.customer_note` | string | 客户／订单备注 |
+| `order.wc_status` | string | WooCommerce 原始状态标识，例如 `"processing"` |
+| `order.status_label` | string | 本地化的状态标签，包含自定义状态 |
+| `order.created_via` | string | 来源／渠道，例如 `"woocommerce-pos"` |
+| `order.needs_payment` | boolean | 是否应显示付款部分 |
+| `order.payment_url` | string | 订单付款 URL（可用时） |
+| `order.created` | date object | 订单创建日期 |
+| `order.paid` | date object | 付款日期，未付款时为空字符串 |
+| `order.completed` | date object | 完成日期，未完成时为空字符串 |
+| `order.printed` | date object | 渲染时的打印/重新打印时间戳 |
+
+## 店铺 {#store}
+
+| 字段 | 类型 | 示例／说明 |
+|-------|------|-----------------------|
+| `store.id` | number | 店铺 ID，已删除店铺显示历史 ID |
+| `store.name` | string | 店铺显示名称 |
+| `store.address.address_1` | string | 街道地址第 1 行 |
+| `store.address.address_2` | string | 门牌号/单元行 |
+| `store.address.city` | string | 城市/地区 |
+| `store.address.state` | string | 州/省 |
+| `store.address.postcode` | string | 邮政编码 |
+| `store.address.country` | string | ISO 国家代码 |
+| `store.address_lines` | array | 预格式化的地址行；推荐在大多数模板中使用 |
+| `store.tax_ids` | array | 结构化的企业税号；建议循环遍历此数组，而非使用单个税号 |
+| `store.phone` | string | 店铺电话 |
+| `store.email` | string | 店铺邮箱 |
+| `store.logo` | string/null | 店铺 Logo URL 或 data URI |
+| `store.opening_hours` | string/null | 紧凑格式的营业时间文本 |
+| `store.opening_hours_vertical` | string/null | 多行格式的营业时间 |
+| `store.opening_hours_inline` | string/null | 逗号分隔的营业时间文本 |
+| `store.opening_hours_notes` | string/null | 营业时间备注（自由文本） |
+| `store.personal_notes` | string/null | 小票页脚/个人备注 |
+| `store.policies_and_conditions` | string/null | 退款、退货或条款文本 |
+| `store.footer_imprint` | string/null | 法律页脚印记 |
+
+### 税号对象 {#tax-id-objects}
+
+`store.tax_ids` 和 `customer.tax_ids` 包含具有相同结构的对象：
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `type` | string | 标识符，例如 `eu_vat`、`de_steuernummer`、`au_abn`、`br_cpf`、`us_ein` 或 `other` |
+| `value` | string | 要打印的税号值 |
+| `country` | string/null | 已知时的 ISO 国家代码 |
+| `label` | string/null | 本地化显示标签，在渲染前解析 |
+
+示例：
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+## cashier {#cashier}
+
+| 字段 | 类型 | 示例／说明 |
+|-------|------|-----------------------|
+| `cashier.id` | number | WordPress 用户 ID，未知时为 `0` |
+| `cashier.name` | string | 收银员显示名称 |
+
+## customer {#customer}
+
+| 字段 | 类型 | 示例／说明 |
+|-------|------|-----------------------|
+| `customer.id` | number/null | 客户 ID，访客时为 `null` |
+| `customer.name` | string | 客户显示名称，或访客标签 |
+| `customer.billing_address.*` | object | WooCommerce 账单地址字段 |
+| `customer.shipping_address.*` | object | WooCommerce 收货地址字段 |
+| `customer.tax_ids` | array | 从订单快照中获取的客户税号结构化数据 |
+
+常用地址键包括 `first_name`、`last_name`、`company`、`address_1`、`address_2`、`city`、`state`、`postcode`、`country`、`email` 和 `phone`。
+
+## lines {#lines}
+
+使用 `{{#lines}}...{{/lines}}` 进行循环。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `key` | string | 稳定的行键/订单项 ID |
+| `sku` | string | 产品 SKU |
+| `name` | string | 产品或行项目显示名称 |
+| `qty` | number | 销售数量 |
+| `qty_refunded` | number | 该行项目的退款数量 |
+| `unit_subtotal` / `_incl` / `_excl` | number | 折扣前单价 |
+| `unit_price` / `_incl` / `_excl` | number | 折扣后单价 |
+| `line_subtotal` / `_incl` / `_excl` | number | 折扣前行小计 |
+| `discounts` / `_incl` / `_excl` | number | 折扣金额（正值） |
+| `line_total` / `_incl` / `_excl` | number | 最终行合计 |
+| `total_refunded` | number | 该行的退款总额（正值） |
+| `taxes` | array | 该行按税率分列的税额行 |
+| `meta` | array | 订单项元数据，以 `{key, value}` 键值对形式表示 |
+| `attributes` | array | 商品/变体属性，以 `{key, value}` 键值对形式表示 |
+
+格式化变体包括 `unit_subtotal_display`、`unit_price_display`、`line_subtotal_display`、`discounts_display`、`line_total_display`，以及含税/不含税的 `_display` 变体。
+
+## 费用和运费 {#fees-and-shipping}
+
+使用 `{{#fees}}...{{/fees}}` 和 `{{#shipping}}...{{/shipping}}` 进行循环遍历。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `label` | string | 费用标签或配送方式名称 |
+| `method_id` | string | 配送方式 ID（仅限配送） |
+| `total` / `_incl` / `_excl` | number | 显示端金额、含税金额和不含税金额 |
+| `taxes` | array | 按税率分列的税额行 |
+| `meta` | array | `{key, value}` 元数据键值对 |
+
+格式化变体：`total_display`、`total_incl_display` 和 `total_excl_display`。
+
+## discounts {#discounts}
+
+使用 `{{#discounts}}...{{/discounts}}` 进行循环。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `label` | string | 优惠券描述或代码回退值 |
+| `code` | string | 优惠券代码 |
+| `codes` | string | 旧版/显示回退值，用于拼接的代码 |
+| `total` / `_incl` / `_excl` | number | 折扣金额，为正数值 |
+
+格式化变体：`total_display`、`total_incl_display` 和 `total_excl_display`。如果需要将折扣显示为负数行，请在模板中自行添加负号。
+
+## totals {#totals}
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `totals.subtotal` / `_incl` / `_excl` | number | 折扣前的订单小计 |
+| `totals.discount_total` / `_incl` / `_excl` | number | 订单折扣总额，为正数值 |
+| `totals.tax_total` | number | 税额合计 |
+| `totals.total` / `_incl` / `_excl` | number | 订单总计 |
+| `totals.paid_total` | number | 已支付/已抵扣金额 |
+| `totals.change_total` | number | 找零给顾客的金额 |
+| `totals.refund_total` | number | 退款总额（正值） |
+| `totals.net_total` | number | `total - refund_total`，最小值为零 |
+| `totals.total_qty` | number | 商品行数量总和 |
+| `totals.line_count` | number | 商品行数 |
+
+格式化变体包括 `subtotal_display`、`discount_total_display`、`tax_total_display`、`total_display`、`paid_total_display`、`change_total_display`、`refund_total_display` 和 `net_total_display`，以及适用情况下的含税/不含税变体。
+
+## tax 和 tax_summary {#tax-and-taxsummary}
+
+使用 `tax` 进行显示模式判断，使用 `tax_summary` 显示分项税率行。
+
+| 税费字段 | 类型 | 描述 |
+|-----------|------|-------------|
+| `tax.display` | string | `incl` 或 `excl` |
+| `tax.display_incl` | boolean | 当价格显示为含税时为 true |
+| `tax.display_excl` | boolean | 当价格显示为不含税时为 true |
+| `tax.breakdown` | string | `hidden`、`single` 或 `itemized` |
+| `tax.breakdown_hidden` | boolean | 当应隐藏税项行时为 true |
+| `tax.breakdown_single` | boolean | 当优先显示单一税额合计时为 true |
+| `tax.breakdown_itemized` | boolean | 当优先显示按税率逐项列出时为 true |
+| `has_tax_summary` | boolean | 当 `tax_summary` 包含行数据时为 true |
+
+使用 `tax_summary` 循环遍历 `{{#tax_summary}}...{{/tax_summary}}`。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `code` | string | 税率 ID/代码 |
+| `rate` | number/null | 解析后的税率百分比 |
+| `label` | string | 税率标签 |
+| `compound` | boolean | 是否为复合税率 |
+| `taxable_amount_excl` | number/null | 不含税应税基数 |
+| `tax_amount` | number | 已征税额 |
+| `taxable_amount_incl` | number/null | 含税应税基数 |
+
+格式化变体：`taxable_amount_excl_display`、`tax_amount_display` 和 `taxable_amount_incl_display`。
+
+## payments {#payments}
+
+使用 `{{#payments}}...{{/payments}}` 进行循环。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `method_id` | string | 支付方式标识符 |
+| `method_title` | string | 支付方式显示名称 |
+| `amount` | number | 应用于订单的金额 |
+| `transaction_id` | string | 支付网关交易 ID |
+| `tendered` | number | 存在时为收到的现金金额 |
+| `change` | number | 存在时为找零金额 |
+
+格式化变体：`amount_display`、`tendered_display` 和 `change_display`。
+
+## 退款 {#refunds}
+
+使用 `{{#refunds}}...{{/refunds}}` 进行循环。退款金额为正数绝对值；模板自行决定是否添加负号或渲染单独的退货商品区块。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `id` | number | 退款记录 ID |
+| `date` | date object | 退款创建日期 |
+| `amount` | number | 退款总额 |
+| `subtotal` | number | 退款行小计 |
+| `tax_total` | number | 退款税额 |
+| `shipping_total` | number | 退款运费金额 |
+| `shipping_tax` | number | 退款运费税额 |
+| `reason` | string | 退款原因 |
+| `refunded_by_id` | number/null | 发起退款的用户 ID |
+| `refunded_by_name` | string | 发起退款的用户显示名称 |
+| `refunded_payment` | boolean | 是否通过支付网关退款 |
+| `destination` | string | `original_method`、`cash` 或 `manual` |
+| `gateway_id` | string | 用于退款的支付网关 ID |
+| `gateway_title` | string | 支付网关显示名称 |
+| `processing_mode` | string | 服务商/手动处理模式 |
+| `lines` | array | 退款商品行 |
+| `fees` | array | 退款费用行 |
+| `shipping` | array | 退款运费行 |
+
+退款行字段包括 `name`、`sku`、`qty`、`total`、`total_incl`、`total_excl`、`line_total`、`unit_total` 和 `taxes`。退款费用行和运费行使用 `label`、`total`、`total_incl`、`total_excl` 和 `taxes`。总计和税额会添加显示变体。
+
+## fiscal {#fiscal}
+
+财务字段默认为空，由财务集成或 WCPOS Pro 快照增强功能填充。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `fiscal.immutable_id` | string | 不可变财务标识符 |
+| `fiscal.receipt_number` | string | 财务收据编号 |
+| `fiscal.sequence` | number/null | 序列计数器 |
+| `fiscal.hash` | string | 哈希/签名值 |
+| `fiscal.qr_payload` | string | 财务验证二维码数据 |
+| `fiscal.tax_agency_code` | string | 税务机关代码 |
+| `fiscal.signed_at` | string | 财务签名时间戳 |
+| `fiscal.signature_excerpt` | string | 用于显示的截断签名 |
+| `fiscal.document_label` | string | 单据标签，例如 Tax Invoice |
+| `fiscal.is_reprint` | boolean | 此次渲染是否为重新打印 |
+| `fiscal.reprint_count` | number | 重新打印次数 |
+| `fiscal.extra_fields` | array/object | 特定辖区的值 |
+
+## presentation_hints {#presentationhints}
+
+这些字段主要由渲染器和格式化器使用。需要时可在模板中使用。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | string | `incl`、`excl`、`hidden`、`itemized` 或 `single` |
+| `presentation_hints.prices_entered_with_tax` | boolean | 商品目录价格是否含税 |
+| `presentation_hints.rounding_mode` | string | WooCommerce 税额取整设置 |
+| `presentation_hints.locale` | string | 用于格式化的区域设置 |
+| `presentation_hints.timezone` | string | 收据时区 |
+| `presentation_hints.currency_position` | string | 货币符号位置 |
+| `presentation_hints.currency_symbol` | string | 货币符号 |
+| `presentation_hints.price_thousand_separator` | string | 千位分隔符 |
+| `presentation_hints.price_decimal_separator` | string | 小数分隔符 |
+| `presentation_hints.price_num_decimals` | number | 小数位数 |
+| `presentation_hints.price_display_suffix` | string | WooCommerce 价格显示后缀 |
+| `presentation_hints.order_barcode_type` | string | 图库模板使用的条形码类型 |
+
+## i18n {#i18n}
+
+尽可能使用 `i18n` 标签，而不是硬编码文本：
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+常用键包括 `order`、`date`、`cashier`、`customer`、`item`、`sku`、`qty`、`unit_price`、`discount`、`subtotal`、`total`、`tax`、`paid`、`tendered`、`change`、`tax_summary`、`refunded`、`net_total`、`customer_note`、`thank_you_purchase`、`opening_hours`，以及税号标签键，如 `store_tax_id_label_eu_vat` 和 `customer_tax_id_label_other`。扩展可能会添加额外的键。
