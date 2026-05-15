@@ -1,0 +1,355 @@
+---
+title: Référence des données de reçu
+sidebar_label: Données de reçu
+sidebar_position: 4
+description: Référence complète du contrat de données canonique disponible dans les modèles de reçu WCPOS.
+---
+
+Les modèles HTML sans logique et les modèles XML thermiques de WCPOS sont rendus à partir du même payload de reçu canonique. Utilisez les chemins à points Mustache tels que `{{order.number}}`, `{{store.name}}` et `{{totals.total_display}}`. Les tableaux sont rendus avec des sections :
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} — {{line_total_display}}
+{{/lines}}
+```
+
+Le contrat canonique est produit par le générateur de données de reçu WCPOS sur le serveur et reproduit par le moteur de rendu de reçu hors ligne dans l'application. Les reçus s'ouvrent immédiatement à partir des données locales, puis sont mis à jour avec la réponse du serveur lorsqu'elle est disponible. Les modèles personnalisés doivent donc utiliser les champs ci-dessous plutôt que les méthodes PHP de commande.
+
+## Règles de rendu {#rendering-rules}
+
+### Champs de devise {#currency-fields}
+
+Les champs monétaires numériques sont conservés en tant que nombres et le moteur de rendu ajoute des champs `_display` adaptés aux paramètres régionaux pour l'affichage dans les modèles :
+
+| Champ numérique | Champ d'affichage |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+Privilégiez les champs `_display` lors de l'impression des reçus. Utilisez les champs numériques uniquement pour les sections conditionnelles ou les sorties lisibles par machine.
+
+### Champs adaptés à l'affichage des taxes {#tax-display-aware-fields}
+
+Plusieurs champs disposent de variantes TTC et HT ainsi qu'une valeur pratique côté affichage. Cette valeur pratique suit le paramètre d'affichage des taxes du panier de la boutique.
+
+| Champ pratique | Champ TTC | Champ HT |
+|-------------------|-----------------|-----------------|
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+### Objets date {#date-objects}
+
+Les champs de date sont des objets avec plusieurs variantes préformatées. Cela évite d'effectuer le formatage des dates dans Mustache.
+
+| Champ | Description |
+|-------|-------------|
+| `datetime`, `date`, `time` | Chaînes de date/heure par défaut |
+| `datetime_short`, `datetime_long`, `datetime_full` | Formats combinés adaptés à la locale |
+| `date_short`, `date_long`, `date_full` | Formats de date uniquement, adaptés à la locale |
+| `date_ymd`, `date_dmy`, `date_mdy` | Formats de date à ordre fixe |
+| `weekday_short`, `weekday_long` | Noms des jours |
+| `day`, `month`, `month_short`, `month_long`, `year` | Composants individuels de la date |
+
+Objets de date disponibles : `order.created`, `order.paid`, `order.completed`, `order.printed` et `refunds[].date`. `order.printed` est actualisé au moment du rendu, ce qui est utile pour les réimpressions.
+
+## Sections de premier niveau {#top-level-sections}
+
+| Section | Type | Description |
+|---------|------|-------------|
+| `order` | object | Identité de la commande, statut, dates, note et informations d'URL de paiement |
+| `store` | object | Identité de la boutique, adresse, coordonnées, numéros de taxe, logo, horaires et texte de pied de page |
+| `cashier` | object | Utilisateur ayant traité la commande |
+| `customer` | object | Nom d'affichage du client, adresses et numéros de taxe |
+| `lines` | array | Lignes d'articles du produit |
+| `fees` | array | Lignes de frais |
+| `shipping` | array | Lignes d'expédition |
+| `discounts` | array | Lignes de coupons/remises |
+| `totals` | object | Totaux de la commande, totaux des paiements, résumé des remboursements et nombre d'articles |
+| `tax` | object | Indicateurs du mode d'affichage des taxes pour les conditions de section |
+| `tax_summary` | array | Lignes de résumé des taxes par taux |
+| `has_tax_summary` | boolean | Condition de commodité pour `tax_summary` |
+| `payments` | array | Lignes de paiement |
+| `refunds` | array | Enregistrements de remboursements appliqués à la commande |
+| `fiscal` | object | Champs d'instantané fiscal alimentés par les intégrations fiscales |
+| `presentation_hints` | object | Indications de formatage et de rendu |
+| `i18n` | object | Libellés traduits pour les modèles intégrés et personnalisés |
+
+## order {#order}
+
+| Champ | Type | Exemple / description |
+|-------|------|-----------------------|
+| `order.id` | number | `1234` |
+| `order.number` | string | Numéro de commande visible par le client, par ex. `"10045"` |
+| `order.currency` | string | Code devise ISO, par ex. `"USD"` |
+| `order.customer_note` | string | Note du client / de la commande |
+| `order.wc_status` | string | Slug brut du statut WooCommerce, par ex. `"processing"` |
+| `order.status_label` | string | Libellé de statut localisé, y compris les statuts personnalisés |
+| `order.created_via` | string | Source / canal, par ex. `"woocommerce-pos"` |
+| `order.needs_payment` | boolean | Indique si une section de paiement doit être affichée |
+| `order.payment_url` | string | URL de paiement de la commande lorsque disponible |
+| `order.created` | objet date | Date de création de la commande |
+| `order.paid` | objet date | Date de paiement, chaînes vides si non payée |
+| `order.completed` | objet date | Date de finalisation, chaînes vides si non finalisée |
+| `order.printed` | objet date | Horodatage d'impression/réimpression au moment du rendu |
+
+## boutique {#store}
+
+| Champ | Type | Exemple / description |
+|-------|------|-----------------------|
+| `store.id` | number | ID de la boutique, ou ID historique pour les boutiques supprimées |
+| `store.name` | string | Nom d'affichage de la boutique |
+| `store.address.address_1` | string | Adresse ligne 1 |
+| `store.address.address_2` | string | Complément d'adresse |
+| `store.address.city` | string | Ville/localité |
+| `store.address.state` | string | État/région |
+| `store.address.postcode` | string | Code postal |
+| `store.address.country` | string | Code pays ISO |
+| `store.address_lines` | array | Lignes d'adresse préformatées ; recommandé pour la plupart des modèles |
+| `store.tax_ids` | array | Identifiants fiscaux structurés ; parcourir ce tableau plutôt que d'utiliser un seul identifiant fiscal |
+| `store.phone` | string | Téléphone de la boutique |
+| `store.email` | string | E-mail de la boutique |
+| `store.logo` | string/null | URL ou URI de données du logo de la boutique |
+| `store.opening_hours` | string/null | Horaires d'ouverture en format compact |
+| `store.opening_hours_vertical` | string/null | Horaires d'ouverture sur plusieurs lignes |
+| `store.opening_hours_inline` | string/null | Horaires d'ouverture séparés par des virgules |
+| `store.opening_hours_notes` | string/null | Notes en texte libre sur les horaires d'ouverture |
+| `store.personal_notes` | string/null | Note personnelle / pied de page du reçu |
+| `store.policies_and_conditions` | string/null | Texte de remboursement, retours ou conditions générales |
+| `store.footer_imprint` | string/null | Mentions légales en pied de page |
+
+### Objets d'identifiant fiscal {#tax-id-objects}
+
+`store.tax_ids` et `customer.tax_ids` contiennent des objets de même structure :
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `type` | string | Identifiant tel que `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein` ou `other` |
+| `value` | string | Valeur de l'identifiant fiscal à imprimer |
+| `country` | string/null | Code pays ISO lorsqu'il est connu |
+| `label` | string/null | Libellé d'affichage localisé, résolu avant le rendu |
+
+Exemple :
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+## cashier {#cashier}
+
+| Champ | Type | Exemple / description |
+|-------|------|-----------------------|
+| `cashier.id` | number | Identifiant utilisateur WordPress, `0` si inconnu |
+| `cashier.name` | string | Nom d'affichage du caissier |
+
+## customer {#customer}
+
+| Champ | Type | Exemple / description |
+|-------|------|-----------------------|
+| `customer.id` | number/null | Identifiant du client, ou `null` pour les invités |
+| `customer.name` | string | Nom d'affichage du client, ou libellé invité |
+| `customer.billing_address.*` | object | Champs d'adresse de facturation WooCommerce |
+| `customer.shipping_address.*` | object | Champs d'adresse de livraison WooCommerce |
+| `customer.tax_ids` | array | Identifiants fiscaux du client capturés depuis la commande |
+
+Les clés d'adresse courantes incluent `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email` et `phone`.
+
+## lines {#lines}
+
+Boucler avec `{{#lines}}...{{/lines}}`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `key` | string | Clé stable de ligne / identifiant d'article de commande |
+| `sku` | string | SKU du produit |
+| `name` | string | Nom d'affichage du produit ou de la ligne |
+| `qty` | number | Quantité vendue |
+| `qty_refunded` | number | Quantité remboursée pour cette ligne |
+| `unit_subtotal` / `_incl` / `_excl` | number | Prix unitaire avant remise |
+| `unit_price` / `_incl` / `_excl` | number | Prix unitaire après remise |
+| `line_subtotal` / `_incl` / `_excl` | number | Sous-total de la ligne avant remise |
+| `discounts` / `_incl` / `_excl` | number | Montant de la remise en valeur positive |
+| `line_total` / `_incl` / `_excl` | number | Total final de la ligne |
+| `total_refunded` | number | Total remboursé pour cette ligne en valeur positive |
+| `taxes` | array | Lignes de taxe par taux pour cette ligne |
+| `meta` | array | Métadonnées de l'article de commande sous forme de paires `{key, value}` |
+| `attributes` | array | Attributs du produit/de la variation sous forme de paires `{key, value}` |
+
+Les variantes formatées incluent `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display`, ainsi que les variantes `_display` TTC/HT.
+
+## frais et expédition {#fees-and-shipping}
+
+Itérer avec `{{#fees}}...{{/fees}}` et `{{#shipping}}...{{/shipping}}`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `label` | string | Libellé du frais ou nom de la méthode de livraison |
+| `method_id` | string | ID de la méthode de livraison (livraison uniquement) |
+| `total` / `_incl` / `_excl` | number | Totaux côté affichage, TTC et HT |
+| `taxes` | array | Lignes de taxe par taux |
+| `meta` | array | Paires de métadonnées `{key, value}` |
+
+Variantes formatées : `total_display`, `total_incl_display` et `total_excl_display`.
+
+## remises {#discounts}
+
+Boucle avec `{{#discounts}}...{{/discounts}}`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `label` | string | Description du coupon ou code par défaut |
+| `code` | string | Code du coupon |
+| `codes` | string | Valeur de repli héritée/affichage pour les codes concaténés |
+| `total` / `_incl` / `_excl` | number | Montant de la remise en valeur positive |
+
+Variantes formatées : `total_display`, `total_incl_display` et `total_excl_display`. Ajoutez votre propre signe moins dans le modèle si vous souhaitez afficher les remises sous forme de lignes négatives.
+
+## totals {#totals}
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `totals.subtotal` / `_incl` / `_excl` | number | Sous-total de la commande avant remises |
+| `totals.discount_total` / `_incl` / `_excl` | number | Total des remises de la commande en valeur positive |
+| `totals.tax_total` | number | Montant total des taxes |
+| `totals.total` / `_incl` / `_excl` | number | Total général de la commande |
+| `totals.paid_total` | number | Montant payé/appliqué |
+| `totals.change_total` | number | Monnaie rendue au client |
+| `totals.refund_total` | number | Total remboursé en valeur positive |
+| `totals.net_total` | number | `total - refund_total`, limité à zéro |
+| `totals.total_qty` | number | Somme des quantités des lignes d'articles |
+| `totals.line_count` | number | Nombre de lignes de produits |
+
+Les variantes formatées incluent `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` et `net_total_display`, ainsi que les variantes TTC/HT le cas échéant.
+
+## tax et tax_summary {#tax-and-taxsummary}
+
+Utilisez `tax` pour les conditions d'affichage et `tax_summary` pour les lignes détaillées par taux.
+
+| Champ de taxe | Type | Description |
+|---------------|------|-------------|
+| `tax.display` | string | `incl` ou `excl` |
+| `tax.display_incl` | boolean | Vrai lorsque les prix sont affichés toutes taxes comprises |
+| `tax.display_excl` | boolean | Vrai lorsque les prix sont affichés hors taxes |
+| `tax.breakdown` | string | `hidden`, `single` ou `itemized` |
+| `tax.breakdown_hidden` | boolean | Vrai lorsque les lignes de taxe doivent être masquées |
+| `tax.breakdown_single` | boolean | Vrai lorsqu'un total de taxe unique est préféré |
+| `tax.breakdown_itemized` | boolean | Vrai lorsque les lignes par taux sont préférées |
+| `has_tax_summary` | boolean | Vrai lorsque `tax_summary` contient des lignes |
+
+Boucler sur `tax_summary` avec `{{#tax_summary}}...{{/tax_summary}}`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `code` | string | Identifiant/code du taux de taxe |
+| `rate` | number/null | Pourcentage du taux lorsqu'il est résolu |
+| `label` | string | Libellé du taux de taxe |
+| `compound` | boolean | Indique si le taux est composé |
+| `taxable_amount_excl` | number/null | Base imposable hors taxe |
+| `tax_amount` | number | Taxe collectée |
+| `taxable_amount_incl` | number/null | Base imposable TTC |
+
+Variantes formatées : `taxable_amount_excl_display`, `tax_amount_display` et `taxable_amount_incl_display`.
+
+## payments {#payments}
+
+Boucle avec `{{#payments}}...{{/payments}}`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `method_id` | string | Identifiant du moyen de paiement |
+| `method_title` | string | Nom affiché du moyen de paiement |
+| `amount` | number | Montant appliqué à la commande |
+| `transaction_id` | string | ID de transaction de la passerelle |
+| `tendered` | number | Montant en espèces remis, le cas échéant |
+| `change` | number | Monnaie rendue, le cas échéant |
+
+Variantes formatées : `amount_display`, `tendered_display` et `change_display`.
+
+## remboursements {#refunds}
+
+Boucle avec `{{#refunds}}...{{/refunds}}`. Les montants de remboursement sont des valeurs absolues positives ; les modèles décident s'il faut ajouter un signe moins ou afficher un bloc distinct pour les articles retournés.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `id` | number | ID de l'enregistrement de remboursement |
+| `date` | date object | Date de création du remboursement |
+| `amount` | number | Total du remboursement |
+| `subtotal` | number | Sous-total de la ligne remboursée |
+| `tax_total` | number | Taxe remboursée |
+| `shipping_total` | number | Montant de livraison remboursé |
+| `shipping_tax` | number | Taxe de livraison remboursée |
+| `reason` | string | Motif du remboursement |
+| `refunded_by_id` | number/null | ID de l'utilisateur ayant effectué le remboursement |
+| `refunded_by_name` | string | Nom d'affichage de l'utilisateur ayant effectué le remboursement |
+| `refunded_payment` | boolean | Indique si le paiement a été remboursé via la passerelle |
+| `destination` | string | `original_method`, `cash` ou `manual` |
+| `gateway_id` | string | ID de la passerelle utilisée pour le remboursement |
+| `gateway_title` | string | Titre d'affichage de la passerelle |
+| `processing_mode` | string | Mode de traitement fournisseur/manuel |
+| `lines` | array | Lignes de produits remboursés |
+| `fees` | array | Lignes de frais remboursés |
+| `shipping` | array | Lignes de livraison remboursées |
+
+Les champs des lignes de remboursement incluent `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl`, `line_total`, `unit_total` et `taxes`. Les lignes de frais et de livraison remboursés utilisent `label`, `total`, `total_incl`, `total_excl` et `taxes`. Des variantes d'affichage sont ajoutées pour les totaux et les montants de taxe.
+
+## fiscal {#fiscal}
+
+Les champs fiscaux sont vides par défaut et alimentés par les intégrations fiscales ou l'enrichissement d'instantané de WCPOS Pro.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `fiscal.immutable_id` | string | Identifiant fiscal immuable |
+| `fiscal.receipt_number` | string | Numéro de reçu fiscal |
+| `fiscal.sequence` | number/null | Compteur de séquence |
+| `fiscal.hash` | string | Valeur de hachage/signature |
+| `fiscal.qr_payload` | string | Données QR pour la vérification fiscale |
+| `fiscal.tax_agency_code` | string | Code de l'autorité fiscale |
+| `fiscal.signed_at` | string | Horodatage de la signature fiscale |
+| `fiscal.signature_excerpt` | string | Signature tronquée pour l'affichage |
+| `fiscal.document_label` | string | Libellé du document, par ex. Facture fiscale |
+| `fiscal.is_reprint` | boolean | Indique si ce rendu est une réimpression |
+| `fiscal.reprint_count` | number | Nombre de réimpressions |
+| `fiscal.extra_fields` | array/object | Valeurs spécifiques à la juridiction |
+
+## presentation_hints {#presentationhints}
+
+Ces champs sont principalement utilisés par le moteur de rendu et le formateur. Ils sont disponibles dans les modèles si nécessaire.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | string | `incl`, `excl`, `hidden`, `itemized` ou `single` |
+| `presentation_hints.prices_entered_with_tax` | boolean | Indique si les prix du catalogue incluent la taxe |
+| `presentation_hints.rounding_mode` | string | Paramètre d'arrondi des taxes WooCommerce |
+| `presentation_hints.locale` | string | Langue utilisée pour le formatage |
+| `presentation_hints.timezone` | string | Fuseau horaire du reçu |
+| `presentation_hints.currency_position` | string | Position du symbole monétaire |
+| `presentation_hints.currency_symbol` | string | Symbole monétaire |
+| `presentation_hints.price_thousand_separator` | string | Séparateur des milliers |
+| `presentation_hints.price_decimal_separator` | string | Séparateur décimal |
+| `presentation_hints.price_num_decimals` | number | Nombre de décimales |
+| `presentation_hints.price_display_suffix` | string | Suffixe d'affichage des prix WooCommerce |
+| `presentation_hints.order_barcode_type` | string | Type de code-barres utilisé par les modèles de galerie |
+
+## i18n {#i18n}
+
+Utilisez les libellés `i18n` au lieu de coder le texte en dur lorsque c'est possible :
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+Les clés courantes incluent `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, ainsi que les clés de libellé d'identifiant fiscal telles que `store_tax_id_label_eu_vat` et `customer_tax_id_label_other`. Des clés supplémentaires peuvent être ajoutées par des extensions.
