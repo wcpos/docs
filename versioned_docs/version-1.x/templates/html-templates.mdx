@@ -17,8 +17,8 @@ Insert data using double curly braces:
 
 ```html
 <h1>{{store.name}}</h1>
-<p>Order #{{meta.order_number}}</p>
-<p>Total: {{totals.grand_total_display}}</p>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
 ```
 
 Use `_display` variants for pre-formatted currency values (e.g., `$12.50` instead of `12.5`). See the [Receipt Data Reference](/templates/receipt-data) for all available fields.
@@ -30,7 +30,7 @@ Use `{{#section}}...{{/section}}` to loop over arrays or conditionally show cont
 ```html
 {{#lines}}
 <div class="line-item">
-  <span>{{name}} × {{quantity}}</span>
+  <span>{{name}} × {{qty}}</span>
   <span>{{line_total_display}}</span>
 </div>
 {{/lines}}
@@ -41,12 +41,12 @@ Use `{{#section}}...{{/section}}` to loop over arrays or conditionally show cont
 Use `{{^section}}...{{/section}}` to show content when a value is empty or false:
 
 ```html
-{{#customer.first_name}}
-  <p>Customer: {{customer.first_name}} {{customer.last_name}}</p>
-{{/customer.first_name}}
-{{^customer.first_name}}
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
   <p>Guest checkout</p>
-{{/customer.first_name}}
+{{/customer.id}}
 ```
 
 ### Localised Labels
@@ -62,28 +62,33 @@ Use `{{i18n.key}}` for translatable labels that adapt to the store's language:
 
 ### Store Header
 
+The `store.address_lines` array is pre-formatted for receipts — loop it instead of stitching individual address fields together.
+
 ```html
-<div class="header">
-  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" />{{/store.logo}}
-  <h1>{{store.name}}</h1>
-  {{#store.address_1}}<p>{{store.address_1}}</p>{{/store.address_1}}
-  {{#store.address_2}}<p>{{store.address_2}}</p>{{/store.address_2}}
-  <p>{{store.city}} {{store.state}} {{store.postcode}}</p>
-  {{#store.phone}}<p>{{store.phone}}</p>{{/store.phone}}
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
 </div>
 ```
 
 ### Line Items with Discounts
 
+A line item's `discounts` field is the discount amount as a positive number, or `0` when there's no discount. Mustache treats `0` as falsy, so `{{#discounts}}...{{/discounts}}` is the right guard.
+
 ```html
 {{#lines}}
-<div class="line-item">
-  <div>{{name}} × {{quantity}}</div>
-  {{#discount}}
-    <div class="discount">
-      <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
-    </div>
-  {{/discount}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
   <div>{{line_total_display}}</div>
 </div>
 {{/lines}}
@@ -104,47 +109,66 @@ Use `{{i18n.key}}` for translatable labels that adapt to the store's language:
 
 ```html
 {{#payments}}
-<div class="payment">
-  <span>{{title}}</span>
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
   <span>{{amount_display}}</span>
 </div>
 {{#tendered}}
-  <div>Tendered: {{tendered_display}}</div>
-  <div>Change: {{change_display}}</div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
 {{/tendered}}
 {{/payments}}
 ```
 
 ### Barcodes and QR Codes
 
-Insert barcodes using data attributes. These are rendered as inline SVGs:
+Use the `<barcode>` element — the same syntax as [thermal templates](/templates/thermal-templates). The value goes inside the element; the symbology is set on the `type` attribute. The renderer replaces each element with an inline SVG.
 
 ```html
-<!-- QR code -->
-<div data-barcode="qr" data-value="{{fiscal.qr_payload}}"></div>
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
 
-<!-- EAN-13 barcode -->
-<div data-barcode="ean13" data-value="{{meta.order_number}}"></div>
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
 ```
 
-All [bwip-js symbologies](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types) are supported.
+The `type` attribute must be set **literally** in the template — it can't come from a placeholder. A `type` of `qr` or `qrcode` renders as a QR code in both HTML and thermal templates.
+
+If the selected barcode type can't encode the value (for example non-numeric or wrong-length EAN-13 data), the preview shows a `Barcode error` or `QR code error` block with the original value, so you can fix the value or switch to a compatible type.
+
+All [bwip-js symbologies](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types) are supported — `code128`, `qrcode`, `ean13`, `ean8`, `upca`, `pdf417`, `datamatrix`, and many more.
 
 ## Styling
 
-HTML templates support standard CSS. Include styles in a `<style>` block:
+Logicless templates are sanitised through WordPress's `wp_kses_post` before rendering, which **strips `<style>`, `<head>`, and document-level tags**. Use **inline styles** on each element:
 
 ```html
-<style>
-  body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; }
-  .header { text-align: center; margin-bottom: 16px; }
-  .line-item { display: flex; justify-content: space-between; }
-  .discount { color: red; font-size: 0.9em; }
-  .total { font-weight: bold; border-top: 1px solid black; padding-top: 8px; }
-</style>
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
 ```
 
-:::tip
-For a thermal-printer look without a thermal printer, use the **Thermal Style Receipt** template from the gallery — it renders a narrow monospace layout in the browser.
+The same restriction applies to `<script>`, `<link>`, and other non-content tags — they're stripped, so don't rely on external CSS or JavaScript.
+
+:::tip Designed for black and white
+Receipts are usually printed on black-and-white thermal or laser printers. Design with that in mind — use **font weight, whitespace, type contrast, and horizontal rules** for hierarchy rather than coloured fills. Coloured backgrounds and grey text either disappear on B&W output or print as muddy halftones.
+:::
+
+:::tip Need a thermal-paper look without a thermal printer?
+Install the **Narrow Receipt** template from the gallery — it's a monospace, 72mm-wide layout that prints cleanly on browser print, HTML-capable thermal printers (Sunmi/Imin WebView devices), and standard paper. Not for raw ESC/POS thermal printers — use the **Thermal Simple** XML templates for those.
 :::
 
 ## Best Practices
