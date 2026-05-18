@@ -2,12 +2,16 @@
 title: Discounts and Coupons
 sidebar_label: Discounts
 sidebar_position: 4
-description: Apply discounts and coupon codes in WCPOS including quick discounts, line-item price changes, order-level discounts, and WooCommerce coupons.
+description: Apply discounts and coupon codes in WCPOS — quick discounts, line-item price changes, order-level discounts, and WooCommerce coupons (Pro).
 ---
 
 import Icon from '@site/src/components/Icon';
 
-WCPOS provides several ways to discount an order, from quick percentage buttons to WooCommerce coupon codes. This page covers all of them.
+WCPOS gives you several ways to discount an order. The free plugin covers ad-hoc cashier discounts (quick percentages, line-item price changes, order-level fees). Coupon codes — including all the WooCommerce coupon rules — are part of **WCPOS Pro**.
+
+:::info Changed in v1.9.0
+The way POS price changes appear on receipts and in reports changed in v1.9.0 so that coupons calculate correctly. See [What changed in v1.9.0](#what-changed-in-v190) below if you've noticed your "Discount" totals are now showing as zero.
+:::
 
 ## Quick Discounts
 
@@ -43,45 +47,95 @@ To apply a flat discount to the entire order (rather than individual items), add
 
 The fee appears as a separate line item and reduces the order total. You can edit the fee's tax status using the three-dot menu if needed.
 
-## Coupon Codes
+## Coupon Codes <span class="badge badge--primary">Pro</span>
 
-WooCommerce coupon codes can be applied at checkout:
+Coupon support is a [WCPOS Pro](https://wcpos.com/pro) feature. With Pro installed, the POS syncs coupons from WooCommerce and lets you apply them at the register.
 
-1. Click **Checkout** to open the checkout modal
-2. Enter the coupon code in the **Coupon code** field
-3. Click **Apply coupon**
-4. The discount appears in the order summary
+### Setting up coupons
 
-Coupons must be set up in WooCommerce first (`WP Admin > Marketing > Coupons`). All standard WooCommerce coupon types work — percentage discounts, fixed cart discounts, fixed product discounts, and so on.
+Coupons are created and managed in WooCommerce, not in the POS:
+
+1. Go to **WP Admin → Marketing → Coupons** and create your coupons there
+2. The POS syncs them automatically — they're then available at the register
+
+You can use all the standard WooCommerce coupon rules: expiry dates, usage limits, minimum/maximum spend, individual-use, email restrictions, product or category restrictions, and "exclude sale items."
+
+### Applying a coupon at the register
+
+1. In the cart, click **Add Coupon**
+2. Enter the coupon code
+3. Press **Enter**
+
+The POS validates the coupon locally against your synced coupon list (so it's instant — no waiting on the server) and applies the discount to the cart. If you change cart contents afterwards, the discount recalculates automatically.
+
+Coupon codes are case-insensitive.
+
+### Supported coupon types
+
+| Coupon type | Supported |
+|---|---|
+| Percentage discount | Yes |
+| Fixed cart discount | Yes |
+| Fixed product discount | Yes |
+
+### Coupons and connectivity
+
+Because coupons are validated locally from synced data, you can apply them while offline. However, **completing checkout** still requires a connection — the server is the authoritative source of order totals and runs final validation on submission.
+
+If a coupon was just created in WooCommerce and you don't see it in the POS yet, wait for the next sync cycle or navigate away from the cart and back to trigger a refresh.
 
 ## POS Discounts vs WooCommerce Coupons
 
 These are two different mechanisms, and it's worth understanding the distinction:
 
-| | POS Discounts | WooCommerce Coupons |
+| | POS Discounts | WooCommerce Coupons (Pro) |
 |---|---|---|
-| **How applied** | Edit the line item price or add a negative fee | Enter a coupon code at checkout |
-| **Where configured** | On the fly by the cashier | Pre-configured in WP Admin |
-| **Tracking** | Shows as a price change on the line item | Tracked as a coupon in WooCommerce reports |
-| **Restrictions** | None — the cashier sets any price | Supports usage limits, product restrictions, minimum spend, expiry dates |
+| **How applied** | Edit the line item price, use a quick discount, or add a negative fee | Enter a coupon code in the cart |
+| **Where configured** | On the fly by the cashier | Pre-configured in **WP Admin → Marketing → Coupons** |
+| **Tracking** | Recorded as the line price (see [v1.9.0 change](#what-changed-in-v190)) | Tracked as a coupon discount in WooCommerce reports |
+| **Restrictions** | None — the cashier sets any price | Usage limits, product/category restrictions, minimum spend, expiry, email rules |
 | **Best for** | Ad-hoc adjustments, price matching | Structured promotions, trackable discounts |
 
-If you need to track discount usage in WooCommerce reports or enforce rules like usage limits, use coupons. If you just need a quick one-off price adjustment, POS discounts are simpler.
+If you need to track discount usage in WooCommerce reports or enforce rules like usage limits, use coupons. For one-off price adjustments, POS discounts are simpler.
 
 ## How POS Discounts Interact with Coupons
 
-When a cashier sets a custom price on a line item (e.g., reducing $18 to $16), this is treated as a "POS discount". If a coupon is then applied, the coupon calculates against the POS-discounted price ($16), not the original price ($18).
+When a cashier sets a custom price on a line item (e.g., reducing $18 to $16), and a coupon is then applied, the coupon calculates against the **POS-discounted price** ($16), not the original ($18). This means a customer cannot be over-discounted by stacking a cashier discount and a coupon against the original price.
 
-- The order subtotal still shows the original price for display purposes.
-- When a coupon is removed, the line item returns to the POS-discounted price.
-- POS-discounted items are treated as "on sale" by WooCommerce. If a coupon has **exclude sale items** enabled, it will skip POS-discounted items — the same way WooCommerce treats regular sale items.
+- POS-discounted items are treated as "on sale" by WooCommerce. If a coupon has **exclude sale items** enabled, it will skip POS-discounted items — the same way it skips regular sale items. Developers can override this with the `woocommerce_pos_item_is_on_sale` filter.
+- Removing a coupon leaves the line at its POS-discounted price.
 
 :::note Developer Reference
-For technical details on how POS discounts are stored and the available filters, see the [POS Discount Reference](/reference/pos-discounts).
+For technical details on how POS price overrides are stored and the available filters, see the [POS Discount Reference](/reference/pos-discounts).
 :::
+
+## What changed in v1.9.0
+
+If you upgraded from v1.8 and noticed that the **Discount** total on your receipts and reports is now showing **0**, this section explains why and what your options are.
+
+### The change
+
+Before v1.9.0, when a cashier reduced a line price (e.g., $18 → $16), the POS recorded the order with `subtotal = $18` and `total = $16`. WooCommerce then computed `discount_total = $2`, and this appeared on your receipt and in reports as a discount.
+
+This caused incorrect totals whenever a coupon was applied on top — the coupon would calculate against the original $18, leading to an over-discount and the customer being undercharged.
+
+From v1.9.0, WCPOS aligns with how WooCommerce treats sale prices: the price you set at the till **is** the line subtotal. WooCommerce only counts coupon codes as "discounts" (this matches WC's behavior for products on sale, where the sale price is also baked into the subtotal with no separate discount line).
+
+### What this means for you
+
+- **Receipts** no longer show a separate "Discount" line for line-item price changes. The lower price is the price.
+- **Reports** show `discount_total = 0` when only POS line-item price changes were used. Only coupon discounts are counted.
+- **Coupons** now calculate correctly when stacked on POS-discounted items.
+- **The discount data is still stored** on every order in line-item metadata (`_woocommerce_pos_data`), so historical figures can still be derived if needed.
+
+### If you want discount visibility back
+
+If you need a "total discount given today" figure for your end-of-day reconciliation, the supported way is to use **coupon codes** instead of line-item price edits for trackable discounts. Set up a "Manager 10%" or "Loyalty $5" coupon in **Marketing → Coupons**, and apply it at the cart. It'll show in `discount_total` natively.
+
+We're also evaluating a POS-specific "Total Saved" figure that surfaces line-item price changes separately from coupon discounts. If this matters to your workflow, [let us know](https://wcpos.com/support).
 
 ## Known Limitations
 
 - **No automatic discount rules** — the POS doesn't support "buy 2, get 1 free" style automatic discounts. Use WooCommerce coupons for structured promotions.
 - **Quick discounts are percentage-only** — there's no built-in quick button for fixed-amount discounts. Use a negative fee or edit individual prices instead.
-- **Coupon validation happens server-side** — if your site is unreachable, coupons can't be applied. POS discounts (price edits) work regardless of connectivity.
+- **Checkout requires a connection** — coupons can be applied offline (they're validated against locally-synced data), but you can't complete the sale without server connectivity.

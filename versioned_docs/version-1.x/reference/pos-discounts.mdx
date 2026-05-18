@@ -1,16 +1,16 @@
 ---
 title: POS Discount Technical Reference
 sidebar_label: POS Discounts
-description: Developer reference for POS discount preservation during coupon application, including filters, meta data structure, and technical behaviour.
+description: Developer reference for how WCPOS stores POS line-item price overrides, how they interact with WooCommerce coupons, and the available filters.
 ---
 
 # POS Discount Technical Reference
 
-This page documents the internal mechanics of how WCPOS handles POS discounts when coupons are applied to an order. For user-facing documentation, see [Discounts and Coupons](/pos/cart/discounts).
+This page documents how WCPOS handles cashier-applied line-item price overrides — how they're stored, how they interact with WooCommerce coupons, and what filters are available. For user-facing documentation, see [Discounts and Coupons](/pos/cart/discounts).
 
-## How POS Discounts Are Stored
+## How POS Price Overrides Are Stored
 
-When a cashier changes a line item's price in the POS, the discount data is stored in the `_woocommerce_pos_data` line item meta as JSON:
+When a cashier sets or changes a line item's price in the POS, the per-unit prices are stored in the `_woocommerce_pos_data` line item meta as JSON:
 
 ```json
 {
@@ -20,17 +20,38 @@ When a cashier changes a line item's price in the POS, the discount data is stor
 }
 ```
 
+For misc (custom) products, this meta can also carry `virtual`, `downloadable`, and `categories` fields used during coupon validation.
+
+This meta is the authoritative source of per-unit prices for the line. WooCommerce's stored `subtotal` and `total` on the line item are derived from `price * qty` (with tax extraction and rounding applied), but for per-unit precision you should always read `_woocommerce_pos_data.price` and `regular_price`.
+
+## Subtotal Model (v1.9.0+)
+
+As of v1.9.0, WCPOS aligns with WooCommerce's native sale-price semantics:
+
+- `line_item.subtotal = price * qty` where `price` is the POS price (after any override).
+- `line_item.total = subtotal - coupon_discount_for_line`.
+- `order.discount_total` reflects **coupon discounts only**, not POS price overrides.
+
+This matches how WooCommerce treats a product on sale: the `sale_price` becomes the subtotal, and `discount_total` is reserved for coupons. There is no separate "POS discount" line on the order.
+
+:::note Migration from pre-1.9.0
+Earlier versions sent `subtotal = regular_price * qty`, which caused WooCommerce to compute `discount_total = subtotal - total` and include POS price overrides as a discount. This was changed because it conflicted with coupon math: `recalculate_coupons()` uses `subtotal` as the base price, so coupons would calculate against the original price and produce incorrect totals.
+
+The previous server-side workaround — a `woocommerce_order_item_get_subtotal` filter active during `recalculate_coupons()` — was removed in v1.9.0. See the [ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md) for the full history.
+:::
+
 ## Coupon Interaction Behaviour
 
-When a coupon is applied to an order that contains POS-discounted items:
+Coupon support is a [WCPOS Pro](https://wcpos.com/pro) feature. When a coupon is applied to an order that contains POS-discounted items:
 
-1. The coupon calculates against the **POS-discounted price**, not the original price.
-2. The order subtotal still reflects the original price for display purposes.
-3. When a coupon is removed, the line item returns to the POS-discounted price.
+1. The coupon calculates against the **POS-discounted price** (the value in `_woocommerce_pos_data.price`), not the original `regular_price`.
+2. When a coupon is removed, the line item returns to its POS-discounted price.
 
 ### `exclude_sale_items` Behaviour
 
-POS-discounted items are treated as "on sale" by WooCommerce. Coupons with `exclude_sale_items` enabled will skip these items, consistent with how WooCommerce treats regular sale prices.
+POS-discounted items are treated as "on sale" by WooCommerce when `_woocommerce_pos_data.price < regular_price`. Coupons with `exclude_sale_items` enabled will therefore skip them, consistent with how WooCommerce treats regular sale prices.
+
+If you need different behaviour, see the `woocommerce_pos_item_is_on_sale` filter below.
 
 ## Available Filters
 
@@ -39,27 +60,41 @@ POS-discounted items are treated as "on sale" by WooCommerce. Coupons with `excl
 Override whether a POS-discounted item is considered "on sale" for coupon validation purposes.
 
 ```php
-add_filter('woocommerce_pos_item_is_on_sale', function ($is_on_sale, $product, $item, $pos_data) {
+add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
     // Allow coupons with exclude_sale_items to apply to POS-discounted items
     return false;
-}, 10, 4);
+}, 10, 4 );
 ```
 
 **Parameters:**
 
 | Parameter | Type | Description |
-|-----------|------|-------------|
-| `$is_on_sale` | `bool` | Whether the item is considered on sale |
+|---|---|---|
+| `$is_on_sale` | `bool` | Whether the item is considered on sale (default: `price < regular_price`) |
 | `$product` | `WC_Product` | The product object |
 | `$item` | `WC_Order_Item_Product` | The order line item |
-| `$pos_data` | `array` | The POS discount data from `_woocommerce_pos_data` |
+| `$pos_data` | `array` | The decoded `_woocommerce_pos_data` JSON |
 
-## Technical Details
+## REST API Endpoint
 
-- The subtotal filter (`woocommerce_order_item_get_subtotal`) is temporarily active during coupon recalculation to preserve the original price for display.
-- The filter auto-activates on `woocommerce_order_applied_coupon` (for applying coupons) and via `Form_Handler::coupon_action()` (for removing coupons).
-- The filter auto-deactivates on `woocommerce_order_after_calculate_totals`.
+The coupons REST endpoint lives in the **free plugin** at `/wp-json/wcpos/v1/coupons` so that the POS app never receives a 404 when querying coupons — even on sites without WCPOS Pro installed. The user-facing coupon feature itself, however, requires Pro.
 
-## Known Limitation
+The controller extends `WC_REST_Coupons_Controller` with POS-specific additions:
 
-Removing a coupon via WP Admin on a POS order may not preserve POS discounts. This is because WooCommerce core does not provide a "before" hook for `remove_coupon()`, so the subtotal filter cannot be activated in time.
+- UUID handling for offline-first sync
+- `access_woocommerce_pos` capability for permission checks
+- Optimised bulk-ID query path when `posts_per_page=-1` and `fields=id` (or `fields=id,date_modified_gmt`) are requested
+
+## Receipt Data Exposure
+
+The receipt data builder (`Receipt_Data_Builder`) exposes:
+
+- `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — per-line discount amount, computed as `subtotal - total`. From v1.9.0 this reflects **coupon discounts only** for POS price overrides, since `subtotal === total` when no coupon is applied.
+- `totals.discount_total`, `totals.discount_total_incl`, `totals.discount_total_excl` — order-level coupon discount total from `WC_Order::get_discount_total()`.
+- `discounts[]` — array of coupon line items with `label`, `code`, and `total`.
+
+The line item's underscore-prefixed meta (including `_woocommerce_pos_data`) is filtered out of `lines[].meta` by `Receipt_Data_Builder::get_item_meta_pairs()`, so `regular_price` is not directly available to templates. If you need to surface the difference between regular and POS price on receipts, request it via [support](https://wcpos.com/support).
+
+## Related
+
+- [Discounts and Coupons](/pos/cart/discounts) — user-facing guide
