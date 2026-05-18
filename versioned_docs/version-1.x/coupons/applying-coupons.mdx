@@ -1,0 +1,161 @@
+---
+title: Applying Coupons at the Till
+sidebar_label: Applying Coupons
+sidebar_position: 2
+description: The cashier workflow for applying WooCommerce coupons at the WCPOS register — search, coupon pills, sequential discounts, and resolving validation errors.
+---
+
+import Icon from '@site/src/components/Icon';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+
+:::info Pro Feature
+Applying coupons at the register requires [WCPOS Pro](/getting-started/pro-license). Free users can see the [Coupons](/coupons) screen as a blurred preview but the **Add Coupon** action is disabled in the cart.
+:::
+
+This page covers the at-counter workflow — finding a coupon, applying it, stacking multiple coupons, and dealing with errors. For coupon types, setup, and validation rules see [Coupons](/coupons); for ad-hoc discounts a cashier creates on the fly see [Cart Discounts](/pos/cart/discounts).
+
+## The Add Coupon flow
+
+Below the cart line items there's an **Add Coupon** button. Tapping it opens a small input where you can either type a code or search.
+
+1. Tap **Add Coupon** in the cart
+2. Start typing — the input doubles as a search across all synced coupons (code and description)
+3. Pick the coupon from the suggestion list, or finish typing the code and press **Enter**
+
+The coupon validates instantly against your locally-synced data — there's no round-trip to the server — and the discount appears on the cart total. If you change cart contents afterwards (add an item, change a quantity, swap a customer), the discount recalculates automatically.
+
+{/* Screenshot: cart-add-coupon-search.png */}
+
+:::tip Code vs. search
+Cashiers who know the code (e.g. "SUMMER10") can type it and hit Enter — fastest path. The search is for when a customer hands over a printed coupon and the staff member doesn't remember the exact code, or when looking up a loyalty discount by customer name.
+:::
+
+## Coupon pills in the cart
+
+Each applied coupon appears as a small **pill** in the cart, sitting just above the totals. The pill shows the coupon's description (or code, if no description is set) and the amount it discounted. Tap the **×** on a pill to remove that coupon — the cart total recalculates immediately.
+
+{/* Screenshot: cart-coupon-pills.png */}
+
+Pills stack vertically when more than one coupon is applied. The order shown is the order they were added — and that order matters for [sequential discounts](#sequential-discounts).
+
+:::note Receipt labels
+The pill text is also what prints on the receipt. If you'd like a cleaner label than the raw coupon code (e.g. *"Loyalty Discount"* rather than *"LOYAL10"*), set the **Description** field on the coupon in `WP Admin → Marketing → Coupons`. WCPOS uses the description as the discount label whenever it's set.
+:::
+
+## Sequential discounts
+
+You can apply more than one coupon to an order. WooCommerce treats them **sequentially** — each coupon discounts the running subtotal left by the previous one, not the original cart total.
+
+### Worked example
+
+Cart subtotal: **$100.00**
+
+| Step | Coupon | Calculation | Running total |
+|---|---|---|---|
+| 1 | `LOYAL10` (10% off) | $100 × 0.90 | **$90.00** |
+| 2 | `WELCOME5` ($5 off cart) | $90 − $5 | **$85.00** |
+| 3 | `EXTRA20` (20% off) | $85 × 0.80 | **$68.00** |
+
+The order they're applied in changes the final number. Two 10% coupons stack to 19% off the original (not 20%), because the second 10% applies to the already-discounted total.
+
+### When coupons can't stack
+
+A coupon configured with **Individual use only** in WooCommerce blocks any other coupon from being applied alongside it. If `SUMMER25` is individual-use:
+
+- Apply `SUMMER25` first → adding any other coupon shows *"This coupon cannot be combined with other coupons."*
+- Apply other coupons first → adding `SUMMER25` shows the same message.
+
+Remove the conflicting coupon to apply the other.
+
+### Fixed-product coupons
+
+A **fixed product discount** coupon (e.g. *$2 off each T-shirt*) only discounts the line items it matches — it doesn't reduce the running subtotal for other coupons. Stacking it with a percentage cart coupon is safe and predictable.
+
+## Removing a coupon
+
+- Tap the **×** on the coupon pill to remove that single coupon.
+- Clearing the cart (**More** menu → *Clear cart*) removes all applied coupons.
+- Removing a line item that was the *only* qualifying item for a product-restricted coupon will auto-remove the coupon and show a brief toast — "Coupon removed: no qualifying items".
+
+## Validation errors and how to resolve them
+
+The POS runs the same validation rules as WooCommerce — see [How Validation Works](/coupons#how-validation-works) for the full list. When a coupon is rejected, the cashier sees a specific message:
+
+| Message | What it means | What to do |
+|---|---|---|
+| *"Coupon does not exist"* | The code wasn't found in synced data. | Check spelling. If the coupon was just created in WP Admin, run a sync from the [Coupons](/coupons) screen (long-press the sync icon for **Clear and refresh**). |
+| *"This coupon has expired"* | Today's date is past the coupon's expiry. | Extend the expiry in WP Admin, or use a different code. |
+| *"Usage limit reached"* | The coupon's overall usage limit is exhausted. | Raise the limit in WP Admin, or use a different code. |
+| *"Customer has already used this coupon"* | The selected customer is over the per-user limit. | Switch customers, or raise the per-user limit. |
+| *"Minimum spend not reached"* | The cart subtotal is below the coupon's minimum. | Add more items or use a different code. |
+| *"Maximum spend exceeded"* | The cart subtotal is above the coupon's maximum. | Split into separate orders or use a different code. |
+| *"This coupon cannot be combined with other coupons"* | Either the new coupon or an already-applied one is set to **Individual use only**. | Remove the conflicting coupon, then apply the desired one. |
+| *"Coupon not valid for items in cart"* | None of the cart items match the coupon's product/category restrictions. | Add a qualifying item, or pick a different coupon. |
+| *"Coupon not valid for this customer"* | The selected customer's email doesn't match the coupon's **Allowed emails** rule. | Switch to a customer whose email matches, or remove the email restriction. |
+
+If a coupon validates locally but the order is rejected at checkout, the server re-ran validation against fresher data — usually the usage limit was hit in another sale during the same shift. Re-apply or pick another.
+
+## Common workflows
+
+<Accordion>
+  <AccordionItem question="Manager discount — ad-hoc 10% with a tracked code">
+
+Create a coupon in `WP Admin → Marketing → Coupons` called something like `MGR10`:
+- **Discount type:** Percentage discount
+- **Coupon amount:** 10
+- **Usage limit per coupon:** *(blank — unlimited)*
+- **Individual use only:** off (so it can stack with loyalty / promo codes)
+- **Description:** *"Manager Discount"* (this is what prints on the receipt)
+
+Share the code with managers only. The coupon shows up in WooCommerce reports as a tracked discount, unlike a [POS price override](/pos/cart/discounts) which now just lowers the line price.
+
+  </AccordionItem>
+
+  <AccordionItem question="Loyalty reward — repeat-customer $5 off">
+
+Create `LOYAL5`:
+- **Discount type:** Fixed cart discount
+- **Coupon amount:** 5
+- **Minimum spend:** 25 *(or whatever your threshold is)*
+- **Usage limit per user:** 1 *(if the reward is one-time)*
+- **Description:** *"Loyalty Reward"*
+
+At the till, search "loyalty" to find it without having to remember the code.
+
+  </AccordionItem>
+
+  <AccordionItem question="Single-use promo — flyer or print campaign">
+
+Create one coupon per campaign with **Usage limit per coupon: 1** if it's a single-redemption flyer, or a higher number for a multi-use promo. Set a tight **Expiry date** so the code can't be reused later by mistake.
+
+For multi-use promos where each customer should only redeem once, set both **Usage limit per coupon** *and* **Usage limit per user: 1**.
+
+  </AccordionItem>
+
+  <AccordionItem question="Stacking a manager discount on top of a coupon code the customer brought">
+
+Apply the customer's code first, then the manager code. WooCommerce treats them sequentially — the manager discount calculates against the already-discounted total, which is usually what customers expect.
+
+If the customer's coupon is **Individual use only**, the manager code will be rejected. Either remove the customer's coupon first (and re-apply later if needed) or update the customer's coupon in WP Admin to allow stacking.
+
+  </AccordionItem>
+
+  <AccordionItem question="A customer wants to return part of an order and re-ring it with a different coupon">
+
+Refund the original order first (see [Refunds](/orders/refunds)), then start a fresh sale with the new coupon. Coupons are tied to the order at the time of sale — you can't retroactively swap a coupon on a completed order from the POS. The refund returns the usage count to the coupon so it can be applied again on the new order.
+
+  </AccordionItem>
+</Accordion>
+
+## Interaction with POS price changes
+
+If a cashier lowered a line price at the till (a [POS price override](/pos/cart/discounts)) and then applies a coupon, the coupon calculates against the **lowered price**, not the original. POS-lowered lines are treated as "on sale", so any coupon with **Exclude sale items** enabled will skip them.
+
+This is intentional — it prevents customers being double-discounted by stacking a cashier discount and a coupon against the original price. See [How POS Price Changes Interact with Coupons](/pos/cart/discounts#how-pos-price-changes-interact-with-coupons) for the full mechanics.
+
+## Offline behaviour
+
+- **Applying coupons works offline** — validation runs against locally-synced coupon data.
+- **Completing the sale still needs a connection** when the order is submitted (the server re-validates and writes the usage count).
+- **A coupon you just created in WP Admin** won't apply at the till until the next sync. From the [Coupons](/coupons) screen footer, tap the sync icon (<Icon name="arrow-rotate-right" />) — long-press for **Clear and refresh** if you need a fresh fetch.
