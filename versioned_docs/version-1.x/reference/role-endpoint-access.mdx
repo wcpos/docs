@@ -1,0 +1,118 @@
+---
+title: Role Endpoint Access
+sidebar_label: Role Endpoint Access
+sidebar_position: 3
+description: Developer reference for which WCPOS REST endpoints are accessible to each default role (administrator, shop_manager, cashier), plus token-expiry behaviour and diagnostic tips.
+---
+
+This page documents which WCPOS REST endpoints are accessible to each of the three default roles used in POS workflows:
+
+- `administrator`
+- `shop_manager`
+- `cashier`
+
+For user-facing role and capability configuration, see [Accessing the POS](/settings/wp-admin/access).
+
+## Summary
+
+The default access model is:
+
+- **`administrator`** — full POS and management access.
+- **`shop_manager`** — full POS and management access, except plugin-extension actions that require plugin-install capabilities.
+- **`cashier`** — normal POS selling workflow access, but no management, settings, logs, or store-admin access.
+
+The endpoint matrix is verified by integration tests that exercise the same authentication path as the POS app (WCPOS bearer access tokens, not just `wp_set_current_user()`). Allowed-endpoint assertions confirm a role does not receive `401` or `403`. Some endpoints may still return normal data or business errors such as `400` or `404` when the test uses minimal fixtures — those responses still prove the user passed the auth/permission layer.
+
+## Free Plugin Endpoint Access Matrix
+
+| Area | Endpoint examples | Admin | Shop Manager | Cashier | Notes |
+|---|---|---:|---:|---:|---|
+| Settings index | `GET /wcpos/v1/settings` | ✅ | ✅ | ✅ | Public/readable POS settings index |
+| Stores | `GET /wcpos/v1/stores` | ✅ | ✅ | ✅ | POS boot data |
+| Cashier profile | `GET /wcpos/v1/cashier/{id}` | ✅ | ✅ | ✅ | Own cashier data |
+| Cashier stores | `GET /wcpos/v1/cashier/{id}/stores` | ✅ | ✅ | ✅ | Store access for current cashier |
+| Products | `GET /wcpos/v1/products` | ✅ | ✅ | ✅ | Catalog browsing |
+| Variations | `GET /wcpos/v1/products/variations` | ✅ | ✅ | ✅ | Catalog browsing |
+| Categories | `GET /wcpos/v1/products/categories` | ✅ | ✅ | ✅ | Catalog filters |
+| Tags | `GET /wcpos/v1/products/tags` | ✅ | ✅ | ✅ | Catalog filters |
+| Brands | `GET /wcpos/v1/products/brands` | ✅ | ✅ | ✅ | Catalog filters |
+| Coupons | `GET /wcpos/v1/coupons` | ✅ | ✅ | ✅ | POS coupon lookup |
+| Orders read | `GET /wcpos/v1/orders` | ✅ | ✅ | ✅ | POS order history |
+| Orders create | `POST /wcpos/v1/orders` | ✅ | ✅ | ✅ | Selling workflow |
+| Orders update | `PATCH /wcpos/v1/orders/{id}` | ✅ | ✅ | ✅ | Completing/updating POS orders |
+| Checkout read/create | `/wcpos/v1/orders/{id}/checkout` | ✅ | ✅ | ✅ | Payment flow |
+| Receipts | `GET /wcpos/v1/receipts/{order_id}` | ✅ | ✅ | ✅ | Receipt rendering |
+| Order statuses | `GET /wcpos/v1/data/order_statuses` | ✅ | ✅ | ✅ | POS status data |
+| Customers read | `GET /wcpos/v1/customers` | ✅ | ✅ | ✅ | Customer search/list |
+| Customers create | `POST /wcpos/v1/customers` | ✅ | ✅ | ✅ | Create customer in POS |
+| Customers update | `PATCH /wcpos/v1/customers/{id}` | ✅ | ✅ | ✅ | Edit customer in POS |
+| Taxes | `GET /wcpos/v1/taxes` | ✅ | ✅ | ✅ | Checkout/tax calculation data |
+| Tax classes | `GET /wcpos/v1/taxes/classes` | ✅ | ✅ | ✅ | Checkout/tax calculation data |
+| Shipping methods | `GET /wcpos/v1/shipping_methods` | ✅ | ✅ | ✅ | Checkout/shipping data |
+| Payment gateways | `GET /wcpos/v1/payment-gateways` | ✅ | ✅ | ✅ | Payment options |
+| Gateway bootstrap | `POST /wcpos/v1/payment-gateways/{id}/bootstrap` | ✅ | ✅ | ✅ | Payment setup |
+| Templates | `GET /wcpos/v1/templates` | ✅ | ✅ | ✅ | Receipt/template reads |
+| Active template | `GET /wcpos/v1/templates/active` | ✅ | ✅ | ✅ | Receipt/template reads |
+| Template gallery | `GET /wcpos/v1/templates/gallery` | ✅ | ✅ | ✅ | Template reads |
+| General settings | `GET /wcpos/v1/settings/general` | ✅ | ✅ | ❌ | Management-only |
+| Checkout settings | `GET /wcpos/v1/settings/checkout` | ✅ | ✅ | ❌ | Management-only |
+| Tax ID settings | `GET /wcpos/v1/settings/tax_ids` | ✅ | ✅ | ❌ | Management-only |
+| Payment gateway settings | `GET /wcpos/v1/settings/payment-gateways` | ✅ | ✅ | ❌ | Management-only |
+| Extensions catalog/admin | `GET /wcpos/v1/extensions` | ✅ | ✅ | ❌ | Management-only |
+| Logs | `GET /wcpos/v1/logs` | ✅ | ✅ | ❌ | Management-only |
+
+## Pro Plugin Endpoint Access Matrix
+
+| Area | Endpoint examples | Admin | Shop Manager | Cashier | Notes |
+|---|---|---:|---:|---:|---|
+| Store edit data | `GET /wcpos/v1/stores/{id}/edit` | ✅ | ✅ | ❌ | Store management |
+| Store create | `POST /wcpos/v1/stores` | ✅ | ✅ | ❌ | Store management |
+| Store update | `PATCH /wcpos/v1/stores/{id}` | ✅ | ✅ | ❌ | Store management |
+| License settings update | `POST /wcpos/v1/settings/license` | ✅ | ✅ | ❌ | Pro management |
+| Extension actions | `POST /wcpos/v1/extensions/action` | ✅ | ❌ | ❌ | Requires plugin install/manage capability |
+| Order refunds | `POST /wcpos/v1/orders/{id}/refunds` | ✅ | ✅ | ✅ | Treated as POS operation |
+
+## Token Expiry Coverage
+
+| Scenario | Admin | Shop Manager | Cashier | Expected result |
+|---|---:|---:|---:|---|
+| Valid access token | ✅ tested | ✅ tested | ✅ tested | Allowed endpoints do not return `401` or `403` |
+| Expired access token | ✅ tested | ✅ tested | ✅ tested | Request fails at WCPOS auth gate with user `0` |
+| Valid refresh token after expired access | ✅ tested | ✅ tested | ✅ tested | New access token is issued and access is restored |
+| Expired refresh token | ✅ tested | ✅ tested | ✅ tested | Cannot mint a new access token |
+
+## Diagnosing Failures
+
+If a default `shop_manager` sees an error like:
+
+> Request still unauthorized after token refresh - please log in again
+
+The endpoint matrix indicates this is **not** because the default `shop_manager` role fundamentally lacks POS access. Likely causes to investigate:
+
+1. Site-specific role/capability corruption.
+2. An endpoint not covered by the matrix.
+3. Stale or expired access token retry behaviour in the client.
+4. Third-party security or authentication plugin interference.
+5. Pro or store-specific access rules, or custom code.
+
+### Permission failure vs. token failure
+
+The POS frontend may display the same token-refresh error for both cases after it receives a `401` or `403`, attempts a token refresh, and the retry is still unauthorised. The two failure modes look different on the server side:
+
+A **real role/capability failure** usually looks like:
+
+```text
+status: 403
+current_user: <actual user id>
+access token expired: false
+```
+
+A **token/auth failure** usually looks like:
+
+```text
+status: 403
+current_user: 0
+access token expired: true or invalid
+```
+
+Use this distinction when triaging POS access issues — a non-zero `current_user` points at capabilities, while `current_user: 0` points at the auth/token layer.
