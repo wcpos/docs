@@ -1,0 +1,101 @@
+---
+title: Technische Referenz für POS-Rabatte
+sidebar_label: POS-Rabatte
+description: Entwicklerreferenz zur Speicherung von POS-Preisüberschreibungen auf Positionsebene in WCPOS, deren Zusammenspiel mit WooCommerce-Gutscheinen und den verfügbaren Filtern.
+---
+
+# Technische Referenz für POS-Rabatte {#pos-discount-technical-reference}
+
+Diese Seite dokumentiert, wie WCPOS vom Kassierer vorgenommene Preisüberschreibungen auf Positionsebene handhabt — wie sie gespeichert werden, wie sie mit WooCommerce-Gutscheinen zusammenwirken und welche Filter verfügbar sind. Die Benutzerdokumentation finden Sie unter [Warenkorb-Rabatte](/pos/cart/discounts) und [Gutscheine](/coupons).
+
+## Speicherung von POS-Preisüberschreibungen {#how-pos-price-overrides-are-stored}
+
+Wenn ein Kassierer den Preis einer Position im POS festlegt oder ändert, werden die Stückpreise im Positionsmetafeld `_woocommerce_pos_data` als JSON gespeichert:
+
+```json
+{
+  "price": "16.00",
+  "regular_price": "18.00",
+  "tax_status": "taxable"
+}
+```
+
+Bei sonstigen (benutzerdefinierten) Produkten kann dieses Metafeld zusätzlich die Felder `virtual`, `downloadable` und `categories` enthalten, die bei der Gutscheinvalidierung verwendet werden.
+
+Dieses Metafeld ist die maßgebliche Quelle für die Stückpreise der Position. Der von WooCommerce gespeicherte Wert `subtotal` der Position wird aus `price * qty` abgeleitet (unter Berücksichtigung von Steuerberechnung und Rundung). Der gespeicherte `total`-Wert kann niedriger ausfallen, wenn Gutscheinrabatte angewendet werden. Für stückgenaue Preise sollten daher immer `_woocommerce_pos_data.price` und `regular_price` ausgelesen werden.
+
+## Zwischensummen-Modell (v1.9.0+) {#subtotal-model-v1-9-0}
+
+Ab v1.9.0 orientiert sich WCPOS an der nativen Angebotspreissemantik von WooCommerce:
+
+- `line_item.subtotal = price * qty`, wobei `price` der POS-Preis ist (nach einer eventuellen Überschreibung).
+- `line_item.total = subtotal - coupon_discount_for_line`.
+- `order.discount_total` gibt ausschließlich **Gutscheinrabatte** wieder, nicht POS-Preisüberschreibungen.
+
+Dies entspricht der Behandlung eines reduzierten Produkts durch WooCommerce: Der `sale_price` wird zur Zwischensumme, und `discount_total` ist für Gutscheine reserviert. Es gibt keine separate "POS-Rabatt"-Zeile in der Bestellung.
+
+:::note Migration von Versionen vor 1.9.0
+Frühere Versionen sendeten `subtotal = regular_price * qty`, was dazu führte, dass WooCommerce `discount_total = subtotal - total` berechnete und POS-Preisüberschreibungen als Rabatt einbezog. Dies wurde geändert, da es mit der Gutscheinberechnung kollidierte: `recalculate_coupons()` verwendet `subtotal` als Basispreis, sodass Gutscheine gegen den Originalpreis berechnet wurden und fehlerhafte Gesamtbeträge ergaben.
+
+Der bisherige serverseitige Workaround – ein `woocommerce_order_item_get_subtotal`-Filter, der während `recalculate_coupons()` aktiv war – wurde in v1.9.0 entfernt. Die vollständige Historie ist im [ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md) dokumentiert.
+:::
+
+## Verhalten bei Gutschein-Interaktion {#coupon-interaction-behaviour}
+
+Gutscheinunterstützung ist eine Funktion von [WCPOS Pro](https://wcpos.com/pro). Wenn ein Gutschein auf eine Bestellung mit POS-rabattierten Artikeln angewendet wird:
+
+1. Der Gutschein wird auf Basis des **POS-rabattierten Preises** (der Wert in `_woocommerce_pos_data.price`) berechnet, nicht auf Basis des ursprünglichen `regular_price`.
+2. Wenn ein Gutschein entfernt wird, kehrt die Position zu ihrem POS-rabattierten Preis zurück.
+
+### Verhalten von `exclude_sale_items` {#excludesaleitems-behaviour}
+
+POS-discounted items are treated as "on sale" by WooCommerce when `_woocommerce_pos_data.price < regular_price`. Coupons with `exclude_sale_items` enabled will therefore skip them, consistent with how WooCommerce treats regular sale prices.
+
+If you need different behaviour, see the `woocommerce_pos_item_is_on_sale` filter below.
+
+## Available Filters {#available-filters}
+
+### `woocommerce_pos_item_is_on_sale` {#woocommercepositemisonsale}
+
+Override whether a POS-discounted item is considered "on sale" for coupon validation purposes.
+
+```php
+add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
+    // Allow coupons with exclude_sale_items to apply to POS-discounted items
+    return false;
+}, 10, 4 );
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `$is_on_sale` | `bool` | Whether the item is considered on sale (default: `price < regular_price`) |
+| `$product` | `WC_Product` | The product object |
+| `$item` | `WC_Order_Item_Product` | The order line item |
+| `$pos_data` | `array` | The decoded `_woocommerce_pos_data` JSON |
+
+## REST-API-Endpunkt {#rest-api-endpoint}
+
+Der Gutschein-REST-Endpunkt befindet sich im **kostenlosen Plugin** unter `/wp-json/wcpos/v1/coupons`, sodass die POS-App beim Abfragen von Gutscheinen niemals einen 404-Fehler erhält — auch auf Websites ohne installiertes WCPOS Pro. Die benutzerseitige Gutscheinfunktion selbst erfordert jedoch Pro.
+
+Der Controller erweitert `WC_REST_Coupons_Controller` um POS-spezifische Ergänzungen:
+
+- UUID-Verarbeitung für Offline-First-Synchronisation
+- `access_woocommerce_pos`-Berechtigung für Berechtigungsprüfungen
+- Optimierter Bulk-ID-Abfragepfad, wenn `posts_per_page=-1` und `fields=id` (oder `fields=id,date_modified_gmt`) angefordert werden
+
+## Belegdaten-Bereitstellung {#receipt-data-exposure}
+
+Der Belegdaten-Builder (`Receipt_Data_Builder`) stellt bereit:
+
+- `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — Rabattbetrag pro Position, berechnet als `subtotal - total`. Ab v1.9.0 spiegelt dies bei POS-Preisüberschreibungen **ausschließlich Gutscheinrabatte** wider, da `subtotal === total` gilt, wenn kein Gutschein angewendet wird.
+- `totals.discount_total`, `totals.discount_total_incl`, `totals.discount_total_excl` — Gutscheinrabatt-Gesamtbetrag auf Bestellebene aus `WC_Order::get_discount_total()`.
+- `discounts[]` — Array von Gutschein-Positionen mit `label`, `code` und `total`.
+
+Die mit Unterstrich präfixierten Metadaten der Position (einschließlich `_woocommerce_pos_data`) werden durch `lines[].meta` aus `Receipt_Data_Builder::get_item_meta_pairs()` herausgefiltert, sodass `regular_price` für Vorlagen nicht direkt verfügbar ist. Falls Sie die Differenz zwischen regulärem Preis und POS-Preis auf Belegen anzeigen möchten, fordern Sie dies über den [Support](https://wcpos.com/support) an.
+
+## Verwandte Themen {#related}
+
+- [Warenkorb-Rabatte](/pos/cart/discounts) — Benutzerhandbuch für kassenbasierte Rabatte
+- [Gutscheine](/coupons) — Benutzerhandbuch für WooCommerce-Gutscheine im POS (Pro)
