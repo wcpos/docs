@@ -1,0 +1,101 @@
+---
+title: POS割引テクニカルリファレンス
+sidebar_label: POS割引
+description: WCPOSにおけるPOS明細行の価格上書きの保存方法、WooCommerceクーポンとの連携、利用可能なフィルターに関する開発者向けリファレンスです。
+---
+
+# POS割引テクニカルリファレンス {#pos-discount-technical-reference}
+
+このページでは、WCPOSがレジ担当者による明細行の価格上書きをどのように処理するかについて説明します。保存方法、WooCommerceクーポンとの連携、利用可能なフィルターを取り上げます。ユーザー向けドキュメントについては、[カート割引](/pos/cart/discounts)および[クーポン](/coupons)を参照してください。
+
+## POS価格上書きの保存方法 {#how-pos-price-overrides-are-stored}
+
+レジ担当者がPOSで明細行の価格を設定または変更すると、単価は`_woocommerce_pos_data`明細行メタにJSONとして保存されます：
+
+```json
+{
+  "price": "16.00",
+  "regular_price": "18.00",
+  "tax_status": "taxable"
+}
+```
+
+その他（カスタム）商品の場合、このメタにはクーポン検証時に使用される`virtual`、`downloadable`、`categories`フィールドも含まれることがあります。
+
+このメタは明細行の単価の正式なソースです。WooCommerceが明細行に保存する`subtotal`は`price * qty`から導出されます（税抽出と丸め処理が適用されます）。保存される`total`はクーポン割引が適用された場合に低くなる可能性があるため、単価の精度を確保するには常に`_woocommerce_pos_data.price`と`regular_price`を参照してください。
+
+## 小計モデル（v1.9.0以降） {#subtotal-model-v1-9-0}
+
+v1.9.0以降、WCPOSはWooCommerceのネイティブなセール価格セマンティクスに準拠しています：
+
+- `line_item.subtotal = price * qty`（`price`は価格上書き適用後のPOS価格）
+- `line_item.total = subtotal - coupon_discount_for_line`。
+- `order.discount_total` は**クーポン割引のみ**を反映し、POS の価格上書きは含まれません。
+
+これは WooCommerce がセール中の商品を扱う方法と同じです。`sale_price` が小計となり、`discount_total` はクーポン用に予約されています。注文に「POS 割引」という個別の行は表示されません。
+
+:::note v1.9.0 以前からの移行
+以前のバージョンでは `subtotal = regular_price * qty` として送信していたため、WooCommerce が `discount_total = subtotal - total` を計算し、POS の価格上書きが割引として含まれていました。これはクーポン計算と競合するため変更されました。`recalculate_coupons()` は `subtotal` を基準価格として使用するため、クーポンが元の価格に対して計算され、合計が正しくなくなっていました。
+
+以前のサーバーサイドの回避策 — `woocommerce_order_item_get_subtotal` 実行中に有効だった `recalculate_coupons()` フィルター — は v1.9.0 で削除されました。詳細な経緯については [ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md) を参照してください。
+:::
+
+## クーポンとの相互作用 {#coupon-interaction-behaviour}
+
+クーポン機能は [WCPOS Pro](https://wcpos.com/pro) の機能です。POS 割引が適用された商品を含む注文にクーポンを適用すると：
+
+1. クーポンは元の `_woocommerce_pos_data.price` ではなく、**POS 割引後の価格**（`regular_price` の値）に対して計算されます。
+2. クーポンを削除すると、明細項目は POS 割引後の価格に戻ります。
+
+### `exclude_sale_items` の動作 {#excludesaleitems-behaviour}
+
+POS割引が適用された商品は、`_woocommerce_pos_data.price < regular_price` の場合、WooCommerce によって「セール中」として扱われます。`exclude_sale_items` が有効なクーポンはこれらの商品をスキップします。これは WooCommerce が通常のセール価格を扱う方法と一致しています。
+
+異なる動作が必要な場合は、以下の `woocommerce_pos_item_is_on_sale` フィルターを参照してください。
+
+## 利用可能なフィルター {#available-filters}
+
+### `woocommerce_pos_item_is_on_sale` {#woocommercepositemisonsale}
+
+POS割引が適用された商品をクーポン検証時に「セール中」とみなすかどうかをオーバーライドします。
+
+```php
+add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
+    // Allow coupons with exclude_sale_items to apply to POS-discounted items
+    return false;
+}, 10, 4 );
+```
+
+**パラメーター:**
+
+| パラメーター | 型 | 説明 |
+|---|---|---|
+| `$is_on_sale` | `bool` | 商品がセール中とみなされるかどうか（デフォルト: `price < regular_price`） |
+| `$product` | `WC_Product` | 商品オブジェクト |
+| `$item` | `WC_Order_Item_Product` | 注文明細項目 |
+| `$pos_data` | `array` | デコードされた `_woocommerce_pos_data` JSON |
+
+## REST API エンドポイント {#rest-api-endpoint}
+
+クーポン REST エンドポイントは**無料プラグイン**内の `/wp-json/wcpos/v1/coupons` に配置されており、WCPOS Pro が未インストールのサイトでもPOSアプリがクーポンを照会する際に 404 を返さないようになっています。ただし、ユーザー向けのクーポン機能自体には Pro が必要です。
+
+このコントローラーは `WC_REST_Coupons_Controller` をPOS固有の機能で拡張しています：
+
+- オフラインファースト同期のためのUUIDハンドリング
+- 権限チェック用の `access_woocommerce_pos` ケイパビリティ
+- `posts_per_page=-1` かつ `fields=id`（または `fields=id,date_modified_gmt`）が指定された場合の最適化された一括IDクエリパス
+
+## レシートデータの公開 {#receipt-data-exposure}
+
+レシートデータビルダー (`Receipt_Data_Builder`) は以下を公開します：
+
+- `lines[].discounts`、`lines[].discounts_incl`、`lines[].discounts_excl` — 明細行ごとの割引金額。`subtotal - total` として計算されます。v1.9.0 以降、POS価格上書きに対しては**クーポン割引のみ**を反映します。クーポンが適用されていない場合は `subtotal === total` となるためです。
+- `totals.discount_total`、`totals.discount_total_incl`、`totals.discount_total_excl` — `WC_Order::get_discount_total()` から取得した注文レベルのクーポン割引合計。
+- `discounts[]` — `label`、`code`、`total` を含むクーポン明細項目の配列。
+
+明細項目のアンダースコアプレフィックス付きメタ（`_woocommerce_pos_data` を含む）は `lines[].meta` によって `Receipt_Data_Builder::get_item_meta_pairs()` からフィルタリングされるため、`regular_price` はテンプレートから直接利用できません。レシートに通常価格とPOS価格の差額を表示する必要がある場合は、[サポート](https://wcpos.com/support)までご依頼ください。
+
+## 関連項目 {#related}
+
+- [カート割引](/pos/cart/discounts) — レジ担当者が適用する割引のユーザーガイド
+- [クーポン](/coupons) — POSでのWooCommerceクーポンのユーザーガイド（Pro）
