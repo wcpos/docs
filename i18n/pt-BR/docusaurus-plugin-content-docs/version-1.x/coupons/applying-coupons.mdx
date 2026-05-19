@@ -1,0 +1,161 @@
+---
+title: Aplicando Cupons no Caixa
+sidebar_label: Aplicando Cupons
+sidebar_position: 2
+description: O fluxo de trabalho do operador de caixa para aplicar cupons do WooCommerce no caixa do WCPOS — busca, pílulas de cupom, descontos sequenciais e resolução de erros de validação.
+---
+
+import Icon from '@site/src/components/Icon';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+
+:::info Recurso Pro
+Aplicar cupons no caixa requer o [WCPOS Pro](/getting-started/pro-license). Usuários gratuitos podem ver a tela de [Cupons](/coupons) como uma prévia desfocada, mas a ação **Adicionar Cupom** fica desabilitada no carrinho.
+:::
+
+Esta página cobre o fluxo de trabalho no balcão — encontrar um cupom, aplicá-lo, acumular vários cupons e lidar com erros. Para tipos de cupons, configuração e regras de validação, consulte [Cupons](/coupons); para descontos avulsos que o operador de caixa cria na hora, consulte [Descontos do Carrinho](/pos/cart/discounts).
+
+## O fluxo de Adicionar Cupom {#the-add-coupon-flow}
+
+Abaixo dos itens do carrinho há um botão **Adicionar Cupom**. Ao tocar nele, um pequeno campo de entrada é aberto onde é possível digitar um código ou pesquisar.
+
+1. Toque em **Adicionar Cupom** no carrinho
+2. Comece a digitar — o campo funciona também como busca em todos os cupons sincronizados (código e descrição)
+3. Selecione o cupom na lista de sugestões ou termine de digitar o código e pressione **Enter**
+
+O cupom é validado instantaneamente com os dados sincronizados localmente — sem necessidade de comunicação com o servidor — e o desconto aparece no total do carrinho. Se o conteúdo do carrinho for alterado depois (adicionar um item, alterar uma quantidade, trocar um cliente), o desconto é recalculado automaticamente.
+
+{/* Screenshot: cart-add-coupon-search.png */}
+
+:::tip Código vs. busca
+Operadores de caixa que sabem o código (ex.: "SUMMER10") podem digitá-lo e pressionar Enter — é o caminho mais rápido. A busca é para quando um cliente apresenta um cupom impresso e o funcionário não lembra o código exato, ou quando é necessário procurar um desconto de fidelidade pelo nome do cliente.
+:::
+
+## Etiquetas de cupom no carrinho {#coupon-pills-in-the-cart}
+
+Cada cupom aplicado aparece como uma pequena **etiqueta** no carrinho, logo acima dos totais. A etiqueta exibe a descrição do cupom (ou o código, se nenhuma descrição estiver definida) e o valor do desconto. Toque no **×** de uma etiqueta para remover o cupom — o total do carrinho é recalculado imediatamente.
+
+{/* Screenshot: cart-coupon-pills.png */}
+
+As etiquetas são empilhadas verticalmente quando mais de um cupom é aplicado. A ordem exibida é a ordem em que foram adicionados — e essa ordem é importante para os [descontos sequenciais](#sequential-discounts).
+
+:::note Rótulos no recibo
+O texto da etiqueta também é o que aparece impresso no recibo. Para exibir um rótulo mais claro do que o código bruto do cupom (ex.: *"Desconto Fidelidade"* em vez de *"LOYAL10"*), defina o campo **Descrição** no cupom em `WP Admin → Marketing → Coupons`. O WCPOS utiliza a descrição como rótulo do desconto sempre que ela estiver definida.
+:::
+
+## Descontos sequenciais {#sequential-discounts}
+
+É possível aplicar mais de um cupom a um pedido. O WooCommerce os trata de forma **sequencial** — cada cupom desconta o subtotal acumulado restante do cupom anterior, e não o total original do carrinho.
+
+### Exemplo prático {#worked-example}
+
+Subtotal do carrinho: **$100,00**
+
+| Etapa | Cupom | Cálculo | Total acumulado |
+|---|---|---|---|
+| 1 | `LOYAL10` (10% de desconto) | $100 × 0,90 | **$90,00** |
+| 2 | `WELCOME5` ($5 de desconto no carrinho) | $90 − $5 | **$85,00** |
+| 3 | `EXTRA20` (20% de desconto) | $85 × 0,80 | **$68,00** |
+
+A ordem em que são aplicados altera o valor final. Dois cupons de 10% resultam em 19% de desconto sobre o valor original (e não 20%), pois o segundo cupom de 10% é aplicado sobre o total já descontado.
+
+### Quando os cupons não podem ser combinados {#when-coupons-can-t-stack}
+
+Um cupom configurado com **Uso individual apenas** no WooCommerce impede que qualquer outro cupom seja aplicado junto a ele. Se `SUMMER25` for de uso individual:
+
+- Aplique `SUMMER25` primeiro → ao adicionar qualquer outro cupom, aparece *"Este cupom não pode ser combinado com outros cupons."*
+- Aplique outros cupons primeiro → ao adicionar `SUMMER25`, a mesma mensagem é exibida.
+
+Remova o cupom conflitante para aplicar o outro.
+
+### Cupons de produto fixo {#fixed-product-coupons}
+
+Um cupom de **desconto fixo por produto** (por exemplo, *$2 de desconto em cada camiseta*) aplica o desconto apenas nos itens correspondentes — ele não reduz o subtotal acumulado para outros cupons. Combiná-lo com um cupom percentual de carrinho é seguro e previsível.
+
+## Removendo um cupom {#removing-a-coupon}
+
+- Toque no **×** na etiqueta do cupom para remover apenas aquele cupom.
+- Limpar o carrinho (menu **Mais** → *Limpar carrinho*) remove todos os cupons aplicados.
+- Remover um item que era o *único* item qualificado para um cupom restrito a produtos removerá automaticamente o cupom e exibirá uma notificação breve — "Cupom removido: nenhum item qualificado".
+
+## Erros de validação e como resolvê-los {#validation-errors-and-how-to-resolve-them}
+
+O POS executa as mesmas regras de validação do WooCommerce — consulte [Como a validação funciona](/coupons#how-validation-works) para ver a lista completa. Quando um cupom é rejeitado, o operador de caixa vê uma mensagem específica:
+
+| Mensagem | O que significa | O que fazer |
+|---|---|---|
+| *"Cupom não existe"* | O código não foi encontrado nos dados sincronizados. | Verifique a ortografia. Se o cupom acabou de ser criado no WP Admin, execute uma sincronização na tela de [Cupons](/coupons) (mantenha pressionado o ícone de sincronização para **Limpar e atualizar**). |
+| *"Este cupom expirou"* | A data de hoje é posterior à data de expiração do cupom. | Estenda a validade no WP Admin ou use um código diferente. |
+| *"Limite de uso atingido"* | O limite geral de uso do cupom foi esgotado. | Aumente o limite no WP Admin ou use um código diferente. |
+| *"O cliente já utilizou este cupom"* | O cliente selecionado excedeu o limite por usuário. | Troque de cliente ou aumente o limite por usuário. |
+| *"Gasto mínimo não atingido"* | O subtotal do carrinho está abaixo do mínimo do cupom. | Adicione mais itens ou use um código diferente. |
+| *"Gasto máximo excedido"* | O subtotal do carrinho está acima do máximo do cupom. | Divida em pedidos separados ou use um código diferente. |
+| *"Este cupom não pode ser combinado com outros cupons"* | O novo cupom ou um já aplicado está configurado como **Uso individual apenas**. | Remova o cupom conflitante e então aplique o desejado. |
+| *"Cupom não válido para itens no carrinho"* | Nenhum dos itens do carrinho corresponde às restrições de produto/categoria do cupom. | Adicione um item qualificado ou escolha um cupom diferente. |
+| *"Cupom não válido para este cliente"* | O e-mail do cliente selecionado não corresponde à regra de **E-mails permitidos** do cupom. | Troque para um cliente cujo e-mail corresponda ou remova a restrição de e-mail. |
+
+Se um cupom é validado localmente, mas o pedido é rejeitado no checkout, o servidor executou a validação novamente com dados mais recentes — geralmente o limite de uso foi atingido em outra venda durante o mesmo turno. Aplique novamente ou escolha outro.
+
+## Fluxos de trabalho comuns {#common-workflows}
+
+<Accordion>
+  <AccordionItem question="Manager discount — ad-hoc 10% with a tracked code">
+
+Crie um cupom em `WP Admin → Marketing → Coupons` chamado algo como `MGR10`:
+- **Tipo de desconto:** Desconto percentual
+- **Valor do cupom:** 10
+- **Limite de uso por cupom:** *(em branco — ilimitado)*
+- **Uso individual apenas:** desativado (para que possa ser combinado com códigos de fidelidade / promocionais)
+- **Descrição:** *"Desconto do Gerente"* (isso é o que aparece no recibo)
+
+Compartilhe o código apenas com os gerentes. O cupom aparece nos relatórios do WooCommerce como um desconto rastreado, diferentemente de uma [substituição de preço no POS](/pos/cart/discounts), que simplesmente reduz o preço do item.
+
+  </AccordionItem>
+
+  <AccordionItem question="Loyalty reward — repeat-customer $5 off">
+
+Crie `LOYAL5`:
+- **Tipo de desconto:** Desconto fixo no carrinho
+- **Valor do cupom:** 5
+- **Gasto mínimo:** 25 *(ou qualquer que seja o seu limite)*
+- **Limite de uso por usuário:** 1 *(se a recompensa for única)*
+- **Descrição:** *"Recompensa de Fidelidade"*
+
+No caixa, pesquise "fidelidade" para encontrá-lo sem precisar lembrar do código.
+
+  </AccordionItem>
+
+  <AccordionItem question="Single-use promo — flyer or print campaign">
+
+Crie um cupom por campanha com **Limite de uso por cupom: 1** se for um folheto de resgate único, ou um número maior para uma promoção de uso múltiplo. Defina uma **Data de validade** curta para que o código não possa ser reutilizado por engano.
+
+Para promoções de uso múltiplo em que cada cliente deve resgatar apenas uma vez, defina tanto o **Limite de uso por cupom** *quanto* o **Limite de uso por usuário: 1**.
+
+  </AccordionItem>
+
+  <AccordionItem question="Stacking a manager discount on top of a coupon code the customer brought">
+
+Aplique primeiro o código do cliente e depois o código do gerente. O WooCommerce os processa sequencialmente — o desconto do gerente é calculado sobre o total já com desconto, que geralmente é o que os clientes esperam.
+
+Se o cupom do cliente estiver marcado como **Apenas uso individual**, o código do gerente será rejeitado. Remova o cupom do cliente primeiro (e reaplique depois, se necessário) ou atualize o cupom do cliente no WP Admin para permitir o acúmulo.
+
+  </AccordionItem>
+
+  <AccordionItem question="A customer wants to return part of an order and re-ring it with a different coupon">
+
+Reembolse o pedido original primeiro (veja [Reembolsos](/orders/refunds)) e depois inicie uma nova venda com o novo cupom. Os cupons são vinculados ao pedido no momento da venda — não é possível trocar retroativamente um cupom em um pedido concluído pelo POS. O reembolso retorna a contagem de uso ao cupom para que ele possa ser aplicado novamente no novo pedido.
+
+  </AccordionItem>
+</Accordion>
+
+## Interação com alterações de preço no POS {#interaction-with-pos-price-changes}
+
+Se um operador de caixa reduziu o preço de um item no caixa (uma [alteração de preço no POS](/pos/cart/discounts)) e depois aplica um cupom, o cupom é calculado sobre o **preço reduzido**, não sobre o original. Itens com preço reduzido pelo POS são tratados como "em promoção", portanto qualquer cupom com **Excluir itens em promoção** ativado irá ignorá-los.
+
+Isso é intencional — evita que os clientes recebam desconto duplo ao acumular um desconto do operador de caixa e um cupom sobre o preço original. Veja [Como as alterações de preço no POS interagem com cupons](/pos/cart/discounts#how-pos-price-changes-interact-with-coupons) para a mecânica completa.
+
+## Comportamento offline {#offline-behaviour}
+
+- **A aplicação de cupons funciona offline** — a validação é executada com base nos dados de cupons sincronizados localmente.
+- **A finalização da venda ainda requer conexão** quando o pedido é enviado (o servidor revalida e registra a contagem de uso).
+- **Um cupom recém-criado no WP Admin** não será aplicado no caixa até a próxima sincronização. Na tela de [Cupons](/coupons) , toque no ícone de sincronização (<Icon name="arrow-rotate-right" />) — mantenha pressionado para **Limpar e atualizar** se precisar de uma busca completa.
