@@ -1,0 +1,161 @@
+---
+title: Applying Coupons at the Till
+sidebar_label: Applying Coupons
+sidebar_position: 2
+description: The cashier workflow for applying WooCommerce coupons at the WCPOS register — search, coupon pills, sequential discounts, and resolving validation errors.
+---
+
+import Icon from '@site/src/components/Icon';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+
+:::info Pro Feature
+Applying coupons at the register requires [WCPOS Pro](/getting-started/pro-license). Free users can see the [Coupons](/coupons) screen as a blurred preview but the **Add Coupon** action is disabled in the cart.
+:::
+
+This page covers the at-counter workflow — finding a coupon, applying it, stacking multiple coupons, and dealing with errors. For coupon types, setup, and validation rules see [Coupons](/coupons); for ad-hoc discounts a cashier creates on the fly see [Cart Discounts](/pos/cart/discounts).
+
+## The Add Coupon flow {#the-add-coupon-flow}
+
+Below the cart line items there's an **Add Coupon** button. Tapping it opens a small input where you can either type a code or search.
+
+1. Tap **Add Coupon** in the cart
+2. Start typing — the input doubles as a search across all synced coupons (code and description)
+3. Pick the coupon from the suggestion list, or finish typing the code and press **Enter**
+
+Der Gutschein wird sofort anhand der lokal synchronisierten Daten validiert — ohne Rückfrage an den Server — und der Rabatt erscheint in der Warenkorbsumme. Bei nachträglichen Änderungen am Warenkorb (Artikel hinzufügen, Menge ändern, Kunden wechseln) wird der Rabatt automatisch neu berechnet.
+
+{/* Screenshot: cart-add-coupon-search.png */}
+
+:::tip Code vs. Suche
+Kassenpersonal, das den Code kennt (z. B. "SUMMER10"), kann ihn eingeben und mit Enter bestätigen — der schnellste Weg. Die Suche ist für Fälle gedacht, in denen ein Kunde einen gedruckten Gutschein vorlegt und das Personal den genauen Code nicht auswendig kennt, oder wenn ein Treuerabatt über den Kundennamen nachgeschlagen werden soll.
+:::
+
+## Gutschein-Chips im Warenkorb {#coupon-pills-in-the-cart}
+
+Jeder angewendete Gutschein erscheint als kleiner **Chip** im Warenkorb, direkt über den Summen. Der Chip zeigt die Beschreibung des Gutscheins (oder den Code, falls keine Beschreibung hinterlegt ist) sowie den gewährten Rabattbetrag an. Durch Tippen auf das **×** eines Chips wird der entsprechende Gutschein entfernt — die Warenkorbsumme wird sofort neu berechnet.
+
+{/* Screenshot: cart-coupon-pills.png */}
+
+Chips werden vertikal gestapelt, wenn mehr als ein Gutschein angewendet wird. Die angezeigte Reihenfolge entspricht der Reihenfolge, in der sie hinzugefügt wurden — und diese Reihenfolge ist relevant für [sequenzielle Rabatte](#sequential-discounts).
+
+:::note Belegbeschriftungen
+Der Chip-Text wird auch auf dem Beleg gedruckt. Für eine ansprechendere Bezeichnung als den reinen Gutscheincode (z. B. *"Treuerabatt"* statt *"LOYAL10"*) kann das Feld **Beschreibung** des Gutscheins unter `WP Admin → Marketing → Coupons` gesetzt werden. WCPOS verwendet die Beschreibung als Rabattbezeichnung, sofern sie hinterlegt ist.
+:::
+
+## Sequenzielle Rabatte {#sequential-discounts}
+
+Es können mehrere Gutscheine auf eine Bestellung angewendet werden. WooCommerce verarbeitet diese **sequenziell** — jeder Gutschein wird auf die verbleibende Zwischensumme nach dem vorherigen Gutschein angewendet, nicht auf den ursprünglichen Warenkorbgesamtbetrag.
+
+### Rechenbeispiel {#worked-example}
+
+Warenkorb-Zwischensumme: **100,00 $**
+
+| Schritt | Gutschein | Berechnung | Laufende Summe |
+|---|---|---|---|
+| 1 | `LOYAL10` (10 % Rabatt) | 100 $ × 0,90 | **90,00 $** |
+| 2 | `WELCOME5` (5 $ Rabatt auf den Warenkorb) | 90 $ − 5 $ | **85,00 $** |
+| 3 | `EXTRA20` (20 % Rabatt) | 85 $ × 0,80 | **68,00 $** |
+
+Die Reihenfolge der Anwendung beeinflusst den Endbetrag. Zwei 10-%-Gutscheine ergeben zusammen 19 % Rabatt auf den Originalbetrag (nicht 20 %), da der zweite 10-%-Gutschein auf die bereits rabattierte Summe angewendet wird.
+
+### Wenn Gutscheine nicht kombiniert werden können {#when-coupons-can-t-stack}
+
+Ein Gutschein, der in WooCommerce mit **Nur einzeln verwendbar** konfiguriert ist, verhindert die gleichzeitige Anwendung anderer Gutscheine. Wenn `SUMMER25` nur einzeln verwendbar ist:
+
+- Zuerst `SUMMER25` anwenden → das Hinzufügen eines weiteren Gutscheins zeigt *"Dieser Gutschein kann nicht mit anderen Gutscheinen kombiniert werden."*
+- Zuerst andere Gutscheine anwenden → das Hinzufügen von `SUMMER25` zeigt dieselbe Meldung.
+
+Den kollidierenden Gutschein entfernen, um den anderen anwenden zu können.
+
+### Festbetrag-Produktgutscheine {#fixed-product-coupons}
+
+Ein **Festbetrag-Produktrabatt**-Gutschein (z. B. *2 $ Rabatt pro T-Shirt*) gewährt nur einen Rabatt auf die zutreffenden Positionen — die laufende Zwischensumme für andere Gutscheine wird nicht reduziert. Die Kombination mit einem prozentualen Warenkorb-Gutschein ist sicher und vorhersehbar.
+
+## Einen Gutschein entfernen {#removing-a-coupon}
+
+- Auf das **×** am Gutschein-Chip tippen, um diesen einzelnen Gutschein zu entfernen.
+- Durch Leeren des Warenkorbs (Menü **Mehr** → *Warenkorb leeren*) werden alle angewendeten Gutscheine entfernt.
+- Wird eine Position entfernt, die der *einzige* qualifizierende Artikel für einen produktbeschränkten Gutschein war, wird der Gutschein automatisch entfernt und eine kurze Meldung angezeigt — "Gutschein entfernt: keine qualifizierenden Artikel".
+
+## Validierungsfehler und deren Behebung {#validation-errors-and-how-to-resolve-them}
+
+Das POS verwendet dieselben Validierungsregeln wie WooCommerce — die vollständige Liste finden Sie unter [So funktioniert die Validierung](/coupons#how-validation-works). Wird ein Gutschein abgelehnt, wird eine spezifische Meldung angezeigt:
+
+| Meldung | Bedeutung | Abhilfe |
+|---|---|---|
+| *"Coupon does not exist"* | Der Code wurde in den synchronisierten Daten nicht gefunden. | Überprüfen Sie die Schreibweise. Wenn der Gutschein gerade erst im WP Admin erstellt wurde, führen Sie eine Synchronisierung über den [Gutscheine](/coupons)-Bildschirm durch (langes Drücken auf das Synchronisierungssymbol für **Löschen und aktualisieren**). |
+| *"This coupon has expired"* | Das heutige Datum liegt nach dem Ablaufdatum des Gutscheins. | Verlängern Sie das Ablaufdatum im WP Admin oder verwenden Sie einen anderen Code. |
+| *"Usage limit reached"* | Das Gesamtnutzungslimit des Gutscheins ist erschöpft. | Erhöhen Sie das Limit im WP Admin oder verwenden Sie einen anderen Code. |
+| *"Customer has already used this coupon"* | Der ausgewählte Kunde hat das Pro-Benutzer-Limit überschritten. | Wechseln Sie den Kunden oder erhöhen Sie das Pro-Benutzer-Limit. |
+| *"Minimum spend not reached"* | Die Zwischensumme des Warenkorbs liegt unter dem Mindestbetrag des Gutscheins. | Fügen Sie weitere Artikel hinzu oder verwenden Sie einen anderen Code. |
+| *"Maximum spend exceeded"* | Die Zwischensumme des Warenkorbs liegt über dem Höchstbetrag des Gutscheins. | Teilen Sie die Bestellung auf oder verwenden Sie einen anderen Code. |
+| *"This coupon cannot be combined with other coupons"* | Entweder der neue Gutschein oder ein bereits angewendeter ist auf **Nur einzeln verwendbar** eingestellt. | Entfernen Sie den widersprüchlichen Gutschein und wenden Sie dann den gewünschten an. |
+| *"Coupon not valid for items in cart"* | Keiner der Artikel im Warenkorb entspricht den Produkt-/Kategoriebeschränkungen des Gutscheins. | Fügen Sie einen qualifizierenden Artikel hinzu oder wählen Sie einen anderen Gutschein. |
+| *"Coupon not valid for this customer"* | Die E-Mail-Adresse des ausgewählten Kunden stimmt nicht mit der Regel **Erlaubte E-Mail-Adressen** des Gutscheins überein. | Wechseln Sie zu einem Kunden, dessen E-Mail-Adresse übereinstimmt, oder entfernen Sie die E-Mail-Beschränkung. |
+
+Wenn ein Gutschein lokal validiert wird, die Bestellung aber beim Checkout abgelehnt wird, hat der Server die Validierung mit aktuelleren Daten erneut durchgeführt — in der Regel wurde das Nutzungslimit durch einen anderen Verkauf während derselben Schicht erreicht. Wenden Sie den Gutschein erneut an oder wählen Sie einen anderen.
+
+## Häufige Arbeitsabläufe {#common-workflows}
+
+<Accordion>
+  <AccordionItem question="Manager discount — ad-hoc 10% with a tracked code">
+
+Erstellen Sie einen Gutschein unter `WP Admin → Marketing → Coupons` mit einem Namen wie `MGR10`:
+- **Rabattart:** Prozentualer Rabatt
+- **Gutscheinbetrag:** 10
+- **Verwendungsbeschränkung pro Gutschein:** *(leer — unbegrenzt)*
+- **Nur einzeln verwendbar:** aus (damit er mit Treue-/Aktionscodes kombiniert werden kann)
+- **Beschreibung:** *"Manager-Rabatt"* (dieser Text wird auf dem Beleg gedruckt)
+
+Geben Sie den Code nur an Filialleiter weiter. Der Gutschein wird in den WooCommerce-Berichten als nachverfolgter Rabatt angezeigt – im Gegensatz zu einer [POS-Preisänderung](/pos/cart/discounts), die lediglich den Positionspreis reduziert.
+
+  </AccordionItem>
+
+  <AccordionItem question="Loyalty reward — repeat-customer $5 off">
+
+Erstellen Sie `LOYAL5`:
+- **Rabattart:** Fester Warenkorbrabatt
+- **Gutscheinbetrag:** 5
+- **Mindestbestellwert:** 25 *(oder der von Ihnen festgelegte Schwellenwert)*
+- **Verwendungsbeschränkung pro Benutzer:** 1 *(wenn die Belohnung einmalig ist)*
+- **Beschreibung:** *„Treueprämie“*
+
+An der Kasse nach „Treue“ suchen, um den Gutschein zu finden, ohne sich den Code merken zu müssen.
+
+  </AccordionItem>
+
+  <AccordionItem question="Single-use promo — flyer or print campaign">
+
+Pro Kampagne einen Gutschein erstellen und **Verwendungsbeschränkung pro Gutschein: 1** setzen, wenn es sich um einen Einmal-Flyer handelt, oder eine höhere Anzahl für eine Mehrfach-Aktion. Ein knappes **Ablaufdatum** festlegen, damit der Code nicht versehentlich später erneut eingelöst werden kann.
+
+Bei Mehrfach-Aktionen, bei denen jeder Kunde nur einmal einlösen soll, sowohl **Verwendungsbeschränkung pro Gutschein** *als auch* **Verwendungsbeschränkung pro Benutzer: 1** festlegen.
+
+  </AccordionItem>
+
+  <AccordionItem question="Stacking a manager discount on top of a coupon code the customer brought">
+
+Zuerst den Code des Kunden einlösen, dann den Manager-Code. WooCommerce verarbeitet die Gutscheine nacheinander — der Manager-Rabatt wird auf den bereits reduzierten Gesamtbetrag angewendet, was in der Regel der Kundenerwartung entspricht.
+
+Wenn der Gutschein des Kunden auf **Individuelle Verwendung** gesetzt ist, wird der Manager-Code abgelehnt. In diesem Fall entweder zuerst den Gutschein des Kunden entfernen (und bei Bedarf später erneut anwenden) oder den Gutschein des Kunden in WP Admin so aktualisieren, dass Kombinationen zulässig sind.
+
+  </AccordionItem>
+
+  <AccordionItem question="A customer wants to return part of an order and re-ring it with a different coupon">
+
+Zuerst die Originalbestellung erstatten (siehe [Erstattungen](/orders/refunds)) und dann einen neuen Verkauf mit dem neuen Gutschein starten. Gutscheine werden zum Zeitpunkt des Verkaufs mit der Bestellung verknüpft — ein Gutschein kann im POS nicht nachträglich bei einer abgeschlossenen Bestellung ausgetauscht werden. Die Erstattung setzt den Verwendungszähler des Gutscheins zurück, sodass er bei der neuen Bestellung erneut angewendet werden kann.
+
+  </AccordionItem>
+</Accordion>
+
+## Zusammenspiel mit POS-Preisänderungen {#interaction-with-pos-price-changes}
+
+Wenn eine Kassenkraft den Einzelpostenpreis an der Kasse gesenkt hat (eine [POS-Preisänderung](/pos/cart/discounts)) und dann einen Gutschein anwendet, wird der Gutschein auf den **reduzierten Preis** angewendet, nicht auf den Originalpreis. Im POS reduzierte Positionen werden als „im Angebot“ behandelt, sodass Gutscheine mit aktivierter Option **Angebotsartikel ausschließen** diese überspringen.
+
+Dieses Verhalten ist beabsichtigt — es verhindert, dass Kunden doppelt rabattiert werden, indem ein Kassenrabatt und ein Gutschein auf den Originalpreis gestapelt werden. Weitere Details unter [Zusammenspiel von POS-Preisänderungen und Gutscheinen](/pos/cart/discounts#how-pos-price-changes-interact-with-coupons).
+
+## Offline-Verhalten {#offline-behaviour}
+
+- **Das Einlösen von Gutscheinen funktioniert offline** — die Validierung erfolgt anhand der lokal synchronisierten Gutscheindaten.
+- **Für den Abschluss des Verkaufs ist weiterhin eine Verbindung erforderlich**, da der Server die Bestellung beim Absenden erneut validiert und die Nutzungsanzahl aktualisiert.
+- **Ein soeben im WP Admin erstellter Gutschein** kann an der Kasse erst nach der nächsten Synchronisierung eingelöst werden. Über die [Gutscheine](/coupons) -Fußzeile kann das Synchronisierungssymbol (<Icon name="arrow-rotate-right" />) angetippt werden — durch langes Drücken wird **Löschen und neu laden** ausgelöst, um die Daten vollständig neu abzurufen.
