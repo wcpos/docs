@@ -1,0 +1,101 @@
+---
+title: Referencia técnica de descuentos POS
+sidebar_label: Descuentos POS
+description: Referencia para desarrolladores sobre cómo WCPOS almacena las modificaciones de precio por línea de artículo en POS, cómo interactúan con los cupones de WooCommerce y los filtros disponibles.
+---
+
+# Referencia técnica de descuentos POS {#pos-discount-technical-reference}
+
+Esta página documenta cómo WCPOS gestiona las modificaciones de precio por línea de artículo aplicadas por el cajero — cómo se almacenan, cómo interactúan con los cupones de WooCommerce y qué filtros están disponibles. Para la documentación orientada al usuario, consulte [Descuentos del carrito](/pos/cart/discounts) y [Cupones](/coupons).
+
+## Cómo se almacenan las modificaciones de precio POS {#how-pos-price-overrides-are-stored}
+
+Cuando un cajero establece o modifica el precio de una línea de artículo en el POS, los precios por unidad se almacenan en el meta de línea de artículo `_woocommerce_pos_data` como JSON:
+
+```json
+{
+  "price": "16.00",
+  "regular_price": "18.00",
+  "tax_status": "taxable"
+}
+```
+
+Para productos misceláneos (personalizados), este meta también puede contener los campos `virtual`, `downloadable` y `categories` utilizados durante la validación de cupones.
+
+Este meta es la fuente autorizada de precios por unidad para la línea. El `subtotal` almacenado por WooCommerce en la línea de artículo se deriva de `price * qty` (con extracción de impuestos y redondeo aplicados). El `total` almacenado puede ser inferior cuando se aplican descuentos por cupón, por lo que para obtener precisión por unidad se debe leer siempre `_woocommerce_pos_data.price` y `regular_price`.
+
+## Modelo de subtotal (v1.9.0+) {#subtotal-model-v1-9-0}
+
+A partir de la v1.9.0, WCPOS se alinea con la semántica nativa de precio de oferta de WooCommerce:
+
+- `line_item.subtotal = price * qty` donde `price` es el precio POS (después de cualquier modificación).
+- `line_item.total = subtotal - coupon_discount_for_line`.
+- `order.discount_total` refleja **solo los descuentos por cupones**, no las modificaciones de precio del POS.
+
+Esto coincide con la forma en que WooCommerce trata un producto en oferta: el `sale_price` se convierte en el subtotal y `discount_total` se reserva para cupones. No existe una línea separada de "descuento POS" en el pedido.
+
+:::note Migración desde versiones anteriores a 1.9.0
+Las versiones anteriores enviaban `subtotal = regular_price * qty`, lo que provocaba que WooCommerce calculara `discount_total = subtotal - total` e incluyera las modificaciones de precio del POS como descuento. Esto se modificó porque entraba en conflicto con el cálculo de cupones: `recalculate_coupons()` utiliza `subtotal` como precio base, por lo que los cupones se calculaban sobre el precio original y producían totales incorrectos.
+
+La solución anterior del lado del servidor — un filtro `woocommerce_order_item_get_subtotal` activo durante `recalculate_coupons()` — se eliminó en la versión 1.9.0. Consulte el [ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md) para obtener el historial completo.
+:::
+
+## Comportamiento de interacción con cupones {#coupon-interaction-behaviour}
+
+La compatibilidad con cupones es una función de [WCPOS Pro](https://wcpos.com/pro). Cuando se aplica un cupón a un pedido que contiene artículos con descuento del POS:
+
+1. El cupón se calcula sobre el **precio con descuento del POS** (el valor en `_woocommerce_pos_data.price`), no sobre el `regular_price` original.
+2. Cuando se elimina un cupón, el artículo del pedido vuelve a su precio con descuento del POS.
+
+### Comportamiento de `exclude_sale_items` {#excludesaleitems-behaviour}
+
+Los artículos con descuento POS son tratados como "en oferta" por WooCommerce cuando `_woocommerce_pos_data.price < regular_price`. Los cupones con `exclude_sale_items` activado los omitirán, de forma consistente con el tratamiento que WooCommerce aplica a los precios de oferta regulares.
+
+Si se necesita un comportamiento diferente, consulte el filtro `woocommerce_pos_item_is_on_sale` a continuación.
+
+## Filtros disponibles {#available-filters}
+
+### `woocommerce_pos_item_is_on_sale` {#woocommercepositemisonsale}
+
+Permite anular si un artículo con descuento POS se considera "en oferta" a efectos de la validación de cupones.
+
+```php
+add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
+    // Allow coupons with exclude_sale_items to apply to POS-discounted items
+    return false;
+}, 10, 4 );
+```
+
+**Parámetros:**
+
+| Parámetro | Tipo | Descripción |
+|---|---|---|
+| `$is_on_sale` | `bool` | Indica si el artículo se considera en oferta (por defecto: `price < regular_price`) |
+| `$product` | `WC_Product` | El objeto del producto |
+| `$item` | `WC_Order_Item_Product` | La línea de artículo del pedido |
+| `$pos_data` | `array` | El JSON decodificado de `_woocommerce_pos_data` |
+
+## Endpoint de la API REST {#rest-api-endpoint}
+
+El endpoint REST de cupones se encuentra en el **plugin gratuito** en `/wp-json/wcpos/v1/coupons`, de modo que la aplicación POS nunca reciba un 404 al consultar cupones, incluso en sitios sin WCPOS Pro instalado. Sin embargo, la función de cupones visible para el usuario requiere Pro.
+
+El controlador extiende `WC_REST_Coupons_Controller` con adiciones específicas para POS:
+
+- Manejo de UUID para sincronización offline-first
+- Capacidad `access_woocommerce_pos` para verificaciones de permisos
+- Ruta de consulta optimizada para ID masivos cuando se solicitan `posts_per_page=-1` y `fields=id` (o `fields=id,date_modified_gmt`)
+
+## Exposición de datos del recibo {#receipt-data-exposure}
+
+El constructor de datos del recibo (`Receipt_Data_Builder`) expone:
+
+- `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — monto de descuento por línea, calculado como `subtotal - total`. A partir de la v1.9.0, esto refleja **únicamente descuentos por cupón** para las modificaciones de precio en POS, ya que `subtotal === total` cuando no se aplica ningún cupón.
+- `totals.discount_total`, `totals.discount_total_incl`, `totals.discount_total_excl` — total de descuento por cupón a nivel de pedido, obtenido de `WC_Order::get_discount_total()`.
+- `discounts[]` — array de elementos de línea de cupón con `label`, `code` y `total`.
+
+Los metadatos con prefijo de guion bajo del elemento de línea (incluido `_woocommerce_pos_data`) se filtran de `lines[].meta` mediante `Receipt_Data_Builder::get_item_meta_pairs()`, por lo que `regular_price` no está disponible directamente en las plantillas. Si es necesario mostrar la diferencia entre el precio regular y el precio POS en los recibos, puede solicitarse a través de [soporte](https://wcpos.com/support).
+
+## Relacionado {#related}
+
+- [Descuentos en el carrito](/pos/cart/discounts) — guía para el usuario sobre descuentos aplicados por el cajero
+- [Cupones](/coupons) — guía para el usuario sobre cupones de WooCommerce en el POS (Pro)

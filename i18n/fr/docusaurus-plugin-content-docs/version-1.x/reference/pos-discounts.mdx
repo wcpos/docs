@@ -1,0 +1,101 @@
+---
+title: Référence technique des remises PDV
+sidebar_label: Remises PDV
+description: Référence développeur décrivant comment WCPOS stocke les modifications de prix par ligne au point de vente, leur interaction avec les coupons WooCommerce et les filtres disponibles.
+---
+
+# Référence technique des remises PDV {#pos-discount-technical-reference}
+
+Cette page documente la façon dont WCPOS gère les modifications de prix par ligne appliquées par le caissier — comment elles sont stockées, comment elles interagissent avec les coupons WooCommerce et quels filtres sont disponibles. Pour la documentation destinée aux utilisateurs, consultez [Remises du panier](/pos/cart/discounts) et [Coupons](/coupons).
+
+## Comment les modifications de prix PDV sont stockées {#how-pos-price-overrides-are-stored}
+
+Lorsqu'un caissier définit ou modifie le prix d'une ligne dans le PDV, les prix unitaires sont stockés dans les métadonnées de ligne `_woocommerce_pos_data` au format JSON :
+
+```json
+{
+  "price": "16.00",
+  "regular_price": "18.00",
+  "tax_status": "taxable"
+}
+```
+
+Pour les produits divers (personnalisés), ces métadonnées peuvent également contenir les champs `virtual`, `downloadable` et `categories` utilisés lors de la validation des coupons.
+
+Ces métadonnées constituent la source de référence des prix unitaires pour la ligne. Le `subtotal` stocké par WooCommerce sur la ligne est dérivé de `price * qty` (avec extraction de la taxe et arrondi appliqués). Le `total` stocké peut être inférieur lorsque des remises par coupon sont appliquées ; pour une précision au prix unitaire, il convient de toujours lire `_woocommerce_pos_data.price` et `regular_price`.
+
+## Modèle de sous-total (v1.9.0+) {#subtotal-model-v1-9-0}
+
+Depuis la version 1.9.0, WCPOS s'aligne sur la sémantique native des prix promotionnels de WooCommerce :
+
+- `line_item.subtotal = price * qty` où `price` est le prix PDV (après toute modification).
+- `line_item.total = subtotal - coupon_discount_for_line`.
+- `order.discount_total` reflète **uniquement les remises par coupons**, et non les modifications de prix du PDV.
+
+Cela correspond au comportement de WooCommerce pour un produit en promotion : le `sale_price` devient le sous-total, et `discount_total` est réservé aux coupons. Il n'y a pas de ligne « remise PDV » distincte sur la commande.
+
+:::note Migration depuis les versions antérieures à 1.9.0
+Les versions précédentes envoyaient `subtotal = regular_price * qty`, ce qui amenait WooCommerce à calculer `discount_total = subtotal - total` et à inclure les modifications de prix du PDV comme une remise. Ce comportement a été modifié car il entrait en conflit avec le calcul des coupons : `recalculate_coupons()` utilise `subtotal` comme prix de base, de sorte que les coupons se calculaient sur le prix d'origine et produisaient des totaux incorrects.
+
+Le contournement côté serveur précédent — un filtre `woocommerce_order_item_get_subtotal` actif pendant `recalculate_coupons()` — a été supprimé dans la v1.9.0. Consultez l'[ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md) pour l'historique complet.
+:::
+
+## Comportement de l'interaction avec les coupons {#coupon-interaction-behaviour}
+
+La prise en charge des coupons est une fonctionnalité [WCPOS Pro](https://wcpos.com/pro). Lorsqu'un coupon est appliqué à une commande contenant des articles avec remise PDV :
+
+1. Le coupon se calcule sur le **prix après remise PDV** (la valeur dans `_woocommerce_pos_data.price`), et non sur le `regular_price` d'origine.
+2. Lorsqu'un coupon est supprimé, l'article de ligne revient à son prix après remise PDV.
+
+### Comportement de `exclude_sale_items` {#excludesaleitems-behaviour}
+
+Les articles avec une remise PDV sont considérés comme « en promotion » par WooCommerce lorsque `_woocommerce_pos_data.price < regular_price`. Les coupons avec `exclude_sale_items` activé les ignoreront donc, conformément au traitement des prix promotionnels standard par WooCommerce.
+
+Si vous avez besoin d'un comportement différent, consultez le filtre `woocommerce_pos_item_is_on_sale` ci-dessous.
+
+## Filtres disponibles {#available-filters}
+
+### `woocommerce_pos_item_is_on_sale` {#woocommercepositemisonsale}
+
+Permet de redéfinir si un article avec remise PDV est considéré comme « en promotion » lors de la validation des coupons.
+
+```php
+add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
+    // Allow coupons with exclude_sale_items to apply to POS-discounted items
+    return false;
+}, 10, 4 );
+```
+
+**Paramètres :**
+
+| Paramètre | Type | Description |
+|---|---|---|
+| `$is_on_sale` | `bool` | Indique si l'article est considéré comme en promotion (par défaut : `price < regular_price`) |
+| `$product` | `WC_Product` | L'objet produit |
+| `$item` | `WC_Order_Item_Product` | La ligne d'article de la commande |
+| `$pos_data` | `array` | Le JSON `_woocommerce_pos_data` décodé |
+
+## Point d'accès de l'API REST {#rest-api-endpoint}
+
+Le point d'accès REST des coupons se trouve dans le **plugin gratuit** à `/wp-json/wcpos/v1/coupons`, de sorte que l'application PDV ne reçoive jamais une erreur 404 lors de la requête des coupons — même sur les sites sans WCPOS Pro installé. La fonctionnalité de coupons côté utilisateur nécessite cependant la version Pro.
+
+Le contrôleur étend `WC_REST_Coupons_Controller` avec des ajouts spécifiques au PDV :
+
+- Gestion des UUID pour la synchronisation hors ligne prioritaire
+- Capacité `access_woocommerce_pos` pour les vérifications de permissions
+- Chemin de requête par lots d'ID optimisé lorsque `posts_per_page=-1` et `fields=id` (ou `fields=id,date_modified_gmt`) sont demandés
+
+## Exposition des données de reçu {#receipt-data-exposure}
+
+Le constructeur de données de reçu (`Receipt_Data_Builder`) expose :
+
+- `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — montant de remise par ligne, calculé comme `subtotal - total`. À partir de la v1.9.0, cela reflète **uniquement les remises de coupons** pour les modifications de prix PDV, puisque `subtotal === total` lorsqu'aucun coupon n'est appliqué.
+- `totals.discount_total`, `totals.discount_total_incl`, `totals.discount_total_excl` — total de remise de coupons au niveau de la commande, obtenu via `WC_Order::get_discount_total()`.
+- `discounts[]` — tableau des lignes de coupons avec `label`, `code` et `total`.
+
+Les métadonnées préfixées par un tiret bas de la ligne d'article (y compris `_woocommerce_pos_data`) sont filtrées de `lines[].meta` par `Receipt_Data_Builder::get_item_meta_pairs()`, de sorte que `regular_price` n'est pas directement disponible pour les modèles. Si vous devez afficher la différence entre le prix normal et le prix PDV sur les reçus, faites-en la demande via le [support](https://wcpos.com/support).
+
+## Voir aussi {#related}
+
+- [Remises du panier](/pos/cart/discounts) — guide utilisateur pour les remises appliquées par le caissier
+- [Coupons](/coupons) — guide utilisateur pour les coupons WooCommerce dans le PDV (Pro)

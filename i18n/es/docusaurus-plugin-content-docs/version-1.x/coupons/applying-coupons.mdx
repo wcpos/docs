@@ -1,0 +1,161 @@
+---
+title: Aplicación de cupones en caja
+sidebar_label: Aplicación de cupones
+sidebar_position: 2
+description: "Flujo de trabajo del cajero para aplicar cupones de WooCommerce en la caja de WCPOS: búsqueda, etiquetas de cupones, descuentos secuenciales y resolución de errores de validación."
+---
+
+import Icon from '@site/src/components/Icon';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+
+:::info Función Pro
+La aplicación de cupones en la caja requiere [WCPOS Pro](/getting-started/pro-license). Los usuarios de la versión gratuita pueden ver la pantalla de [Cupones](/coupons) como una vista previa difuminada, pero la acción **Agregar cupón** está desactivada en el carrito.
+:::
+
+Esta página cubre el flujo de trabajo en caja: encontrar un cupón, aplicarlo, acumular varios cupones y gestionar errores. Para tipos de cupones, configuración y reglas de validación, consulte [Cupones](/coupons); para descuentos ad hoc que el cajero crea sobre la marcha, consulte [Descuentos del carrito](/pos/cart/discounts).
+
+## Flujo de Agregar cupón {#the-add-coupon-flow}
+
+Debajo de los artículos del carrito se encuentra el botón **Agregar cupón**. Al tocarlo, se abre un campo de entrada donde es posible escribir un código o realizar una búsqueda.
+
+1. Toque **Agregar cupón** en el carrito
+2. Comience a escribir: el campo de entrada funciona también como búsqueda en todos los cupones sincronizados (código y descripción)
+3. Seleccione el cupón de la lista de sugerencias, o termine de escribir el código y pulse **Enter**
+
+El cupón se valida instantáneamente contra los datos sincronizados localmente — no hay ida y vuelta al servidor — y el descuento aparece en el total del carrito. Si se modifican los contenidos del carrito después (agregar un artículo, cambiar una cantidad, cambiar de cliente), el descuento se recalcula automáticamente.
+
+{/* Screenshot: cart-add-coupon-search.png */}
+
+:::tip Código vs. búsqueda
+Los cajeros que conocen el código (p. ej., "SUMMER10") pueden escribirlo y presionar Enter — es la vía más rápida. La búsqueda es para cuando un cliente entrega un cupón impreso y el empleado no recuerda el código exacto, o cuando se busca un descuento de fidelidad por nombre del cliente.
+:::
+
+## Etiquetas de cupón en el carrito {#coupon-pills-in-the-cart}
+
+Cada cupón aplicado aparece como una pequeña **etiqueta** en el carrito, ubicada justo encima de los totales. La etiqueta muestra la descripción del cupón (o el código, si no se ha establecido una descripción) y el monto descontado. Al tocar la **×** en una etiqueta, se elimina ese cupón — el total del carrito se recalcula de inmediato.
+
+{/* Screenshot: cart-coupon-pills.png */}
+
+Las etiquetas se apilan verticalmente cuando se aplica más de un cupón. El orden mostrado es el orden en que se agregaron — y ese orden es importante para los [descuentos secuenciales](#sequential-discounts).
+
+:::note Etiquetas en el recibo
+El texto de la etiqueta es también lo que se imprime en el recibo. Si se desea una etiqueta más clara que el código del cupón sin formato (p. ej., *"Descuento de Fidelidad"* en lugar de *"LOYAL10"*), se debe establecer el campo **Descripción** en el cupón en `WP Admin → Marketing → Coupons`. WCPOS utiliza la descripción como etiqueta del descuento siempre que esté configurada.
+:::
+
+## Descuentos secuenciales {#sequential-discounts}
+
+Es posible aplicar más de un cupón a un pedido. WooCommerce los trata de forma **secuencial**: cada cupón descuenta del subtotal acumulado que dejó el cupón anterior, no del total original del carrito.
+
+### Ejemplo práctico {#worked-example}
+
+Subtotal del carrito: **$100.00**
+
+| Paso | Cupón | Cálculo | Total acumulado |
+|---|---|---|---|
+| 1 | `LOYAL10` (10 % de descuento) | $100 × 0.90 | **$90.00** |
+| 2 | `WELCOME5` ($5 de descuento en el carrito) | $90 − $5 | **$85.00** |
+| 3 | `EXTRA20` (20 % de descuento) | $85 × 0.80 | **$68.00** |
+
+El orden en que se aplican modifica el resultado final. Dos cupones del 10 % acumulan un 19 % de descuento sobre el total original (no un 20 %), porque el segundo 10 % se aplica sobre el total ya descontado.
+
+### Cuando los cupones no se pueden acumular {#when-coupons-can-t-stack}
+
+Un cupón configurado con **Solo uso individual** en WooCommerce impide que cualquier otro cupón se aplique de forma conjunta. Si `SUMMER25` es de uso individual:
+
+- Aplicar `SUMMER25` primero → al agregar cualquier otro cupón se muestra *"Este cupón no se puede combinar con otros cupones."*
+- Aplicar otros cupones primero → al agregar `SUMMER25` se muestra el mismo mensaje.
+
+Eliminar el cupón en conflicto para poder aplicar el otro.
+
+### Cupones de producto fijo {#fixed-product-coupons}
+
+Un cupón de **descuento fijo por producto** (p. ej., *$2 de descuento en cada camiseta*) solo aplica el descuento a los artículos que coinciden — no reduce el subtotal acumulado para otros cupones. Combinarlo con un cupón de porcentaje sobre el carrito es seguro y predecible.
+
+## Eliminar un cupón {#removing-a-coupon}
+
+- Pulsar la **×** en la etiqueta del cupón para eliminar ese cupón individual.
+- Vaciar el carrito (menú **Más** → *Vaciar carrito*) elimina todos los cupones aplicados.
+- Al eliminar un artículo que era el *único* artículo válido para un cupón restringido por producto, el cupón se eliminará automáticamente y se mostrará un aviso breve — "Cupón eliminado: no hay artículos válidos".
+
+## Errores de validación y cómo resolverlos {#validation-errors-and-how-to-resolve-them}
+
+El POS ejecuta las mismas reglas de validación que WooCommerce — consultar [Cómo funciona la validación](/coupons#how-validation-works) para ver la lista completa. Cuando se rechaza un cupón, el cajero ve un mensaje específico:
+
+| Mensaje | Significado | Qué hacer |
+|---|---|---|
+| *"El cupón no existe"* | El código no se encontró en los datos sincronizados. | Verificar la ortografía. Si el cupón se acaba de crear en WP Admin, ejecutar una sincronización desde la pantalla de [Cupones](/coupons) (mantener presionado el icono de sincronización para **Borrar y actualizar**). |
+| *"Este cupón ha expirado"* | La fecha actual es posterior a la fecha de vencimiento del cupón. | Extender la fecha de vencimiento en WP Admin o utilizar un código diferente. |
+| *"Límite de uso alcanzado"* | El límite de uso general del cupón se ha agotado. | Aumentar el límite en WP Admin o utilizar un código diferente. |
+| *"El cliente ya ha utilizado este cupón"* | El cliente seleccionado ha superado el límite por usuario. | Cambiar de cliente o aumentar el límite por usuario. |
+| *"Gasto mínimo no alcanzado"* | El subtotal del carrito está por debajo del mínimo del cupón. | Agregar más artículos o utilizar un código diferente. |
+| *"Gasto máximo excedido"* | El subtotal del carrito está por encima del máximo del cupón. | Dividir en pedidos separados o utilizar un código diferente. |
+| *"Este cupón no se puede combinar con otros cupones"* | El cupón nuevo o uno ya aplicado está configurado como **Uso individual solamente**. | Eliminar el cupón en conflicto y luego aplicar el deseado. |
+| *"Cupón no válido para los artículos del carrito"* | Ninguno de los artículos del carrito coincide con las restricciones de producto/categoría del cupón. | Agregar un artículo que califique o elegir un cupón diferente. |
+| *"Cupón no válido para este cliente"* | El correo electrónico del cliente seleccionado no coincide con la regla de **Correos electrónicos permitidos** del cupón. | Cambiar a un cliente cuyo correo electrónico coincida o eliminar la restricción de correo electrónico. |
+
+Si un cupón se valida localmente pero el pedido es rechazado al finalizar la compra, el servidor volvió a ejecutar la validación con datos más recientes — generalmente el límite de uso fue alcanzado en otra venta durante el mismo turno. Volver a aplicar o elegir otro.
+
+## Flujos de trabajo comunes {#common-workflows}
+
+<Accordion>
+  <AccordionItem question="Manager discount — ad-hoc 10% with a tracked code">
+
+Crear un cupón en `WP Admin → Marketing → Coupons` con un nombre como `MGR10`:
+- **Tipo de descuento:** Descuento porcentual
+- **Valor del cupón:** 10
+- **Límite de uso por cupón:** *(en blanco — ilimitado)*
+- **Solo uso individual:** desactivado (para que se pueda combinar con códigos de fidelidad o promocionales)
+- **Descripción:** *"Descuento de gerente"* (esto es lo que se imprime en el recibo)
+
+Compartir el código solo con los gerentes. El cupón aparece en los informes de WooCommerce como un descuento registrado, a diferencia de una [modificación de precio en el POS](/pos/cart/discounts), que ahora simplemente reduce el precio de la línea.
+
+  </AccordionItem>
+
+  <AccordionItem question="Loyalty reward — repeat-customer $5 off">
+
+Crear `LOYAL5`:
+- **Tipo de descuento:** Descuento fijo de carrito
+- **Valor del cupón:** 5
+- **Gasto mínimo:** 25 *(o el umbral que se desee)*
+- **Límite de uso por usuario:** 1 *(si la recompensa es de una sola vez)*
+- **Descripción:** *"Recompensa de fidelidad"*
+
+En la caja, basta con buscar "fidelidad" para encontrarlo sin necesidad de recordar el código.
+
+  </AccordionItem>
+
+  <AccordionItem question="Single-use promo — flyer or print campaign">
+
+Se recomienda crear un cupón por campaña con **Límite de uso por cupón: 1** si se trata de un folleto de canje único, o un número mayor para una promoción de uso múltiple. Es conveniente establecer una **Fecha de vencimiento** ajustada para que el código no pueda reutilizarse por error.
+
+Para promociones de uso múltiple en las que cada cliente solo debe canjear una vez, es necesario establecer tanto el **Límite de uso por cupón** *como* el **Límite de uso por usuario: 1**.
+
+  </AccordionItem>
+
+  <AccordionItem question="Stacking a manager discount on top of a coupon code the customer brought">
+
+Primero se debe aplicar el código del cliente y luego el código del gerente. WooCommerce los procesa secuencialmente: el descuento del gerente se calcula sobre el total ya descontado, que es generalmente lo que los clientes esperan.
+
+Si el cupón del cliente es de **Uso individual exclusivo**, el código del gerente será rechazado. En ese caso, se puede eliminar primero el cupón del cliente (y volver a aplicarlo después si es necesario) o actualizar el cupón del cliente en WP Admin para permitir la acumulación.
+
+  </AccordionItem>
+
+  <AccordionItem question="A customer wants to return part of an order and re-ring it with a different coupon">
+
+Primero se debe reembolsar el pedido original (consultar [Reembolsos](/orders/refunds)) y luego iniciar una nueva venta con el nuevo cupón. Los cupones se vinculan al pedido en el momento de la venta; no es posible intercambiar retroactivamente un cupón en un pedido completado desde el POS. El reembolso devuelve el recuento de uso al cupón para que pueda aplicarse nuevamente en el nuevo pedido.
+
+  </AccordionItem>
+</Accordion>
+
+## Interacción con los cambios de precio del POS {#interaction-with-pos-price-changes}
+
+Si un cajero redujo el precio de una línea en la caja (una [modificación de precio del POS](/pos/cart/discounts)) y luego se aplica un cupón, el cupón se calcula sobre el **precio reducido**, no sobre el original. Las líneas con precio reducido en el POS se tratan como "en oferta", por lo que cualquier cupón con **Excluir artículos en oferta** habilitado las omitirá.
+
+Este comportamiento es intencional: evita que los clientes reciban un doble descuento al acumular un descuento del cajero y un cupón sobre el precio original. Consultar [Cómo interactúan los cambios de precio del POS con los cupones](/pos/cart/discounts#how-pos-price-changes-interact-with-coupons) para conocer la mecánica completa.
+
+## Comportamiento sin conexión {#offline-behaviour}
+
+- **La aplicación de cupones funciona sin conexión**: la validación se ejecuta contra los datos de cupones sincronizados localmente.
+- **Completar la venta aún requiere conexión** cuando se envía el pedido (el servidor vuelve a validar y registra el conteo de uso).
+- **Un cupón recién creado en WP Admin** no se aplicará en la caja hasta la próxima sincronización. Desde el pie de la pantalla de [Cupones](/coupons) , pulse el icono de sincronización (<Icon name="arrow-rotate-right" />) — mantenga pulsado para **Borrar y actualizar** si necesita una nueva descarga.
