@@ -1,0 +1,161 @@
+---
+title: Applicazione dei coupon alla cassa
+sidebar_label: Applicazione dei coupon
+sidebar_position: 2
+description: Il flusso di lavoro del cassiere per applicare i coupon WooCommerce al registro WCPOS — ricerca, pillole coupon, sconti sequenziali e risoluzione degli errori di validazione.
+---
+
+import Icon from '@site/src/components/Icon';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+
+:::info Funzionalità Pro
+L'applicazione dei coupon al registro richiede [WCPOS Pro](/getting-started/pro-license). Gli utenti della versione gratuita possono visualizzare la schermata [Coupon](/coupons) come anteprima sfocata, ma l'azione **Aggiungi coupon** è disabilitata nel carrello.
+:::
+
+Questa pagina illustra il flusso operativo alla cassa — trovare un coupon, applicarlo, combinare più coupon e gestire gli errori. Per i tipi di coupon, la configurazione e le regole di validazione consultare [Coupon](/coupons); per gli sconti ad-hoc creati al momento dal cassiere consultare [Sconti carrello](/pos/cart/discounts).
+
+## Il flusso Aggiungi coupon {#the-add-coupon-flow}
+
+Sotto le righe del carrello è presente un pulsante **Aggiungi coupon**. Toccandolo si apre un piccolo campo di inserimento in cui è possibile digitare un codice o effettuare una ricerca.
+
+1. Toccare **Aggiungi coupon** nel carrello
+2. Iniziare a digitare — il campo di inserimento funge anche da ricerca tra tutti i coupon sincronizzati (codice e descrizione)
+3. Selezionare il coupon dall'elenco dei suggerimenti oppure completare la digitazione del codice e premere **Invio**
+
+Il coupon viene validato istantaneamente rispetto ai dati sincronizzati localmente — senza alcuna comunicazione con il server — e lo sconto appare sul totale del carrello. Se si modificano successivamente i contenuti del carrello (aggiunta di un articolo, modifica di una quantità, cambio di cliente), lo sconto viene ricalcolato automaticamente.
+
+{/* Screenshot: cart-add-coupon-search.png */}
+
+:::tip Codice vs. ricerca
+I cassieri che conoscono il codice (es. "SUMMER10") possono digitarlo e premere Invio — il percorso più rapido. La ricerca è utile quando un cliente presenta un coupon stampato e l'operatore non ricorda il codice esatto, oppure quando si cerca uno sconto fedeltà in base al nome del cliente.
+:::
+
+## Etichette coupon nel carrello {#coupon-pills-in-the-cart}
+
+Ogni coupon applicato appare come una piccola **etichetta** nel carrello, posizionata appena sopra i totali. L'etichetta mostra la descrizione del coupon (o il codice, se non è impostata alcuna descrizione) e l'importo dello sconto applicato. Toccare la **×** su un'etichetta per rimuovere quel coupon — il totale del carrello viene ricalcolato immediatamente.
+
+{/* Screenshot: cart-coupon-pills.png */}
+
+Le etichette si impilano verticalmente quando vengono applicati più coupon. L'ordine visualizzato corrisponde all'ordine di aggiunta — e tale ordine è rilevante per gli [sconti sequenziali](#sequential-discounts).
+
+:::note Etichette sullo scontrino
+Il testo dell'etichetta è anche quello che viene stampato sullo scontrino. Per ottenere un'etichetta più chiara rispetto al codice coupon grezzo (es. *"Sconto Fedeltà"* anziché *"LOYAL10"*), impostare il campo **Descrizione** del coupon in `WP Admin → Marketing → Coupons`. WCPOS utilizza la descrizione come etichetta dello sconto ogni volta che è impostata.
+:::
+
+## Sconti sequenziali {#sequential-discounts}
+
+È possibile applicare più di un coupon a un ordine. WooCommerce li gestisce in modo **sequenziale**: ogni coupon sconta il subtotale progressivo residuo lasciato dal coupon precedente, non il totale originale del carrello.
+
+### Esempio pratico {#worked-example}
+
+Subtotale carrello: **$100,00**
+
+| Passaggio | Coupon | Calcolo | Totale progressivo |
+|---|---|---|---|
+| 1 | `LOYAL10` (10% di sconto) | $100 × 0,90 | **$90,00** |
+| 2 | `WELCOME5` ($5 di sconto sul carrello) | $90 − $5 | **$85,00** |
+| 3 | `EXTRA20` (20% di sconto) | $85 × 0,80 | **$68,00** |
+
+L'ordine in cui vengono applicati influisce sul risultato finale. Due coupon del 10% producono complessivamente uno sconto del 19% sul totale originale (non del 20%), perché il secondo 10% viene applicato al totale già scontato.
+
+### Quando i coupon non sono cumulabili {#when-coupons-can-t-stack}
+
+Un coupon configurato con **Uso individuale** in WooCommerce impedisce l'applicazione di qualsiasi altro coupon insieme ad esso. Se `SUMMER25` è ad uso individuale:
+
+- Applicare prima `SUMMER25` → l'aggiunta di qualsiasi altro coupon mostra *"Questo coupon non può essere combinato con altri coupon."*
+- Applicare prima gli altri coupon → l'aggiunta di `SUMMER25` mostra lo stesso messaggio.
+
+Rimuovere il coupon in conflitto per applicare l'altro.
+
+### Coupon a sconto fisso per prodotto {#fixed-product-coupons}
+
+Un coupon a **sconto fisso per prodotto** (ad es. *2 $ di sconto su ogni maglietta*) applica lo sconto solo agli articoli corrispondenti — non riduce il subtotale parziale per gli altri coupon. Combinarlo con un coupon percentuale sul carrello è sicuro e prevedibile.
+
+## Rimozione di un coupon {#removing-a-coupon}
+
+- Toccare la **×** sul badge del coupon per rimuovere quel singolo coupon.
+- Svuotare il carrello (menu **Altro** → *Svuota carrello*) rimuove tutti i coupon applicati.
+- La rimozione di un articolo che era l'*unico* articolo idoneo per un coupon con restrizione di prodotto comporta la rimozione automatica del coupon e la visualizzazione di un breve avviso — "Coupon rimosso: nessun articolo idoneo".
+
+## Errori di validazione e come risolverli {#validation-errors-and-how-to-resolve-them}
+
+Il POS esegue le stesse regole di validazione di WooCommerce — vedere [Come funziona la validazione](/coupons#how-validation-works) per l'elenco completo. Quando un coupon viene rifiutato, il cassiere visualizza un messaggio specifico:
+
+| Messaggio | Significato | Cosa fare |
+|---|---|---|
+| *"Coupon does not exist"* | Il codice non è stato trovato nei dati sincronizzati. | Verificare l'ortografia. Se il coupon è stato appena creato in WP Admin, eseguire una sincronizzazione dalla schermata [Coupon](/coupons) (tenere premuta l'icona di sincronizzazione per **Cancella e aggiorna**). |
+| *"This coupon has expired"* | La data odierna è successiva alla scadenza del coupon. | Estendere la scadenza in WP Admin oppure utilizzare un codice diverso. |
+| *"Usage limit reached"* | Il limite di utilizzo complessivo del coupon è stato raggiunto. | Aumentare il limite in WP Admin oppure utilizzare un codice diverso. |
+| *"Customer has already used this coupon"* | Il cliente selezionato ha superato il limite di utilizzo per utente. | Cambiare cliente oppure aumentare il limite per utente. |
+| *"Minimum spend not reached"* | Il subtotale del carrello è inferiore al minimo richiesto dal coupon. | Aggiungere altri articoli oppure utilizzare un codice diverso. |
+| *"Maximum spend exceeded"* | Il subtotale del carrello supera il massimo consentito dal coupon. | Suddividere in ordini separati oppure utilizzare un codice diverso. |
+| *"This coupon cannot be combined with other coupons"* | Il nuovo coupon o uno già applicato è impostato su **Uso individuale**. | Rimuovere il coupon in conflitto, quindi applicare quello desiderato. |
+| *"Coupon not valid for items in cart"* | Nessun articolo nel carrello corrisponde alle restrizioni di prodotto/categoria del coupon. | Aggiungere un articolo idoneo oppure scegliere un coupon diverso. |
+| *"Coupon not valid for this customer"* | L'email del cliente selezionato non corrisponde alla regola **Email consentite** del coupon. | Selezionare un cliente il cui indirizzo email corrisponda oppure rimuovere la restrizione sulle email. |
+
+Se un coupon viene validato localmente ma l'ordine viene rifiutato al momento del pagamento, il server ha rieseguito la validazione con dati più aggiornati — in genere il limite di utilizzo è stato raggiunto da un'altra vendita durante lo stesso turno. Riapplicare il coupon o sceglierne un altro.
+
+## Flussi di lavoro comuni {#common-workflows}
+
+<Accordion>
+  <AccordionItem question="Manager discount — ad-hoc 10% with a tracked code">
+
+Creare un coupon in `WP Admin → Marketing → Coupons` chiamato ad esempio `MGR10`:
+- **Tipo di sconto:** Sconto percentuale
+- **Importo del coupon:** 10
+- **Limite di utilizzo per coupon:** *(vuoto — illimitato)*
+- **Solo uso individuale:** disattivato (in modo che possa essere cumulato con codici fedeltà/promozionali)
+- **Descrizione:** *"Sconto Responsabile"* (questo è ciò che viene stampato sullo scontrino)
+
+Condividere il codice solo con i responsabili. Il coupon viene visualizzato nei report di WooCommerce come sconto tracciato, a differenza di una [modifica prezzo POS](/pos/cart/discounts) che semplicemente riduce il prezzo della riga.
+
+  </AccordionItem>
+
+  <AccordionItem question="Loyalty reward — repeat-customer $5 off">
+
+Creare `LOYAL5`:
+- **Tipo di sconto:** Sconto fisso sul carrello
+- **Importo del coupon:** 5
+- **Spesa minima:** 25 *(o qualsiasi sia la soglia desiderata)*
+- **Limite di utilizzo per utente:** 1 *(se il premio è una tantum)*
+- **Descrizione:** *"Premio fedeltà"*
+
+Alla cassa, cercare "fedeltà" per trovarlo senza dover ricordare il codice.
+
+  </AccordionItem>
+
+  <AccordionItem question="Single-use promo — flyer or print campaign">
+
+Creare un coupon per campagna con **Limite di utilizzo per coupon: 1** se si tratta di un volantino a riscatto singolo, oppure un numero più alto per una promozione multiuso. Impostare una **Data di scadenza** ravvicinata in modo che il codice non possa essere riutilizzato per errore.
+
+Per le promozioni multiuso in cui ogni cliente può riscattare una sola volta, impostare sia il **Limite di utilizzo per coupon** *che* il **Limite di utilizzo per utente: 1**.
+
+  </AccordionItem>
+
+  <AccordionItem question="Stacking a manager discount on top of a coupon code the customer brought">
+
+Applicare prima il codice del cliente, poi il codice del responsabile. WooCommerce li elabora in sequenza: lo sconto del responsabile viene calcolato sul totale già scontato, che è generalmente il comportamento atteso dal cliente.
+
+Se il coupon del cliente è impostato come **Solo uso individuale**, il codice del responsabile verrà rifiutato. Rimuovere prima il coupon del cliente (e riapplicarlo successivamente se necessario) oppure aggiornare il coupon del cliente in WP Admin per consentire la combinazione.
+
+  </AccordionItem>
+
+  <AccordionItem question="A customer wants to return part of an order and re-ring it with a different coupon">
+
+Rimborsare prima l'ordine originale (vedere [Rimborsi](/orders/refunds)), quindi avviare una nuova vendita con il nuovo coupon. I coupon sono associati all'ordine al momento della vendita — non è possibile sostituire retroattivamente un coupon su un ordine completato dal POS. Il rimborso ripristina il conteggio di utilizzo del coupon, che potrà così essere applicato nuovamente al nuovo ordine.
+
+  </AccordionItem>
+</Accordion>
+
+## Interazione con le modifiche di prezzo del POS {#interaction-with-pos-price-changes}
+
+Se un cassiere ha ridotto il prezzo di una riga alla cassa (una [sovrascrittura del prezzo POS](/pos/cart/discounts)) e poi applica un coupon, il coupon viene calcolato sul **prezzo ridotto**, non su quello originale. Le righe con prezzo ridotto dal POS sono trattate come "in saldo", quindi qualsiasi coupon con **Escludi articoli in saldo** attivato le ignorerà.
+
+Questo comportamento è intenzionale: impedisce che i clienti ricevano un doppio sconto combinando uno sconto del cassiere e un coupon calcolato sul prezzo originale. Consultare [Come le modifiche di prezzo del POS interagiscono con i coupon](/pos/cart/discounts#how-pos-price-changes-interact-with-coupons) per i dettagli completi.
+
+## Comportamento offline {#offline-behaviour}
+
+- **L'applicazione dei coupon funziona offline** — la validazione viene eseguita sui dati dei coupon sincronizzati localmente.
+- **Per completare la vendita è comunque necessaria una connessione**: quando l'ordine viene inviato, il server riconvalida i dati e aggiorna il conteggio degli utilizzi.
+- **Un coupon appena creato in WP Admin** non sarà applicabile in cassa fino alla sincronizzazione successiva. Dalla schermata [Coupon](/coupons) , nel piè di pagina, toccare l'icona di sincronizzazione (<Icon name="arrow-rotate-right" />) — tenere premuto per **Cancella e aggiorna** se è necessario un recupero completo dei dati.
