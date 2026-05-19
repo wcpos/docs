@@ -1,0 +1,119 @@
+---
+title: Reembolsos
+sidebar_label: Reembolsos
+sidebar_position: 2
+description: Emisión de reembolsos totales o parciales para pedidos de WooCommerce directamente desde WCPOS, con soporte para reembolsos al método de pago original o en efectivo desde la caja.
+---
+
+import Image from "@theme/IdealImage";
+import Icon from '@site/src/components/Icon';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+:::info Función Pro
+La emisión de reembolsos desde el POS requiere [WCPOS Pro](/getting-started/pro-license). Sin Pro, es posible procesar reembolsos desde `WP Admin → WooCommerce → Orders` utilizando la interfaz de reembolsos integrada de WooCommerce.
+:::
+
+WCPOS permite reembolsar un pedido de WooCommerce sin abandonar la caja registradora. Es posible emitir un reembolso total o parcial, devolver los fondos al método de pago original (cuando la pasarela lo admite) o registrar un reembolso en efectivo desde la caja — y el reembolso queda etiquetado con el cajero y la tienda que lo procesaron para fines de informes.
+
+{/* Screenshot: refund-modal.png */}
+
+## Iniciar un reembolso {#starting-a-refund}
+
+Existen dos formas de abrir el formulario de reembolso:
+
+1. **Desde la lista de pedidos** — localizar el pedido, hacer clic en el menú de tres puntos (<Icon name="ellipsis-vertical" />) en la columna de acciones y seleccionar **Reembolso**.
+2. **Desde el modal de vista del pedido** — se abre el pedido y luego se hace clic en el botón **Reembolso** en el pie de página, junto a **Imprimir recibo** y **Cancelar**.
+
+Ambas rutas abren el mismo modal **Reembolsar pedido #{`{number}`}**.
+
+### Cuándo aparece la acción de reembolso {#when-the-refund-action-appears}
+
+**Reembolso** solo se ofrece para pedidos con los siguientes estados:
+
+- **Completado**
+- **Procesando**
+- **En espera**
+
+No aparece en pedidos con estado `Pending`, `Cancelled`, `Failed`, `POS – Open` ni en pedidos ya completamente `Refunded`. Para reembolsar un pedido ya completamente reembolsado, o para reembolsar un pedido en un estado no incluido en la lista anterior, se utiliza `WP Admin → WooCommerce → Orders`.
+
+## El formulario de reembolso {#the-refund-form}
+
+En la parte superior del modal se muestran dos cifras:
+
+- **Total** — el total del pedido.
+- **Reembolsado previamente** — la suma de los reembolsos ya emitidos para este pedido (se muestra como un importe negativo). Solo aparece cuando existe al menos un reembolso anterior.
+
+A continuación se encuentra la tabla de artículos:
+
+| Columna | Qué muestra |
+|---|---|
+| **Producto** | El nombre del artículo |
+| **Precio** | Precio unitario (con impuestos incluidos o sin impuestos, según la configuración de la tienda) |
+| **Cant.** | La cantidad reembolsable restante (cantidad comprada menos la cantidad previamente reembolsada) |
+| **Cant. a reembolsar** | Editable — cuántas unidades de este artículo se desea reembolsar ahora |
+| **Monto del reembolso** | Calculado automáticamente a partir de Cant. a reembolsar × precio unitario, incluyendo el impuesto prorrateado del artículo |
+
+Debajo de la tabla:
+
+- **Monto personalizado** — un monto adicional opcional para agregar al reembolso (por ejemplo, reembolsar un cargo que no está asociado a un artículo específico). Se deja en blanco si no es necesario.
+- **Motivo** — una nota opcional que se guarda en el registro de reembolso y aparece en las notas del pedido de WooCommerce.
+- **Destino del reembolso** — un grupo de opciones (ver a continuación).
+- **Total del reembolso** — el total general del reembolso, recalculado en tiempo real a medida que se escribe.
+
+### Reembolso de cantidades completas vs. parciales {#refunding-whole-vs-partial-quantities}
+
+No existe un modo separado de «reembolso total»: se establece la Cantidad a reembolsar de cada línea en su cantidad restante completa para reembolsar el pedido entero, o solo en una o dos líneas para un reembolso parcial. El botón **Procesar reembolso** permanece deshabilitado hasta que el **Total del reembolso** sea mayor que cero y no exceda el monto reembolsable restante.
+
+## Destino del reembolso {#refund-destination}
+
+En los pedidos pagados con cualquier método distinto a la pasarela integrada **Efectivo POS**, el formulario solicita dónde debe dirigirse el reembolso:
+
+- **Reembolsar a *(nombre de la pasarela)*** — la pasarela procesa el reembolso a través de la API de su propio proveedor. En el caso de Stripe Terminal, los fondos se devuelven a la tarjeta original; para Vipps MobilePay se emite un reembolso de Vipps; y así sucesivamente. Esta opción solo aparece para las pasarelas que indican compatibilidad con reembolsos al POS; de lo contrario, la opción se deshabilita con el mensaje *«Los reembolsos mediante el método de pago original no están disponibles para este pedido.»*
+- **Reembolso en efectivo** — se registra el reembolso como efectivo devuelto desde la caja, independientemente de cómo se pagó originalmente el pedido. El cajero entrega físicamente el dinero; WooCommerce registra el reembolso pero no realiza ninguna llamada a la pasarela.
+
+En los pedidos pagados con **Efectivo POS**, el grupo de opciones se oculta, ya que el efectivo es el único destino lógico y se utiliza automáticamente.
+
+Si WCPOS no puede comunicarse con la pasarela para verificar la compatibilidad con reembolsos, se mostrará el mensaje *«No se pudo verificar la disponibilidad de reembolsos mediante el método de pago original. Los reembolsos en efectivo siguen disponibles.»* — aún es posible emitir un reembolso en efectivo.
+
+### Cuándo utilizar efectivo vs. el método original {#when-to-use-cash-vs-original-method}
+
+| Situación | Destino recomendado |
+|---|---|
+| Pago con tarjeta mediante Stripe Terminal / Vipps / etc., el cliente está presente y desea el reembolso en su tarjeta | **Reembolso a *(gateway)*** |
+| Pago con tarjeta, pero el cliente prefiere el reembolso en efectivo (y está permitido hacerlo) | **Reembolso en efectivo** |
+| Venta en efectivo | **Reembolso en efectivo** (automático; no se muestra opción) |
+| Terminal de tarjeta manual (la pasarela no puede reembolsar automáticamente) | **Reembolso en efectivo**, y luego realizar el reembolso manualmente en el terminal independiente |
+
+## Confirmación y envío {#confirming-and-submitting}
+
+Al presionar **Procesar reembolso**, aparece un diálogo de confirmación que pregunta *"¿Reembolsar *(amount)* del pedido #*(number)*?"*. Al confirmar, se ejecuta el reembolso:
+
+1. WCPOS envía el reembolso a la tienda WooCommerce.
+2. Para los reembolsos a través de pasarela, WooCommerce delega al plugin de la pasarela correspondiente para procesar el reembolso con el proveedor (Stripe, Vipps, etc.).
+3. El pedido se actualiza localmente para que el nuevo reembolso aparezca de inmediato.
+4. Un aviso de éxito confirma *"Reembolso de *(amount)* procesado"*.
+
+Si la pasarela rechaza el reembolso (tarjeta denegada, autorización expirada, error de red, etc.), aparece un aviso de error con el mensaje de la pasarela. En ese caso, el reembolso no se registrará en WooCommerce; es posible ajustar el formulario e intentarlo de nuevo, o recurrir a un reembolso en efectivo.
+
+## Después del reembolso {#after-the-refund}
+
+- **Reembolso parcial** — el pedido mantiene su estado actual (Completado, etc.) y el modal de vista del pedido muestra una etiqueta **Reembolsado parcialmente** junto con una línea `−(amount) refund` en el subtítulo principal.
+- **Reembolso completo** — WooCommerce establece el estado del pedido como **Reembolsado**.
+- **Recibos** — al consultar el recibo de un pedido reembolsado, cambiar al modo **En vivo** muestra el reembolso reflejado en los totales (filas `Refunded -X` y `Net Total Y` en los recibos detallados). El modo **Fiscal** sigue mostrando la captura original del pago completado, sin modificaciones; esa es la finalidad del modo fiscal.
+- **Auditoría de cajero y tienda** — cada reembolso del POS se etiqueta con el cajero (`_pos_user`) y la tienda (`_pos_store`) que lo emitió, de modo que los reembolsos aparecen bajo el cajero y la tienda correspondientes en los informes.
+
+## Aspectos importantes {#things-to-know}
+
+- **Cupones y reembolsos:** los pedidos que utilizaron un cupón pueden reembolsarse desde el POS, pero si es necesario ajustar cómo se recalcula el cupón respecto al reembolso, se debe utilizar `WP Admin → WooCommerce → Orders`.
+- **No se admiten cantidades negativas.** Las versiones anteriores (v0.4.x) permitían agregar una línea con cantidad negativa para registrar una devolución; esto ya no funciona en v1.x. En su lugar, se debe utilizar el flujo de reembolso.
+- **Los reembolsos requieren conexión al servidor.** A diferencia del proceso de pago, no es posible poner en cola un reembolso sin conexión: tanto la pasarela de pago como la tienda deben estar accesibles.
+- **La emisión de reembolsos adicionales en un pedido totalmente reembolsado** debe realizarse desde `WP Admin → WooCommerce → Orders`.
+
+## Documentación relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/orders" title="Pedidos" description="Buscar, filtrar y gestionar los pedidos del POS" />
+  <LinkCard to="/payment" title="Pasarelas de pago" description="Qué pasarelas admiten reembolsos al método de pago original" />
+  <LinkCard to="/pos/checkout/receipts" title="Recibos" description="Recibos fiscales frente a recibos en vivo en pedidos reembolsados" />
+</LinkCards>
