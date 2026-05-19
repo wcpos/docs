@@ -1,0 +1,161 @@
+---
+title: 在收银台应用优惠券
+sidebar_label: 应用优惠券
+sidebar_position: 2
+description: 收银员在 WCPOS 收银台应用 WooCommerce 优惠券的工作流程——搜索、优惠券标签、叠加折扣以及处理验证错误。
+---
+
+import Icon from '@site/src/components/Icon';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+
+:::info 专业版功能
+在收银台应用优惠券需要 [WCPOS 专业版](/getting-started/pro-license)。免费用户可以看到模糊预览的[优惠券](/coupons)界面，但购物车中的**添加优惠券**操作已禁用。
+:::
+
+本页介绍收银台工作流程——查找优惠券、应用优惠券、叠加多张优惠券以及处理错误。有关优惠券类型、设置和验证规则，请参阅[优惠券](/coupons)；有关收银员临时创建的折扣，请参阅[购物车折扣](/pos/cart/discounts)。
+
+## 添加优惠券流程 {#the-add-coupon-flow}
+
+在购物车商品列表下方有一个**添加优惠券**按钮。点击后会打开一个小型输入框，可以输入优惠码或进行搜索。
+
+1. 在购物车中点击**添加优惠券**
+2. 开始输入——输入框同时作为搜索功能，可在所有已同步的优惠券中搜索（包括优惠码和描述）
+3. 从建议列表中选择优惠券，或输入完整优惠码后按 **Enter**
+
+The coupon validates instantly against your locally-synced data — there's no round-trip to the server — and the discount appears on the cart total. If you change cart contents afterwards (add an item, change a quantity, swap a customer), the discount recalculates automatically.
+
+{/* Screenshot: cart-add-coupon-search.png */}
+
+:::tip Code vs. search
+Cashiers who know the code (e.g. "SUMMER10") can type it and hit Enter — fastest path. The search is for when a customer hands over a printed coupon and the staff member doesn't remember the exact code, or when looking up a loyalty discount by customer name.
+:::
+
+## Coupon pills in the cart {#coupon-pills-in-the-cart}
+
+Each applied coupon appears as a small **pill** in the cart, sitting just above the totals. The pill shows the coupon's description (or code, if no description is set) and the amount it discounted. Tap the **×** on a pill to remove that coupon — the cart total recalculates immediately.
+
+{/* Screenshot: cart-coupon-pills.png */}
+
+Pills stack vertically when more than one coupon is applied. The order shown is the order they were added — and that order matters for [sequential discounts](#sequential-discounts).
+
+:::note Receipt labels
+The pill text is also what prints on the receipt. If you'd like a cleaner label than the raw coupon code (e.g. *"Loyalty Discount"* rather than *"LOYAL10"*), set the **Description** field on the coupon in `WP Admin → Marketing → Coupons`. WCPOS uses the description as the discount label whenever it's set.
+:::
+
+## 顺序折扣 {#sequential-discounts}
+
+可以对一个订单应用多张优惠券。WooCommerce 采用**顺序**计算方式——每张优惠券在前一张优惠券折扣后的剩余小计上进行折扣，而非基于原始购物车总额。
+
+### 计算示例 {#worked-example}
+
+购物车小计：**$100.00**
+
+| 步骤 | 优惠券 | 计算方式 | 累计总额 |
+|---|---|---|---|
+| 1 | `LOYAL10`（九折） | $100 × 0.90 | **$90.00** |
+| 2 | `WELCOME5`（购物车减 $5） | $90 − $5 | **$85.00** |
+| 3 | `EXTRA20`（八折） | $85 × 0.80 | **$68.00** |
+
+优惠券的应用顺序会影响最终金额。两张九折优惠券叠加后实际为原价的 19% 折扣（而非 20%），因为第二张九折优惠券是在已折扣的总额上计算的。
+
+### 优惠券无法叠加的情况 {#when-coupons-can-t-stack}
+
+在 WooCommerce 中设置了**仅限单独使用**的优惠券会阻止与其他优惠券同时使用。如果 `SUMMER25` 是单独使用的优惠券：
+
+- 先应用 `SUMMER25` → 添加任何其他优惠券时将显示*“此优惠券不能与其他优惠券同时使用。”*
+- 先应用其他优惠券 → 添加 `SUMMER25` 时将显示相同的提示信息。
+
+移除冲突的优惠券后即可应用另一个。
+
+### 固定商品优惠券 {#fixed-product-coupons}
+
+**固定商品折扣**优惠券（例如*每件 T 恤减 $2*）仅对匹配的行项目打折——不会减少其他优惠券所依据的小计金额。将其与百分比购物车优惠券叠加使用是安全且可预测的。
+
+## 移除优惠券 {#removing-a-coupon}
+
+- 点击优惠券标签上的 **×** 即可移除该优惠券。
+- 清空购物车（**更多**菜单 → *清空购物车*）会移除所有已应用的优惠券。
+- 移除某个行项目时，如果该商品是某个限定商品优惠券的*唯一*符合条件的商品，系统将自动移除该优惠券并显示简短提示——“优惠券已移除：没有符合条件的商品”。
+
+## 验证错误及解决方法 {#validation-errors-and-how-to-resolve-them}
+
+POS 与 WooCommerce 运行相同的验证规则——完整列表请参阅[验证机制](/coupons#how-validation-works)。当优惠券被拒绝时，收银员将看到具体的提示信息：
+
+| 提示信息 | 含义 | 解决方法 |
+|---|---|---|
+| *"优惠券不存在"* | 在已同步的数据中未找到该代码。 | 检查拼写。如果优惠券刚在 WP Admin 中创建，请在[优惠券](/coupons)页面执行同步（长按同步图标选择**清除并刷新**）。 |
+| *"此优惠券已过期"* | 今天的日期已超过优惠券的到期日。 | 在 WP Admin 中延长到期日，或使用其他代码。 |
+| *"使用次数已达上限"* | 该优惠券的总使用次数已用尽。 | 在 WP Admin 中提高使用上限，或使用其他代码。 |
+| *"该客户已使用过此优惠券"* | 所选客户已超过每用户使用次数限制。 | 切换客户，或提高每用户使用次数限制。 |
+| *"未达到最低消费金额"* | 购物车小计低于优惠券的最低消费要求。 | 添加更多商品或使用其他代码。 |
+| *"超出最高消费金额"* | 购物车小计高于优惠券的最高消费限制。 | 拆分为多个订单或使用其他代码。 |
+| *"此优惠券不能与其他优惠券同时使用"* | 新优惠券或已应用的优惠券被设置为**仅限单独使用**。 | 移除冲突的优惠券，然后应用所需的优惠券。 |
+| *"优惠券不适用于购物车中的商品"* | 购物车中没有商品符合优惠券的产品/分类限制条件。 | 添加符合条件的商品，或选择其他优惠券。 |
+| *"优惠券不适用于此客户"* | 所选客户的电子邮件与优惠券的**允许的邮箱**规则不匹配。 | 切换到邮箱匹配的客户，或移除邮箱限制。 |
+
+如果优惠券在本地验证通过但在结账时被服务器拒绝，说明服务器使用更新的数据重新执行了验证——通常是因为在同一班次内的另一笔交易中使用次数已达上限。请重新应用或选择其他优惠券。
+
+## 常见工作流程 {#common-workflows}
+
+<Accordion>
+  <AccordionItem question="Manager discount — ad-hoc 10% with a tracked code">
+
+在 `WP Admin → Marketing → Coupons` 中创建一个优惠券，例如命名为 `MGR10`：
+- **折扣类型：** 百分比折扣
+- **优惠券金额：** 10
+- **每张优惠券的使用次数限制：** *（留空 — 无限制）*
+- **仅限单独使用：** 关闭（以便可以与会员/促销代码叠加使用）
+- **描述：** *"经理折扣"*（此内容会打印在收据上）
+
+仅与经理共享此代码。该优惠券会在 WooCommerce 报表中显示为可追踪的折扣，不同于 [POS 价格覆盖](/pos/cart/discounts)（后者仅降低行项目价格）。
+
+  </AccordionItem>
+
+  <AccordionItem question="Loyalty reward — repeat-customer $5 off">
+
+创建 `LOYAL5`：
+- **折扣类型：** 固定购物车折扣
+- **优惠券金额：** 5
+- **最低消费：** 25 *（或您设定的任意门槛金额）*
+- **每位用户的使用次数限制：** 1 *（如果奖励仅限一次）*
+- **描述：** *"忠诚奖励"*
+
+在收银台搜索"忠诚"即可找到该优惠券，无需记住优惠码。
+
+  </AccordionItem>
+
+  <AccordionItem question="Single-use promo — flyer or print campaign">
+
+每个活动创建一张优惠券，如果是单次兑换传单，设置**每张优惠券使用次数限制：1**；多次使用的促销活动则设为更高数值。设置一个较短的**到期日期**，以防优惠码被错误重复使用。
+
+对于每位顾客只能兑换一次的多次使用促销活动，需同时设置**每张优惠券使用次数限制** *以及* **每位用户使用次数限制：1**。
+
+  </AccordionItem>
+
+  <AccordionItem question="Stacking a manager discount on top of a coupon code the customer brought">
+
+先应用顾客的优惠码，再应用经理优惠码。WooCommerce 会按顺序处理——经理折扣基于已优惠后的总价计算，这通常符合顾客的预期。
+
+如果顾客的优惠券设置了**仅限单独使用**，经理优惠码将被拒绝。可以先移除顾客的优惠券（需要时再重新应用），或在 WP Admin 中修改顾客的优惠券设置以允许叠加使用。
+
+  </AccordionItem>
+
+  <AccordionItem question="A customer wants to return part of an order and re-ring it with a different coupon">
+
+先对原订单进行退款（参见[退款](/orders/refunds)），然后使用新优惠券开始一笔新的销售。优惠券在销售时与订单绑定——无法从 POS 对已完成的订单追溯更换优惠券。退款会将优惠券的使用次数归还，以便在新订单中再次使用。
+
+  </AccordionItem>
+</Accordion>
+
+## 与 POS 价格调整的交互 {#interaction-with-pos-price-changes}
+
+如果收银员在收银时降低了单项价格（即 [POS 价格覆盖](/pos/cart/discounts)），然后应用优惠券，优惠券将基于**降低后的价格**计算，而非原价。POS 降价的商品行会被视为"特价商品"，因此启用了**排除特价商品**的优惠券将跳过这些商品。
+
+这是有意设计的——防止顾客通过叠加收银员折扣和优惠券对原价进行双重折扣。完整机制请参见 [POS 价格调整与优惠券的交互方式](/pos/cart/discounts#how-pos-price-changes-interact-with-coupons)。
+
+## 离线行为 {#offline-behaviour}
+
+- **应用优惠券支持离线使用**——验证基于本地同步的优惠券数据进行。
+- **完成销售仍需要网络连接**——提交订单时，服务器会重新验证优惠券并写入使用次数。
+- **刚在 WP Admin 中创建的优惠券**在下次同步之前无法在收银台使用。从 [优惠券](/coupons) 页面底部，点击同步图标（<Icon name="arrow-rotate-right" />）——长按可选择**清除并刷新**以获取最新数据。
