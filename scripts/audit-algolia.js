@@ -20,7 +20,7 @@ const ALGOLIA_SEARCH_KEY = '1739d8f0c7ec0af3167dd5af39d180d6';
 const ALGOLIA_INDEX = 'wcpos';
 
 // Your configured locales from docusaurus.config.js
-const LOCALES = ['en', 'es', 'fr', 'de', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
+const LOCALES = ['en', 'es', 'fr', 'de', 'nl', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
 
 // Sample test queries per language (common docs terms)
 const TEST_QUERIES = {
@@ -28,6 +28,7 @@ const TEST_QUERIES = {
   es: ['instalación', 'carrito', 'productos', 'configuración', 'pago'],
   fr: ['installation', 'panier', 'produits', 'paramètres', 'paiement'],
   de: ['Installation', 'Warenkorb', 'Produkte', 'Einstellungen', 'Zahlung'],
+  nl: ['installatie', 'winkelwagen', 'producten', 'instellingen', 'betaling'],
   ja: ['インストール', 'カート', '製品', '設定', '支払い'],
   'pt-BR': ['instalação', 'carrinho', 'produtos', 'configurações', 'pagamento'],
   ko: ['설치', '장바구니', '제품', '설정', '결제'],
@@ -197,6 +198,7 @@ async function auditSearchQuality() {
     'es': 'es',
     'fr': 'fr',
     'de': 'de',
+    'nl': 'nl',
     'ja': 'ja',
     'pt-BR': 'pt-BR',
     'ko': 'ko',
