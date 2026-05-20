@@ -11,11 +11,12 @@ const path = require('path');
 
 const openai = new OpenAI();
 
-const LOCALES = ['es', 'fr', 'de', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
+const LOCALES = ['es', 'fr', 'de', 'nl', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
 const LOCALE_NAMES = {
   es: 'Spanish',
   fr: 'French', 
   de: 'German',
+  nl: 'Dutch',
   ja: 'Japanese',
   'pt-BR': 'Brazilian Portuguese',
   ko: 'Korean',

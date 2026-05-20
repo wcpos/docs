@@ -28,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const LOCALES = ['es', 'fr', 'de', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
+const LOCALES = ['es', 'fr', 'de', 'nl', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
 const CJK = new Set(['zh-CN', 'ja', 'ko']);
 // JSX attributes whose values render as visible UI text and MUST be translated.
 const TEXT_PROPS = ['alt', 'title', 'description', 'label', 'question', 'summary', 'placeholder'];

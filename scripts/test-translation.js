@@ -15,9 +15,9 @@ const { glob } = require('glob');
 const openai = new OpenAI();
 
 // Available locales
-const LOCALES = ['de', 'es', 'fr', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
+const LOCALES = ['de', 'es', 'fr', 'nl', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
 const LOCALE_NAMES = {
-  de: 'German', es: 'Spanish', fr: 'French', ja: 'Japanese',
+  de: 'German', es: 'Spanish', fr: 'French', nl: 'Dutch', ja: 'Japanese',
   'pt-BR': 'Brazilian Portuguese', ko: 'Korean', it: 'Italian',
   ar: 'Arabic', 'hi-IN': 'Hindi', 'zh-CN': 'Simplified Chinese',
 };

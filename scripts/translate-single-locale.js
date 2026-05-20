@@ -25,6 +25,7 @@ const LOCALE_NAMES = {
   es: 'Spanish',
   fr: 'French',
   de: 'German',
+  nl: 'Dutch',
   ja: 'Japanese',
   'pt-BR': 'Brazilian Portuguese',
   ko: 'Korean',

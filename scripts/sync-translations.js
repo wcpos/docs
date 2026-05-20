@@ -18,7 +18,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { glob } = require('glob');
 
-const LOCALES = ['es', 'fr', 'de', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
+const LOCALES = ['es', 'fr', 'de', 'nl', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
 
 const VERSIONED_DOCS_PATH = 'versioned_docs';
 const I18N_PATH = 'i18n';
