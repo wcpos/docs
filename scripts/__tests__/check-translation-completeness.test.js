@@ -1,3 +1,6 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const {
   getSourcePath,
   sourceToTranslatedPath,
@@ -7,6 +10,7 @@ const {
   findUntranslatedProps,
   findLeftoverProse,
   isStub,
+  main,
 } = require('../check-translation-completeness');
 
 describe('path mapping', () => {
@@ -141,5 +145,33 @@ describe('isStub', () => {
 
   it('ignores short source files (index/stub pages)', () => {
     expect(isStub('Tiny source.', '小', 'zh-CN')).toBe(false);
+  });
+});
+
+describe('main', () => {
+  it('reports dropped locales when a changed translation path was deleted', () => {
+    const cwd = process.cwd();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'translation-check-'));
+    const sourcePath = 'docs/foo.mdx';
+    const deletedPath = 'i18n/de/docusaurus-plugin-content-docs/current/foo.mdx';
+    const presentPath = 'i18n/es/docusaurus-plugin-content-docs/current/foo.mdx';
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      process.chdir(tmp);
+      fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+      fs.mkdirSync(path.dirname(presentPath), { recursive: true });
+      fs.writeFileSync(sourcePath, 'The Checkout Settings page controls payment gateways.\n');
+      fs.writeFileSync(presentPath, 'La pagina de ajustes controla las pasarelas de pago.\n');
+
+      expect(main([deletedPath])).toBe(1);
+      expect(error.mock.calls.flat().join('\n')).toContain('missing/stub in:');
+    } finally {
+      process.chdir(cwd);
+      log.mockRestore();
+      error.mockRestore();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

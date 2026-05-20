@@ -187,7 +187,7 @@ function evaluateFile(translatedPath, readFile = (p) => fs.readFileSync(p, 'utf8
   const sourcePath = getSourcePath(translatedPath);
   const locale = localeOf(translatedPath);
   if (!sourcePath || !fs.existsSync(sourcePath) || !fs.existsSync(translatedPath)) {
-    return { file: translatedPath, skipped: true };
+    return { file: translatedPath, locale, sourcePath, skipped: true };
   }
   const source = readFile(sourcePath);
   const translated = readFile(translatedPath);
@@ -268,7 +268,14 @@ function main(argv = process.argv.slice(2), env = process.env) {
 
   for (const file of files) {
     const r = evaluateFile(file);
-    if (r.skipped) continue;
+    if (r.skipped) {
+      if (r.sourcePath && !checkedSources.has(r.sourcePath)) {
+        checkedSources.add(r.sourcePath);
+        const dropped = findDroppedLocales(r.sourcePath);
+        if (dropped.length) droppedBySource.push({ source: r.sourcePath, dropped });
+      }
+      continue;
+    }
     checked++;
     const fileProblems = [];
     if (r.untranslatedProps.length) {
