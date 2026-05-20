@@ -16,6 +16,24 @@ on:
           - test      # Single file, single language (for testing)
           - changed   # Files changed since last translation
           - all       # All files, all languages
+      locale:
+        description: 'Target a single locale (e.g. nl for the new Dutch locale). "all" = every locale.'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - es
+          - fr
+          - de
+          - nl
+          - ja
+          - pt-BR
+          - ko
+          - it
+          - ar
+          - hi-IN
+          - zh-CN
 
 permissions:
   contents: write
@@ -56,19 +74,21 @@ jobs:
       - name: Determine files to translate
         id: files
         run: |
+          # Every locale we translate into (keep in sync with docusaurus.config.js)
+          SUPPORTED='["es","fr","de","nl","ja","pt-BR","ko","it","ar","hi-IN","zh-CN"]'
+
           if [ "${{ inputs.mode }}" = "test" ]; then
             # Test mode: one small file
-            echo 'files=["versioned_docs/version-1.x/getting-started/index.mdx"]' >> $GITHUB_OUTPUT
-            echo 'locales=["de"]' >> $GITHUB_OUTPUT
-            echo "has_files=true" >> $GITHUB_OUTPUT
+            FILES='["versioned_docs/version-1.x/getting-started/index.mdx"]'
+            LOCALES='["de"]'
+            HAS_FILES=true
           elif [ "${{ inputs.mode }}" = "all" ]; then
             # All MDX and JSON files
-            FILES=$(find versioned_docs -name "*.mdx" -o -name "*.md" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            SRC=$(find versioned_docs -name "*.mdx" -o -name "*.md" | jq -R -s -c 'split("\n") | map(select(length > 0))')
             JSON_FILES=$(find i18n/en -name "*.json" 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
-            COMBINED=$(echo "[$FILES, $JSON_FILES]" | jq -c 'add')
-            echo "files=$COMBINED" >> $GITHUB_OUTPUT
-            echo 'locales=["es","fr","de","nl","ja","pt-BR","ko","it","ar","hi-IN","zh-CN"]' >> $GITHUB_OUTPUT
-            echo "has_files=true" >> $GITHUB_OUTPUT
+            FILES=$(echo "[$SRC, $JSON_FILES]" | jq -c 'add')
+            LOCALES="$SUPPORTED"
+            HAS_FILES=true
           else
             # Changed mode: files since last translation
             LAST_TRANSLATE=$(git log --oneline --grep="chore: translate" -1 --format="%H" || echo "")
@@ -77,17 +97,27 @@ jobs:
             else
               FILES=$(find versioned_docs -name "*.mdx" -o -name "*.md" | jq -R -s -c 'split("\n") | map(select(length > 0))')
             fi
-            echo "files=$FILES" >> $GITHUB_OUTPUT
-            echo 'locales=["es","fr","de","nl","ja","pt-BR","ko","it","ar","hi-IN","zh-CN"]' >> $GITHUB_OUTPUT
-            if [ "$FILES" = "[]" ] || [ -z "$FILES" ]; then
-              echo "has_files=false" >> $GITHUB_OUTPUT
-            else
-              echo "has_files=true" >> $GITHUB_OUTPUT
-            fi
+            LOCALES="$SUPPORTED"
+            if [ "$FILES" = "[]" ] || [ -z "$FILES" ]; then HAS_FILES=false; else HAS_FILES=true; fi
           fi
 
-          echo "Mode: ${{ inputs.mode }}"
-          echo "Files: $(cat $GITHUB_OUTPUT | grep files)"
+          # Optional: restrict to a single locale (e.g. backfilling a new locale)
+          LOCALE="${{ inputs.locale }}"
+          if [ -n "$LOCALE" ] && [ "$LOCALE" != "all" ]; then
+            if ! echo "$SUPPORTED" | jq -e --arg l "$LOCALE" 'index($l) != null' > /dev/null; then
+              echo "::error::Locale '$LOCALE' is not in the supported set $SUPPORTED"
+              exit 1
+            fi
+            LOCALES="[\"$LOCALE\"]"
+          fi
+
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+          echo "locales=$LOCALES" >> $GITHUB_OUTPUT
+          echo "has_files=$HAS_FILES" >> $GITHUB_OUTPUT
+
+          echo "Mode: ${{ inputs.mode }} | Locale: ${LOCALE:-all}"
+          echo "Locales: $LOCALES"
+          echo "Files: $FILES"
 
   # Matrix job: One job per language (runs in parallel)
   translate:
