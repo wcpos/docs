@@ -93,9 +93,18 @@ Copy every import line exactly. Do not modify paths or component names.
 ```jsx
 <Icon name="sliders" />
 <Image alt="translate this" img="keep/this/path.png" />
+<AccordionItem question="translate this" />
+<LinkCard to="/keep/this" title="translate this" description="translate this" />
 <DocCardList />
 ```
-Keep component names and props. Only translate string content like alt text.
+Keep component names and **technical** props exactly: `name`, `img`, `src`, `to`, `href`, `id`, `class`, `className`, `style`, `icon`, `number`, `slug`, and similar.
+
+**Translate the VALUE of user-facing text props** — these render as visible UI and MUST be localized:
+`question`, `title`, `description`, `label`, `summary`, `placeholder`, and `alt`. Only the text inside the quotes changes; the attribute name and all technical props stay identical.
+
+Text **between** tags is visible content too and must be translated, e.g. `<p class="image-caption">translate this</p>`.
+
+⚠️ **Quoting inside attribute values** — JSX attribute values are delimited by `"`. Never put a straight double-quote `"` *inside* a translated value: it terminates the attribute and breaks the build. For a quotation inside `question="…"`, `title="…"`, etc., use the target language's typographic quotes (e.g. «…», „…“, “…”, 「…」) or single quotes `'…'` — mirroring how the English source uses `'single quotes'` there.
 
 ### 4. Code Blocks - ABSOLUTELY CRITICAL
 
