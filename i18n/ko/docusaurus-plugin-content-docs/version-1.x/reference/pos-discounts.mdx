@@ -1,0 +1,101 @@
+---
+title: POS 할인 기술 레퍼런스
+sidebar_label: POS 할인
+description: WCPOS가 POS 라인 항목 가격 재정의를 저장하는 방법, WooCommerce 쿠폰과의 상호 작용, 사용 가능한 필터에 대한 개발자 레퍼런스입니다.
+---
+
+# POS 할인 기술 레퍼런스 {#pos-discount-technical-reference}
+
+이 페이지는 WCPOS가 계산원이 적용한 라인 항목 가격 재정의를 처리하는 방법 — 저장 방식, WooCommerce 쿠폰과의 상호 작용, 사용 가능한 필터에 대해 설명합니다. 사용자용 문서는 [장바구니 할인](/pos/cart/discounts) 및 [쿠폰](/coupons)을 참조하세요.
+
+## POS 가격 재정의 저장 방식 {#how-pos-price-overrides-are-stored}
+
+계산원이 POS에서 라인 항목의 가격을 설정하거나 변경하면, 단가가 `_woocommerce_pos_data` 라인 항목 메타에 JSON으로 저장됩니다:
+
+```json
+{
+  "price": "16.00",
+  "regular_price": "18.00",
+  "tax_status": "taxable"
+}
+```
+
+기타(사용자 정의) 상품의 경우, 이 메타에는 쿠폰 유효성 검사에 사용되는 `virtual`, `downloadable`, `categories` 필드도 포함될 수 있습니다.
+
+이 메타는 해당 라인의 단가에 대한 신뢰할 수 있는 원본입니다. WooCommerce가 라인 항목에 저장하는 `subtotal`은 `price * qty`에서 파생됩니다(세금 추출 및 반올림 적용). 저장된 `total`은 쿠폰 할인이 적용되면 더 낮을 수 있으므로, 단가 정밀도를 위해 항상 `_woocommerce_pos_data.price`와 `regular_price`를 읽어야 합니다.
+
+## 소계 모델 (v1.9.0+) {#subtotal-model-v1-9-0}
+
+v1.9.0부터 WCPOS는 WooCommerce의 기본 할인가 체계에 맞추어 동작합니다:
+
+- `line_item.subtotal = price * qty` 여기서 `price`는 POS 가격입니다(재정의 적용 후).
+- `line_item.total = subtotal - coupon_discount_for_line`.
+- `order.discount_total`은 POS 가격 재정의가 아닌 **쿠폰 할인만** 반영합니다.
+
+이는 WooCommerce가 할인 중인 상품을 처리하는 방식과 동일합니다. `sale_price`가 소계가 되며, `discount_total`은 쿠폰 전용으로 예약됩니다. 주문에 별도의 "POS 할인" 항목은 표시되지 않습니다.
+
+:::note 1.9.0 이전 버전에서의 마이그레이션
+이전 버전에서는 `subtotal = regular_price * qty`로 전송하여, WooCommerce가 `discount_total = subtotal - total`을 계산하면서 POS 가격 재정의를 할인으로 포함시켰습니다. 이 방식은 쿠폰 계산과 충돌하여 변경되었습니다. `recalculate_coupons()`가 `subtotal`을 기준 가격으로 사용하기 때문에 쿠폰이 원래 가격을 기준으로 계산되어 잘못된 합계가 발생했습니다.
+
+이전의 서버 측 해결 방법 — `woocommerce_order_item_get_subtotal` 실행 중 활성화되던 `recalculate_coupons()` 필터 — 은 v1.9.0에서 제거되었습니다. 전체 변경 이력은 [ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md)을 참조하십시오.
+:::
+
+## 쿠폰 적용 동작 {#coupon-interaction-behaviour}
+
+쿠폰 지원은 [WCPOS Pro](https://wcpos.com/pro) 기능입니다. POS 할인이 적용된 항목이 포함된 주문에 쿠폰을 적용하면:
+
+1. 쿠폰은 원래 `regular_price`가 아닌 **POS 할인 가격**(`_woocommerce_pos_data.price`의 값)을 기준으로 계산됩니다.
+2. 쿠폰을 제거하면 항목은 POS 할인 가격으로 복원됩니다.
+
+### `exclude_sale_items` 동작 {#excludesaleitems-behaviour}
+
+POS 할인 상품은 `_woocommerce_pos_data.price < regular_price`일 때 WooCommerce에서 "세일 중"으로 처리됩니다. `exclude_sale_items`가 활성화된 쿠폰은 해당 상품을 건너뛰며, 이는 WooCommerce가 일반 세일 가격을 처리하는 방식과 동일합니다.
+
+다른 동작이 필요한 경우 아래의 `woocommerce_pos_item_is_on_sale` 필터를 참조하십시오.
+
+## 사용 가능한 필터 {#available-filters}
+
+### `woocommerce_pos_item_is_on_sale` {#woocommercepositemisonsale}
+
+쿠폰 검증 시 POS 할인 상품을 "세일 중"으로 간주할지 여부를 재정의합니다.
+
+```php
+add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
+    // Allow coupons with exclude_sale_items to apply to POS-discounted items
+    return false;
+}, 10, 4 );
+```
+
+**매개변수:**
+
+| 매개변수 | 타입 | 설명 |
+|---|---|---|
+| `$is_on_sale` | `bool` | 상품이 세일 중으로 간주되는지 여부 (기본값: `price < regular_price`) |
+| `$product` | `WC_Product` | 상품 객체 |
+| `$item` | `WC_Order_Item_Product` | 주문 항목 |
+| `$pos_data` | `array` | 디코딩된 `_woocommerce_pos_data` JSON |
+
+## REST API 엔드포인트 {#rest-api-endpoint}
+
+쿠폰 REST 엔드포인트는 **무료 플러그인**의 `/wp-json/wcpos/v1/coupons`에 위치하므로, WCPOS Pro가 설치되지 않은 사이트에서도 POS 앱이 쿠폰을 조회할 때 404 오류를 받지 않습니다. 그러나 사용자에게 표시되는 쿠폰 기능 자체는 Pro가 필요합니다.
+
+이 컨트롤러는 `WC_REST_Coupons_Controller`를 확장하여 POS 전용 기능을 추가합니다:
+
+- 오프라인 우선 동기화를 위한 UUID 처리
+- 권한 확인을 위한 `access_woocommerce_pos` 기능
+- `posts_per_page=-1` 및 `fields=id`(또는 `fields=id,date_modified_gmt`)가 요청될 때 최적화된 대량 ID 쿼리 경로
+
+## 영수증 데이터 노출 {#receipt-data-exposure}
+
+영수증 데이터 빌더(`Receipt_Data_Builder`)는 다음을 노출합니다:
+
+- `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — 항목별 할인 금액으로, `subtotal - total`로 계산됩니다. v1.9.0부터 POS 가격 재정의 시 **쿠폰 할인만** 반영되며, 쿠폰이 적용되지 않으면 `subtotal === total`이 됩니다.
+- `totals.discount_total`, `totals.discount_total_incl`, `totals.discount_total_excl` — `WC_Order::get_discount_total()`에서 가져온 주문 수준 쿠폰 할인 합계.
+- `discounts[]` — `label`, `code`, `total`을 포함하는 쿠폰 항목 배열.
+
+항목의 밑줄 접두사 메타(`_woocommerce_pos_data` 포함)는 `lines[].meta`에 의해 `Receipt_Data_Builder::get_item_meta_pairs()`에서 필터링되므로, `regular_price`를 템플릿에서 직접 사용할 수 없습니다. 영수증에 정가와 POS 가격의 차이를 표시해야 하는 경우 [지원](https://wcpos.com/support)을 통해 요청하십시오.
+
+## 관련 항목 {#related}
+
+- [장바구니 할인](/pos/cart/discounts) — 계산원이 적용하는 할인에 대한 사용자 가이드
+- [쿠폰](/coupons) — POS에서 WooCommerce 쿠폰을 사용하는 방법 안내 (Pro)

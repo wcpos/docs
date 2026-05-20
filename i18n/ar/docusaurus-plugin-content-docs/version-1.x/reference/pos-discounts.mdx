@@ -1,0 +1,101 @@
+---
+title: المرجع التقني لخصومات POS
+sidebar_label: خصومات POS
+description: مرجع المطورين لكيفية تخزين WCPOS لتعديلات أسعار بنود POS، وكيفية تفاعلها مع قسائم WooCommerce، والمرشحات المتاحة.
+---
+
+# المرجع التقني لخصومات POS {#pos-discount-technical-reference}
+
+تشرح هذه الصفحة كيفية تعامل WCPOS مع تعديلات أسعار البنود التي يُجريها أمين الصندوق — كيفية تخزينها، وكيفية تفاعلها مع قسائم WooCommerce، والمرشحات المتاحة. للاطلاع على التوثيق الموجّه للمستخدمين، راجع [خصومات سلة التسوق](/pos/cart/discounts) و[القسائم](/coupons).
+
+## كيفية تخزين تعديلات أسعار POS {#how-pos-price-overrides-are-stored}
+
+عندما يُحدّد أمين الصندوق سعر بند ما أو يُغيّره في نقطة البيع، تُخزَّن أسعار الوحدة في البيانات الوصفية للبند `_woocommerce_pos_data` بتنسيق JSON:
+
+```json
+{
+  "price": "16.00",
+  "regular_price": "18.00",
+  "tax_status": "taxable"
+}
+```
+
+بالنسبة للمنتجات المتنوعة (المخصصة)، يمكن أن تحمل هذه البيانات الوصفية أيضًا حقول `virtual` و`downloadable` و`categories` المُستخدمة أثناء التحقق من صلاحية القسائم.
+
+تُعدّ هذه البيانات الوصفية المصدر المرجعي لأسعار الوحدة للبند. يُشتق `subtotal` المُخزَّن في WooCommerce على البند من `price * qty` (مع استخلاص الضريبة والتقريب). قد يكون `total` المُخزَّن أقل عند تطبيق خصومات القسائم، لذا للحصول على دقة سعر الوحدة يجب دائمًا قراءة `_woocommerce_pos_data.price` و`regular_price`.
+
+## نموذج المجموع الفرعي (v1.9.0+) {#subtotal-model-v1-9-0}
+
+اعتبارًا من الإصدار v1.9.0، يتوافق WCPOS مع دلالات سعر التخفيض الأصلية في WooCommerce:
+
+- `line_item.subtotal = price * qty` حيث `price` هو سعر POS (بعد أي تعديل).
+- `line_item.total = subtotal - coupon_discount_for_line`.
+- يعكس `order.discount_total` **خصومات القسائم فقط**، وليس تعديلات أسعار POS.
+
+يتطابق هذا مع طريقة معالجة WooCommerce لمنتج معروض للبيع: يصبح `sale_price` هو المجموع الفرعي، ويُخصَّص `discount_total` للقسائم. لا يوجد سطر منفصل لـ "خصم POS" في الطلب.
+
+:::note الترحيل من الإصدارات السابقة لـ 1.9.0
+كانت الإصدارات السابقة ترسل `subtotal = regular_price * qty`، مما جعل WooCommerce يحسب `discount_total = subtotal - total` ويُدرج تعديلات أسعار POS كخصم. تم تغيير هذا لأنه تعارض مع حسابات القسائم: تستخدم `recalculate_coupons()` قيمة `subtotal` كسعر أساسي، وبالتالي كانت القسائم تُحسب على السعر الأصلي وتُنتج إجماليات غير صحيحة.
+
+تمت إزالة الحل البديل السابق على جانب الخادم — فلتر `woocommerce_order_item_get_subtotal` النشط أثناء `recalculate_coupons()` — في الإصدار 1.9.0. راجع [سجل القرار المعماري](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md) للاطلاع على التاريخ الكامل.
+:::
+
+## سلوك التفاعل مع القسائم {#coupon-interaction-behaviour}
+
+دعم القسائم هو ميزة في [WCPOS Pro](https://wcpos.com/pro). عند تطبيق قسيمة على طلب يحتوي على عناصر مخفضة عبر POS:
+
+1. تُحسب القسيمة على أساس **السعر المخفض عبر POS** (القيمة في `_woocommerce_pos_data.price`)، وليس على `regular_price` الأصلي.
+2. عند إزالة القسيمة، يعود سطر العنصر إلى سعره المخفض عبر POS.
+
+### سلوك `exclude_sale_items` {#excludesaleitems-behaviour}
+
+تُعامَل العناصر المخفَّضة عبر نقطة البيع على أنها "معروضة للبيع" من قِبَل WooCommerce عندما يكون `_woocommerce_pos_data.price < regular_price`. لذلك ستتخطاها القسائم التي تم تفعيل `exclude_sale_items` فيها، وهذا يتوافق مع طريقة معالجة WooCommerce لأسعار التخفيض العادية.
+
+إذا كنت بحاجة إلى سلوك مختلف، راجع فلتر `woocommerce_pos_item_is_on_sale` أدناه.
+
+## الفلاتر المتاحة {#available-filters}
+
+### `woocommerce_pos_item_is_on_sale` {#woocommercepositemisonsale}
+
+تجاوز ما إذا كان العنصر المخفَّض عبر نقطة البيع يُعتبر "معروضًا للبيع" لأغراض التحقق من صلاحية القسائم.
+
+```php
+add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
+    // Allow coupons with exclude_sale_items to apply to POS-discounted items
+    return false;
+}, 10, 4 );
+```
+
+**المعاملات:**
+
+| المعامل | النوع | الوصف |
+|---|---|---|
+| `$is_on_sale` | `bool` | ما إذا كان العنصر يُعتبر معروضًا للبيع (الافتراضي: `price < regular_price`) |
+| `$product` | `WC_Product` | كائن المنتج |
+| `$item` | `WC_Order_Item_Product` | بند الطلب |
+| `$pos_data` | `array` | بيانات JSON المفكَّكة لـ `_woocommerce_pos_data` |
+
+## نقطة نهاية REST API {#rest-api-endpoint}
+
+توجد نقطة نهاية REST للقسائم في **الإضافة المجانية** على المسار `/wp-json/wcpos/v1/coupons` بحيث لا يتلقى تطبيق نقطة البيع خطأ 404 عند الاستعلام عن القسائم — حتى في المواقع التي لا تحتوي على WCPOS Pro. ومع ذلك، تتطلب ميزة القسائم الموجهة للمستخدم إصدار Pro.
+
+يوسّع المتحكم `WC_REST_Coupons_Controller` بإضافات خاصة بنقطة البيع:
+
+- معالجة UUID للمزامنة بأولوية عدم الاتصال
+- صلاحية `access_woocommerce_pos` للتحقق من الأذونات
+- مسار استعلام مُحسَّن للمعرّفات المجمّعة عند طلب `posts_per_page=-1` و`fields=id` (أو `fields=id,date_modified_gmt`)
+
+## عرض بيانات الإيصال {#receipt-data-exposure}
+
+يكشف منشئ بيانات الإيصال (`Receipt_Data_Builder`) عن:
+
+- `lines[].discounts`، `lines[].discounts_incl`، `lines[].discounts_excl` — مبلغ الخصم لكل بند، يُحسب كـ `subtotal - total`. اعتبارًا من الإصدار v1.9.0 يعكس هذا **خصومات القسائم فقط** لتجاوزات أسعار نقطة البيع، حيث أن `subtotal === total` عند عدم تطبيق قسيمة.
+- `totals.discount_total`، `totals.discount_total_incl`، `totals.discount_total_excl` — إجمالي خصم القسائم على مستوى الطلب من `WC_Order::get_discount_total()`.
+- `discounts[]` — مصفوفة بنود القسائم تتضمن `label` و`code` و`total`.
+
+تتم تصفية البيانات الوصفية ذات البادئة بشرطة سفلية للبند (بما في ذلك `_woocommerce_pos_data`) من `lines[].meta` بواسطة `Receipt_Data_Builder::get_item_meta_pairs()`، لذا فإن `regular_price` غير متاح مباشرةً للقوالب. إذا كنت بحاجة إلى إظهار الفرق بين السعر العادي وسعر نقطة البيع في الإيصالات، يمكنك طلب ذلك عبر [الدعم](https://wcpos.com/support).
+
+## ذو صلة {#related}
+
+- [خصومات سلة التسوق](/pos/cart/discounts) — دليل المستخدم لتطبيق الخصومات من قِبل أمين الصندوق
+- [القسائم](/coupons) — دليل المستخدم لقسائم WooCommerce في نقطة البيع (Pro)
