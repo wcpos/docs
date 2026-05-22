@@ -1,0 +1,355 @@
+---
+title: Referentie bongegevens
+sidebar_label: Bongegevens
+sidebar_position: 4
+description: Volledige referentie voor het canonieke gegevenscontract dat beschikbaar is in WCPOS-bonsjablonen.
+---
+
+WCPOS HTML-sjablonen zonder logica en thermische XML-sjablonen worden gerenderd vanuit dezelfde canonieke bonpayload. Gebruik Mustache-paden met punten, zoals `{{order.number}}`, `{{store.name}}` en `{{totals.total_display}}`. Arrays worden gerenderd met secties:
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} — {{line_total_display}}
+{{/lines}}
+```
+
+Het canonieke contract wordt op de server gemaakt door de WCPOS-bongegevensbouwer en gespiegeld door de offline bonrenderer in de app. Bonnen openen direct vanuit lokale gegevens en worden daarna bijgewerkt met de serverrespons zodra die beschikbaar is. Aangepaste sjablonen moeten daarom de onderstaande velden gebruiken in plaats van PHP-bestelmethoden.
+
+## Renderregels {#rendering-rules}
+
+### Valutavelden {#currency-fields}
+
+Numerieke geldvelden blijven nummers en de renderer voegt locale-afhankelijke `_display`-velden toe voor uitvoer in sjablonen:
+
+| Numeriek veld | Weergaveveld |
+|---------------|--------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+Gebruik bij voorkeur `_display`-velden bij het afdrukken van bonnen. Gebruik numerieke velden alleen voor voorwaardelijke secties of machineleesbare uitvoer.
+
+### Velden die rekening houden met belastingweergave {#tax-display-aware-fields}
+
+Verschillende velden hebben varianten inclusief en exclusief belasting, plus een handige weergavewaarde. De handige weergavewaarde volgt de instelling voor belastingweergave in de winkelwagen van de winkel.
+
+| Handig veld | Veld inclusief belasting | Veld exclusief belasting |
+|-------------|--------------------------|--------------------------|
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+### Datumobjecten {#date-objects}
+
+Datumvelden zijn objecten met meerdere vooraf opgemaakte varianten. Zo hoeft datumopmaak niet in Mustache te gebeuren.
+
+| Veld | Beschrijving |
+|------|--------------|
+| `datetime`, `date`, `time` | Standaard datum-/tijdstrings |
+| `datetime_short`, `datetime_long`, `datetime_full` | Locale-afhankelijke gecombineerde formaten |
+| `date_short`, `date_long`, `date_full` | Locale-afhankelijke formaten met alleen datum |
+| `date_ymd`, `date_dmy`, `date_mdy` | Datumformaten met vaste volgorde |
+| `weekday_short`, `weekday_long` | Dagnamen |
+| `day`, `month`, `month_short`, `month_long`, `year` | Afzonderlijke datumdelen |
+
+Beschikbare datumobjecten: `order.created`, `order.paid`, `order.completed`, `order.printed` en `refunds[].date`. `order.printed` wordt tijdens het renderen vernieuwd, wat handig is voor herdrukken.
+
+## Secties op hoogste niveau {#top-level-sections}
+
+| Sectie | Type | Beschrijving |
+|--------|------|--------------|
+| `order` | object | Bestelidentiteit, status, datums, notitie en betaal-URL-informatie |
+| `store` | object | Winkelidentiteit, adres, contactgegevens, belasting-ID's, logo, openingstijden en voettekst |
+| `cashier` | object | Gebruiker die de bestelling heeft verwerkt |
+| `customer` | object | Weergavenaam van de klant, adressen en belasting-ID's |
+| `lines` | array | Productregels |
+| `fees` | array | Kostenregels |
+| `shipping` | array | Verzendregels |
+| `discounts` | array | Coupon-/kortingsregels |
+| `totals` | object | Besteltotalen, betalingstotalen, retourbetalingssamenvatting en artikeltellingen |
+| `tax` | object | Vlaggen voor belastingweergavemodus voor sectievoorwaarden |
+| `tax_summary` | array | Belastingoverzichtsregels per tarief |
+| `has_tax_summary` | boolean | Handige voorwaarde voor `tax_summary` |
+| `payments` | array | Betalingsregels |
+| `refunds` | array | Retourbetalingsrecords die op de bestelling zijn toegepast |
+| `fiscal` | object | Fiscale snapshotvelden die door fiscale integraties worden gevuld |
+| `presentation_hints` | object | Opmaak- en rendererhints |
+| `i18n` | object | Vertaalde labels voor meegeleverde en aangepaste sjablonen |
+
+## order {#order}
+
+| Veld | Type | Voorbeeld / beschrijving |
+|------|------|--------------------------|
+| `order.id` | number | `1234` |
+| `order.number` | string | Bestelnummer voor de klant, bijvoorbeeld `"10045"` |
+| `order.currency` | string | ISO-valutacode, bijvoorbeeld `"USD"` |
+| `order.customer_note` | string | Klant-/bestelnotitie |
+| `order.wc_status` | string | Onbewerkte WooCommerce-statusslug, bijvoorbeeld `"processing"` |
+| `order.status_label` | string | Gelokaliseerd statuslabel, inclusief aangepaste statussen |
+| `order.created_via` | string | Bron/kanaal, bijvoorbeeld `"woocommerce-pos"` |
+| `order.needs_payment` | boolean | Of een betalingssectie moet worden getoond |
+| `order.payment_url` | string | Betaal-URL van de bestelling wanneer beschikbaar |
+| `order.created` | date object | Aanmaakdatum van de bestelling |
+| `order.paid` | date object | Betaaldatum; lege strings wanneer niet betaald |
+| `order.completed` | date object | Voltooiingsdatum; lege strings wanneer niet voltooid |
+| `order.printed` | date object | Tijdstempel van afdrukken/herdrukken tijdens het renderen |
+
+## store {#store}
+
+| Veld | Type | Voorbeeld / beschrijving |
+|------|------|--------------------------|
+| `store.id` | number | Winkel-ID, of historisch ID voor verwijderde winkels |
+| `store.name` | string | Weergavenaam van de winkel |
+| `store.address.address_1` | string | Straatadres regel 1 |
+| `store.address.address_2` | string | Suite-/unitregel |
+| `store.address.city` | string | Plaats/gemeente |
+| `store.address.state` | string | Staat/regio |
+| `store.address.postcode` | string | Postcode |
+| `store.address.country` | string | ISO-landcode |
+| `store.address_lines` | array | Vooraf opgemaakte adresregels; aanbevolen voor de meeste sjablonen |
+| `store.tax_ids` | array | Gestructureerde zakelijke belasting-ID's; loop hierover in plaats van een enkele belasting-ID te gebruiken |
+| `store.phone` | string | Telefoonnummer van de winkel |
+| `store.email` | string | E-mailadres van de winkel |
+| `store.logo` | string/null | URL of data-URI van het winkellogo |
+| `store.opening_hours` | string/null | Compacte tekst met openingstijden |
+| `store.opening_hours_vertical` | string/null | Openingstijdenblok over meerdere regels |
+| `store.opening_hours_inline` | string/null | Openingstijden als kommagescheiden tekst |
+| `store.opening_hours_notes` | string/null | Vrije tekstnotities over openingstijden |
+| `store.personal_notes` | string/null | Persoonlijke notitie/voettekst op de bon |
+| `store.policies_and_conditions` | string/null | Tekst voor terugbetalingen, retouren of voorwaarden |
+| `store.footer_imprint` | string/null | Wettelijke voettekst |
+
+### Belasting-ID-objecten {#tax-id-objects}
+
+`store.tax_ids` en `customer.tax_ids` bevatten objecten met dezelfde vorm:
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `type` | string | Identificatie zoals `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein` of `other` |
+| `value` | string | Belasting-ID-waarde om af te drukken |
+| `country` | string/null | ISO-landcode wanneer bekend |
+| `label` | string/null | Gelokaliseerd weergavelabel, opgelost voordat er wordt gerenderd |
+
+Voorbeeld:
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+## cashier {#cashier}
+
+| Veld | Type | Voorbeeld / beschrijving |
+|------|------|--------------------------|
+| `cashier.id` | number | WordPress-gebruikers-ID, `0` wanneer onbekend |
+| `cashier.name` | string | Weergavenaam van de kassier |
+
+## customer {#customer}
+
+| Veld | Type | Voorbeeld / beschrijving |
+|------|------|--------------------------|
+| `customer.id` | number/null | Klant-ID, of `null` voor gasten |
+| `customer.name` | string | Weergavenaam van de klant, of gastlabel |
+| `customer.billing_address.*` | object | WooCommerce-velden voor factuuradres |
+| `customer.shipping_address.*` | object | WooCommerce-velden voor verzendadres |
+| `customer.tax_ids` | array | Gestructureerde klantbelasting-ID's die uit de bestelling zijn vastgelegd |
+
+Veelgebruikte adressleutels zijn `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email` en `phone`.
+
+## lines {#lines}
+
+Loop met `{{#lines}}...{{/lines}}`.
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `key` | string | Stabiele regelsleutel/bestelitem-ID |
+| `sku` | string | Product-SKU |
+| `name` | string | Productnaam of regelweergavenaam |
+| `qty` | number | Verkochte hoeveelheid |
+| `qty_refunded` | number | Terugbetaalde hoeveelheid voor deze regel |
+| `unit_subtotal` / `_incl` / `_excl` | number | Eenheidsprijs voor korting |
+| `unit_price` / `_incl` / `_excl` | number | Eenheidsprijs na korting |
+| `line_subtotal` / `_incl` / `_excl` | number | Regelsubtotaal voor korting |
+| `discounts` / `_incl` / `_excl` | number | Kortingsbedrag als positieve waarde |
+| `line_total` / `_incl` / `_excl` | number | Definitief regeltotaal |
+| `total_refunded` | number | Totaal terugbetaald voor deze regel als positieve waarde |
+| `taxes` | array | Belastingregels per tarief voor deze regel |
+| `meta` | array | Bestelitemmeta als `{key, value}`-paren |
+| `attributes` | array | Product-/variatieattributen als `{key, value}`-paren |
+
+Opgemaakte varianten zijn onder meer `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display` en inclusieve/exclusieve `_display`-varianten.
+
+## fees en shipping {#fees-and-shipping}
+
+Loop met `{{#fees}}...{{/fees}}` en `{{#shipping}}...{{/shipping}}`.
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `label` | string | Kostenlabel of naam van verzendmethode |
+| `method_id` | string | ID van de verzendmethode (alleen verzending) |
+| `total` / `_incl` / `_excl` | number | Totalen aan weergavezijde, inclusief en exclusief belasting |
+| `taxes` | array | Belastingregels per tarief |
+| `meta` | array | `{key, value}`-metaparen |
+
+Opgemaakte varianten: `total_display`, `total_incl_display` en `total_excl_display`.
+
+## discounts {#discounts}
+
+Loop met `{{#discounts}}...{{/discounts}}`.
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `label` | string | Couponomschrijving of code als fallback |
+| `code` | string | Couponcode |
+| `codes` | string | Verouderde/weergavefallback voor samengevoegde codes |
+| `total` / `_incl` / `_excl` | number | Kortingsbedrag als positieve waarde |
+
+Opgemaakte varianten: `total_display`, `total_incl_display` en `total_excl_display`. Voeg zelf een minteken toe in het sjabloon als je kortingen als negatieve regels wilt tonen.
+
+## totals {#totals}
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `totals.subtotal` / `_incl` / `_excl` | number | Bestelsubtotaal voor kortingen |
+| `totals.discount_total` / `_incl` / `_excl` | number | Totaal aan bestelkortingen als positieve waarde |
+| `totals.tax_total` | number | Totaal belastingbedrag |
+| `totals.total` / `_incl` / `_excl` | number | Eindtotaal van de bestelling |
+| `totals.paid_total` | number | Betaald/toegepast bedrag |
+| `totals.change_total` | number | Wisselgeld teruggegeven aan de klant |
+| `totals.refund_total` | number | Totaal terugbetaald als positieve waarde |
+| `totals.net_total` | number | `total - refund_total`, begrensd op nul |
+| `totals.total_qty` | number | Som van de hoeveelheden van regelitems |
+| `totals.line_count` | number | Aantal productregels |
+
+Opgemaakte varianten zijn onder meer `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` en `net_total_display`, plus inclusieve/exclusieve varianten waar van toepassing.
+
+## tax en tax_summary {#tax-and-tax-summary}
+
+Gebruik `tax` voor voorwaarden rond de weergavemodus en `tax_summary` voor gespecificeerde tariefregels.
+
+| Belastingveld | Type | Beschrijving |
+|---------------|------|--------------|
+| `tax.display` | string | `incl` of `excl` |
+| `tax.display_incl` | boolean | Waar wanneer prijzen inclusief belasting worden weergegeven |
+| `tax.display_excl` | boolean | Waar wanneer prijzen exclusief belasting worden weergegeven |
+| `tax.breakdown` | string | `hidden`, `single` of `itemized` |
+| `tax.breakdown_hidden` | boolean | Waar wanneer belastingregels verborgen moeten worden |
+| `tax.breakdown_single` | boolean | Waar wanneer een enkel belastingtotaal de voorkeur heeft |
+| `tax.breakdown_itemized` | boolean | Waar wanneer regels per tarief de voorkeur hebben |
+| `has_tax_summary` | boolean | Waar wanneer `tax_summary` regels bevat |
+
+Loop door `tax_summary` met `{{#tax_summary}}...{{/tax_summary}}`.
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `code` | string | ID/code van het belastingtarief |
+| `rate` | number/null | Tariefpercentage wanneer opgelost |
+| `label` | string | Label van het belastingtarief |
+| `compound` | boolean | Of het tarief samengesteld is |
+| `taxable_amount_excl` | number/null | Belastbare grondslag exclusief belasting |
+| `tax_amount` | number | Geïnde belasting |
+| `taxable_amount_incl` | number/null | Belastbare grondslag inclusief belasting |
+
+Opgemaakte varianten: `taxable_amount_excl_display`, `tax_amount_display` en `taxable_amount_incl_display`.
+
+## payments {#payments}
+
+Loop met `{{#payments}}...{{/payments}}`.
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `method_id` | string | Identificatie van de betaalmethode |
+| `method_title` | string | Weergavetitel van de betaalmethode |
+| `amount` | number | Bedrag dat op de bestelling is toegepast |
+| `transaction_id` | string | Gateway-transactie-ID |
+| `tendered` | number | Contant aangeboden bedrag wanneer aanwezig |
+| `change` | number | Contant wisselgeld wanneer aanwezig |
+
+Opgemaakte varianten: `amount_display`, `tendered_display` en `change_display`.
+
+## refunds {#refunds}
+
+Loop met `{{#refunds}}...{{/refunds}}`. Retourbedragen zijn positieve grootheden; sjablonen bepalen zelf of ze een minteken toevoegen of een apart blok met geretourneerde items renderen.
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `id` | number | Retourbetalingsrecord-ID |
+| `date` | date object | Aanmaakdatum van de retourbetaling |
+| `amount` | number | Totaal van de retourbetaling |
+| `subtotal` | number | Terugbetaald regelsubtotaal |
+| `tax_total` | number | Terugbetaalde belasting |
+| `shipping_total` | number | Terugbetaald verzendbedrag |
+| `shipping_tax` | number | Terugbetaalde verzendbelasting |
+| `reason` | string | Reden voor retourbetaling |
+| `refunded_by_id` | number/null | Gebruikers-ID dat de retourbetaling heeft uitgegeven |
+| `refunded_by_name` | string | Weergavenaam van de gebruiker die de retourbetaling heeft uitgegeven |
+| `refunded_payment` | boolean | Of de betaling via de gateway is terugbetaald |
+| `destination` | string | `original_method`, `cash` of `manual` |
+| `gateway_id` | string | Gateway-ID die voor de retourbetaling is gebruikt |
+| `gateway_title` | string | Weergavetitel van de gateway |
+| `processing_mode` | string | Verwerkingsmodus van provider/handmatig |
+| `lines` | array | Terugbetaalde productregels |
+| `fees` | array | Terugbetaalde kostenregels |
+| `shipping` | array | Terugbetaalde verzendregels |
+
+Retourregelvelden zijn onder meer `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl`, `line_total`, `unit_total` en `taxes`. Retourkosten- en verzendregels gebruiken `label`, `total`, `total_incl`, `total_excl` en `taxes`. Weergavevarianten worden toegevoegd voor totalen en belastingbedragen.
+
+## fiscal {#fiscal}
+
+Fiscale velden zijn standaard leeg en worden gevuld door fiscale integraties of WCPOS Pro-snapshotverrijking.
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `fiscal.immutable_id` | string | Onveranderlijke fiscale identificatie |
+| `fiscal.receipt_number` | string | Fiscaal bonnummer |
+| `fiscal.sequence` | number/null | Volgnummer |
+| `fiscal.hash` | string | Hash-/handtekeningwaarde |
+| `fiscal.qr_payload` | string | QR-payload voor fiscale verificatie |
+| `fiscal.tax_agency_code` | string | Code van de belastingautoriteit |
+| `fiscal.signed_at` | string | Tijdstempel van fiscale ondertekening |
+| `fiscal.signature_excerpt` | string | Ingekorte handtekening voor weergave |
+| `fiscal.document_label` | string | Documentlabel, bijvoorbeeld Belastingfactuur |
+| `fiscal.is_reprint` | boolean | Of deze render een herdruk is |
+| `fiscal.reprint_count` | number | Aantal herdrukken |
+| `fiscal.extra_fields` | array/object | Rechtsgebiedspecifieke waarden |
+
+## presentation_hints {#presentation-hints}
+
+Deze velden worden voornamelijk gebruikt door de renderer en formatter. Ze zijn beschikbaar voor sjablonen wanneer dat nodig is.
+
+| Veld | Type | Beschrijving |
+|------|------|--------------|
+| `presentation_hints.display_tax` | string | `incl`, `excl`, `hidden`, `itemized` of `single` |
+| `presentation_hints.prices_entered_with_tax` | boolean | Of catalogusprijzen belasting bevatten |
+| `presentation_hints.rounding_mode` | string | WooCommerce-instelling voor belastingafronding |
+| `presentation_hints.locale` | string | Locale die voor opmaak wordt gebruikt |
+| `presentation_hints.timezone` | string | Tijdzone van de bon |
+| `presentation_hints.currency_position` | string | Positie van het valutasymbool |
+| `presentation_hints.currency_symbol` | string | Valutasymbool |
+| `presentation_hints.price_thousand_separator` | string | Scheidingsteken voor duizendtallen |
+| `presentation_hints.price_decimal_separator` | string | Decimaal scheidingsteken |
+| `presentation_hints.price_num_decimals` | number | Aantal decimalen |
+| `presentation_hints.price_display_suffix` | string | WooCommerce-achtervoegsel voor prijsweergave |
+| `presentation_hints.order_barcode_type` | string | Barcodetype dat door galerijsjablonen wordt gebruikt |
+
+## i18n {#i18n}
+
+Gebruik `i18n`-labels in plaats van tekst waar mogelijk rechtstreeks op te nemen:
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+Veelgebruikte sleutels zijn `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours` en de belasting-ID-labelsleutels zoals `store_tax_id_label_eu_vat` en `customer_tax_id_label_other`. Extensies kunnen extra sleutels toevoegen.
