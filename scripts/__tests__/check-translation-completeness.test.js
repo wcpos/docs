@@ -10,6 +10,8 @@ const {
   findUntranslatedProps,
   findLeftoverProse,
   isStub,
+  listIncompleteSources,
+  LOCALES,
   main,
 } = require('../check-translation-completeness');
 
@@ -173,5 +175,48 @@ describe('main', () => {
       error.mockRestore();
       fs.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe('listIncompleteSources (self-healing sweep input)', () => {
+  const source = 'versioned_docs/version-1.x/support/translations.mdx';
+
+  it('flags a source missing in at least one locale', () => {
+    const present = new Set([
+      source,
+      sourceToTranslatedPath(source, 'de'),
+      sourceToTranslatedPath(source, 'es'),
+      // nl (and the other locales) intentionally absent — the nl-backlog case
+    ]);
+    const result = listIncompleteSources({
+      sources: [source],
+      existsSync: (p) => present.has(p),
+      readFile: () => 'x'.repeat(50),
+    });
+    expect(result.map((r) => r.source)).toContain(source);
+    expect(result[0].gaps).toContain('nl');
+  });
+
+  it('does not flag a source translated in every locale', () => {
+    const present = new Set([source, ...LOCALES.map((l) => sourceToTranslatedPath(source, l))]);
+    const result = listIncompleteSources({
+      sources: [source],
+      existsSync: (p) => present.has(p),
+      readFile: () => 'x'.repeat(50),
+    });
+    expect(result).toEqual([]);
+  });
+
+  it('flags a stubbed translation as a gap', () => {
+    const present = new Set([source, ...LOCALES.map((l) => sourceToTranslatedPath(source, l))]);
+    const longSource = 'A'.repeat(2000);
+    const result = listIncompleteSources({
+      sources: [source],
+      existsSync: (p) => present.has(p),
+      // every translation is a tiny stub relative to a long source
+      readFile: (p) => (p === source ? longSource : 'short'),
+    });
+    expect(result.map((r) => r.source)).toContain(source);
+    expect(result[0].gaps.some((g) => g.includes('(stub)'))).toBe(true);
   });
 });

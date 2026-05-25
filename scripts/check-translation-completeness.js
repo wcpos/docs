@@ -242,11 +242,63 @@ function allTranslationFiles() {
   return out.split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
+// All English source docs that are in scope for translation. Scoped to
+// `versioned_docs/**` to match the forward-on-push workflow's path filter
+// (forward-docs-translations-to-aide.yml) — `docs/` holds unversioned/internal
+// material (e.g. superpowers specs) that is not part of the published, translated corpus.
+function allSourceDocs(
+  listFiles = (dirs) =>
+    execFileSync('git', ['ls-files', ...dirs], { encoding: 'utf8' })
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+) {
+  return listFiles(['versioned_docs']).filter((f) => /\.mdx?$/.test(f));
+}
+
+// Source docs that are missing or stubbed in at least one locale — the input
+// for the self-healing translation sweep. Uses the same missing/stub
+// definition as the completeness gate, so the sweep and the PR gate never
+// disagree about what "incomplete" means.
+function listIncompleteSources({
+  readFile = (p) => fs.readFileSync(p, 'utf8'),
+  existsSync = fs.existsSync,
+  sources,
+} = {}) {
+  const srcList = sources || allSourceDocs();
+  const incomplete = [];
+  for (const source of srcList) {
+    if (!existsSync(source)) continue;
+    const sourceContent = readFile(source);
+    const gaps = [];
+    for (const locale of LOCALES) {
+      const tp = sourceToTranslatedPath(source, locale);
+      if (!tp) continue;
+      if (!existsSync(tp)) {
+        gaps.push(locale);
+      } else if (isStub(sourceContent, readFile(tp), locale)) {
+        gaps.push(`${locale} (stub)`);
+      }
+    }
+    if (gaps.length) incomplete.push({ source, gaps });
+  }
+  return incomplete;
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
 function main(argv = process.argv.slice(2), env = process.env) {
+  // Self-healing sweep input: print the source docs that have a gap in any
+  // locale as a JSON array on stdout (consumed by sweep-docs-translations.yml).
+  // Always exits 0 — this mode reports, it does not gate.
+  if (argv.includes('--list-incomplete-sources')) {
+    const incomplete = listIncompleteSources();
+    process.stdout.write(JSON.stringify(incomplete.map((entry) => entry.source)));
+    return 0;
+  }
+
   let files = [];
   const explicit = [];
   for (const arg of argv) {
@@ -335,6 +387,8 @@ module.exports = {
   findLeftoverProse,
   isStub,
   findDroppedLocales,
+  allSourceDocs,
+  listIncompleteSources,
   evaluateFile,
   main,
 };
