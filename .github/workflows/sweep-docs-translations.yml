@@ -37,6 +37,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
@@ -58,7 +59,7 @@ jobs:
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '8' }}
         run: |
           ALL=$(node scripts/check-translation-completeness.js --list-incomplete-sources)
-          BATCH=$(node -e 'const a=JSON.parse(process.argv[1]||"[]"); const parsed=Number.parseInt(process.env.BATCH_SIZE,10); const n=parsed>0 ? parsed : 8; process.stdout.write(JSON.stringify(a.slice(0,n)));' "$ALL")
+          BATCH=$(node -e 'const a=JSON.parse(process.argv[1]||"[]"); const parsed=Number.parseInt(process.env.BATCH_SIZE,10); const n=parsed>0 ? Math.min(parsed, 50) : 8; process.stdout.write(JSON.stringify(a.slice(0,n)));' "$ALL")
           TOTAL=$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]||"[]").length));' "$ALL")
           {
             echo "files=$BATCH"
@@ -95,6 +96,8 @@ jobs:
           fs.writeFileSync('/tmp/aide_payload.json', JSON.stringify(payload));
           NODE
           curl --fail-with-body --silent --show-error \
+            --connect-timeout 10 \
+            --max-time 120 \
             --request POST \
             --url "$OPENCLAW_BASE_URL/translation/webhook" \
             --header "Authorization: Bearer $OPENCLAW_HOOKS_TOKEN" \
