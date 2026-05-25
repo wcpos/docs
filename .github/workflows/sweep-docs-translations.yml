@@ -1,0 +1,115 @@
+name: Sweep Docs Translations (self-healing)
+
+# Periodically finds docs that are missing/stubbed in ANY locale and asks Aide
+# to translate them, so a newly-added locale or any missed page self-heals
+# without a human having to notice. Uses the same gap definition as the
+# Translation Completeness gate (check-translation-completeness.js) and the same
+# /translation/webhook path as forward-docs-translations-to-aide.yml; Aide opens
+# the usual `aide/docs-translations-*` PR. Batched to bound per-run cost.
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: 'Max source files to forward this run (bounds per-run translation cost)'
+        required: false
+        default: '8'
+      dry_run:
+        description: 'List the gap files but do not forward them to Aide'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-translation-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.13.1'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Generate English source translations
+        run: pnpm write-translations --locale en
+
+      - name: Find incomplete source docs (batched)
+        id: gaps
+        env:
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '8' }}
+        run: |
+          ALL=$(node scripts/check-translation-completeness.js --list-incomplete-sources)
+          BATCH=$(node -e 'const a=JSON.parse(process.argv[1]||"[]"); const parsed=Number.parseInt(process.env.BATCH_SIZE,10); const n=parsed>0 ? Math.min(parsed, 50) : 8; process.stdout.write(JSON.stringify(a.slice(0,n)));' "$ALL")
+          TOTAL=$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]||"[]").length));' "$ALL")
+          {
+            echo "files=$BATCH"
+            echo "total=$TOTAL"
+            if [ "$BATCH" = "[]" ]; then echo "has_files=false"; else echo "has_files=true"; fi
+          } >> "$GITHUB_OUTPUT"
+          echo "Incomplete sources: $TOTAL total. Forwarding this run: $BATCH"
+
+      - name: Require OpenClaw secrets
+        if: steps.gaps.outputs.has_files == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          OPENCLAW_HOOKS_TOKEN: ${{ secrets.OPENCLAW_HOOKS_TOKEN }}
+        run: |
+          test -n "$OPENCLAW_HOOKS_TOKEN" || { echo "OPENCLAW_HOOKS_TOKEN secret is required"; exit 1; }
+
+      - name: Forward gap files to Aide
+        if: steps.gaps.outputs.has_files == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          OPENCLAW_BASE_URL: ${{ vars.OPENCLAW_BASE_URL }}
+          OPENCLAW_HOOKS_TOKEN: ${{ secrets.OPENCLAW_HOOKS_TOKEN }}
+          FILES_JSON: ${{ steps.gaps.outputs.files }}
+        run: |
+          : "${OPENCLAW_BASE_URL:=https://openclaw.wcpos.com}"
+          node - <<'NODE' > /tmp/aide_payload.json
+          const fs = require('node:fs');
+          const payload = {
+            project: 'docs',
+            repo: 'wcpos/docs',
+            base_ref: 'main',
+            head_sha: process.env.GITHUB_SHA,
+            changed_files: JSON.parse(process.env.FILES_JSON || '[]'),
+            reason: 'completeness-sweep',
+          };
+          fs.writeFileSync('/tmp/aide_payload.json', JSON.stringify(payload));
+          NODE
+          curl --fail-with-body --silent --show-error \
+            --connect-timeout 10 \
+            --max-time 120 \
+            --request POST \
+            --url "$OPENCLAW_BASE_URL/translation/webhook" \
+            --header "Authorization: Bearer $OPENCLAW_HOOKS_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data @/tmp/aide_payload.json \
+            --output /tmp/aide_response.json
+          node - <<'NODE' /tmp/aide_response.json
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (payload.accepted !== true || !payload.job_id || !payload.poll_url) {
+            throw new Error(`Unexpected OpenClaw response: ${JSON.stringify(payload)}`);
+          }
+          console.log(`OpenClaw accepted docs translation sweep job ${payload.job_id}`);
+          console.log(`Poll URL: ${payload.poll_url}`);
+          NODE
