@@ -161,6 +161,20 @@ function markdownTitleValues(text) {
   return out;
 }
 
+// Prop/title values that are correctly identical across every locale — product,
+// platform and distribution-channel names, and literal runtime error strings the
+// app shows verbatim — so an exact match is NOT a translation leak. Without this,
+// the gate flags them and the self-healing sweep re-forwards the file every run
+// (Aide can't "translate" a proper noun), looping forever and drifting the rest of
+// the file. Keep tight and exact-match so genuine leaks still surface.
+const UNTRANSLATED_PROP_ALLOWLIST = new Set([
+  'iOS (TestFlight)',
+  'Mac (Intel)',
+  'Mac (Apple Silicon)',
+  'Android (Beta)',
+  "Cannot read properties of undefined (reading 'data')",
+]);
+
 // JSX text-prop values and CommonMark image/link titles left identical to the
 // English source (multi-word).
 function findUntranslatedProps(sourceContent, translatedContent) {
@@ -170,7 +184,13 @@ function findUntranslatedProps(sourceContent, translatedContent) {
   ]);
   const hits = [];
   const flag = (label, value) => {
-    if (value && sourceValues.has(value) && /\s/.test(value) && countWords(value) >= 2) {
+    if (
+      value &&
+      !UNTRANSLATED_PROP_ALLOWLIST.has(value) &&
+      sourceValues.has(value) &&
+      /\s/.test(value) &&
+      countWords(value) >= 2
+    ) {
       hits.push(label);
     }
   };
@@ -466,6 +486,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
 module.exports = {
   LOCALES,
   TEXT_PROPS,
+  UNTRANSLATED_PROP_ALLOWLIST,
   getSourcePath,
   sourceToTranslatedPath,
   localeOf,
