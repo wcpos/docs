@@ -107,6 +107,21 @@ describe('findUntranslatedProps', () => {
     const translated = `<Image alt="captura" img="/x.png" />`;
     expect(findUntranslatedProps('<Image alt="screenshot" img="/x.png" />', translated)).toHaveLength(0);
   });
+
+  it('flags a CommonMark image title tooltip left identical to the English source', () => {
+    const src = '![Payment gateways](/x.png "An example of Payment Gateway settings in WCPOS")\n';
+    const translated = '![Pasarelas de pago](/x.png "An example of Payment Gateway settings in WCPOS")\n';
+    expect(findUntranslatedProps(src, translated)).toContain(
+      'title="An example of Payment Gateway settings in WCPOS"',
+    );
+  });
+
+  it('passes when the CommonMark image title tooltip is translated', () => {
+    const src = '![Payment gateways](/x.png "An example of Payment Gateway settings in WCPOS")\n';
+    const translated =
+      '![Pasarelas de pago](/x.png "Un ejemplo de la configuración de pasarelas de pago en WCPOS")\n';
+    expect(findUntranslatedProps(src, translated)).toHaveLength(0);
+  });
 });
 
 describe('findLeftoverProse', () => {

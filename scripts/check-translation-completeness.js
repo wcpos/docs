@@ -147,14 +147,38 @@ function textPropValues(text) {
 // Checks (pure, unit-testable)
 // ---------------------------------------------------------------------------
 
-// JSX text-prop values left identical to the English source (multi-word).
+// CommonMark image/link title tooltips: ![alt](url "title") and [text](url "title").
+// Docusaurus renders these as user-facing hover tooltips, so an untranslated title
+// is the same "ships English" leak as an untranslated JSX prop. textPropValues only
+// matches title="…"/alt="…" attribute syntax, so capture the CommonMark form here.
+function markdownTitleValues(text) {
+  const out = [];
+  for (const line of bodyLines(text)) {
+    const re = /\]\(\s*\S+\s+(["'])((?:\\.|(?!\1).)*)\1\s*\)/g;
+    let m;
+    while ((m = re.exec(line))) out.push(m[2].trim());
+  }
+  return out;
+}
+
+// JSX text-prop values and CommonMark image/link titles left identical to the
+// English source (multi-word).
 function findUntranslatedProps(sourceContent, translatedContent) {
-  const sourceValues = new Set(textPropValues(sourceContent).map((p) => p.value));
+  const sourceValues = new Set([
+    ...textPropValues(sourceContent).map((p) => p.value),
+    ...markdownTitleValues(sourceContent),
+  ]);
   const hits = [];
-  for (const { prop, value } of textPropValues(translatedContent)) {
+  const flag = (label, value) => {
     if (value && sourceValues.has(value) && /\s/.test(value) && countWords(value) >= 2) {
-      hits.push(`${prop}="${value}"`);
+      hits.push(label);
     }
+  };
+  for (const { prop, value } of textPropValues(translatedContent)) {
+    flag(`${prop}="${value}"`, value);
+  }
+  for (const value of markdownTitleValues(translatedContent)) {
+    flag(`title="${value}"`, value);
   }
   return [...new Set(hits)];
 }
@@ -382,6 +406,7 @@ module.exports = {
   lineToProse,
   bodyLines,
   textPropValues,
+  markdownTitleValues,
   isSignificantProse,
   findUntranslatedProps,
   findLeftoverProse,
