@@ -147,16 +147,16 @@ function textPropValues(text) {
 // Checks (pure, unit-testable)
 // ---------------------------------------------------------------------------
 
-// CommonMark image/link title tooltips: ![alt](url "title") and [text](url "title").
+// CommonMark image/link title tooltips: ![alt](url "title") and [text](url (title)).
 // Docusaurus renders these as user-facing hover tooltips, so an untranslated title
 // is the same "ships English" leak as an untranslated JSX prop. textPropValues only
 // matches title="…"/alt="…" attribute syntax, so capture the CommonMark form here.
 function markdownTitleValues(text) {
   const out = [];
   for (const line of bodyLines(text)) {
-    const re = /\]\(\s*\S+\s+(["'])((?:\\.|(?!\1).)*)\1\s*\)/g;
+    const re = /\]\(\s*\S+\s+(?:(["'])((?:\\.|(?!\1).)*)\1|\(((?:\\.|[^\\)])*)\))\s*\)/g;
     let m;
-    while ((m = re.exec(line))) out.push(m[2].trim());
+    while ((m = re.exec(line))) out.push((m[2] ?? m[3]).trim());
   }
   return out;
 }
