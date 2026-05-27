@@ -285,6 +285,24 @@ function listIncompleteSources({
   return incomplete;
 }
 
+// The same gaps as listIncompleteSources, shaped as Aide `repair_targets`
+// (per-source, per-locale, with a reason). Lets the self-healing sweep tell the
+// pipeline to translate ONLY the locales that actually have a gap, instead of
+// re-translating every locale and drifting the already-complete ones. The reason
+// drives the pipeline's forceRepair logic: "missing" fills a new locale; "stub"
+// forces a full re-translation of the incomplete file.
+function listIncompleteTargets(options = {}) {
+  return listIncompleteSources(options).map(({ source, gaps }) => {
+    const locales = {};
+    for (const gap of gaps) {
+      const isStubGap = gap.endsWith(' (stub)');
+      const locale = isStubGap ? gap.slice(0, -' (stub)'.length) : gap;
+      locales[locale] = [isStubGap ? 'stub' : 'missing'];
+    }
+    return { source, locales };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -296,6 +314,15 @@ function main(argv = process.argv.slice(2), env = process.env) {
   if (argv.includes('--list-incomplete-sources')) {
     const incomplete = listIncompleteSources();
     process.stdout.write(JSON.stringify(incomplete.map((entry) => entry.source)));
+    return 0;
+  }
+
+  // Same gaps as --list-incomplete-sources, but as Aide repair_targets
+  // (per-source, per-locale) so the sweep can restrict the pipeline to only the
+  // locales that have a gap — preventing re-translation drift in complete ones.
+  // Always exits 0 — reports, does not gate.
+  if (argv.includes('--list-incomplete-targets')) {
+    process.stdout.write(JSON.stringify(listIncompleteTargets()));
     return 0;
   }
 
@@ -389,6 +416,7 @@ module.exports = {
   findDroppedLocales,
   allSourceDocs,
   listIncompleteSources,
+  listIncompleteTargets,
   evaluateFile,
   main,
 };

@@ -58,15 +58,20 @@ jobs:
         env:
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '8' }}
         run: |
-          ALL=$(node scripts/check-translation-completeness.js --list-incomplete-sources)
+          # Per-locale gaps (repair_targets shape) so the pipeline translates ONLY
+          # the locales that are missing/stubbed — not every locale, which drifts
+          # the already-complete ones. Batched by source file to bound per-run cost.
+          ALL=$(node scripts/check-translation-completeness.js --list-incomplete-targets)
           BATCH=$(node -e 'const a=JSON.parse(process.argv[1]||"[]"); const parsed=Number.parseInt(process.env.BATCH_SIZE,10); const n=parsed>0 ? Math.min(parsed, 50) : 8; process.stdout.write(JSON.stringify(a.slice(0,n)));' "$ALL")
+          FILES=$(node -e 'process.stdout.write(JSON.stringify(JSON.parse(process.argv[1]||"[]").map((t) => t.source)));' "$BATCH")
           TOTAL=$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]||"[]").length));' "$ALL")
           {
-            echo "files=$BATCH"
+            echo "files=$FILES"
+            echo "repair_targets=$BATCH"
             echo "total=$TOTAL"
-            if [ "$BATCH" = "[]" ]; then echo "has_files=false"; else echo "has_files=true"; fi
+            if [ "$FILES" = "[]" ]; then echo "has_files=false"; else echo "has_files=true"; fi
           } >> "$GITHUB_OUTPUT"
-          echo "Incomplete sources: $TOTAL total. Forwarding this run: $BATCH"
+          echo "Incomplete sources: $TOTAL total. Forwarding this run: $FILES"
 
       - name: Require OpenClaw secrets
         if: steps.gaps.outputs.has_files == 'true' && github.event.inputs.dry_run != 'true'
@@ -81,6 +86,7 @@ jobs:
           OPENCLAW_BASE_URL: ${{ vars.OPENCLAW_BASE_URL }}
           OPENCLAW_HOOKS_TOKEN: ${{ secrets.OPENCLAW_HOOKS_TOKEN }}
           FILES_JSON: ${{ steps.gaps.outputs.files }}
+          REPAIR_TARGETS_JSON: ${{ steps.gaps.outputs.repair_targets }}
         run: |
           : "${OPENCLAW_BASE_URL:=https://openclaw.wcpos.com}"
           node - <<'NODE' > /tmp/aide_payload.json
@@ -91,6 +97,8 @@ jobs:
             base_ref: 'main',
             head_sha: process.env.GITHUB_SHA,
             changed_files: JSON.parse(process.env.FILES_JSON || '[]'),
+            // Per-locale gaps: translate only missing/stubbed locales, not all.
+            repair_targets: JSON.parse(process.env.REPAIR_TARGETS_JSON || '[]'),
             reason: 'completeness-sweep',
           };
           fs.writeFileSync('/tmp/aide_payload.json', JSON.stringify(payload));

@@ -11,6 +11,7 @@ const {
   findLeftoverProse,
   isStub,
   listIncompleteSources,
+  listIncompleteTargets,
   LOCALES,
   main,
 } = require('../check-translation-completeness');
@@ -218,5 +219,52 @@ describe('listIncompleteSources (self-healing sweep input)', () => {
     });
     expect(result.map((r) => r.source)).toContain(source);
     expect(result[0].gaps.some((g) => g.includes('(stub)'))).toBe(true);
+  });
+});
+
+describe('listIncompleteTargets (sweep repair_targets)', () => {
+  const source = 'versioned_docs/version-1.x/support/translations.mdx';
+
+  it('targets only the missing locales (not the complete ones), so the sweep does not re-translate them', () => {
+    const present = new Set([
+      source,
+      sourceToTranslatedPath(source, 'de'),
+      sourceToTranslatedPath(source, 'es'),
+      // nl (and the rest) intentionally absent
+    ]);
+    const result = listIncompleteTargets({
+      sources: [source],
+      existsSync: (p) => present.has(p),
+      readFile: () => 'x'.repeat(50),
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].source).toBe(source);
+    expect(result[0].locales.nl).toEqual(['missing']);
+    // present, non-stub locales are NOT targeted — that is the whole point
+    expect(result[0].locales).not.toHaveProperty('de');
+    expect(result[0].locales).not.toHaveProperty('es');
+  });
+
+  it('marks a stubbed locale with the "stub" reason (forces a full re-translation)', () => {
+    const present = new Set([source, ...LOCALES.map((l) => sourceToTranslatedPath(source, l))]);
+    const result = listIncompleteTargets({
+      sources: [source],
+      existsSync: (p) => present.has(p),
+      readFile: (p) => (p === source ? 'A'.repeat(2000) : 'short'),
+    });
+    expect(result).toHaveLength(1);
+    for (const reasons of Object.values(result[0].locales)) {
+      expect(reasons).toEqual(['stub']);
+    }
+  });
+
+  it('returns nothing when every locale is complete', () => {
+    const present = new Set([source, ...LOCALES.map((l) => sourceToTranslatedPath(source, l))]);
+    const result = listIncompleteTargets({
+      sources: [source],
+      existsSync: (p) => present.has(p),
+      readFile: () => 'x'.repeat(50),
+    });
+    expect(result).toEqual([]);
   });
 });
