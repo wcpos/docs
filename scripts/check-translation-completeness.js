@@ -285,11 +285,77 @@ function listIncompleteSources({
   return incomplete;
 }
 
+
+function allEnglishJsonSourceFiles(
+  listFiles = (dirs) =>
+    execFileSync('git', ['ls-files', ...dirs], { encoding: 'utf8' })
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+) {
+  return listFiles(['i18n/en']).filter((f) => f.endsWith('.json'));
+}
+
+function jsonSourceToTranslatedPath(sourcePath, locale) {
+  if (!sourcePath.startsWith('i18n/en/')) return null;
+  return sourcePath.replace(/^i18n\/en\//, `i18n/${locale}/`);
+}
+
+function buildTranslationAudit({
+  readFile = (p) => fs.readFileSync(p, 'utf8'),
+  existsSync = fs.existsSync,
+  sources,
+  jsonSources,
+  locales = LOCALES,
+} = {}) {
+  const bySource = new Map();
+  const add = (source, locale, reason) => {
+    if (!bySource.has(source)) bySource.set(source, { source, locales: {} });
+    const entry = bySource.get(source);
+    if (!entry.locales[locale]) entry.locales[locale] = [];
+    if (!entry.locales[locale].includes(reason)) entry.locales[locale].push(reason);
+  };
+
+  const srcList = sources || allSourceDocs();
+  for (const source of srcList) {
+    if (!existsSync(source)) continue;
+    const sourceContent = readFile(source);
+    for (const locale of locales) {
+      const tp = sourceToTranslatedPath(source, locale);
+      if (!tp) continue;
+      if (!existsSync(tp)) {
+        add(source, locale, 'missing');
+        continue;
+      }
+      const translated = readFile(tp);
+      if (isStub(sourceContent, translated, locale)) add(source, locale, 'stub');
+      if (findUntranslatedProps(sourceContent, translated).length > 0) add(source, locale, 'untranslated_props');
+      if (findLeftoverProse(sourceContent, translated).length >= PROSE_FAIL_THRESHOLD) add(source, locale, 'english_prose');
+    }
+  }
+
+  const jsonList = jsonSources || allEnglishJsonSourceFiles();
+  for (const source of jsonList) {
+    if (!existsSync(source)) continue;
+    for (const locale of locales) {
+      const tp = jsonSourceToTranslatedPath(source, locale);
+      if (tp && !existsSync(tp)) add(source, locale, 'missing_json');
+    }
+  }
+
+  return [...bySource.values()].sort((a, b) => a.source.localeCompare(b.source));
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
 function main(argv = process.argv.slice(2), env = process.env) {
+  if (argv.includes('--audit-json')) {
+    process.stdout.write(JSON.stringify(buildTranslationAudit()));
+    return 0;
+  }
+
   // Self-healing sweep input: print the source docs that have a gap in any
   // locale as a JSON array on stdout (consumed by sweep-docs-translations.yml).
   // Always exits 0 — this mode reports, it does not gate.
@@ -388,6 +454,9 @@ module.exports = {
   isStub,
   findDroppedLocales,
   allSourceDocs,
+  allEnglishJsonSourceFiles,
+  jsonSourceToTranslatedPath,
+  buildTranslationAudit,
   listIncompleteSources,
   evaluateFile,
   main,
