@@ -12,6 +12,7 @@ const {
   isStub,
   listIncompleteSources,
   listIncompleteTargets,
+  buildTranslationAudit,
   LOCALES,
   main,
 } = require('../check-translation-completeness');
@@ -266,5 +267,55 @@ describe('listIncompleteTargets (sweep repair_targets)', () => {
       readFile: () => 'x'.repeat(50),
     });
     expect(result).toEqual([]);
+  });
+});
+
+
+describe('buildTranslationAudit', () => {
+  const source = 'versioned_docs/version-1.x/foo.mdx';
+
+  it('returns locale-scoped repair targets for missing, stub, and English leftovers', () => {
+    const files = new Map();
+    files.set(source, 'The Checkout Settings page controls payment gateways.\n\nEach gateway can be enabled or disabled for the POS.\n\nCash Gateway remains enabled.\n'.repeat(20));
+    files.set(sourceToTranslatedPath(source, 'es'), 'La página de ajustes controla las pasarelas de pago.\n'.repeat(20));
+    files.set(sourceToTranslatedPath(source, 'de'), 'The Checkout Settings page controls payment gateways.\n\nEach gateway can be enabled or disabled for the POS.\n\nCash Gateway remains enabled.\n'.repeat(20));
+    files.set(sourceToTranslatedPath(source, 'ja'), '短い');
+
+    const audit = buildTranslationAudit({
+      sources: [source],
+      locales: ['es', 'de', 'nl', 'ja'],
+      existsSync: (p) => files.has(p),
+      readFile: (p) => files.get(p),
+    });
+
+    expect(audit).toEqual([
+      {
+        source,
+        locales: {
+          de: ['english_prose'],
+          nl: ['missing'],
+          ja: ['stub'],
+        },
+      },
+    ]);
+  });
+
+  it('reports missing JSON chrome files as repair targets', () => {
+    const audit = buildTranslationAudit({
+      sources: [],
+      jsonSources: ['i18n/en/docusaurus-theme-classic/navbar.json'],
+      locales: ['es', 'nl'],
+      existsSync: (p) => p === 'i18n/en/docusaurus-theme-classic/navbar.json' || p === 'i18n/es/docusaurus-theme-classic/navbar.json',
+      readFile: () => '{}',
+    });
+
+    expect(audit).toEqual([
+      {
+        source: 'i18n/en/docusaurus-theme-classic/navbar.json',
+        locales: {
+          nl: ['missing_json'],
+        },
+      },
+    ]);
   });
 });

@@ -53,25 +53,26 @@ jobs:
       - name: Generate English source translations
         run: pnpm write-translations --locale en
 
-      - name: Find incomplete source docs (batched)
+      - name: Find translation repair targets (batched)
         id: gaps
         env:
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '8' }}
         run: |
           # Per-locale gaps (repair_targets shape) so the pipeline translates ONLY
-          # the locales that are missing/stubbed — not every locale, which drifts
+          # the locales that need repair — not every locale, which drifts
           # the already-complete ones. Batched by source file to bound per-run cost.
-          ALL=$(node scripts/check-translation-completeness.js --list-incomplete-targets)
-          BATCH=$(node -e 'const a=JSON.parse(process.argv[1]||"[]"); const parsed=Number.parseInt(process.env.BATCH_SIZE,10); const n=parsed>0 ? Math.min(parsed, 50) : 8; process.stdout.write(JSON.stringify(a.slice(0,n)));' "$ALL")
-          FILES=$(node -e 'process.stdout.write(JSON.stringify(JSON.parse(process.argv[1]||"[]").map((t) => t.source)));' "$BATCH")
-          TOTAL=$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]||"[]").length));' "$ALL")
+          AUDIT_PATH="${RUNNER_TEMP:-/tmp}/translation_audit.json"
+          node scripts/check-translation-completeness.js --audit-json > "$AUDIT_PATH"
+          BATCH_TARGETS=$(node -e 'const fs=require("node:fs"); const a=JSON.parse(fs.readFileSync(process.argv[1],"utf8")||"[]"); const parsed=Number.parseInt(process.env.BATCH_SIZE,10); const n=parsed>0 ? Math.min(parsed, 50) : 8; process.stdout.write(JSON.stringify(a.slice(0,n)));' "$AUDIT_PATH")
+          BATCH_FILES=$(node -e 'const fs=require("node:fs"); const a=JSON.parse(fs.readFileSync(process.argv[1],"utf8")||"[]"); const parsed=Number.parseInt(process.env.BATCH_SIZE,10); const n=parsed>0 ? Math.min(parsed, 50) : 8; process.stdout.write(JSON.stringify([...new Set(a.slice(0,n).map((entry)=>entry.source))]));' "$AUDIT_PATH")
+          TOTAL=$(node -e 'const fs=require("node:fs"); const a=JSON.parse(fs.readFileSync(process.argv[1],"utf8")||"[]"); process.stdout.write(String(a.length));' "$AUDIT_PATH")
           {
-            echo "files=$FILES"
-            echo "repair_targets=$BATCH"
+            echo "files=$BATCH_FILES"
+            echo "repair_targets=$BATCH_TARGETS"
             echo "total=$TOTAL"
-            if [ "$FILES" = "[]" ]; then echo "has_files=false"; else echo "has_files=true"; fi
+            if [ "$BATCH_FILES" = "[]" ]; then echo "has_files=false"; else echo "has_files=true"; fi
           } >> "$GITHUB_OUTPUT"
-          echo "Incomplete sources: $TOTAL total. Forwarding this run: $FILES"
+          echo "Translation repair targets: $TOTAL total. Forwarding this run: $BATCH_TARGETS"
 
       - name: Require OpenClaw secrets
         if: steps.gaps.outputs.has_files == 'true' && github.event.inputs.dry_run != 'true'
@@ -97,7 +98,7 @@ jobs:
             base_ref: 'main',
             head_sha: process.env.GITHUB_SHA,
             changed_files: JSON.parse(process.env.FILES_JSON || '[]'),
-            // Per-locale gaps: translate only missing/stubbed locales, not all.
+            // Per-locale repair targets: translate only locales with a gap, not all.
             repair_targets: JSON.parse(process.env.REPAIR_TARGETS_JSON || '[]'),
             reason: 'completeness-sweep',
           };

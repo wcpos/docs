@@ -285,22 +285,70 @@ function listIncompleteSources({
   return incomplete;
 }
 
-// The same gaps as listIncompleteSources, shaped as Aide `repair_targets`
-// (per-source, per-locale, with a reason). Lets the self-healing sweep tell the
-// pipeline to translate ONLY the locales that actually have a gap, instead of
-// re-translating every locale and drifting the already-complete ones. The reason
-// drives the pipeline's forceRepair logic: "missing" fills a new locale; "stub"
-// forces a full re-translation of the incomplete file.
-function listIncompleteTargets(options = {}) {
-  return listIncompleteSources(options).map(({ source, gaps }) => {
-    const locales = {};
-    for (const gap of gaps) {
-      const isStubGap = gap.endsWith(' (stub)');
-      const locale = isStubGap ? gap.slice(0, -' (stub)'.length) : gap;
-      locales[locale] = [isStubGap ? 'stub' : 'missing'];
+function allEnglishJsonSourceFiles(
+  listFiles = (dirs) =>
+    execFileSync('git', ['ls-files', ...dirs], { encoding: 'utf8' })
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+) {
+  return listFiles(['i18n/en']).filter((f) => f.endsWith('.json'));
+}
+
+function jsonSourceToTranslatedPath(sourcePath, locale) {
+  if (!sourcePath.startsWith('i18n/en/')) return null;
+  return sourcePath.replace(/^i18n\/en\//, `i18n/${locale}/`);
+}
+
+function buildTranslationAudit({
+  readFile = (p) => fs.readFileSync(p, 'utf8'),
+  existsSync = fs.existsSync,
+  sources,
+  jsonSources,
+  locales = LOCALES,
+} = {}) {
+  const bySource = new Map();
+  const add = (source, locale, reason) => {
+    if (!bySource.has(source)) bySource.set(source, { source, locales: {} });
+    const entry = bySource.get(source);
+    if (!entry.locales[locale]) entry.locales[locale] = [];
+    if (!entry.locales[locale].includes(reason)) entry.locales[locale].push(reason);
+  };
+
+  const srcList = sources || allSourceDocs();
+  for (const source of srcList) {
+    if (!existsSync(source)) continue;
+    const sourceContent = readFile(source);
+    for (const locale of locales) {
+      const tp = sourceToTranslatedPath(source, locale);
+      if (!tp) continue;
+      if (!existsSync(tp)) {
+        add(source, locale, 'missing');
+        continue;
+      }
+      const translated = readFile(tp);
+      if (isStub(sourceContent, translated, locale)) add(source, locale, 'stub');
+      if (findUntranslatedProps(sourceContent, translated).length > 0) add(source, locale, 'untranslated_props');
+      if (findLeftoverProse(sourceContent, translated).length >= PROSE_FAIL_THRESHOLD) add(source, locale, 'english_prose');
     }
-    return { source, locales };
-  });
+  }
+
+  const jsonList = jsonSources || allEnglishJsonSourceFiles();
+  for (const source of jsonList) {
+    if (!existsSync(source)) continue;
+    for (const locale of locales) {
+      const tp = jsonSourceToTranslatedPath(source, locale);
+      if (tp && !existsSync(tp)) add(source, locale, 'missing_json');
+    }
+  }
+
+  return [...bySource.values()].sort((a, b) => a.source.localeCompare(b.source));
+}
+
+// The same repair target shape as --audit-json. Kept for the self-healing sweep
+// contract added by the PR while sharing the broader audit logic from main.
+function listIncompleteTargets(options = {}) {
+  return buildTranslationAudit(options);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +356,11 @@ function listIncompleteTargets(options = {}) {
 // ---------------------------------------------------------------------------
 
 function main(argv = process.argv.slice(2), env = process.env) {
+  if (argv.includes('--audit-json')) {
+    process.stdout.write(JSON.stringify(buildTranslationAudit()));
+    return 0;
+  }
+
   // Self-healing sweep input: print the source docs that have a gap in any
   // locale as a JSON array on stdout (consumed by sweep-docs-translations.yml).
   // Always exits 0 — this mode reports, it does not gate.
@@ -415,6 +468,9 @@ module.exports = {
   isStub,
   findDroppedLocales,
   allSourceDocs,
+  allEnglishJsonSourceFiles,
+  jsonSourceToTranslatedPath,
+  buildTranslationAudit,
   listIncompleteSources,
   listIncompleteTargets,
   evaluateFile,
