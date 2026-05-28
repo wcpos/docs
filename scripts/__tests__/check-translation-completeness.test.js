@@ -138,6 +138,15 @@ describe('findUntranslatedProps', () => {
       '[Pasarelas de pago](/x.png (Un ejemplo de la configuración de pasarelas de pago en WCPOS))\n';
     expect(findUntranslatedProps(src, translated)).toHaveLength(0);
   });
+
+  it('does not flag allowlisted product/platform labels (prop or title), but still flags real leaks', () => {
+    const src =
+      '<DownloadButton label="Mac (Apple Silicon)" />\n\n![iOS build](/y.png "iOS (TestFlight)")\n\n<AccordionItem question="How do I install it?">\n';
+    const hits = findUntranslatedProps(src, src);
+    expect(hits).not.toContain('label="Mac (Apple Silicon)"'); // allowlisted — kept on purpose
+    expect(hits).not.toContain('title="iOS (TestFlight)"'); // allowlisted — kept on purpose
+    expect(hits).toContain('question="How do I install it?"'); // genuine leak — still flagged
+  });
 });
 
 describe('findLeftoverProse', () => {
@@ -299,5 +308,23 @@ describe('buildTranslationAudit', () => {
         },
       },
     ]);
+  });
+
+  it('does not report allowlisted JSX prop values as English prose leaks', () => {
+    const files = new Map();
+    files.set(
+      source,
+      '<Button label="iOS (TestFlight)" />\n<Button label="Android (Beta)" />\n<Button label="Mac (Intel)" />\n<Button label="Mac (Apple Silicon)" />\n',
+    );
+    files.set(sourceToTranslatedPath(source, 'es'), files.get(source));
+
+    const audit = buildTranslationAudit({
+      sources: [source],
+      locales: ['es'],
+      existsSync: (p) => files.has(p),
+      readFile: (p) => files.get(p),
+    });
+
+    expect(audit).toEqual([]);
   });
 });
