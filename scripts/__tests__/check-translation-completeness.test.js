@@ -309,4 +309,22 @@ describe('buildTranslationAudit', () => {
       },
     ]);
   });
+
+  it('does not report allowlisted JSX prop values as English prose leaks', () => {
+    const files = new Map();
+    files.set(
+      source,
+      '<Button label="iOS (TestFlight)" />\n<Button label="Android (Beta)" />\n<Button label="Mac (Intel)" />\n<Button label="Mac (Apple Silicon)" />\n',
+    );
+    files.set(sourceToTranslatedPath(source, 'es'), files.get(source));
+
+    const audit = buildTranslationAudit({
+      sources: [source],
+      locales: ['es'],
+      existsSync: (p) => files.has(p),
+      readFile: (p) => files.get(p),
+    });
+
+    expect(audit).toEqual([]);
+  });
 });

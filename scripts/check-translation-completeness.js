@@ -78,13 +78,29 @@ function isSignificantProse(text) {
   return /\s/.test(text) && countLetters(text) >= 8 && countWords(text) >= 2;
 }
 
+// Prop/title values that are correctly identical across every locale — product,
+// platform and distribution-channel names, and literal runtime error strings the
+// app shows verbatim — so an exact match is NOT a translation leak. Without this,
+// the gate flags them and the self-healing sweep re-forwards the file every run
+// (Aide can't "translate" a proper noun), looping forever and drifting the rest of
+// the file. Keep tight and exact-match so genuine leaks still surface.
+const UNTRANSLATED_PROP_ALLOWLIST = new Set([
+  'iOS (TestFlight)',
+  'Mac (Intel)',
+  'Mac (Apple Silicon)',
+  'Android (Beta)',
+  "Cannot read properties of undefined (reading 'data')",
+]);
+
 // Reduce a line to its human-readable prose, stripping markup that is meant to
 // be identical across locales (code, paths, tags, technical attributes).
 function lineToProse(line) {
   const parts = [];
   const attrRe = new RegExp(`\\b(?:${TEXT_PROPS.join('|')})\\s*=\\s*"([^"]*)"`, 'g');
   let a;
-  while ((a = attrRe.exec(line))) parts.push(a[1]);
+  while ((a = attrRe.exec(line))) {
+    if (!UNTRANSLATED_PROP_ALLOWLIST.has(a[1])) parts.push(a[1]);
+  }
   let s = line
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ') // {/* jsx comment */}
     .replace(/<!--[\s\S]*?-->/g, ' ') // <!-- html comment -->
@@ -160,20 +176,6 @@ function markdownTitleValues(text) {
   }
   return out;
 }
-
-// Prop/title values that are correctly identical across every locale — product,
-// platform and distribution-channel names, and literal runtime error strings the
-// app shows verbatim — so an exact match is NOT a translation leak. Without this,
-// the gate flags them and the self-healing sweep re-forwards the file every run
-// (Aide can't "translate" a proper noun), looping forever and drifting the rest of
-// the file. Keep tight and exact-match so genuine leaks still surface.
-const UNTRANSLATED_PROP_ALLOWLIST = new Set([
-  'iOS (TestFlight)',
-  'Mac (Intel)',
-  'Mac (Apple Silicon)',
-  'Android (Beta)',
-  "Cannot read properties of undefined (reading 'data')",
-]);
 
 // JSX text-prop values and CommonMark image/link titles left identical to the
 // English source (multi-word).
