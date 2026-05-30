@@ -207,50 +207,5 @@ module.exports = {
         disableInDev: false,
       },
     ],
-    [
-      '@docusaurus/plugin-client-redirects',
-      {
-        redirects: [
-          // Introduction → Getting Started
-          { from: '/introduction', to: '/' },
-
-          // Installation folder
-          { from: '/installation/minimum-requirements', to: '/getting-started/installation' },
-          { from: '/installation/woocommerce-pos-pro', to: '/getting-started/pro-license' },
-          { from: '/installation/previous-versions', to: '/getting-started/previous-versions' },
-
-          // Products folder (moved to POS)
-          { from: '/products/search-filtering', to: '/pos/product-panel/search-filtering' },
-          { from: '/products/barcode-scanning', to: '/pos/product-panel/barcode-scanning' },
-
-          // Cart folder (moved to POS)
-          { from: '/cart', to: '/pos/cart' },
-          { from: '/cart/order-actions', to: '/pos/cart/order-actions' },
-
-          // Settings restructure
-          { from: '/settings/pos', to: '/settings' },
-          { from: '/settings/pos/store', to: '/settings/store' },
-          { from: '/settings/pos/store/general-settings', to: '/settings/store/general' },
-          { from: '/settings/pos/store/tax-settings', to: '/settings/store/tax' },
-          { from: '/settings/pos/store/barcode-settings', to: '/settings/store/barcode' },
-          { from: '/settings/pos/store/hotkey-settings', to: '/settings/store/hotkeys' },
-          { from: '/settings/pos/store/theme-settings', to: '/settings/store/theme' },
-          { from: '/settings/pos/section', to: '/settings' },
-          { from: '/settings/pos/section/pos-products-settings', to: '/pos/product-panel' },
-          { from: '/settings/pos/section/pos-cart-settings', to: '/pos/cart' },
-          { from: '/settings/pos/section/products-settings', to: '/products' },
-          { from: '/settings/pos/section/orders-settings', to: '/orders' },
-          { from: '/settings/pos/section/customers-settings', to: '/customers' },
-          { from: '/settings/pos/section/reports-settings', to: '/reports' },
-
-          // Templates restructure
-          { from: '/templates/receipt-templates', to: '/templates' },
-
-          // Troubleshooting → Support
-          { from: '/troubleshooting/critical-error', to: '/support/troubleshooting/critical-error' },
-          { from: '/troubleshooting/response-error', to: '/support/troubleshooting/response-error' },
-        ],
-      },
-    ],
   ],
 };

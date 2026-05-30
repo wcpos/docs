@@ -1,0 +1,291 @@
+---
+title: Thermal Printer Templates
+sidebar_label: Thermal Templates
+sidebar_position: 4
+description: Create XML-based receipt templates for ESC/POS thermal printers with Epson and Star support.
+---
+
+Thermal templates use an XML format that produces both a screen preview and ESC/POS printer commands from the same template. They use the same `{{variable}}` placeholders as [HTML templates](/receipts/html-templates) for data binding.
+
+Choose this engine if you have a receipt printer connected via the [Printer Setup](/hardware/printers).
+
+## XML Elements {#xml-elements}
+
+### Root Element {#root-element}
+
+Every thermal template starts with a `<receipt>` root:
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### Text and Formatting {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### Alignment {#alignment}
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### Text Size {#text-size}
+
+Scale text width and height independently:
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### Tabular Layout {#tabular-layout}
+
+Use `<row>` and `<col>` for aligned columns:
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+Column widths are in characters. Use `width="*"` for a flex column that absorbs remaining space — this makes templates work across different paper widths without modification:
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### Separators and Spacing {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Default single rule -->
+<line style="double" />        <!-- Printer-native double rule -->
+<line style="dashed" />        <!-- Character dashes across the width -->
+<line style="dotted" />        <!-- Character dots across the width -->
+<feed lines="2" />             <!-- Blank lines -->
+```
+
+`<line/>` (or `style="single"`) and `style="double"` print the printer's native rule. `dashed` and `dotted` print character-based separators across the active column width — useful when you want a visible separator that survives a thermal preview screenshot.
+
+### Printer Commands {#printer-commands}
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### Barcodes and QR Codes {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<barcode type="qrcode" scale="3">{{fiscal.qr_payload}}</barcode>
+```
+
+## Example: Simple 80mm Receipt {#example-simple-80mm-receipt}
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## Star-Width Columns {#star-width-columns}
+
+The `width="*"` feature makes templates paper-width-agnostic. Instead of hardcoding column widths for a specific paper size, use `*` for the column that should stretch:
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+On an 80mm printer (48 chars), the item name gets 38 characters. On a 58mm printer (32 chars), it gets 22 characters. Fixed columns stay the same size on both.
+
+## Template preview {#template-preview}
+
+The template editor shows a **live thermal preview** as you edit. The preview renders your XML as styled monospace HTML, simulating how the receipt will look on paper. Changes update after a short delay (debounced at 300ms).
+
+The same template produces both the preview and the ESC/POS printer output — no separate "print" template. Barcodes and QR codes render as inline SVGs in the preview and as native ESC/POS commands (or raster images) on the printer.
+
+## Authoring tips and pitfalls {#authoring-tips-and-pitfalls}
+
+Thermal printing has a few traps that don't exist in HTML. These are the ones authors hit most often.
+
+### Wrap styled headings in `<text>` for a line break {#wrap-styled-headings-in-text-for-a-line-break}
+
+Styled containers — `<bold>`, `<size>`, `<underline>`, `<align>` — **don't emit a line break by themselves**. Only `<text>` and block elements (`<line/>`, `<row>`, `<feed>`) do.
+
+```xml
+<!-- ❌ Bug: the heading runs together with whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Fix: wrap the inner content in <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+The bundled 80mm gallery templates use this pattern for every heading.
+
+### Avoid `<size width="2">` inside narrow rows {#avoid-size-width2-inside-narrow-rows}
+
+Double-width text **doubles the effective character count**. A headline that fits on an 80mm printer can overflow on a 42-column generic 80mm printer, and on 58mm paper it only leaves 16 characters.
+
+For prominent values (large totals, kitchen order numbers), emit a standalone scaled line instead of wrapping it inside a multi-column `<row>`:
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a bold total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+### Use `width="*"` for paper-width-agnostic layouts {#use-width-for-paper-width-agnostic-layouts}
+
+The `width="*"` (star) column absorbs the remaining width after the fixed-width columns. The same template then renders correctly on 32-column (58mm), 42-column (80mm standard), and 48-column (80mm wide) printers without modification:
+
+```xml
+<!-- Works on 58mm AND 80mm without changes -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+If you do use hard-coded numeric widths, **budget them to 42**, not 48. Rows that sum to 48 will wrap on the common 42-column 80mm printers.
+
+### Centred styled headings inside `<align>` blocks {#centred-styled-headings-inside-align-blocks}
+
+Inside `<align mode="center">` (or `right`), a direct styled heading — `<bold>`, `<size>`, `<underline>`, `<invert>` placed straight inside `<align>` — followed by another line is automatically closed onto its own line. A centred scaled store name above a centred address line prints cleanly even without the explicit `<text>` wrap.
+
+Outside an alignment block, keep the `<text>` wrap.
+
+### ESC/POS punctuation normalisation {#escpos-punctuation-normalisation}
+
+When the printer language is ESC/POS, the encoder normalises typographic punctuation to safe ASCII before writing:
+
+- En-dash, em-dash, figure dash, Unicode minus → `-`
+- Curly quotes → straight quotes
+- Non-breaking space → regular space
+
+So `Mon–Sat 9:00–18:00` and `"open"` print correctly even on printers without a Unicode font. Star printers (`star-line` / `star-prnt`) **preserve** the original typography, so author with characters the printer's font supports.
+
+### Logos and images {#logos-and-images}
+
+Use `<image>` to embed a logo:
+
+```xml
+<align mode="center">
+  <image src="data:image/png;base64,..." />
+</align>
+```
+
+WCPOS rasterises images on the client — decoding, flattening transparency to white, resizing to the printer's dot budget, converting to monochrome (Atkinson dithering for logos, threshold for barcodes) — then sending ESC/POS or Star image commands.
+
+- **Dot budgets**: 384 dots wide for 58mm, 576 dots wide for 80mm.
+- **Accepted sources**: `data:image/png` and `data:image/jpeg` data URLs, absolute `http(s)` URLs, and same-origin root-relative paths. Protocol-relative `//`, backslashes, and percent-encoded `..` traversal are rejected.
+- **Recommended format**: high-contrast PNG with a transparent or white background. JPEG works but compression artefacts can print as noise.
+- **SVG is not supported yet** for raw thermal output.
+
+### Tips {#tips}
+
+- **Start from a gallery template** — the thermal templates in the gallery use all the patterns above and are validated against real printers.
+- **Test both paper sizes** if your stores use different printers, or stick to `width="*"` columns.
+- **Use `_display` fields** for currency — they're already locale-aware.
+- **Keep it simple** — thermal has fewer formatting tools than HTML by design. Lean on `<row>` + `<col width="*">` and let the printer do its thing.
