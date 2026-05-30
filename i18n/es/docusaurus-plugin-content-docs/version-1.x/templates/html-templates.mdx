@@ -1,0 +1,180 @@
+---
+title: Plantillas HTML
+sidebar_label: Plantillas HTML
+sidebar_position: 3
+description: Cree y personalice plantillas HTML de recibos sin lógica utilizando marcadores de posición de estilo Mustache.
+---
+
+Las plantillas HTML utilizan una sintaxis sin lógica de estilo Mustache con marcadores de posición `{{variable}}`. Se renderizan en el lado del cliente dentro de la aplicación POS, lo que significa que **funcionan sin conexión** — no se necesita conexión al servidor para mostrar o imprimir un recibo.
+
+Este es el motor recomendado para la mayoría de los usuarios.
+
+## Sintaxis {#syntax}
+
+### Variables {#variables}
+
+Para insertar datos se utilizan llaves dobles:
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+Utilice las variantes `_display` para obtener valores de moneda con formato previo (por ejemplo, `$12.50` en lugar de `12.5`). Consulte la [Referencia de datos de recibo](/templates/receipt-data) para ver todos los campos disponibles.
+
+### Secciones (bucles y condicionales) {#sections-loops-and-conditionals}
+
+Utilice `{{#section}}...{{/section}}` para iterar sobre arrays o mostrar contenido de forma condicional:
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+### Secciones invertidas {#inverted-sections}
+
+Utilice `{{^section}}...{{/section}}` para mostrar contenido cuando un valor está vacío o es falso:
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+### Etiquetas localizadas {#localised-labels}
+
+Utilice `{{i18n.key}}` para etiquetas traducibles que se adaptan al idioma de la tienda:
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+## Patrones comunes {#common-patterns}
+
+### Encabezado de tienda {#store-header}
+
+El array `store.address_lines` viene preformateado para recibos — recórralo en un bucle en lugar de concatenar campos de dirección individuales.
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+### Líneas de artículos con descuentos {#line-items-with-discounts}
+
+El campo `discounts` de una línea de artículo es el monto del descuento como número positivo, o `0` cuando no hay descuento. Mustache trata `0` como falsy, por lo que `{{#discounts}}...{{/discounts}}` es la condición correcta.
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+### Resumen de impuestos {#tax-summary}
+
+```html
+{{#tax_summary}}
+<div class="tax-line">
+  <span>{{label}} ({{rate}}%)</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+### Detalles de pago {#payment-details}
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+### Códigos de barras y códigos QR {#barcodes-and-qr-codes}
+
+Utilice el `<barcode>` elemento — la misma sintaxis que las [plantillas térmicas](/templates/thermal-templates). El valor se coloca dentro del elemento; la simbología se establece en el `type` atributo. El renderizador reemplaza cada elemento con un SVG en línea.
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
+```
+
+El atributo `type` debe establecerse **literalmente** en la plantilla — no puede provenir de un marcador de posición. Un `type` de `qr` o `qrcode` se renderiza como un código QR tanto en plantillas HTML como térmicas.
+
+Si el tipo de código de barras seleccionado no puede codificar el valor (por ejemplo, datos EAN-13 no numéricos o de longitud incorrecta), la vista previa muestra un bloque `Barcode error` o `QR code error` con el valor original, de modo que se pueda corregir el valor o cambiar a un tipo compatible.
+
+Se admiten todas las [simbologías bwip-js](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types) — `code128`, `qrcode`, `ean13`, `ean8`, `upca`, `pdf417`, `datamatrix` y muchas más.
+
+## Estilos {#styling}
+
+Las plantillas sin lógica se sanitizan mediante la función de WordPress `wp_kses_post` antes del renderizado, lo que **elimina `<style>`, `<head>`, y las etiquetas de nivel de documento**. Se deben utilizar **estilos en línea** en cada elemento:
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+La misma restricción se aplica a `<script>`, `<link>` y otras etiquetas que no son de contenido — se eliminan, por lo que no se debe depender de CSS o JavaScript externos.
+
+:::tip Diseñado para blanco y negro
+Los recibos generalmente se imprimen en impresoras térmicas o láser en blanco y negro. Es importante tener esto en cuenta al diseñar — se recomienda utilizar **grosor de fuente, espaciado, contraste tipográfico y líneas horizontales** para la jerarquía en lugar de rellenos de color. Los fondos de color y el texto gris desaparecen en la salida en blanco y negro o se imprimen como medios tonos borrosos.
+:::
+
+:::tip ¿Necesita una apariencia de papel térmico sin una impresora térmica?
+Haga clic en **Usar plantilla** en la tarjeta **Recibo estrecho** de la galería — es un diseño monoespacio de 72 mm de ancho que se imprime correctamente con la impresión del navegador, impresoras térmicas compatibles con HTML (dispositivos Sunmi/Imin WebView) y papel estándar. No es apto para impresoras térmicas ESC/POS sin formato — para esas se deben utilizar las plantillas XML de **Recibo térmico simple**.
+:::
+
+## Buenas prácticas {#best-practices}
+
+- **Utilizar los campos `_display`** para todos los valores de moneda — gestionan automáticamente el formato según la configuración regional
+- **Utilizar las etiquetas `{{i18n.*}}`** en lugar de texto fijo para que las plantillas funcionen en varios idiomas
+- **Utilizar secciones para condicionales** — envolver los campos opcionales en `{{#field}}...{{/field}}` para que se oculten cuando estén vacíos
+- **Comenzar a partir de una plantilla de la galería** en lugar de crear una desde cero
+- **Probar con la vista previa** en el editor de plantillas antes de activarla
