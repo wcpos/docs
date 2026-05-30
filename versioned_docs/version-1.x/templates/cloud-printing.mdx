@@ -1,0 +1,181 @@
+---
+title: Cloud Printing
+sidebar_label: Cloud Printing
+sidebar_position: 2
+description: Print WCPOS receipts to printers that aren't attached to the till — Star CloudPRNT, Epson Server Direct Print, and PrintNode.
+---
+
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import FeatureCard from '@site/src/components/FeatureCard';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+Cloud printing lets WCPOS send receipts to a printer that isn't directly connected to the device running the till. Set it up once in WP Admin and your orders print to a kitchen printer, a back-office printer, or a printer in another room — without each device having to discover and pair with the hardware itself.
+
+## What is cloud printing? {#what-is-cloud-printing}
+
+With **local printing**, the device running the POS talks straight to the printer over USB, Bluetooth, or the local network. That's the right choice when the printer sits next to the till — see [Printer Setup](/templates/printer-setup) for connecting USB, Bluetooth, and network printers on the same device.
+
+**Cloud printing** is for everything else: a printer in a different location, on a different network, or one you want every device to share without configuring it on each one. There are two delivery models:
+
+- **Polling printers.** The printer reaches out to WCPOS over the internet on a schedule, asks "do you have anything for me?", and pulls down any waiting jobs. WCPOS never connects to the printer — the printer always starts the conversation. This is how **Star CloudPRNT** and **Epson Server Direct Print** work.
+- **PrintNode.** WCPOS submits the print job to the [PrintNode](https://www.printnode.com/) cloud service, and a small desktop client running on a computer near the printer picks it up and prints it. The printer can be almost anything that computer can already print to.
+
+:::info Why a printer that polls?
+A polling printer doesn't need an open port, a static IP, or any firewall changes — it only ever makes outbound requests. That makes it ideal for a printer at a remote site or behind a router you don't control. The trade-off is a short delay: the printer only prints when its next poll comes around.
+:::
+
+## Choosing a provider {#providers}
+
+Pick the provider that matches your hardware.
+
+<FeatureGrid>
+  <FeatureCard icon="print" title="Star CloudPRNT">
+    For Star thermal printers running the **CloudPRNT** firmware. The printer polls WCPOS and pulls jobs. Receipts are rendered to the printer's native commands. Needs a thermal template.
+  </FeatureCard>
+  <FeatureCard icon="print" title="Epson Server Direct Print">
+    For Epson ePOS printers that support **Server Direct Print**. The printer polls WCPOS and pulls jobs as ePOS-Print XML. Needs a thermal template.
+  </FeatureCard>
+  <FeatureCard icon="desktop" title="PrintNode">
+    Works with virtually any printer your computer can print to, on any OS, via the **PrintNode desktop client**. WCPOS submits a PDF, so you can use any template — including full-page HTML invoices.
+  </FeatureCard>
+</FeatureGrid>
+
+| Provider | Hardware | How jobs flow | Templates |
+|----------|----------|---------------|-----------|
+| **Star CloudPRNT** | Star thermal printer with CloudPRNT firmware | Printer polls WCPOS | Thermal only |
+| **Epson Server Direct Print** | Epson ePOS printer with Server Direct Print | Printer polls WCPOS | Thermal only |
+| **PrintNode** | Any OS-connected printer + PrintNode client | WCPOS submits a PDF to PrintNode | Any template |
+
+## Setting up a cloud printer {#setup}
+
+Cloud printers are configured once in WP Admin and shared across every device — unlike local printers, which are stored per device.
+
+Go to **POS → Settings → Cloud Print** and click **Add printer**. Give it a **name** (for example "Kitchen" or "Back office"). WCPOS derives a stable **printer ID** from the printer automatically — it never changes, so it's safe to reference from a printer's firmware configuration.
+
+After the printer exists, configure the provider end.
+
+### Star or Epson (polling printers) {#setup-polling}
+
+<Steps>
+  <StepCard number="1" title="Add the printer in WCPOS">
+
+In **POS → Settings → Cloud Print**, add a printer and choose **Star CloudPRNT** or **Epson Server Direct Print** as the provider. WCPOS generates a **poll URL** and a **one-time token** for that printer.
+
+  </StepCard>
+  <StepCard number="2" title="Copy the poll URL and token">
+
+Copy the generated poll URL and token. The **token is shown only once** — if you lose it, regenerate a new one from the printer card and update the printer with the new value.
+
+  </StepCard>
+  <StepCard number="3" title="Enter them in the printer's configuration" isLast>
+
+Open the printer's configuration page — the **CloudPRNT** settings for Star, or the **Server Direct Print** settings for Epson — and paste in the poll URL and token. Set the poll interval if the printer asks for one (a few seconds is typical). Save and reboot the printer if required.
+
+Within a poll cycle the printer checks in, and its status in WCPOS changes from **Waiting** to **Connected**.
+
+  </StepCard>
+</Steps>
+
+### PrintNode {#setup-printnode}
+
+<Steps>
+  <StepCard number="1" title="Install the PrintNode desktop client">
+
+On a computer that can already print to your target printer, install the **PrintNode client** and sign in. The client must stay running and online for jobs to print.
+
+  </StepCard>
+  <StepCard number="2" title="Get a PrintNode API key">
+
+In your PrintNode account, create an **API key**. This is what lets WCPOS submit jobs to your PrintNode account.
+
+  </StepCard>
+  <StepCard number="3" title="Enter the API key in WCPOS">
+
+Add a printer in **POS → Settings → Cloud Print**, choose **PrintNode** as the provider, and paste in the API key. WCPOS uses it to fetch the list of printers registered to your PrintNode account.
+
+  </StepCard>
+  <StepCard number="4" title="Select the printer" isLast>
+
+Choose the target printer from the list of printers reported by the PrintNode client, then save. WCPOS will submit jobs for this printer to PrintNode, and the client prints them.
+
+  </StepCard>
+</Steps>
+
+## Auto-print rules {#auto-print}
+
+Auto-print rules decide what prints where, automatically — written as plain sentences. A rule is **scope × printer × template**, for example:
+
+> Print **every order** to **Kitchen** using **Kitchen Ticket**.
+
+When a matching order completes, WCPOS renders the chosen **template** server-side into the format the printer needs and queues it — there's nothing for the cashier to do.
+
+:::note Template compatibility matters
+Star and Epson printers can only use **thermal** templates, because the job has to be rendered to the printer's native command language (ESC/POS for Star, ePOS-Print for Epson). PrintNode can use **any** template — thermal or full-page HTML — because the job is rendered to a **PDF**. If a template doesn't appear as an option for a printer, it's because the printer can't render that format. See [Thermal Templates](/templates/thermal-templates) for creating thermal layouts.
+:::
+
+## Manual printing {#manual}
+
+You don't have to wait for an auto-print rule. From the **checkout / receipt screen**, a cashier can send a receipt to a cloud printer on demand — handy for reprints or for routing a one-off ticket to a specific printer.
+
+How the receipt is produced depends on the printer:
+
+- **Star** — the receipt is rendered **on the device** and handed to the printer through CloudPRNT.
+- **Epson and PrintNode** — the receipt is rendered **on the server** from the selected order and template, then delivered to the printer.
+
+## Test print & connection status {#status}
+
+Each printer card has a **Test print** button that sends a short diagnostic so you can confirm the printer is reachable and the format is right before relying on it for real orders.
+
+The card also shows a live status:
+
+| Provider | Status | Meaning |
+|----------|--------|---------|
+| **Star / Epson** | **Waiting** | The printer hasn't checked in yet — WCPOS is waiting for its first poll. |
+| **Star / Epson** | **Connected** | The printer polled WCPOS recently and is collecting jobs. |
+| **PrintNode** | **Online** | The PrintNode service reports the client and printer are available. |
+| **PrintNode** | **Offline** | PrintNode reports the client or printer is unavailable. |
+
+## Troubleshooting {#troubleshooting}
+
+<Accordion>
+  <AccordionItem question="Printer stuck on Waiting">
+
+  A polling printer that never leaves **Waiting** has never successfully reached WCPOS. Check:
+
+  - The **poll URL and token** in the printer's firmware exactly match what WCPOS generated. A single wrong character means every poll is rejected — regenerate the token in WCPOS and re-enter it if you're unsure.
+  - The printer can actually **reach your site** over the internet (correct DNS, no firewall blocking outbound HTTPS, valid SSL certificate on your store).
+  - **Polling is enabled** in the printer's CloudPRNT / Server Direct Print configuration, with a sensible interval. Reboot the printer after changing its settings.
+
+  </AccordionItem>
+
+  <AccordionItem question="PrintNode job never prints">
+
+  The job reached PrintNode but didn't come out of the printer. Check:
+
+  - The **PrintNode desktop client is running and online** on the computer connected to the printer. If the computer is asleep or the client is closed, nothing prints.
+  - You selected the **correct printer** in WCPOS — the name must match the printer the client reports.
+  - The **API key is valid** and hasn't been revoked. Re-enter it if PrintNode shows the printer as Offline.
+
+  </AccordionItem>
+
+  <AccordionItem question="My template isn't selectable for a Star or Epson printer">
+
+  Only **thermal** templates work on Star and Epson cloud printers, because the receipt has to be rendered to ESC/POS or ePOS-Print commands. HTML and full-page templates can't be expressed in those formats, so they're hidden for these printers.
+
+  Either choose a [thermal template](/templates/thermal-templates), or use a **PrintNode** printer — PrintNode renders to PDF, so it can print any template.
+
+  </AccordionItem>
+</Accordion>
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/templates/printer-setup" title="Printer Setup" description="Connect a printer on the same device or network" />
+  <LinkCard to="/templates" title="Templates" description="The receipt template system" />
+  <LinkCard to="/templates/thermal-templates" title="Thermal Templates" description="Build ESC/POS layouts for Star and Epson printers" />
+</LinkCards>
