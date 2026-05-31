@@ -1,0 +1,180 @@
+---
+title: Modelli HTML
+sidebar_label: Modelli HTML
+sidebar_position: 3
+description: Crea e personalizza modelli HTML per ricevute senza logica usando segnaposto in stile Mustache.
+---
+
+I modelli HTML usano una sintassi senza logica in stile Mustache con segnaposto `{{variable}}`. Vengono renderizzati lato client nell'app POS, il che significa che **funzionano offline**: non è necessaria alcuna connessione al server per visualizzare o stampare una ricevuta.
+
+Questo è il motore consigliato per la maggior parte degli utenti.
+
+## Sintassi {#syntax}
+
+### Variabili {#variables}
+
+Inserisci i dati usando doppie parentesi graffe:
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+Usa le varianti `_display` per i valori di valuta preformattati (ad esempio, `$12.50` invece di `12.5`). Consulta il [riferimento dei dati della ricevuta](/receipts/receipt-data) per tutti i campi disponibili.
+
+### Sezioni (cicli e condizionali) {#sections-loops-and-conditionals}
+
+Usa `{{#section}}...{{/section}}` per scorrere gli array o mostrare contenuti in modo condizionale:
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+### Sezioni invertite {#inverted-sections}
+
+Usa `{{^section}}...{{/section}}` per mostrare il contenuto quando un valore è vuoto o falso:
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+### Etichette localizzate {#localised-labels}
+
+Usa `{{i18n.key}}` per etichette traducibili che si adattano alla lingua del negozio:
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+## Schemi comuni {#common-patterns}
+
+### Intestazione del negozio {#store-header}
+
+L'array `store.address_lines` è preformattato per le ricevute: iteralo invece di combinare singolarmente i campi dell'indirizzo.
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+### Voci di riga con sconti {#line-items-with-discounts}
+
+Il campo `discounts` di una voce di riga è l'importo dello sconto come numero positivo, oppure `0` quando non è presente alcuno sconto. Mustache tratta `0` come falso, quindi `{{#discounts}}...{{/discounts}}` è la protezione corretta.
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+### Riepilogo imposte {#tax-summary}
+
+```html
+{{#tax_summary}}
+<div class="tax-line">
+  <span>{{label}} ({{rate}}%)</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+### Dettagli di pagamento {#payment-details}
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+### Codici a barre e codici QR {#barcodes-and-qr-codes}
+
+Usa il `<barcode>` elemento — la stessa sintassi di [modelli termici](/receipts/thermal-templates). Il valore va all'interno dell'elemento; la simbologia viene impostata sull' `type` attributo. Il renderer sostituisce ogni elemento con un SVG inline.
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
+```
+
+L'attributo `type` deve essere impostato **letteralmente** nel modello: non può provenire da un segnaposto. Un `type` pari a `qr` o `qrcode` viene renderizzato come codice QR sia nei modelli HTML sia in quelli termici.
+
+Se il tipo di codice a barre selezionato non può codificare il valore (per esempio dati EAN-13 non numerici o di lunghezza errata), l'anteprima mostra un blocco `Barcode error` o `QR code error` con il valore originale, così è possibile correggere il valore o passare a un tipo compatibile.
+
+Sono supportate tutte le [simbologie bwip-js](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types): `code128`, `qrcode`, `ean13`, `ean8`, `upca`, `pdf417`, `datamatrix` e molte altre.
+
+## Stile {#styling}
+
+I modelli logicless vengono sanificati tramite WordPress `wp_kses_post` di WordPress prima del rendering, che **rimuove `<style>`, `<head>`, e i tag a livello di documento**. Usa **stili inline** su ogni elemento:
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+La stessa restrizione si applica a `<script>`, `<link>`, e altri tag non di contenuto: vengono rimossi, quindi non fare affidamento su CSS o JavaScript esterni.
+
+:::tip Progettato per il bianco e nero
+Le ricevute vengono solitamente stampate su stampanti termiche o laser in bianco e nero. Progettale tenendo conto di questo: usa **peso del carattere, spazio bianco, contrasto tipografico e linee orizzontali** per creare gerarchia, invece di riempimenti colorati. Gli sfondi colorati e il testo grigio scompaiono nell'output in bianco e nero oppure vengono stampati come mezzitoni poco nitidi.
+:::
+
+:::tip Vuoi un aspetto da carta termica senza una stampante termica?
+Fai clic su **Usa modello** nella scheda **Ricevuta stretta** della galleria: è un layout monospace largo 72mm che si stampa in modo pulito dalla stampa del browser, su stampanti termiche compatibili con HTML (dispositivi Sunmi/Imin WebView) e su carta standard. Non è adatto alle stampanti termiche ESC/POS raw: per quelle usa i modelli XML **Ricevuta termica semplice**.
+:::
+
+## Buone pratiche {#best-practices}
+
+- **Usa i campi `_display`** per tutti i valori monetari: gestiscono automaticamente la formattazione in base alla locale
+- **Usa le etichette `{{i18n.*}}`** invece di inserire testo fisso, così i modelli funzionano in più lingue
+- **Usa le sezioni per le condizioni** — racchiudi i campi facoltativi in `{{#field}}...{{/field}}` in modo che vengano nascosti quando sono vuoti
+- **Parti da un modello della galleria** invece di crearne uno da zero
+- **Testa con l'anteprima** nell'editor dei modelli prima dell'attivazione
