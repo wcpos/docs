@@ -1,0 +1,212 @@
+---
+title: "Modèle de Passerelle"
+description: "Créez une passerelle de paiement personnalisée uniquement pour le POS pour WCPOS"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+
+# Modèle de Passerelle {#gateway-template}
+
+Le Modèle de Passerelle vous donne un point de départ pour construire votre propre passerelle de paiement uniquement pour le POS. Il produit un plugin WordPress fonctionnel avec un seul fichier PHP que vous pouvez installer et personnaliser selon vos besoins.
+
+## Caractéristiques {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="code" title="Code Minimal">
+    Un seul fichier PHP avec juste l'essentiel — facile à lire et à modifier
+  </FeatureCard>
+  <FeatureCard icon="store" title="Seulement POS">
+    Désactivé par défaut lors du paiement en ligne, activé via les paramètres WCPOS
+  </FeatureCard>
+  <FeatureCard icon="terminal" title="Configuration Automatisée">
+    Un script shell s'occupe de tous les remplacements de paramètres pour vous
+  </FeatureCard>
+  <FeatureCard icon="rocket" title="Versions GitHub">
+    Poussez une version et GitHub Actions construit un ZIP téléchargeable
+  </FeatureCard>
+</FeatureGrid>
+
+## Commencer {#getting-started}
+
+<Steps>
+  <StepCard number="1" title="Cloner le Répertoire du Modèle">
+
+```bash
+git clone https://github.com/wcpos/woocommerce-gateway-template.git
+cd woocommerce-gateway-template
+```
+
+Ou cliquez sur le bouton **Utiliser ce modèle** sur le [répertoire GitHub](https://github.com/wcpos/woocommerce-gateway-template) pour créer votre propre copie.
+
+  </StepCard>
+  <StepCard number="2" title="Exécuter le Script de Configuration">
+
+```bash
+./create-gateway.sh
+```
+
+Le script demande quelques détails — le nom de votre passerelle, une brève description, et votre nom d'utilisateur GitHub — puis génère un plugin prêt à l'emploi dans un répertoire de votre choix.
+
+  </StepCard>
+  <StepCard number="3" title="Installer le Plugin">
+
+Vous avez deux options :
+
+**Option A — Copier le dossier directement** (si vous avez accès au serveur) :
+Copiez le dossier de passerelle généré dans le répertoire `wp-content/plugins/` de votre site.
+
+**Option B — Zip et téléchargez** (le plus facile pour la plupart des gens) :
+1. Compressez le dossier généré dans un fichier `.zip`
+2. Dans WordPress, allez à **Plugins > Ajouter Nouveau > Télécharger le Plugin**
+3. Choisissez le fichier zip et cliquez sur **Installer Maintenant**
+
+  </StepCard>
+  <StepCard number="4" title="Activer dans WCPOS" isLast>
+
+1. Allez à **WP Admin > WCPOS > Paramètres > Paiement**
+2. Trouvez votre nouvelle passerelle dans la liste et activez-la
+
+:::note
+La passerelle est désactivée par défaut lors du paiement en ligne. WCPOS contrôle quelles passerelles apparaissent dans le POS via ses propres paramètres.
+:::
+
+  </StepCard>
+</Steps>
+
+## Configuration Manuelle {#manual-setup}
+
+Si vous préférez ne pas utiliser le script, vous pouvez remplacer les paramètres vous-même. Ouvrez chaque fichier dans un éditeur de texte et recherchez-remplacez les éléments suivants :
+
+| Paramètre | Ce qu'il faut entrer | Exemple |
+|---|---|---|
+| `{{GATEWAY_NAME}}` | Le nom affiché de votre passerelle | Paiement en Espèces |
+| `{{GATEWAY_SLUG}}` | Un identifiant sûr pour l'URL (minuscules, traits d'union) | paiement-espèces |
+| `{{GATEWAY_DESCRIPTION}}` | Brève description de la passerelle | Accepter les paiements en espèces dans WCPOS |
+| `{{GATEWAY_DEFAULT_DESCRIPTION}}` | Texte affiché au caissier lors du paiement | Payer en espèces au point de vente |
+| `{{GITHUB_USERNAME}}` | Votre nom d'utilisateur GitHub | kilbot |
+| `{{REPO_NAME}}` | Le nom de votre répertoire | passerelle-paiement-espèces |
+| `{{AUTHOR_NAME}}` | Votre nom | kilbot |
+| `{{GATEWAY_ID}}` | Slug avec des underscores à la place des traits d'union | paiement_espèces |
+| `{{GATEWAY_CLASS_NAME}}` | Chaque mot en majuscule, joint par des underscores | Paiement_Espèces |
+| `{{GATEWAY_FUNCTION_PREFIX}}` | Identique à l'ID de la passerelle | paiement_espèces |
+
+Renommez ensuite `wcpos-{{GATEWAY_SLUG}}.php` pour correspondre à votre slug (par exemple, `wcpos-paiement-espèces.php`).
+
+:::tip
+Le script de configuration dérive automatiquement `GATEWAY_ID`, `GATEWAY_CLASS_NAME`, et `GATEWAY_FUNCTION_PREFIX` du nom et du slug, donc vous n'avez besoin de penser à ces éléments que lors de la configuration manuelle.
+:::
+
+## Comment Ça Fonctionne {#how-it-works}
+
+Le plugin généré enregistre une classe de passerelle de paiement WooCommerce. Voici les points clés à connaître :
+
+- **`$this->enabled = 'no'`** — La passerelle est masquée lors du paiement en ligne. WCPOS l'active dans le POS en fonction de vos paramètres POS.
+- **`process_payment()`** — Appelle `$order->payment_complete()`, ce qui marque la commande comme payée et gère la réduction des stocks automatiquement.
+- **`init_form_fields()`** — Définit les champs Titre et Description qui apparaissent dans les paramètres de WooCommerce.
+
+## Personnaliser Votre Passerelle {#customising-your-gateway}
+
+### Ajouter des Champs de Paiement {#adding-payment-fields}
+
+Si votre passerelle nécessite une saisie du caissier (par exemple, un numéro de référence), substituez la méthode `payment_fields()` :
+
+```php
+public function payment_fields() {
+    if ( $this->description ) {
+        echo wpautop( wptexturize( $this->description ) );
+    }
+
+    woocommerce_form_field( 'my_gateway_reference', array(
+        'type'        => 'text',
+        'label'       => __( 'Reference Number', 'your-text-domain' ),
+        'required'    => true,
+    ) );
+}
+```
+
+Vous pouvez ensuite lire la valeur soumise dans `process_payment()` via `$_POST['my_gateway_reference']`. N'oubliez pas de sanitizer toute saisie avec `sanitize_text_field()`.
+
+### Changer le Comportement de Paiement {#changing-payment-behaviour}
+
+Le modèle par défaut marque les commandes comme payées immédiatement. Si votre flux de travail nécessite un paiement ultérieur (comme un reçu), remplacez `payment_complete()` par une mise à jour de statut :
+
+```php
+public function process_payment( $order_id ) {
+    $order = wc_get_order( $order_id );
+
+    // Set to pending — the customer will pay later.
+    $order->update_status( 'pending', __( 'Awaiting payment', 'your-text-domain' ) );
+
+    // Stock must be reduced manually when not using payment_complete().
+    wc_reduce_stock_levels( $order_id );
+
+    return array(
+        'result'   => 'success',
+        'redirect' => $this->get_return_url( $order ),
+    );
+}
+```
+
+## Apporter des Changements et Mettre à Jour {#making-changes-and-updating}
+
+Après avoir installé votre passerelle, vous pouvez continuer à modifier le fichier du plugin pour ajuster la logique de paiement. Pour installer une version mise à jour :
+
+1. Modifiez `wcpos-your-slug.php` dans le dossier généré
+2. Mettez à jour le numéro de `Version:` dans l'en-tête du plugin (par exemple, `0.1.0` à `0.2.0`)
+3. Zippez le dossier et téléchargez-le à nouveau via **Plugins > Ajouter Nouveau > Télécharger le Plugin**, ou remplacez le dossier directement dans `wp-content/plugins/`
+
+:::tip
+WordPress vous demandera si vous souhaitez remplacer le plugin existant lorsque vous téléchargez un zip avec le même nom de plugin — cliquez sur **Remplacer l'actuel par celui téléchargé** pour mettre à jour.
+:::
+
+### Versions Automatisées avec GitHub {#automated-releases-with-github}
+
+Si vous poussez votre passerelle vers un répertoire GitHub, le modèle inclut un flux de travail GitHub Actions qui crée des versions automatiquement :
+
+1. Mettez à jour le numéro de `Version:` dans l'en-tête du plugin
+2. Commitez et poussez vers la branche `main`
+3. GitHub Actions détecte le changement de version et crée une nouvelle version avec un ZIP téléchargeable
+
+D'autres utilisateurs peuvent ensuite télécharger le ZIP depuis la page **Versions** de votre répertoire et l'installer comme tout plugin WordPress.
+
+## Dépannage {#troubleshooting}
+
+<Accordion>
+  <AccordionItem question="La passerelle n'apparaît pas dans le POS">
+
+  - Vérifiez que le plugin est activé dans **WP Admin > Plugins**
+  - Allez à **WP Admin > WCPOS > Paramètres > Paiement** et assurez-vous que la passerelle est activée
+  - Vérifiez que WooCommerce est installé et actif
+
+  </AccordionItem>
+
+  <AccordionItem question="La passerelle apparaît lors du paiement en ligne">
+
+  - Assurez-vous que `$this->enabled = 'no';` est défini dans le constructeur de la passerelle
+  - WCPOS remplace ce paramètre pour les demandes POS, donc la passerelle ne doit apparaître que dans le POS
+
+  </AccordionItem>
+
+  <AccordionItem question="Les commandes restent à 'En cours' au lieu de 'Complété'">
+
+  - WooCommerce définit le statut de la commande en fonction des types de produits. Les commandes contenant des produits physiques restent à "En cours" — c'est un comportement normal de WooCommerce. Seules les commandes contenant exclusivement des produits virtuels ou téléchargeables sont marquées "Complété" automatiquement.
+
+  </AccordionItem>
+</Accordion>
+
+## Ressources {#resources}
+
+- **GitHub**: [woocommerce-gateway-template](https://github.com/wcpos/woocommerce-gateway-template)
+- **API de Passerelle de Paiement WooCommerce**: [docs de WC_Payment_Gateway](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html)
+
+### Passerelles d'Exemple {#example-gateways}
+
+Ces passerelles existantes ont été construites avec la même approche et sont de bonnes références :
+
+- **[Facture par Email](/payment/gateways/email-invoice)** — Envoie un email de facture pour que le client puisse payer plus tard
+- **[Paiement Web](/payment/gateways/web-checkout)** — Redirige vers la boutique en ligne pour paiement
