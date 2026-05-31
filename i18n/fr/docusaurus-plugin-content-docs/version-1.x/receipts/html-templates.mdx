@@ -1,0 +1,180 @@
+---
+title: Modèles HTML
+sidebar_label: Modèles HTML
+sidebar_position: 3
+description: Créez et personnalisez des modèles de reçus HTML sans logique en utilisant des espaces réservés de style Mustache.
+---
+
+Les modèles HTML utilisent une syntaxe sans logique de style Mustache avec des espaces réservés `{{variable}}`. Ils sont rendus côté client dans l'application PDV, ce qui signifie qu'ils **fonctionnent hors ligne** — aucune connexion au serveur n'est nécessaire pour afficher ou imprimer un reçu.
+
+C'est le moteur recommandé pour la plupart des utilisateurs.
+
+## Syntaxe {#syntax}
+
+### Variables {#variables}
+
+Insérez des données à l'aide de doubles accolades :
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+Utilisez les variantes `_display` pour les valeurs monétaires pré-formatées (par exemple, `$12.50` au lieu de `12.5`). Consultez la [Référence des données de reçu](/receipts/receipt-data) pour tous les champs disponibles.
+
+### Sections (boucles et conditions) {#sections-loops-and-conditionals}
+
+Utilisez `{{#section}}...{{/section}}` pour parcourir des tableaux ou afficher du contenu de manière conditionnelle :
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+### Sections inversées {#inverted-sections}
+
+Utilisez `{{^section}}...{{/section}}` pour afficher du contenu lorsqu'une valeur est vide ou fausse :
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+### Libellés localisés {#localised-labels}
+
+Utilisez `{{i18n.key}}` pour les libellés traduisibles qui s'adaptent à la langue de la boutique :
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+## Modèles courants {#common-patterns}
+
+### En-tête de la boutique {#store-header}
+
+Le tableau `store.address_lines` est pré-formaté pour les reçus — parcourez-le au lieu de reconstituer les champs d'adresse individuellement.
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+### Articles avec remises {#line-items-with-discounts}
+
+Le champ `discounts` d'un article correspond au montant de la remise sous forme de nombre positif, ou `0` en l'absence de remise. Mustache traite `0` comme falsy, donc `{{#discounts}}...{{/discounts}}` est la bonne condition.
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+### Récapitulatif des taxes {#tax-summary}
+
+```html
+{{#tax_summary}}
+<div class="tax-line">
+  <span>{{label}} ({{rate}}%)</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+### Détails du paiement {#payment-details}
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+### Codes-barres et QR codes {#barcodes-and-qr-codes}
+
+Utilisez le `<barcode>` élément — la même syntaxe que [modèles thermiques](/receipts/thermal-templates). La valeur est placée à l'intérieur de l'élément ; la symbologie est définie sur `type` l'attribut. Le moteur de rendu remplace chaque élément par un SVG en ligne.
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
+```
+
+L'attribut `type` doit être défini **littéralement** dans le modèle — il ne peut pas provenir d'un espace réservé. Un `type` `qr` ou `qrcode` génère un QR code dans les modèles HTML et thermiques.
+
+Si le type de code-barres sélectionné ne peut pas encoder la valeur (par exemple, des données EAN-13 non numériques ou de longueur incorrecte), l'aperçu affiche un bloc `Barcode error` ou `QR code error` avec la valeur d'origine, afin que vous puissiez corriger la valeur ou choisir un type compatible.
+
+Toutes les [symbologies bwip-js](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types) sont prises en charge — `code128`, `qrcode`, `ean13`, `ean8`, `upca`, `pdf417`, `datamatrix`, et bien d'autres.
+
+## Mise en forme {#styling}
+
+Les modèles sans logique sont assainis par la fonction WordPress `wp_kses_post` avant le rendu, ce qui **supprime `<style>`, `<head>`, et les balises de niveau document**. Utilisez des **styles en ligne** sur chaque élément :
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+La même restriction s'applique à `<script>`, `<link>`, et autres balises non liées au contenu — elles sont supprimées, ne comptez donc pas sur du CSS ou du JavaScript externes.
+
+:::tip Conçu pour le noir et blanc
+Les reçus sont généralement imprimés sur des imprimantes thermiques ou laser en noir et blanc. Concevez vos modèles en conséquence — utilisez la **graisse de police, les espaces, le contraste typographique et les filets horizontaux** pour structurer la hiérarchie plutôt que des fonds colorés. Les arrière-plans en couleur et le texte gris disparaissent en sortie N&B ou s'impriment en demi-teintes ternes.
+:::
+
+:::tip Besoin d'un rendu papier thermique sans imprimante thermique ?
+Cliquez sur **Utiliser le modèle** sur la carte **Narrow Receipt** dans la galerie — c'est une mise en page monospace de 72 mm de large qui s'imprime correctement via l'impression navigateur, les imprimantes thermiques compatibles HTML (appareils Sunmi/Imin WebView) et le papier standard. Ne convient pas aux imprimantes thermiques ESC/POS brutes — utilisez les modèles XML **Simple Thermal Receipt** pour celles-ci.
+:::
+
+## Bonnes pratiques {#best-practices}
+
+- **Utilisez les champs `_display`** pour toutes les valeurs monétaires — ils gèrent automatiquement le formatage adapté à la locale
+- **Utilisez les libellés `{{i18n.*}}`** au lieu de coder le texte en dur afin que les modèles fonctionnent dans toutes les langues
+- **Utiliser des sections pour les conditions** — encadrer les champs optionnels avec `{{#field}}...{{/field}}` pour qu'ils soient masqués lorsqu'ils sont vides
+- **Partir d'un modèle de la galerie** plutôt que de créer de zéro
+- **Tester avec l'aperçu** dans l'éditeur de modèles avant d'activer
