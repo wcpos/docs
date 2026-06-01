@@ -1,0 +1,291 @@
+---
+title: قوالب الطابعات الحرارية
+sidebar_label: القوالب الحرارية
+sidebar_position: 4
+description: أنشئ قوالب إيصالات مستندة إلى XML لطابعات ESC/POS الحرارية مع دعم Epson وStar.
+---
+
+تستخدم القوالب الحرارية تنسيق XML ينتج معاينة على الشاشة وأوامر طابعة ESC/POS من القالب نفسه. وهي تستخدم عناصر نائب `{{variable}}` نفسها المستخدمة في [قوالب HTML](/receipts/html-templates) لربط البيانات.
+
+اختر هذا المحرك إذا كانت لديك طابعة إيصالات متصلة عبر [إعداد الطابعة](/hardware/printers).
+
+## عناصر XML {#xml-elements}
+
+### العنصر الجذري {#root-element}
+
+يبدأ كل قالب حراري بعنصر `<receipt>` جذر:
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### النص والتنسيق {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### المحاذاة {#alignment}
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### حجم النص {#text-size}
+
+تغيير عرض النص وارتفاعه بشكل مستقل:
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### تخطيط جدولي {#tabular-layout}
+
+استخدم `<row>` و `<col>` لأعمدة محاذاة:
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+تُقاس عروض الأعمدة بالأحرف. استخدم `width="*"` لعمود مرن يستوعب المساحة المتبقية — وهذا يجعل القوالب تعمل عبر عروض ورق مختلفة دون تعديل:
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### الفواصل والتباعد {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Default single rule -->
+<line style="double" />        <!-- Printer-native double rule -->
+<line style="dashed" />        <!-- Character dashes across the width -->
+<line style="dotted" />        <!-- Character dots across the width -->
+<feed lines="2" />             <!-- Blank lines -->
+```
+
+`<line/>` (أو `style="single"`) و `style="double"` تطبع خط الفصل الأصلي للطابعة. `dashed` و `dotted` تطبع فواصل قائمة على الأحرف عبر عرض العمود النشط — وهي مفيدة عندما تريد فاصلاً مرئياً يبقى ظاهراً في لقطة شاشة للمعاينة الحرارية.
+
+### أوامر الطابعة {#printer-commands}
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### الباركود ورموز QR {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<barcode type="qrcode" scale="3">{{fiscal.qr_payload}}</barcode>
+```
+
+## مثال: إيصال بسيط بقياس 80mm {#example-simple-80mm-receipt}
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## أعمدة العرض بعلامة النجمة {#star-width-columns}
+
+تجعل ميزة `width="*"` القوالب غير مرتبطة بعرض ورق محدد. بدلا من تثبيت عروض الأعمدة يدويا لمقاس ورق معين، استخدم `*` للعمود الذي يجب أن يتمدد:
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+على طابعة 80mm (48 حرفا)، يحصل اسم العنصر على 38 حرفا. وعلى طابعة 58mm (32 حرفا)، يحصل على 22 حرفا. تبقى الأعمدة الثابتة بالحجم نفسه في الحالتين.
+
+## معاينة القالب {#template-preview}
+
+يعرض محرر القوالب **معاينة حرارية مباشرة** أثناء التحرير. تعرض المعاينة XML الخاص بك بصيغة HTML منسق بخط أحادي المسافة، لمحاكاة شكل الإيصال على الورق. يتم تحديث التغييرات بعد تأخير قصير (بتأخير تجميعي قدره 300ms).
+
+ينتج القالب نفسه كلا من المعاينة ومخرجات طابعة ESC/POS، ولا يوجد قالب "طباعة" منفصل. تظهر الباركودات ورموز QR كرسومات SVG مضمنة في المعاينة، وكأوامر ESC/POS أصلية (أو صور نقطية) على الطابعة.
+
+## نصائح التأليف والمشكلات الشائعة {#authoring-tips-and-pitfalls}
+
+تتضمن الطباعة الحرارية بعض المشكلات التي لا تظهر في HTML. هذه هي المشكلات التي يواجهها المؤلفون غالبا.
+
+### لف العناوين المنسقة داخل `<text>` لإدراج فاصل أسطر {#wrap-styled-headings-in-text-for-a-line-break}
+
+الحاويات المنسقة — `<bold>`, `<size>`, `<underline>`, `<align>` — **لا تُصدر فاصل أسطر بمفردها**. فقط `<text>` وعناصر الكتل (`<line/>`, `<row>`, `<feed>`) تفعل ذلك.
+
+```xml
+<!-- ❌ Bug: the heading runs together with whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Fix: wrap the inner content in <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+تستخدم قوالب المعرض المضمنة بقياس 80mm هذا النمط لكل عنوان.
+
+### تجنب `<size width="2">` داخل الصفوف الضيقة {#avoid-size-width2-inside-narrow-rows}
+
+النص بعرض مزدوج **يضاعف عدد الأحرف الفعلي**. قد يتجاوز العنوان الذي يتسع على طابعة 80mm الحدود على طابعة 80mm عامة ذات 42 عمودا، وعلى ورق 58mm لا يترك سوى 16 حرفا.
+
+للقيم البارزة (الإجماليات الكبيرة، أرقام طلبات المطبخ)، أخرِج سطرًا مستقلاً بحجم مكبّر بدلاً من التفافه داخل تخطيط متعدد الأعمدة `<row>`:
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a bold total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+### استخدم `width="*"` للتخطيطات المستقلة عن عرض الورق {#use-width-for-paper-width-agnostic-layouts}
+
+يمتص عمود `width="*"` (النجمة) العرض المتبقي بعد الأعمدة ذات العرض الثابت. يعرض القالب نفسه بعد ذلك بشكل صحيح على طابعات 32 عمودًا (58mm)، و42 عمودًا (80mm قياسي)، و48 عمودًا (80mm عريض) دون تعديل:
+
+```xml
+<!-- Works on 58mm AND 80mm without changes -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+إذا استخدمت عروضًا رقمية مضمنة مباشرة، فاجعل **مجموعها 42**، وليس 48. الصفوف التي يبلغ مجموعها 48 ستلتف على طابعات 80mm الشائعة ذات 42 عمودًا.
+
+### عناوين منسقة في المنتصف داخل كتل `<align>` {#centred-styled-headings-inside-align-blocks}
+
+داخل `<align mode="center">` (أو `right`), يكون العنوان المنسق المباشر — `<bold>`, `<size>`, `<underline>`, `<invert>` موضوعًا مباشرةً داخل `<align>` — متبوعًا بسطر آخر يُغلق تلقائيًا في سطره الخاص. يُطبع اسم المتجر المتمركز والمكبّر فوق سطر عنوان متمركز بصورة واضحة حتى بدون `<text>` الالتفاف.
+
+خارج كتلة المحاذاة، أبقِ `<text>` الالتفاف.
+
+### تطبيع علامات الترقيم في ESC/POS {#escpos-punctuation-normalisation}
+
+عندما تكون لغة الطابعة ESC/POS، يطبّع برنامج الترميز علامات الترقيم الطباعية إلى ASCII آمن قبل الكتابة:
+
+- الشرطة القصيرة، والشرطة الطويلة، وشرطة الأرقام، وعلامة الطرح في Unicode → `-`
+- علامات الاقتباس المنحنية → علامات اقتباس مستقيمة
+- المسافة غير الفاصلة → مسافة عادية
+
+لذلك تتم طباعة `Mon–Sat 9:00–18:00` و `"open"` بشكل صحيح حتى على الطابعات التي لا تحتوي على خط Unicode. طابعات Star (`star-line` / `star-prnt`) **تحافظ** على التنسيق الطباعي الأصلي، لذا اكتب باستخدام الأحرف التي يدعمها خط الطابعة.
+
+### الشعارات والصور {#logos-and-images}
+
+استخدم `<image>` لتضمين شعار:
+
+```xml
+<align mode="center">
+  <image src="data:image/png;base64,..." />
+</align>
+```
+
+يحوّل WCPOS الصور إلى صور نقطية على العميل — من فك الترميز، وتسوية الشفافية إلى اللون الأبيض، وتغيير الحجم بما يناسب ميزانية نقاط الطابعة، والتحويل إلى أحادي اللون (تنقيط Atkinson للشعارات، والعتبة للرموز الشريطية) — ثم يرسل أوامر صور ESC/POS أو Star.
+
+- **ميزانيات النقاط**: عرض 384 نقطة لمقاس 58mm، وعرض 576 نقطة لمقاس 80mm.
+- **المصادر المقبولة**: عناوين URL للبيانات `data:image/png` و `data:image/jpeg`، وعناوين URL مطلقة من نوع `http(s)`، والمسارات النسبية إلى الجذر ضمن نفس الأصل. تُرفض عناوين URL النسبية إلى البروتوكول `//`، والشرطات المائلة العكسية، واجتياز المسارات `..` المرمّز بنسبة مئوية.
+- **التنسيق الموصى به**: PNG عالي التباين بخلفية شفافة أو بيضاء. يعمل JPEG، لكن آثار الضغط قد تُطبع كتشويش.
+- **SVG غير مدعوم بعد** للإخراج الحراري الخام.
+
+### نصائح {#tips}
+
+- **ابدأ من قالب في المعرض** — تستخدم القوالب الحرارية في المعرض كل الأنماط أعلاه، وقد جرى التحقق منها على طابعات حقيقية.
+- **اختبر مقاسي الورق كليهما** إذا كانت متاجرك تستخدم طابعات مختلفة، أو التزم بأعمدة `width="*"`.
+- **استخدم حقول `_display`** للعملات — فهي تراعي الإعدادات المحلية بالفعل.
+- **أبقِه بسيطًا** — يمتلك التنسيق الحراري أدوات تنسيق أقل من HTML بحكم التصميم. اعتمد على `<row>` + `<col width="*">` ودَع الطابعة تقوم بعملها.
