@@ -1,0 +1,180 @@
+---
+title: قوالب HTML
+sidebar_label: قوالب HTML
+sidebar_position: 3
+description: أنشئ وخصّص قوالب إيصالات HTML بلا منطق باستخدام عناصر نائبة بأسلوب Mustache.
+---
+
+تستخدم قوالب HTML صياغة بلا منطق بأسلوب Mustache مع عناصر نائبة مثل `{{variable}}`. تُعرض هذه القوالب من جهة العميل داخل تطبيق POS، ما يعني أنها **تعمل دون اتصال** — ولا يلزم اتصال بالخادم لعرض إيصال أو طباعته.
+
+هذا هو المحرّك الموصى به لمعظم المستخدمين.
+
+## الصياغة {#syntax}
+
+### المتغيرات {#variables}
+
+أدرج البيانات باستخدام قوسين معقوفين مزدوجين:
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+استخدم صيغ `_display` لقيم العملات المنسقة مسبقًا (مثلاً، `$12.50` بدلاً من `12.5`). راجع [مرجع بيانات الإيصال](/receipts/receipt-data) لكل الحقول المتاحة.
+
+### الأقسام (الحلقات والشروط) {#sections-loops-and-conditionals}
+
+استخدم `{{#section}}...{{/section}}` للتكرار عبر المصفوفات أو لعرض المحتوى بشكل شرطي:
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+### الأقسام المعكوسة {#inverted-sections}
+
+استخدم `{{^section}}...{{/section}}` لإظهار المحتوى عندما تكون القيمة فارغة أو false:
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+### التسميات المترجمة {#localised-labels}
+
+استخدم `{{i18n.key}}` للتسميات القابلة للترجمة التي تتكيف مع لغة المتجر:
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+## الأنماط الشائعة {#common-patterns}
+
+### ترويسة المتجر {#store-header}
+
+مصفوفة `store.address_lines` منسقة مسبقًا للإيصالات، لذا كرر المرور عليها بدلًا من تجميع حقول العنوان الفردية معًا.
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+### بنود السطور مع الخصومات {#line-items-with-discounts}
+
+حقل `discounts` في بند السطر هو مبلغ الخصم كرقم موجب، أو `0` عند عدم وجود خصم. يتعامل Mustache مع `0` كقيمة غير صحيحة، لذا فإن `{{#discounts}}...{{/discounts}}` هو الشرط الحارس الصحيح.
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+### ملخص الضريبة {#tax-summary}
+
+```html
+{{#tax_summary}}
+<div class="tax-line">
+  <span>{{label}} ({{rate}}%)</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+### تفاصيل الدفع {#payment-details}
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+### الرموز الشريطية ورموز QR {#barcodes-and-qr-codes}
+
+استخدم `<barcode>` العنصر — بنفس الصياغة مثل [القوالب الحرارية](/receipts/thermal-templates). توضع القيمة داخل العنصر؛ ويُحدَّد الترميز على `type` السمة. يستبدل العارض كل عنصر بملف SVG مضمّن.
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
+```
+
+يجب تعيين سمة `type` **حرفيًا** في القالب — ولا يمكن أن تأتي من عنصر نائب. تعرض قيمة `type` التي تساوي `qr` أو `qrcode` رمز QR في قوالب HTML والقوالب الحرارية.
+
+إذا تعذّر على نوع الباركود المحدد ترميز القيمة (على سبيل المثال بيانات EAN-13 غير رقمية أو بطول غير صحيح)، تعرض المعاينة كتلة `Barcode error` أو `QR code error` مع القيمة الأصلية، بحيث يمكن تصحيح القيمة أو التبديل إلى نوع متوافق.
+
+تُدعَم كل [ترميزات bwip-js](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types) — `code128`, `qrcode`, `ean13`, `ean8`, `upca`, `pdf417`, `datamatrix`, وغير ذلك الكثير.
+
+## التنسيق {#styling}
+
+تُعقَّم القوالب الخالية من المنطق عبر آلية WordPress `wp_kses_post` قبل العرض، ما يؤدي إلى **إزالة `<style>`, `<head>`، ووسوم مستوى المستند**. استخدم **الأنماط المضمنة** على كل عنصر:
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+ينطبق القيد نفسه على `<script>`, `<link>`, ووسوم أخرى لا تحتوي على محتوى — تتم إزالتها، لذا لا تعتمد على CSS أو JavaScript خارجيين.
+
+:::tip مصمم للأبيض والأسود
+تُطبع الإيصالات عادةً على طابعات حرارية أو ليزرية بالأبيض والأسود. صمّمها مع أخذ ذلك في الاعتبار — استخدم **سُمك الخط، والمساحات البيضاء، وتباين الخط، والخطوط الأفقية** لبناء التسلسل الهرمي بدلاً من التعبئات الملونة. فالخلفيات الملونة والنص الرمادي إما تختفي في مخرجات الأبيض والأسود أو تُطبع كتدرجات نقطية غير واضحة.
+:::
+
+:::tip هل تحتاج إلى مظهر ورق حراري من دون طابعة حرارية؟
+انقر على **استخدام القالب** في بطاقة **الإيصال الضيق** ضمن المعرض — فهو تخطيط أحادي المسافة بعرض 72mm يطبع بوضوح عبر طباعة المتصفح، والطابعات الحرارية الداعمة لـ HTML (أجهزة Sunmi/Imin WebView)، والورق القياسي. ليس مخصصًا للطابعات الحرارية الخام ESC/POS — استخدم قوالب XML الخاصة بـ **الإيصال الحراري البسيط** لهذه الطابعات.
+:::
+
+## أفضل الممارسات {#best-practices}
+
+- **استخدم حقول `_display`** لجميع قيم العملات — فهي تتولى تلقائيًا التنسيق المناسب للغة والمنطقة
+- **استخدم تسميات `{{i18n.*}}`** بدلاً من تضمين النص مباشرةً، حتى تعمل القوالب عبر اللغات
+- **استخدم الأقسام للشروط** — لفّ الحقول الاختيارية في `{{#field}}...{{/field}}` حتى تُخفى عندما تكون فارغة
+- **ابدأ من قالب من المعرض** بدلاً من البناء من الصفر
+- **اختبر باستخدام المعاينة** في محرر القوالب قبل التفعيل
