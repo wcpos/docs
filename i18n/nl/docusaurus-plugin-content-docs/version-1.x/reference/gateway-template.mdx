@@ -1,0 +1,222 @@
+---
+title: Gateway-sjabloon
+description: Maak een aangepaste betalingsgateway alleen voor POS voor WCPOS
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+
+# Gateway-sjabloon {#gateway-template}
+
+Het gateway-sjabloon biedt een startpunt voor het bouwen van je eigen betalingsgateway alleen voor POS. Het levert een werkende WordPress-plugin op met één PHP-bestand dat je kunt installeren en aanpassen aan je behoeften.
+
+## Functies {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="code" title="Minimale code">
+    Eén PHP-bestand met alleen de essentie — eenvoudig te lezen en aan te passen
+  </FeatureCard>
+  <FeatureCard icon="store" title="Alleen POS">
+    Standaard uitgeschakeld bij online afrekenen, ingeschakeld via de WCPOS-instellingen
+  </FeatureCard>
+  <FeatureCard icon="terminal" title="Geautomatiseerde installatie">
+    Een shellscript verwerkt alle vervanging van placeholders voor je
+  </FeatureCard>
+  <FeatureCard icon="rocket" title="GitHub-releases">
+    Publiceer een versieverhoging en GitHub Actions bouwt een downloadbaar ZIP-bestand
+  </FeatureCard>
+</FeatureGrid>
+
+## Aan de slag {#getting-started}
+
+<Steps>
+  <StepCard number="1" title="Kloon de template-repository">
+
+```bash
+git clone https://github.com/wcpos/woocommerce-gateway-template.git
+cd woocommerce-gateway-template
+```
+
+Of klik op de knop **Deze template gebruiken** in de [GitHub-repository](https://github.com/wcpos/woocommerce-gateway-template) om je eigen kopie te maken.
+
+  </StepCard>
+  <StepCard number="2" title="Voer het installatiescript uit">
+
+```bash
+./create-gateway.sh
+```
+
+Het script vraagt om enkele gegevens — de naam van je betaalgateway, een korte beschrijving en je GitHub-gebruikersnaam — en genereert vervolgens een gebruiksklare plugin in een map naar keuze.
+
+  </StepCard>
+  <StepCard number="3" title="Installeer de plugin">
+
+Je hebt twee opties:
+
+**Optie A — Kopieer de map rechtstreeks** (als je servertoegang hebt):
+Kopieer de gegenereerde map voor de betaalgateway naar de map `wp-content/plugins/` van je site.
+
+**Optie B — Zippen en uploaden** (het eenvoudigst voor de meeste mensen):
+1. Comprimeer de gegenereerde map tot een `.zip`-bestand
+2. Ga in WordPress naar **Plugins > Nieuwe plugin > Plugin uploaden**
+3. Kies het zipbestand en klik op **Nu installeren**
+
+  </StepCard>
+  <StepCard number="4" title="Inschakelen in WCPOS" isLast>
+
+1. Ga naar **WP Admin > WCPOS > Instellingen > Afrekenen**
+2. Zoek de nieuwe betaalgateway in de lijst en schakel deze in
+
+:::note
+De betaalgateway is standaard uitgeschakeld voor de reguliere webcheckout. WCPOS bepaalt via de eigen instellingen welke betaalgateways in de POS worden weergegeven.
+:::
+
+  </StepCard>
+</Steps>
+
+## Handmatige configuratie {#manual-setup}
+
+Als u het script liever niet gebruikt, kunt u de tijdelijke aanduidingen zelf vervangen. Open elk bestand in een teksteditor en zoek en vervang het volgende:
+
+| Tijdelijke aanduiding | Wat u moet invoeren | Voorbeeld |
+|---|---|---|
+| `{{GATEWAY_NAME}}` | De weergavenaam van uw betaalgateway | Contante betaling |
+| `{{GATEWAY_SLUG}}` | Een URL-veilige identificatie (kleine letters, koppeltekens) | contante-betaling |
+| `{{GATEWAY_DESCRIPTION}}` | Korte beschrijving van de gateway | Contante betalingen accepteren in WCPOS |
+| `{{GATEWAY_DEFAULT_DESCRIPTION}}` | Tekst die bij het afrekenen aan de kassamedewerker wordt getoond | Contant betalen bij het verkooppunt |
+| `{{GITHUB_USERNAME}}` | GitHub-gebruikersnaam | jan-jansen |
+| `{{REPO_NAME}}` | Repositorynaam | contante-betaling-gateway |
+| `{{AUTHOR_NAME}}` | Naam | Jan Jansen |
+| `{{GATEWAY_ID}}` | Slug met underscores in plaats van koppeltekens | contante_betaling |
+| `{{GATEWAY_CLASS_NAME}}` | Elk woord met hoofdletter, samengevoegd met underscores | Contante_Betaling |
+| `{{GATEWAY_FUNCTION_PREFIX}}` | Hetzelfde als gateway-ID | contante_betaling |
+
+Hernoem vervolgens `wcpos-{{GATEWAY_SLUG}}.php` zodat deze overeenkomt met de slug (bijv. `wcpos-cash-payment.php`).
+
+:::tip
+Het installatiescript leidt `GATEWAY_ID`, `GATEWAY_CLASS_NAME` en `GATEWAY_FUNCTION_PREFIX` automatisch af uit de naam en slug, dus deze zijn alleen relevant bij handmatige installatie.
+:::
+
+## Hoe het werkt {#how-it-works}
+
+De gegenereerde plugin registreert een WooCommerce-betaalgatewayklasse. Dit zijn de belangrijkste punten om te weten:
+
+- **`$this->enabled = 'no'`** — De gateway wordt verborgen bij afrekenen op het web. WCPOS schakelt deze in de POS in op basis van uw POS-instellingen.
+- **`process_payment()`** — Roept `$order->payment_complete()` aan, waarmee de bestelling als betaald wordt gemarkeerd en de voorraadvermindering automatisch wordt afgehandeld.
+- **`init_form_fields()`** — Definieert de velden Titel en Beschrijving die in de WooCommerce-instellingen verschijnen.
+
+## Uw gateway aanpassen {#customising-your-gateway}
+
+### Betaalvelden toevoegen {#adding-payment-fields}
+
+Als uw gateway invoer van de kassamedewerker nodig heeft (bijvoorbeeld een referentienummer), overschrijf dan de methode `payment_fields()`:
+
+```php
+public function payment_fields() {
+    if ( $this->description ) {
+        echo wpautop( wptexturize( $this->description ) );
+    }
+
+    woocommerce_form_field( 'my_gateway_reference', array(
+        'type'        => 'text',
+        'label'       => __( 'Reference Number', 'your-text-domain' ),
+        'required'    => true,
+    ) );
+}
+```
+
+Vervolgens kunt u de ingediende waarde in `process_payment()` lezen via `$_POST['my_gateway_reference']`. Vergeet niet alle invoer op te schonen met `sanitize_text_field()`.
+
+### Betaalgedrag wijzigen {#changing-payment-behaviour}
+
+De standaardsjabloon markeert bestellingen direct als betaald. Als uw workflow betaling op een later moment vereist (zoals bij een factuur), vervang dan `payment_complete()` door een statusupdate:
+
+```php
+public function process_payment( $order_id ) {
+    $order = wc_get_order( $order_id );
+
+    // Set to pending — the customer will pay later.
+    $order->update_status( 'pending', __( 'Awaiting payment', 'your-text-domain' ) );
+
+    // Stock must be reduced manually when not using payment_complete().
+    wc_reduce_stock_levels( $order_id );
+
+    return array(
+        'result'   => 'success',
+        'redirect' => $this->get_return_url( $order ),
+    );
+}
+```
+
+## Wijzigingen aanbrengen en bijwerken {#making-changes-and-updating}
+
+Na het installeren van je gateway kun je het pluginbestand blijven bewerken om de betalingslogica aan te passen. Een bijgewerkte versie installeren:
+
+1. Bewerk `wcpos-your-slug.php` in de gegenereerde map
+2. Werk het `Version:`-nummer in de pluginheader bij (bijv. van `0.1.0` naar `0.2.0`)
+3. Maak een zipbestand van de map en upload dit opnieuw via **Plugins > Nieuwe plugin > Plugin uploaden**, of vervang de map rechtstreeks in `wp-content/plugins/`
+
+:::tip
+WordPress vraagt of je de bestaande plugin wilt vervangen wanneer je een zipbestand met dezelfde pluginnaam uploadt — klik op **Huidige vervangen door geüploade** om bij te werken.
+:::
+
+### Geautomatiseerde releases met GitHub {#automated-releases-with-github}
+
+Als je je gateway naar een GitHub-repository pusht, bevat het sjabloon een GitHub Actions-workflow die automatisch releases aanmaakt:
+
+1. Werk het `Version:`-nummer in de pluginheader bij
+2. Commit en push naar de `main`-branch
+3. GitHub Actions detecteert de versiewijziging en maakt een nieuwe release met een downloadbare ZIP
+
+Andere gebruikers kunnen de ZIP vervolgens downloaden vanaf de pagina **Releases** van je repository en deze installeren zoals elke WordPress-plugin.
+
+## Probleemoplossing {#troubleshooting}
+
+<Accordion>
+  <AccordionItem question="Betaalgateway verschijnt niet in de POS">
+
+  - Controleer of de plugin is geactiveerd in **WP Admin > Plugins**
+  - Ga naar **WP Admin > WCPOS > Instellingen > Afrekenen** en zorg dat de betaalgateway is ingeschakeld
+  - Controleer of WooCommerce is geïnstalleerd en actief is
+
+  </AccordionItem>
+
+  <AccordionItem question="Betaalgateway verschijnt bij webafrekenen">
+
+  - Zorg dat `$this->enabled = 'no';` is ingesteld in de constructor van de gateway
+  - WCPOS overschrijft deze instelling voor POS-aanvragen, zodat de gateway alleen in de POS zou moeten verschijnen
+
+  </AccordionItem>
+
+  <AccordionItem question="Bestellingen blijven op 'In behandeling' staan in plaats van 'Afgerond'">
+
+  - WooCommerce stelt de bestelstatus in op basis van producttypen. Bestellingen met fysieke producten blijven op "In behandeling" staan — dit is normaal WooCommerce-gedrag. Alleen bestellingen met uitsluitend virtuele of downloadbare producten worden automatisch gemarkeerd als "Afgerond".
+
+  </AccordionItem>
+</Accordion>
+
+## Vereisten {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WCPOS">Pro-versie vereist voor POS-afrekenen</RequirementItem>
+  <RequirementItem label="WordPress">WordPress met WooCommerce geïnstalleerd</RequirementItem>
+  <RequirementItem label="PHP">Basiskennis van PHP voor het aanpassen van de gateway</RequirementItem>
+</RequirementsList>
+
+## Bronnen {#resources}
+
+- **GitHub**: [woocommerce-gateway-template](https://github.com/wcpos/woocommerce-gateway-template)
+- **WooCommerce Betaalgateway-API**: [WC_Payment_Gateway-documentatie](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html)
+
+### Voorbeeldgateways {#example-gateways}
+
+Deze bestaande gateways zijn met dezelfde aanpak gebouwd en zijn goede referenties:
+
+- **[E-mailfactuur](/payment/gateways/email-invoice)** — Stuurt een factuur per e-mail zodat de klant later kan betalen
+- **[Webcheckout](/payment/gateways/web-checkout)** — Leidt door naar de webwinkel voor betaling
