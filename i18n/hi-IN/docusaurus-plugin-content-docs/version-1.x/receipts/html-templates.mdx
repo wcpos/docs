@@ -1,0 +1,180 @@
+---
+title: HTML टेम्प्लेट
+sidebar_label: HTML टेम्प्लेट
+sidebar_position: 3
+description: Mustache-शैली placeholders का उपयोग करके लॉजिकलेस HTML रसीद टेम्प्लेट बनाएं और अनुकूलित करें।
+---
+
+HTML टेम्प्लेट `{{variable}}` placeholders के साथ लॉजिकलेस Mustache-शैली सिंटैक्स का उपयोग करते हैं। वे POS ऐप में client-side रेंडर होते हैं, जिसका मतलब है कि वे **ऑफ़लाइन काम करते हैं** — रसीद दिखाने या प्रिंट करने के लिए सर्वर कनेक्शन की ज़रूरत नहीं होती।
+
+यह अधिकांश उपयोगकर्ताओं के लिए अनुशंसित इंजन है।
+
+## सिंटैक्स {#syntax}
+
+### वेरिएबल्स {#variables}
+
+डबल कर्ली ब्रेसिज़ का उपयोग करके डेटा डालें:
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+पहले से फ़ॉर्मैट किए गए मुद्रा मानों के लिए `_display` variants का उपयोग करें (जैसे, `$12.50` के बजाय `12.5`)। सभी उपलब्ध फ़ील्ड के लिए [रसीद डेटा संदर्भ](/receipts/receipt-data) देखें।
+
+### सेक्शन (लूप और कंडीशनल) {#sections-loops-and-conditionals}
+
+arrays पर लूप चलाने या सामग्री को शर्त के आधार पर दिखाने के लिए `{{#section}}...{{/section}}` का उपयोग करें:
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+### इनवर्टेड सेक्शन {#inverted-sections}
+
+किसी मान के खाली या false होने पर सामग्री दिखाने के लिए `{{^section}}...{{/section}}` का उपयोग करें:
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+### स्थानीयकृत लेबल {#localised-labels}
+
+स्टोर की भाषा के अनुसार ढलने वाले अनुवादयोग्य लेबल के लिए `{{i18n.key}}` का उपयोग करें:
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+## सामान्य पैटर्न {#common-patterns}
+
+### स्टोर हेडर {#store-header}
+
+`store.address_lines` ऐरे रसीदों के लिए पहले से फ़ॉर्मैट किया गया है — अलग-अलग पते के फ़ील्ड जोड़ने के बजाय इस पर लूप चलाएँ।
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+### छूट वाले लाइन आइटम {#line-items-with-discounts}
+
+लाइन आइटम का `discounts` फ़ील्ड छूट की राशि को धनात्मक संख्या के रूप में दिखाता है, या छूट न होने पर `0` होता है। Mustache `0` को falsy मानता है, इसलिए `{{#discounts}}...{{/discounts}}` सही गार्ड है।
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+### कर सारांश {#tax-summary}
+
+```html
+{{#tax_summary}}
+<div class="tax-line">
+  <span>{{label}} ({{rate}}%)</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+### भुगतान विवरण {#payment-details}
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+### बारकोड और QR कोड {#barcodes-and-qr-codes}
+
+इसका उपयोग करें `<barcode>` तत्व — वही सिंटैक्स जो [थर्मल टेम्पलेट](/receipts/thermal-templates)। मान तत्व के अंदर जाता है; सिम्बोलॉजी `type` एट्रिब्यूट पर सेट की जाती है। रेंडरर प्रत्येक तत्व को इनलाइन SVG से बदल देता है।
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
+```
+
+टेम्पलेट में `type` एट्रिब्यूट को **शाब्दिक रूप से** सेट करना होगा — यह किसी प्लेसहोल्डर से नहीं आ सकता। `type` का मान `qr` या `qrcode` होने पर HTML और थर्मल टेम्पलेट, दोनों में QR कोड रेंडर होता है।
+
+यदि चुना गया बारकोड प्रकार मान को एन्कोड नहीं कर सकता (उदाहरण के लिए गैर-संख्यात्मक या गलत लंबाई वाला EAN-13 डेटा), तो प्रीव्यू मूल मान के साथ `Barcode error` या `QR code error` ब्लॉक दिखाता है, ताकि मान को ठीक किया जा सके या किसी संगत प्रकार पर स्विच किया जा सके।
+
+सभी [bwip-js सिम्बोलॉजी](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types) समर्थित हैं — `code128`, `qrcode`, `ean13`, `ean8`, `upca`, `pdf417`, `datamatrix`, और कई अन्य।
+
+## शैलीकरण {#styling}
+
+लॉजिक-रहित टेम्पलेट WordPress के `wp_kses_post` के माध्यम से रेंडरिंग से पहले सैनिटाइज़ किए जाते हैं, जिससे ** `<style>`, `<head>`, और दस्तावेज़-स्तर के टैग हट जाते हैं**। प्रत्येक तत्व पर **इनलाइन स्टाइल** का उपयोग करें:
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+यही प्रतिबंध इस पर भी लागू होता है `<script>`, `<link>`, और अन्य गैर-सामग्री टैग — उन्हें हटा दिया जाता है, इसलिए बाहरी CSS या JavaScript पर निर्भर न रहें।
+
+:::tip ब्लैक-एंड-व्हाइट के लिए डिज़ाइन किया गया
+रसीदें आमतौर पर ब्लैक-एंड-व्हाइट थर्मल या लेज़र प्रिंटर पर प्रिंट की जाती हैं। इसे ध्यान में रखकर डिज़ाइन करें — रंगीन भरावों के बजाय पदानुक्रम के लिए **फ़ॉन्ट वेट, व्हाइटस्पेस, टाइप कॉन्ट्रास्ट, और क्षैतिज रेखाओं** का उपयोग करें। रंगीन बैकग्राउंड और ग्रे टेक्स्ट B&W आउटपुट में या तो गायब हो जाते हैं या धुंधले हाफ़टोन की तरह प्रिंट होते हैं।
+:::
+
+:::tip थर्मल प्रिंटर के बिना थर्मल-पेपर जैसा रूप चाहिए?
+गैलरी में **संकीर्ण रसीद** कार्ड पर **टेम्पलेट का उपयोग करें** पर क्लिक करें — यह एक मोनोस्पेस, 72mm-चौड़ा लेआउट है जो ब्राउज़र प्रिंट, HTML-सक्षम थर्मल प्रिंटर (Sunmi/Imin WebView डिवाइस), और मानक पेपर पर साफ़-सुथरा प्रिंट होता है। कच्चे ESC/POS थर्मल प्रिंटर के लिए नहीं — उनके लिए **सरल थर्मल रसीद** XML टेम्पलेट का उपयोग करें।
+:::
+
+## सर्वोत्तम प्रथाएँ {#best-practices}
+
+- सभी मुद्रा मानों के लिए **`_display` फ़ील्ड का उपयोग करें** — वे locale-aware फ़ॉर्मैटिंग को अपने-आप संभालते हैं
+- टेक्स्ट को हार्डकोड करने के बजाय **`{{i18n.*}}` लेबल का उपयोग करें** ताकि टेम्पलेट कई भाषाओं में काम करें
+- **शर्तों के लिए सेक्शन का उपयोग करें** — वैकल्पिक फ़ील्ड को `{{#field}}...{{/field}}` में रैप करें ताकि खाली होने पर वे छिपे रहें
+- **गैलरी टेम्पलेट से शुरू करें**, स्क्रैच से बनाने के बजाय
+- **पूर्वावलोकन के साथ परीक्षण करें** टेम्पलेट संपादक में, सक्रिय करने से पहले
