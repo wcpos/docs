@@ -1,0 +1,70 @@
+---
+title: 고객 세금 ID
+sidebar_label: 고객 세금 ID
+description: WCPOS에서 고객 세금 ID를 저장하고, 기록할 플러그인 필드를 감지하며, 결제 시 세금 ID를 주문에 복사하는 방법을 설명합니다.
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+WCPOS는 고객에게 세금 ID 필드(VAT 번호, ABN, CPF, GSTIN, NIF 등)를 제공하여 구매자의 세금 식별 번호가 송장에 표시되어야 하는 B2B 판매를 지원합니다. 고객의 주문이 생성되면 WCPOS는 해당 고객의 세금 ID를 주문에 복사하여 영수증에 인쇄할 수 있도록 합니다.
+
+**세금 ID** 섹션은 **WP Admin > POS > 설정 > 일반**에서 이 필드의 감지 및 저장 방식을 제어합니다.
+
+{/* Screenshot: wp-admin-customer-tax-ids.png */}
+
+## 플러그인 및 필드 이름 {#plugins-and-field-names}
+
+많은 WooCommerce 플러그인이 이미 고객에게 VAT 또는 세금 번호 필드를 추가하고 있으며, 각 플러그인마다 서로 다른 데이터베이스 필드 이름(메타 키)을 사용합니다. 기존 고객 데이터가 마이그레이션 없이 계속 작동할 수 있도록, WCPOS는 설치된 플러그인을 감지하여 올바른 필드에 자동으로 기록합니다.
+
+WCPOS는 다음 순서로 필드 이름을 결정합니다:
+
+1. **인식된 플러그인이 활성화되어 있는 경우** — WCPOS는 해당 플러그인의 필드에 기록합니다. 감지되는 플러그인은 다음과 같습니다:
+   - WooCommerce EU VAT Number
+   - Aelia EU VAT Assistant(인증 상태 포함)
+   - EU VAT for WooCommerce (WPFactory)
+   - WooCommerce Germanized / Germanized Pro
+   - Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil
+   - NIF/CIF Spain
+2. **인식된 플러그인 없음** — WCPOS는 최근 주문에서 이미 사용 중인 VAT/CPF 등의 필드를 스캔하여 해당 필드에 기록합니다.
+3. **검색 결과 없음** — WCPOS는 합리적인 기본값으로 대체합니다(VAT 유형 ID의 경우 `_billing_vat_number`, 브라질의 경우 `_billing_cpf` / `_billing_cnpj`, 인도의 경우 `_billing_gstin` 등).
+
+### 필드 이름 직접 선택하기 {#choosing-the-field-name-yourself}
+
+감지된 필드 이름을 재정의하려면 **WP Admin > POS > 설정 > 일반**으로 이동하여 **세금 ID** 섹션을 열고 **고급: 다른 필드 이름 사용**을 펼칩니다.
+
+해당 위치의 배너에 자동 감지된 플러그인이 표시됩니다(또는 기본 내장값이 사용 중인 경우 "플러그인이 감지되지 않음"이 표시됩니다). 재정의 입력란에는 다른 플러그인에서 일반적으로 사용하는 메타 키를 제안하는 자동 완성 기능이 있습니다. 입력란을 비우면 재정의가 해제되고 자동 필드 이름으로 돌아갑니다.
+
+:::note
+이 편집기에는 고객용 세금 ID 유형만 표시됩니다. 독일 USt-IdNr.이나 네덜란드 KVK 번호와 같은 사업자 등록 식별자는 매장 수준 필드입니다 — [매장 세금 ID](/settings/wp-admin/store-tax-ids)를 참조하세요.
+:::
+
+## 세금 ID는 주문에 복사됩니다 {#tax-ids-are-copied-onto-orders}
+
+주문이 접수되면 고객의 세금 ID가 해당 주문에 **스냅샷**됩니다 — 주문에는 판매 시점에 등록되어 있던 값이 보존됩니다.
+
+- 이후에 고객의 세금 ID를 수정해도 과거 주문은 변경되지 **않습니다**.
+- 계산대에서 캐셔가 입력한 세금 ID는 해당 주문에 한해 고객 레코드의 값을 대체합니다.
+- 기존 주문을 수정할 때 세금 ID가 변경되는 것은 업데이트에 해당 항목이 명시적으로 포함된 경우뿐이며, WCPOS는 고객 레코드에서 다시 복사하지 않습니다.
+
+이를 통해 고객 정보가 변경된 후에도 과거 송장의 정확성이 유지됩니다.
+
+## 지원되는 유형 {#supported-types}
+
+EU VAT, GB VAT, SA VAT, 호주 ABN, 브라질 CPF / CNPJ, 인도 GSTIN, 이탈리아 Codice Fiscale 및 Partita IVA, 스페인 NIF, 아르헨티나 CUIT, 캐나다 GST/HST, 미국 EIN — 그 외 모든 항목에 사용할 수 있는 일반 **세금 ID**도 지원됩니다.
+
+## 세금 ID로 고객 검색 {#finding-customers-by-tax-id}
+
+POS의 고객 검색은 이전 플러그인 필드명을 포함한 세금 ID 값도 일치시키므로, 캐셔가 VAT 번호, CPF 또는 NIF로 고객을 조회할 수 있습니다.
+
+## 영수증에서 {#on-receipts}
+
+고객 세금 ID는 고객 상세 정보를 표시하는 영수증에 각 유형에 맞는 현지화된 라벨과 함께 표시됩니다. VAT 번호에는 국가 접두사가 포함됩니다(예: `DE123456789`).
+
+## 관련 항목 {#related}
+
+<LinkCards>
+  <LinkCard to="/settings/wp-admin/store-tax-ids" title="매장 세금 ID" description="영수증에 표시되는 사업체 세금 ID" />
+  <LinkCard to="/customers" title="고객" description="POS에서 고객 관리" />
+  <LinkCard to="/receipts/receipt-data" title="영수증 데이터" description="템플릿 변수 참조" />
+</LinkCards>

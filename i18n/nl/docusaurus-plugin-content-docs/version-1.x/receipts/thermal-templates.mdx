@@ -1,0 +1,291 @@
+---
+title: Sjablonen voor thermische printers
+sidebar_label: Thermische sjablonen
+sidebar_position: 4
+description: Maak op XML gebaseerde bonnensjablonen voor ESC/POS-thermische printers met ondersteuning voor Epson en Star.
+---
+
+Thermische sjablonen gebruiken een XML-indeling die vanuit hetzelfde sjabloon zowel een schermvoorbeeld als ESC/POS-printeropdrachten produceert. Ze gebruiken dezelfde `{{variable}}`-placeholders als [HTML-sjablonen](/receipts/html-templates) voor gegevensbinding.
+
+Kies deze engine als er een bonprinter is verbonden via de [Printerconfiguratie](/hardware/printers).
+
+## XML-elementen {#xml-elements}
+
+### Rootelement {#root-element}
+
+Elk thermisch sjabloon begint met een `<receipt>` hoofdelement:
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### Tekst en opmaak {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### Uitlijning {#alignment}
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### Tekstgrootte {#text-size}
+
+Schaal tekstbreedte en -hoogte afzonderlijk:
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### Tabelindeling {#tabular-layout}
+
+Gebruik `<row>` en `<col>` voor uitgelijnde kolommen:
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+Kolombreedtes worden opgegeven in tekens. Gebruik `width="*"` voor een flexkolom die de resterende ruimte opvult — zo werken sjablonen zonder aanpassingen met verschillende papierbreedtes:
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### Scheidingslijnen en afstand {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Default single rule -->
+<line style="double" />        <!-- Printer-native double rule -->
+<line style="dashed" />        <!-- Character dashes across the width -->
+<line style="dotted" />        <!-- Character dots across the width -->
+<feed lines="2" />             <!-- Blank lines -->
+```
+
+`<line/>` (of `style="single"`) en `style="double"` drukken de ingebouwde lijn van de printer af. `dashed` en `dotted` drukken scheidingstekens op basis van tekens af over de actieve kolombreedte — handig wanneer u een zichtbare scheidingslijn wilt die behouden blijft in een screenshot van een thermische voorbeeldweergave.
+
+### Printercommando's {#printer-commands}
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### Barcodes en QR-codes {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<barcode type="qrcode" scale="3">{{fiscal.qr_payload}}</barcode>
+```
+
+## Voorbeeld: eenvoudige 80mm-bon {#example-simple-80mm-receipt}
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## Kolommen met sterbreedte {#star-width-columns}
+
+De functie `width="*"` maakt sjablonen onafhankelijk van de papierbreedte. In plaats van kolombreedtes vast te coderen voor een specifiek papierformaat, gebruikt u `*` voor de kolom die moet meerekken:
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+Op een 80mm-printer (48 tekens) krijgt de artikelnaam 38 tekens. Op een 58mm-printer (32 tekens) krijgt deze 22 tekens. Kolommen met vaste breedte blijven op beide even groot.
+
+## Sjabloonvoorbeeld {#template-preview}
+
+De sjablooneditor toont tijdens het bewerken een **live thermisch voorbeeld**. Het voorbeeld rendert uw XML als opgemaakte monospace-HTML en simuleert hoe de bon er op papier uitziet. Wijzigingen worden na een korte vertraging bijgewerkt (debounced op 300ms).
+
+Hetzelfde sjabloon produceert zowel het voorbeeld als de ESC/POS-printeruitvoer — geen afzonderlijk "afdruk"-sjabloon. Barcodes en QR-codes worden in het voorbeeld als inline SVG's gerenderd en op de printer als native ESC/POS-commando's (of rasterafbeeldingen).
+
+## Tips en valkuilen bij het schrijven {#authoring-tips-and-pitfalls}
+
+Thermisch afdrukken heeft een paar valkuilen die in HTML niet bestaan. Dit zijn de punten waar auteurs het vaakst tegenaan lopen.
+
+### Plaats opgemaakte koppen in `<text>` voor een regeleinde {#wrap-styled-headings-in-text-for-a-line-break}
+
+Gestileerde containers — `<bold>`, `<size>`, `<underline>`, `<align>` — **voegen zelf geen regeleinde toe**. Alleen `<text>` en blokelementen (`<line/>`, `<row>`, `<feed>`) doen dat.
+
+```xml
+<!-- ❌ Bug: the heading runs together with whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Fix: wrap the inner content in <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+De meegeleverde 80mm-galerijsjablonen gebruiken dit patroon voor elke kop.
+
+### Vermijd `<size width="2">` binnen smalle rijen {#avoid-size-width2-inside-narrow-rows}
+
+Tekst met dubbele breedte **verdubbelt het effectieve aantal tekens**. Een kop die op een 80mm-printer past, kan overlopen op een generieke 80mm-printer met 42 kolommen, en op 58mm-papier blijven er slechts 16 tekens over.
+
+Gebruik voor opvallende waarden (grote totalen, keukenbestelnummers) een afzonderlijke geschaalde regel in plaats van deze binnen een meerkolomselement te plaatsen `<row>`:
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a bold total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+### Gebruik `width="*"` voor lay-outs die onafhankelijk zijn van de papierbreedte {#use-width-for-paper-width-agnostic-layouts}
+
+De kolom `width="*"` (ster) neemt de resterende breedte op nadat de kolommen met vaste breedte zijn geplaatst. Dezelfde template wordt dan zonder aanpassingen correct weergegeven op printers met 32 kolommen (58mm), 42 kolommen (80mm standaard) en 48 kolommen (80mm breed):
+
+```xml
+<!-- Works on 58mm AND 80mm without changes -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+Als u toch hardgecodeerde numerieke breedtes gebruikt, **reken dan met 42**, niet met 48. Rijen waarvan de som 48 is, lopen door op de gangbare 80mm-printers met 42 kolommen.
+
+### Gecentreerde gestileerde koppen binnen `<align>`-blokken {#centred-styled-headings-inside-align-blocks}
+
+Binnen `<align mode="center">` (of `right`), een direct gestileerde kop — `<bold>`, `<size>`, `<underline>`, `<invert>` rechtstreeks binnenin geplaatst `<align>` — gevolgd door een andere regel wordt automatisch op een eigen regel afgesloten. Een gecentreerde, geschaalde winkelnaam boven een gecentreerde adresregel wordt netjes afgedrukt, zelfs zonder de expliciete `<text>` omsluiten.
+
+Behoud buiten een uitlijningsblok de `<text>` omsluiten.
+
+### Normalisatie van ESC/POS-interpunctie {#escpos-punctuation-normalisation}
+
+Wanneer de printertaal ESC/POS is, normaliseert de encoder typografische interpunctie naar veilige ASCII voordat er wordt geschreven:
+
+- Halflang streepje, gedachtestreepje, cijferstreepje, Unicode-minteken → `-`
+- Gekrulde aanhalingstekens → rechte aanhalingstekens
+- Niet-afbrekende spatie → gewone spatie
+
+Daardoor worden `Mon–Sat 9:00–18:00` en `"open"` correct afgedrukt, zelfs op printers zonder Unicode-lettertype. Star-printers (`star-line` / `star-prnt`) **behouden** de oorspronkelijke typografie, dus gebruik tekens die door het lettertype van de printer worden ondersteund.
+
+### Logo's en afbeeldingen {#logos-and-images}
+
+Gebruik `<image>` om een logo in te sluiten:
+
+```xml
+<align mode="center">
+  <image src="data:image/png;base64,..." />
+</align>
+```
+
+WCPOS rastert afbeeldingen op de client — decoderen, transparantie afvlakken naar wit, verkleinen naar het puntbudget van de printer, converteren naar monochroom (Atkinson-dithering voor logo's, drempelwaarde voor barcodes) — en verzendt daarna ESC/POS- of Star-afbeeldingscommando's.
+
+- **Puntbudgetten**: 384 punten breed voor 58mm, 576 punten breed voor 80mm.
+- **Geaccepteerde bronnen**: `data:image/png`- en `data:image/jpeg`-data-URL's, absolute `http(s)`-URL's en root-relatieve paden met dezelfde origin. Protocol-relatieve `//`, backslashes en percent-encoded `..`-traversal worden geweigerd.
+- **Aanbevolen formaat**: PNG met hoog contrast en een transparante of witte achtergrond. JPEG werkt, maar compressieartefacten kunnen als ruis worden afgedrukt.
+- **SVG wordt nog niet ondersteund** voor onbewerkte thermische uitvoer.
+
+### Tips {#tips}
+
+- **Begin met een galerijsjabloon** — de thermische sjablonen in de galerij gebruiken alle bovenstaande patronen en zijn gevalideerd met echte printers.
+- **Test beide papierformaten** als je winkels verschillende printers gebruiken, of houd het bij kolommen met `width="*"`.
+- **Gebruik `_display`-velden** voor valuta — ze zijn al locale-bewust.
+- **Houd het eenvoudig** — thermisch afdrukken heeft bewust minder opmaakmogelijkheden dan HTML. Maak gebruik van `<row>` + `<col width="*">` en laat de printer zijn werk doen.

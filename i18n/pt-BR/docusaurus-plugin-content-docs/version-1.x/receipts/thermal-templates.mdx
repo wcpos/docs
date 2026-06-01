@@ -1,0 +1,291 @@
+---
+title: Modelos para Impressoras Térmicas
+sidebar_label: Modelos Térmicos
+sidebar_position: 4
+description: Crie modelos de recibo baseados em XML para impressoras térmicas ESC/POS com suporte a Epson e Star.
+---
+
+Os modelos térmicos utilizam um formato XML que produz tanto uma pré-visualização na tela quanto comandos de impressora ESC/POS a partir do mesmo modelo. Eles usam os mesmos placeholders `{{variable}}` dos [modelos HTML](/receipts/html-templates) para vinculação de dados.
+
+Escolha este mecanismo se você tiver uma impressora de recibos conectada pela [Configuração de Impressoras](/hardware/printers).
+
+## Elementos XML {#xml-elements}
+
+### Elemento Raiz {#root-element}
+
+Todo modelo térmico começa com um `<receipt>` raiz:
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### Texto e Formatação {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### Alinhamento {#alignment}
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### Tamanho do Texto {#text-size}
+
+Dimensione a largura e a altura do texto de forma independente:
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### Layout Tabular {#tabular-layout}
+
+Use `<row>` e `<col>` para colunas alinhadas:
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+As larguras das colunas são em caracteres. Use `width="*"` para uma coluna flexível que absorve o espaço restante — isso faz com que os modelos funcionem em diferentes larguras de papel sem modificação:
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### Separadores e Espaçamento {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Default single rule -->
+<line style="double" />        <!-- Printer-native double rule -->
+<line style="dashed" />        <!-- Character dashes across the width -->
+<line style="dotted" />        <!-- Character dots across the width -->
+<feed lines="2" />             <!-- Blank lines -->
+```
+
+`<line/>` (ou `style="single"`) e `style="double"` imprimem a linha nativa da impressora. `dashed` e `dotted` imprimem separadores baseados em caracteres ao longo da largura ativa da coluna — útil quando você deseja um separador visível que sobreviva a uma captura de tela da pré-visualização térmica.
+
+### Comandos da Impressora {#printer-commands}
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### Códigos de Barras e QR Codes {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<barcode type="qrcode" scale="3">{{fiscal.qr_payload}}</barcode>
+```
+
+## Exemplo: Recibo Simples de 80mm {#example-simple-80mm-receipt}
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## Colunas com Largura Asterisco {#star-width-columns}
+
+O recurso `width="*"` torna os modelos independentes da largura do papel. Em vez de definir larguras de coluna fixas para um tamanho de papel específico, use `*` para a coluna que deve se expandir:
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+Em uma impressora de 80mm (48 caracteres), o nome do item ocupa 38 caracteres. Em uma impressora de 58mm (32 caracteres), ocupa 22 caracteres. As colunas fixas mantêm o mesmo tamanho em ambas.
+
+## Pré-visualização do modelo {#template-preview}
+
+O editor de modelos exibe uma **pré-visualização térmica em tempo real** enquanto você edita. A pré-visualização renderiza o XML como HTML monoespaçado estilizado, simulando a aparência do recibo no papel. As alterações são atualizadas após um breve atraso (com debounce de 300ms).
+
+O mesmo modelo produz tanto a pré-visualização quanto a saída ESC/POS para a impressora — não existe um modelo separado para "impressão". Códigos de barras e QR codes são renderizados como SVGs inline na pré-visualização e como comandos nativos ESC/POS (ou imagens rasterizadas) na impressora.
+
+## Dicas e armadilhas na criação de modelos {#authoring-tips-and-pitfalls}
+
+A impressão térmica possui algumas armadilhas que não existem em HTML. Estas são as mais comuns encontradas pelos autores.
+
+### Envolva cabeçalhos estilizados em `<text>` para uma quebra de linha {#wrap-styled-headings-in-text-for-a-line-break}
+
+Contêineres estilizados — `<bold>`, `<size>`, `<underline>`, `<align>` — **não produzem uma quebra de linha por si só**. Apenas `<text>` e elementos de bloco (`<line/>`, `<row>`, `<feed>`) produzem.
+
+```xml
+<!-- ❌ Bug: the heading runs together with whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Fix: wrap the inner content in <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+Os modelos da galeria de 80mm incluídos usam esse padrão para todos os cabeçalhos.
+
+### Evite `<size width="2">` dentro de linhas estreitas {#avoid-size-width2-inside-narrow-rows}
+
+Texto com largura dupla **dobra a contagem efetiva de caracteres**. Um título que cabe em uma impressora de 80mm pode ultrapassar o limite em uma impressora genérica de 80mm com 42 colunas, e no papel de 58mm restam apenas 16 caracteres.
+
+Para valores em destaque (totais grandes, números de pedido de cozinha), emita uma linha redimensionada independente em vez de envolvê-la dentro de um multicoluna `<row>`:
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a bold total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+### Use `width="*"` para layouts independentes da largura do papel {#use-width-for-paper-width-agnostic-layouts}
+
+A coluna `width="*"` (asterisco) absorve a largura restante após as colunas de largura fixa. O mesmo modelo é renderizado corretamente em impressoras de 32 colunas (58mm), 42 colunas (80mm padrão) e 48 colunas (80mm largo) sem modificação:
+
+```xml
+<!-- Works on 58mm AND 80mm without changes -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+Se você usar larguras numéricas fixas, **limite-as a 42**, não 48. Linhas que somam 48 serão quebradas nas impressoras 80mm de 42 colunas comuns.
+
+### Cabeçalhos estilizados centralizados dentro de blocos `<align>` {#centred-styled-headings-inside-align-blocks}
+
+Dentro de `<align mode="center">` (ou `right`), um cabeçalho estilizado direto — `<bold>`, `<size>`, `<underline>`, `<invert>` colocado diretamente dentro `<align>` — seguido por outra linha é automaticamente fechado em sua própria linha. Um nome de loja centralizado e redimensionado acima de uma linha de endereço centralizada é impresso corretamente mesmo sem o `<text>` fechamento explícito.
+
+Fora de um bloco de alinhamento, mantenha o `<text>` fechamento explícito.
+
+### Normalização de pontuação ESC/POS {#escpos-punctuation-normalisation}
+
+Quando a linguagem da impressora é ESC/POS, o codificador normaliza a pontuação tipográfica para ASCII seguro antes da escrita:
+
+- Travessão curto, travessão longo, travessão de algarismo, sinal de menos Unicode → `-`
+- Aspas curvas → aspas retas
+- Espaço não separável → espaço regular
+
+Portanto, `Mon–Sat 9:00–18:00` e `"open"` são impressos corretamente mesmo em impressoras sem fonte Unicode. Impressoras Star (`star-line` / `star-prnt`) **preservam** a tipografia original, então utilize caracteres compatíveis com a fonte da impressora.
+
+### Logotipos e imagens {#logos-and-images}
+
+Use `<image>` para incorporar um logotipo:
+
+```xml
+<align mode="center">
+  <image src="data:image/png;base64,..." />
+</align>
+```
+
+WCPOS rasteriza imagens no cliente — decodificando, achatando a transparência para branco, redimensionando para o orçamento de pontos da impressora, convertendo para monocromático (dithering Atkinson para logotipos, limiar para códigos de barras) — e então enviando comandos de imagem ESC/POS ou Star.
+
+- **Orçamento de pontos**: 384 pontos de largura para 58mm, 576 pontos de largura para 80mm.
+- **Fontes aceitas**: URLs de dados `data:image/png` e `data:image/jpeg`, URLs absolutas `http(s)` e caminhos relativos à raiz de mesma origem. URLs relativas ao protocolo `//`, barras invertidas e travessia `..` codificada em porcentagem são rejeitadas.
+- **Formato recomendado**: PNG de alto contraste com fundo transparente ou branco. JPEG funciona, mas artefatos de compressão podem imprimir como ruído.
+- **SVG ainda não é suportado** para saída térmica bruta.
+
+### Dicas {#tips}
+
+- **Comece a partir de um modelo da galeria** — os modelos térmicos na galeria utilizam todos os padrões acima e são validados em impressoras reais.
+- **Teste ambos os tamanhos de papel** se suas lojas usam impressoras diferentes, ou use colunas `width="*"`.
+- **Use campos `_display`** para moeda — eles já reconhecem a localidade.
+- **Mantenha a simplicidade** — o térmico possui menos ferramentas de formatação que HTML por design. Apoie-se em `<row>` + `<col width="*">` e deixe a impressora fazer o resto.

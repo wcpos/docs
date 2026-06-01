@@ -1,0 +1,180 @@
+---
+title: HTML-sjablonen
+sidebar_label: HTML-sjablonen
+sidebar_position: 3
+description: Maak HTML-bonsjablonen zonder logica en pas ze aan met placeholders in Mustache-stijl.
+---
+
+HTML-sjablonen gebruiken een syntaxis zonder logica in Mustache-stijl met placeholders `{{variable}}`. Ze worden aan de clientzijde in de POS-app gerenderd, wat betekent dat ze **offline werken** — er is geen serververbinding nodig om een bon weer te geven of af te drukken.
+
+Dit is de aanbevolen engine voor de meeste gebruikers.
+
+## Syntaxis {#syntax}
+
+### Variabelen {#variables}
+
+Voeg gegevens in met dubbele accolades:
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+Gebruik varianten van `_display` voor vooraf opgemaakte valutawaarden (bijv. `$12.50` in plaats van `12.5`). Zie de [Referentie voor bongegevens](/receipts/receipt-data) voor alle beschikbare velden.
+
+### Secties (lussen en voorwaarden) {#sections-loops-and-conditionals}
+
+Gebruik `{{#section}}...{{/section}}` om door arrays te lopen of inhoud voorwaardelijk weer te geven:
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+### Omgekeerde secties {#inverted-sections}
+
+Gebruik `{{^section}}...{{/section}}` om inhoud weer te geven wanneer een waarde leeg of onwaar is:
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+### Gelokaliseerde labels {#localised-labels}
+
+Gebruik `{{i18n.key}}` voor vertaalbare labels die zich aanpassen aan de taal van de winkel:
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+## Veelvoorkomende patronen {#common-patterns}
+
+### Winkelkoptekst {#store-header}
+
+De array `store.address_lines` is vooraf opgemaakt voor kassabonnen — doorloop deze in plaats van afzonderlijke adresvelden samen te voegen.
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+### Regelitems met kortingen {#line-items-with-discounts}
+
+Het veld `discounts` van een regelitem is het kortingsbedrag als positief getal, of `0` wanneer er geen korting is. Mustache behandelt `0` als onwaar, dus `{{#discounts}}...{{/discounts}}` is de juiste voorwaarde.
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+### Belastingoverzicht {#tax-summary}
+
+```html
+{{#tax_summary}}
+<div class="tax-line">
+  <span>{{label}} ({{rate}}%)</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+### Betaalgegevens {#payment-details}
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+### Barcodes en QR-codes {#barcodes-and-qr-codes}
+
+Gebruik de `<barcode>` element — dezelfde syntaxis als [thermische sjablonen](/receipts/thermal-templates). De waarde komt in het element; de symbologie wordt ingesteld op het `type` attribuut. De renderer vervangt elk element door een inline SVG.
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
+```
+
+Het attribuut `type` moet **letterlijk** in de sjabloon worden ingesteld — het kan niet uit een placeholder komen. Een `type` met waarde `qr` of `qrcode` wordt in zowel HTML- als thermische sjablonen als QR-code weergegeven.
+
+Als het geselecteerde barcodetype de waarde niet kan coderen (bijvoorbeeld niet-numerieke EAN-13-gegevens of gegevens met een verkeerde lengte), toont de voorbeeldweergave een blok `Barcode error` of `QR code error` met de oorspronkelijke waarde, zodat de waarde kan worden gecorrigeerd of naar een compatibel type kan worden overgeschakeld.
+
+Alle [bwip-js-symbologieën](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types) worden ondersteund — `code128`, `qrcode`, `ean13`, `ean8`, `upca`, `pdf417`, `datamatrix` en nog veel meer.
+
+## Opmaak {#styling}
+
+Logicless sjablonen worden opgeschoond via WordPress' `wp_kses_post` vóór het renderen, waarbij ** `<style>`, `<head>`, en tags op documentniveau** worden verwijderd. Gebruik **inline stijlen** op elk element:
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+Dezelfde beperking geldt voor `<script>`, `<link>`, en andere niet-inhoudelijke tags — ze worden verwijderd, dus vertrouw niet op externe CSS of JavaScript.
+
+:::tip Ontworpen voor zwart-wit
+Kassabonnen worden meestal afgedrukt op zwart-wit thermische printers of laserprinters. Houd daar rekening mee in het ontwerp — gebruik **lettergewicht, witruimte, typografisch contrast en horizontale lijnen** voor hiërarchie in plaats van gekleurde vlakken. Gekleurde achtergronden en grijze tekst verdwijnen op zwart-wituitvoer of worden afgedrukt als modderige halftonen.
+:::
+
+:::tip Een thermisch-papieruiterlijk nodig zonder thermische printer?
+Klik op **Sjabloon gebruiken** op de kaart **Smalle kassabon** in de galerie — dit is een monospace lay-out van 72mm breed die netjes wordt afgedrukt via browserafdrukken, HTML-compatibele thermische printers (Sunmi/Imin WebView-apparaten) en standaardpapier. Niet bedoeld voor raw ESC/POS thermische printers — gebruik daarvoor de XML-sjablonen **Eenvoudige thermische kassabon**.
+:::
+
+## Aanbevolen werkwijzen {#best-practices}
+
+- **Gebruik velden met `_display`** voor alle valutawaarden — ze verwerken locale-bewuste opmaak automatisch
+- **Gebruik labels met `{{i18n.*}}`** in plaats van tekst hard te coderen, zodat sjablonen in meerdere talen werken
+- **Gebruik secties voor voorwaarden** — plaats optionele velden in `{{#field}}...{{/field}}` zodat ze worden verborgen wanneer ze leeg zijn
+- **Begin met een galerijsjabloon** in plaats van vanaf nul te bouwen
+- **Test met de voorbeeldweergave** in de sjablooneditor voordat u activeert

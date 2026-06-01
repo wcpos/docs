@@ -1,0 +1,291 @@
+---
+title: Vorlagen für Thermodrucker
+sidebar_label: Thermovorlagen
+sidebar_position: 4
+description: XML-basierte Belegvorlagen für ESC/POS-Thermodrucker mit Unterstützung für Epson und Star erstellen.
+---
+
+Thermovorlagen verwenden ein XML-Format, das aus derselben Vorlage sowohl eine Bildschirmvorschau als auch ESC/POS-Druckerbefehle erzeugt. Sie verwenden dieselben `{{variable}}`-Platzhalter wie [HTML-Vorlagen](/receipts/html-templates) für die Datenbindung.
+
+Wählen Sie diese Engine, wenn ein Belegdrucker über die [Druckereinrichtung](/hardware/printers) verbunden ist.
+
+## XML-Elemente {#xml-elements}
+
+### Stammelement {#root-element}
+
+Jede Thermovorlage beginnt mit einem `<receipt>` Stammelement:
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### Text und Formatierung {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### Ausrichtung {#alignment}
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### Textgröße {#text-size}
+
+Textbreite und -höhe unabhängig skalieren:
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### Tabellarisches Layout {#tabular-layout}
+
+Verwenden Sie `<row>` und `<col>` für ausgerichtete Spalten:
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+Spaltenbreiten werden in Zeichen angegeben. Verwenden Sie `width="*"` für eine flexible Spalte, die den verbleibenden Platz aufnimmt — so funktionieren Vorlagen ohne Anpassung mit unterschiedlichen Papierbreiten:
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### Trennlinien und Abstände {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Default single rule -->
+<line style="double" />        <!-- Printer-native double rule -->
+<line style="dashed" />        <!-- Character dashes across the width -->
+<line style="dotted" />        <!-- Character dots across the width -->
+<feed lines="2" />             <!-- Blank lines -->
+```
+
+`<line/>` (oder `style="single"`) und `style="double"` geben die native Trennlinie des Druckers aus. `dashed` und `dotted` geben zeichenbasierte Trennlinien über die aktive Spaltenbreite aus — nützlich, wenn Sie eine sichtbare Trennlinie wünschen, die in einem Screenshot der Thermovorschau erhalten bleibt.
+
+### Druckerbefehle {#printer-commands}
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### Barcodes und QR-Codes {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<barcode type="qrcode" scale="3">{{fiscal.qr_payload}}</barcode>
+```
+
+## Beispiel: Einfacher 80mm-Beleg {#example-simple-80mm-receipt}
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## Spalten mit Sternbreite {#star-width-columns}
+
+Die Funktion `width="*"` macht Vorlagen unabhängig von der Papierbreite. Anstatt Spaltenbreiten für eine bestimmte Papiergröße fest zu codieren, verwenden Sie `*` für die Spalte, die sich strecken soll:
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+Auf einem 80mm-Drucker (48 Zeichen) erhält der Artikelname 38 Zeichen. Auf einem 58mm-Drucker (32 Zeichen) erhält er 22 Zeichen. Feste Spalten behalten auf beiden dieselbe Größe.
+
+## Vorlagenvorschau {#template-preview}
+
+Der Vorlageneditor zeigt beim Bearbeiten eine **Live-Thermovorschau** an. Die Vorschau rendert Ihr XML als formatiertes Monospace-HTML und simuliert, wie der Beleg auf Papier aussehen wird. Änderungen werden nach einer kurzen Verzögerung aktualisiert (mit 300ms Debounce).
+
+Dieselbe Vorlage erzeugt sowohl die Vorschau als auch die ESC/POS-Druckerausgabe — es gibt keine separate „Druck“-Vorlage. Barcodes und QR-Codes werden in der Vorschau als Inline-SVGs und auf dem Drucker als native ESC/POS-Befehle (oder Rasterbilder) gerendert.
+
+## Tipps und Fallstricke beim Erstellen {#authoring-tips-and-pitfalls}
+
+Beim Thermodruck gibt es einige Stolperfallen, die es in HTML nicht gibt. Diese treten beim Erstellen am häufigsten auf.
+
+### Formatierte Überschriften für einen Zeilenumbruch in `<text>` einschließen {#wrap-styled-headings-in-text-for-a-line-break}
+
+Formatierte Container — `<bold>`, `<size>`, `<underline>`, `<align>` — **geben für sich allein keinen Zeilenumbruch aus**. Nur `<text>` und Blockelemente (`<line/>`, `<row>`, `<feed>`) tun das.
+
+```xml
+<!-- ❌ Bug: the heading runs together with whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Fix: wrap the inner content in <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+Die mitgelieferten 80mm-Galerievorlagen verwenden dieses Muster für jede Überschrift.
+
+### Vermeiden Sie `<size width="2">` in schmalen Zeilen {#avoid-size-width2-inside-narrow-rows}
+
+Text mit doppelter Breite **verdoppelt die effektive Zeichenanzahl**. Eine Überschrift, die auf einen 80mm-Drucker passt, kann auf einem generischen 80mm-Drucker mit 42 Spalten überlaufen, und auf 58mm-Papier bleiben nur 16 Zeichen.
+
+Für hervorgehobene Werte (große Gesamtsummen, Küchen-Bestellnummern) eine eigenständige skalierte Zeile ausgeben, statt sie in einer mehrspaltigen Zeile umbrechen zu lassen `<row>`:
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a bold total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+### `width="*"` für papierbreitenunabhängige Layouts verwenden {#use-width-for-paper-width-agnostic-layouts}
+
+Die Spalte `width="*"` (Stern) nimmt die verbleibende Breite auf, nachdem die Spalten mit fester Breite berücksichtigt wurden. Dieselbe Vorlage wird dadurch ohne Anpassung korrekt auf Druckern mit 32 Spalten (58mm), 42 Spalten (80mm Standard) und 48 Spalten (80mm breit) ausgegeben:
+
+```xml
+<!-- Works on 58mm AND 80mm without changes -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+Wenn fest codierte numerische Breiten verwendet werden, **auf 42 auslegen**, nicht auf 48. Zeilen mit einer Summe von 48 werden auf den gängigen 80mm-Druckern mit 42 Spalten umgebrochen.
+
+### Zentrierte formatierte Überschriften in `<align>`-Blöcken {#centred-styled-headings-inside-align-blocks}
+
+Innerhalb von `<align mode="center">` (oder `right`), eine direkt formatierte Überschrift — `<bold>`, `<size>`, `<underline>`, `<invert>` direkt darin platziert `<align>` — gefolgt von einer weiteren Zeile, wird automatisch in einer eigenen Zeile geschlossen. Ein zentrierter, skalierter Filialname über einer zentrierten Adresszeile wird sauber gedruckt, auch ohne den expliziten `<text>` Umbruch.
+
+Außerhalb eines Ausrichtungsblocks behalten Sie das `<text>` Umbruch.
+
+### Normalisierung der ESC/POS-Interpunktion {#escpos-punctuation-normalisation}
+
+Wenn die Druckersprache ESC/POS ist, normalisiert der Encoder typografische Zeichensetzung vor dem Schreiben zu sicherem ASCII:
+
+- Halbgeviertstrich, Gedankenstrich, Ziffernstrich, Unicode-Minus → `-`
+- Typografische Anführungszeichen → gerade Anführungszeichen
+- Geschütztes Leerzeichen → reguläres Leerzeichen
+
+So werden `Mon–Sat 9:00–18:00` und `"open"` auch auf Druckern ohne Unicode-Schrift korrekt gedruckt. Star-Drucker (`star-line` / `star-prnt`) **behalten** die ursprüngliche Typografie bei; verwenden Sie daher Zeichen, die von der Schrift des Druckers unterstützt werden.
+
+### Logos und Bilder {#logos-and-images}
+
+Verwenden Sie `<image>` zum Einbetten eines Logos:
+
+```xml
+<align mode="center">
+  <image src="data:image/png;base64,..." />
+</align>
+```
+
+WCPOS rastert Bilder auf dem Client — Dekodieren, Transparenz auf Weiß reduzieren, an das Punktbudget des Druckers anpassen, in Monochrom umwandeln (Atkinson-Dithering für Logos, Schwellenwert für Barcodes) — und sendet anschließend ESC/POS- oder Star-Bildbefehle.
+
+- **Punktbudgets**: 384 Punkte Breite für 58mm, 576 Punkte Breite für 80mm.
+- **Akzeptierte Quellen**: Daten-URLs vom Typ `data:image/png` und `data:image/jpeg`, absolute `http(s)` URLs und gleichursprüngliche, root-relative Pfade. Protokollrelative `//`, Backslashes und prozentkodiertes `..` Traversal werden abgelehnt.
+- **Empfohlenes Format**: kontrastreiches PNG mit transparentem oder weißem Hintergrund. JPEG funktioniert, aber Kompressionsartefakte können als Störungen gedruckt werden.
+- **SVG wird noch nicht unterstützt** für rohe Thermodruck-Ausgabe.
+
+### Tipps {#tips}
+
+- **Mit einer Galerievorlage beginnen** — die Thermodruck-Vorlagen in der Galerie verwenden alle oben genannten Muster und werden mit echten Druckern validiert.
+- **Testen Sie beide Papiergrößen**, wenn Ihre Filialen unterschiedliche Drucker verwenden, oder bleiben Sie bei Spalten, die `width="*"` verwenden.
+- **Verwenden Sie Felder vom Typ `_display`** für Währungen — sie sind bereits locale-aware.
+- **Einfach halten** — Thermodruck bietet bewusst weniger Formatierungswerkzeuge als HTML. Setzen Sie auf `<row>` + `<col width="*">` und lassen Sie den Drucker die Arbeit erledigen.
