@@ -66,13 +66,62 @@ At the bottom of the screen, you may see an "Enter Demo Store" link. This connec
 
 ## Troubleshooting {#troubleshooting}
 
+:::tip First thing to check: `X-Frame-Options`
+The desktop and mobile apps use **iframes** for login, payment, and receipts. **Any** server header or plugin that sends `X-Frame-Options: DENY` or `SAMEORIGIN` will break login. This is the single most common cause of app login failures — check the login page's response headers (browser dev tools, or `curl -I https://yourstore.com/wp-login.php`) before anything else.
+:::
+
 <Accordion>
   <AccordionItem question="Can't connect to my store?">
 
   - Ensure the WCPOS plugin is installed and activated on your WordPress site
-  - Check that you're using the correct URL (include `https://` if your site uses SSL)
+  - Check that you're using the correct URL (include `https://` — the WooCommerce REST API requires SSL)
+  - Try opening `yourdomain.com/pos` in a web browser first to confirm the plugin works
   - Verify that the WooCommerce REST API is accessible
   - Check that your user account has POS access permissions
+
+  </AccordionItem>
+
+  <AccordionItem question="Login fails in the desktop or mobile app">
+
+  Most app login failures are caused by a security or caching plugin blocking the login iframe:
+
+  - **`X-Frame-Options` headers** (set by a security plugin or your server) block the login iframe — see the note above. Temporarily disable the security plugin, log in, then re-enable it (your session lasts about a week).
+  - **Security plugins** — Wordfence, Really Simple Security, WPS Hide Login, iThemes/Solid Security, and Defender Pro are common culprits. See the full list and fixes in [Plugin Conflicts](/support/troubleshooting/plugin-conflicts#security-and-login-plugins).
+  - **Wordfence 2FA** — the 2FA code field doesn't render in the login iframe. Disable 2FA for POS users for now.
+  - **Custom login URL** (e.g. WPS Hide Login) — the app can't find the login page. Use the standard `/wp-admin/` URL.
+  - **Caching plugins** can keep serving the blocked login form even after you disable the offending plugin — clear the cache, or clear the app cache / reinstall the desktop app.
+
+  </AccordionItem>
+
+  <AccordionItem question='"REST API requires authentication" or a security-plugin error on the connect screen'>
+
+  A plugin (e.g. Force Login or a JWT auth plugin) is requiring authentication for all REST API requests, so the app can't read your site's public info. The app now shows the server's actual message (e.g. _"Only authenticated users can access the REST API"_) instead of misreporting the site type.
+
+  **Fix:** configure the security plugin to allow unauthenticated access to `/wp-json/wcpos/` and `/wp-json/wc/v3/`, or disable it just long enough to complete the first connection.
+
+  </AccordionItem>
+
+  <AccordionItem question='"Does not appear to be a WordPress site" (desktop app)'>
+
+  The desktop app discovers the REST API via the HTTP `Link` header. If a plugin (commonly **Image Prioritizer** or other performance plugins) floods or truncates that header, discovery fails. **Fix:** disable image-optimisation / header-modifying performance plugins and retry.
+
+  </AccordionItem>
+
+  <AccordionItem question="The app says it needs an update / crashes after an update">
+
+  Check for a version mismatch between the app and the server plugin — the app store may have pushed an app update while the WCPOS plugin still needs updating (or vice-versa). Make sure the app and the WCPOS plugin are on the **same major version**. WCPOS v1.9.0+ apps require the WCPOS plugin to be **v1.8.0 or higher**.
+
+  </AccordionItem>
+
+  <AccordionItem question='"Cannot create fast store database" error'>
+
+  This is a race condition on first login. **Close the app completely and try again** — it usually succeeds on the second attempt.
+
+  </AccordionItem>
+
+  <AccordionItem question="Stuck on the user-selection screen (desktop app)">
+
+  After logging in you see your username but no obvious way forward. **Click your username/name** to proceed into the POS — the name itself is the button.
 
   </AccordionItem>
 
@@ -80,7 +129,8 @@ At the bottom of the screen, you may see an "Enter Demo Store" link. This connec
 
   - Try accessing `yourdomain.com/pos` in a web browser first to verify the plugin is working
   - Check your site's error logs for any issues
-  - Ensure your server meets the [minimum requirements](/getting-started/installation)
+  - Confirm your host isn't blocking the REST API — see [Hosting-Specific Notes](/support/performance/server#hosting-specific-notes)
+  - Ensure your server meets the [minimum requirements](/support/performance/server#minimum-server-requirements)
 
   </AccordionItem>
 </Accordion>
