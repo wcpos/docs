@@ -8,8 +8,58 @@ description: Optimise WordPress server performance for WCPOS including HPOS, cac
 import Image from "@theme/IdealImage";
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
 
-Server performance directly impacts the speed and responsiveness of your WCPOS application. This guide helps you monitor, diagnose, and optimise server performance using the built-in metrics and troubleshooting techniques.
+Server performance directly impacts the speed and responsiveness of your WCPOS application. The POS makes many REST API calls, so **server response time is the primary bottleneck** — POS speed depends heavily on hosting quality. This guide helps you monitor, diagnose, and optimise server performance using the built-in metrics and troubleshooting techniques.
+
+## Minimum Server Requirements {#minimum-server-requirements}
+
+For a responsive POS in production, we recommend at least:
+
+<RequirementsList>
+  <RequirementItem label="CPU">4+ CPU cores</RequirementItem>
+  <RequirementItem label="RAM">4 GB or more</RequirementItem>
+  <RequirementItem label="PHP">PHP 7.4+ (8.x recommended)</RequirementItem>
+  <RequirementItem label="Database">MySQL 8.0+ or MariaDB 11.x</RequirementItem>
+  <RequirementItem label="Storage">SSD or NVMe</RequirementItem>
+  <RequirementItem label="SSL">HTTPS is required — the WooCommerce REST API will not work without it</RequirementItem>
+</RequirementsList>
+
+:::warning Shared hosting is often not enough
+Shared hosting frequently has too few PHP workers and too little memory for POS workloads, which make many concurrent API calls. For production POS use, a **VPS or managed WordPress host** is strongly recommended. `WordPress.com` managed hosting is also known to have REST API compatibility issues (some users see only 9–10 products from large catalogues) — self-hosted `WordPress.org` is recommended for full compatibility.
+:::
+
+### Community-validated optimisation stack {#community-validated-optimisation-stack}
+
+Users report the best POS performance with this combination:
+
+- **MariaDB 11.4** (faster than MySQL for WooCommerce workloads)
+- **HPOS enabled** (see below)
+- **LiteSpeed or Redis** object caching
+- **NVMe** storage
+- **PHP OPcache** enabled
+
+## 503 Errors {#503-errors}
+
+:::important 503 errors are always server-side
+A `503 Service Unavailable` is **not a POS bug** — it means the server couldn't handle the request. Check:
+
+1. Server load and available resources
+2. PHP workers (they may be exhausted)
+3. PHP memory limit — increase to **256 MB or more**
+4. Your web host's server logs (contact your host; they can see what the application can't)
+:::
+
+## WooCommerce Version Compatibility {#woocommerce-version-compatibility}
+
+A WooCommerce update can occasionally break the POS. Always update WooCommerce on a [staging site](/support/troubleshooting/plugin-conflicts#before-you-start-use-a-staging-site) first, and keep WCPOS up to date so it includes the latest compatibility fixes.
+
+Known issues:
+
+- **WooCommerce 10.5.0** — broke product loading in the POS (symptom: only ~10 products show; barcode scanning and search stop working) and introduced an experimental product cache that can cause **postmeta bloat** and memory exhaustion. **Fix:** update WCPOS to the latest version (it includes the fix and a cleanup migration), or roll WooCommerce back to [10.4.3](https://downloads.wordpress.org/plugin/woocommerce.10.4.3.zip).
+
+If a WooCommerce update breaks the POS, roll WooCommerce back to the previous version (via the **Advanced** tab on the plugin's WordPress.org page) and report it.
 
 ## Understanding Server Metrics {#understanding-server-metrics}
 
@@ -261,6 +311,30 @@ define('WP_DEBUG_LOG', true);
 **Server Resources:**
 - Ensure adequate RAM (minimum 1GB, preferably 2GB+)
 - SSD storage provides much better database performance than traditional drives
+
+## Hosting-Specific Notes {#hosting-specific-notes}
+
+Some hosts and CDNs need configuration to let the POS reach the WooCommerce REST API:
+
+| Host / service | Issue | Fix |
+| --- | --- | --- |
+| **GoDaddy** | The website firewall blocks `/wp-json/` REST API calls (errors like _"Received 'undefined'"_) | `Website Security > Firewall > Settings > Access Control > Allow URL Paths` → add `/wp-json/` |
+| **WP Engine** | REST API must be explicitly enabled | Enable the REST API; whitelist API endpoints in their firewall if needed |
+| **Cloudflare** | Can block REST API requests, and may cache API responses | Check firewall rules; add a page rule to **bypass cache** for `/wp-json/*` |
+| **WordPress.com** | REST API / product-loading compatibility issues (only 9–10 products show) | Use self-hosted WordPress.org for full compatibility |
+| **Shared hosting** | Too few PHP workers / low memory for concurrent POS calls | Move to a VPS or managed WordPress host |
+
+Security plugins (Wordfence, etc.) can block the REST API in similar ways — see [Plugin Conflicts](/support/troubleshooting/plugin-conflicts) for the full list and fixes.
+
+### HTTP 414 — URI Too Long {#http-414-uri-too-long}
+
+Large carts, or the access token included in the checkout URL, can exceed the server's URL-length limit (the checkout request uses `GET`). This can be browser-specific and worsened by browser cache.
+
+**Workaround:** clear the browser cache first, then raise the server's URL-length limit:
+
+- **Apache:** `LimitRequestLine 65536` in `httpd.conf`
+- **Nginx:** `large_client_header_buffers 4 65536;` in `nginx.conf`
+- If you don't have config access, ask your hosting provider to adjust it.
 
 ## When to Seek Help {#when-to-seek-help}
 

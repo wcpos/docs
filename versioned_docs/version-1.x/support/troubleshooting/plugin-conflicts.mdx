@@ -213,6 +213,76 @@ For essential plugins that can't be replaced:
 **Analytics Plugins:** Generally safe unless very heavy
 **Basic Content Plugins:** Usually compatible
 
+## Known Plugin Conflicts {#known-plugin-conflicts}
+
+The plugins below are known to interfere with WCPOS. Many issues have already been fixed automatically in recent WCPOS versions — **updating to the latest version** resolves those without any configuration.
+
+:::tip Most fixes are "exclude the POS"
+The common thread: WCPOS relies on the WooCommerce REST API and renders some flows (login, payment, receipts) in iframes. The usual fix is to **exclude the POS endpoints/URLs** (`/wp-json/wcpos/`, `/wp-json/wc/v3/`, and the `/pos/` path) from the other plugin — not to disable it entirely.
+:::
+
+### Security & login plugins {#security-and-login-plugins}
+
+These are the **most common** source of conflicts, especially for desktop/mobile app login.
+
+| Plugin | Symptom | Fix |
+| --- | --- | --- |
+| **Wordfence** | Firewall blocks REST API; 2FA code field won't render in the login iframe; restrictive CSP can block POS assets | Whitelist `/wp-json/wcpos/` and `/wp-json/wc/v3/` in the firewall. For 2FA: temporarily disable it for POS users. CSP is stripped automatically in v1.9.0+ |
+| **Really Simple Security** | Blocks API access / forces redirects | Disable any REST API restrictions in the plugin's **Advanced** settings |
+| **WPS Hide Login** | Custom login URL breaks the app login iframe | Use the standard `/wp-admin/` login URL for POS access |
+| **iThemes / Solid Security** | Blocks REST API or triggers brute-force lockouts from POS calls | Whitelist only the POS endpoints and the server's own IP — avoid blanket IP rules |
+| **Sucuri** | WAF blocks API requests | Whitelist the REST API endpoints in the Sucuri dashboard |
+| **Security Optimizer** | Blocks admin POS login (_"use customize login URL"_) | Log in to WP Admin via the custom URL first, then go to `/pos` |
+| **Force Login** (and similar REST-auth plugins) | `/wp-json/` returns 401/403; older apps reported _"Site does not seem to be a WordPress site"_ | Allow unauthenticated access to the POS endpoints, or disable during initial connection. v1.x apps now surface the real error message |
+| **LoginPress** | Forces email-based login; breaks multi-user POS login | Allow username login, or disable for POS access |
+| **JWT Authentication plugins** | 403 on all POS API requests after activation (login may succeed, everything else fails) | Auto-fixed in v1.8.x+. On older versions, deactivate the JWT plugin or exclude the POS endpoints |
+| **Captcha / reCAPTCHA** | Login loop in the desktop app (captcha can't render in the iframe) | Disable captcha for the POS login URL |
+| **Defender Pro** | `X-Frame-Options` header blocks all POS iframes (login, payment, receipts) | Add a POS-specific exception for `/pos/` rather than disabling `X-Frame-Options` site-wide |
+| **Jetpack CRM Client Portal** | Breaks POS login entirely | Disable just the Client Portal extension |
+
+### Performance, caching & optimisation plugins {#performance-caching-optimisation-plugins}
+
+| Plugin | Symptom | Fix |
+| --- | --- | --- |
+| **WP Rocket, Autoptimize, Hummingbird, Smush** | Defer/minify JS breaks checkout and Stripe Terminal | Exclude `/pos/` URLs from JS optimisation |
+| **LiteSpeed Cache** | Constant reload loop at checkout in the desktop app; restrictive CSP | Update WCPOS, purge the cache, exclude POS pages from caching. CSP auto-stripped in v1.9.0+ |
+| **Image Prioritizer** | Spams the HTTP `Link` header, breaking REST API discovery; desktop app shows _"does not appear to be a WordPress site"_ | Deactivate the plugin |
+
+### Page builders & front-end injectors {#page-builders-front-end-injectors}
+
+| Plugin | Symptom | Fix |
+| --- | --- | --- |
+| **Elementor** | `elementor-frontend.js` breaks the checkout accordion inside the POS iframe — payment methods won't expand | Exclude POS pages from Elementor script loading |
+| **Omnisend / marketing plugins** | Inject scripts into the checkout iframe, breaking layout and payments | Use POS **Checkout Settings** to disable non-essential scripts |
+| **MyStickyElements / Complianz** | Inject overlays (sticky buttons, cookie banners) into the checkout iframe | Configure them to exclude `/pos/` URLs |
+
+### WooCommerce extensions & other plugins {#woocommerce-extensions-other-plugins}
+
+| Plugin | Symptom | Fix |
+| --- | --- | --- |
+| **WooCommerce Subscriptions** | Migration-script conflict during the v1.7→v1.8 upgrade | Deactivate Subscriptions, activate POS Pro (let migration run), then re-enable |
+| **WP Activity Log** | Logs every POS action → postmeta bloat → _"only 10 products"_ | Disable it, or exclude POS post types from logging |
+| **Jetpack / Astra / Xero** (anything hooking `save_post`) | Duplicate meta rows on every POS API call (one store hit 36,867 rows on one product) | Auto-fixed in v1.8.12+ (free) / v1.8.14+ (Pro) with a cleanup migration — just update |
+| **Stripe Tax** | Incompatible with REST API-created orders (how the POS creates orders) | No workaround — incompatible |
+| **Mollie** | Can hide the BACS (bank transfer) method from POS checkout | Update Mollie to the latest version |
+| **CTX Feed** | Intermittent 403 errors on the POS settings page | Deactivate to confirm; no known workaround |
+| **Third-party barcode scanner plugins** | Corrupt the order API JSON, breaking order creation/display | Disable them; use the POS's built-in barcode scanning |
+| **MailerLite** (Signup Forms + WooCommerce) | 500 error on POS order creation (memory exhaustion) | Deactivate to confirm, then contact MailerLite |
+| **The Courier Guy Shipping** | POS order creation fails with a server error | Roll back to a previous version, or contact the developer |
+| **PixelYourSite / PixelMySite** | Fatal error: _call to member function `is_type()` on bool_ | Temporarily disable |
+| **Google Listings & Ads** | Autoloader conflict → _"Class WCPOS\…\Stores not found"_ critical error | Delete all POS plugins and reinstall only the latest Pro standalone |
+
+:::warning Stripe Terminal: don't enable it globally
+The **Stripe Terminal** gateway should be enabled **only** inside POS Settings, never in `WooCommerce > Settings > Payments`. Enabling it globally makes it appear on your public store checkout and crashes the online checkout flow.
+:::
+
+### Server-level conflicts {#server-level-conflicts}
+
+| Source | Symptom | Fix |
+| --- | --- | --- |
+| **Custom CSP headers** (`.htaccess`, Nginx, or a security plugin) | POS stuck on the logo; JS/CSS blocked | Auto-stripped on POS pages in v1.9.0+. For server-level CSP, allow `cdn.jsdelivr.net` in `script-src`/`style-src`, or add a `/pos/` exception |
+| **GoDaddy Website Firewall** | Blocks `/wp-json/` (_"Received 'undefined'"_) | Allow the `/wp-json/` URL path in the firewall — see [Server Performance](/support/performance/server#hosting-specific-notes) |
+
 ## Prevention Tips {#prevention-tips}
 
 ### Regular Maintenance {#regular-maintenance}
