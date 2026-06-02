@@ -1,21 +1,71 @@
 ---
-title: Rendimiento del Servidor
-sidebar_label: Rendimiento del Servidor
+title: Rendimiento del servidor
+sidebar_label: Rendimiento del servidor
 sidebar_position: 2
-description: Optimiza el rendimiento del servidor de WordPress para WCPOS incluyendo HPOS, almacenamiento en caché, optimización de base de datos y recomendaciones de alojamiento.
+description: Optimice el rendimiento del servidor de WordPress para WCPOS, incluidos HPOS, el almacenamiento en caché, la optimización de la base de datos y las recomendaciones de alojamiento.
 ---
 
 import Image from "@theme/IdealImage";
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
 
-El rendimiento del servidor impacta directamente en la velocidad y capacidad de respuesta de tu aplicación WCPOS. Esta guía te ayuda a monitorear, diagnosticar y optimizar el rendimiento del servidor utilizando las métricas integradas y técnicas de resolución de problemas.
+El rendimiento del servidor afecta directamente a la velocidad y capacidad de respuesta de la aplicación WCPOS. El POS realiza muchas llamadas a la API REST, por lo que **el tiempo de respuesta del servidor es el principal cuello de botella**: la velocidad del POS depende en gran medida de la calidad del alojamiento. Esta guía ayuda a supervisar, diagnosticar y optimizar el rendimiento del servidor mediante las métricas integradas y técnicas de solución de problemas.
 
-## Comprendiendo las Métricas del Servidor {#understanding-server-metrics}
+## Requisitos mínimos del servidor {#minimum-server-requirements}
 
-WCPOS recopila automáticamente métricas de rendimiento del servidor con cada operación de captura de datos (productos, pedidos, clientes, etc.). Puedes ver estas métricas en la pantalla de [Registros](/support/logs).
+Para un POS con buena capacidad de respuesta en producción, se recomienda al menos:
 
-### Métricas Típicas del Servidor {#typical-server-metrics}
+<RequirementsList>
+  <RequirementItem label="CPU">4+ núcleos de CPU</RequirementItem>
+  <RequirementItem label="RAM">4 GB o más</RequirementItem>
+  <RequirementItem label="PHP">PHP 7.4+ (se recomienda 8.x)</RequirementItem>
+  <RequirementItem label="Base de datos">MySQL 8.0+ o MariaDB 11.x</RequirementItem>
+  <RequirementItem label="Almacenamiento">SSD o NVMe</RequirementItem>
+  <RequirementItem label="SSL">HTTPS es obligatorio — la API REST de WooCommerce no funcionará sin HTTPS</RequirementItem>
+</RequirementsList>
+
+:::warning El alojamiento compartido a menudo no es suficiente
+El alojamiento compartido suele tener muy pocos trabajadores PHP y muy poca memoria para las cargas de trabajo de POS, que realizan muchas llamadas API simultáneas. Para el uso de POS en producción, se recomienda encarecidamente un **VPS o alojamiento gestionado de WordPress**. También se sabe que el alojamiento gestionado de `WordPress.com` tiene problemas de compatibilidad con la API REST (algunos usuarios solo ven 9–10 productos de catálogos grandes) — se recomienda `WordPress.org` autoalojado para una compatibilidad completa.
+:::
+
+### Conjunto de optimización validado por la comunidad {#community-validated-optimisation-stack}
+
+Los usuarios indican que esta combinación ofrece el mejor rendimiento de POS:
+
+- **MariaDB 11.4** (más rápido que MySQL para cargas de trabajo de WooCommerce)
+- **HPOS activado** (véase más abajo)
+- Caché de objetos con **LiteSpeed o Redis**
+- Almacenamiento **NVMe**
+- **PHP OPcache** activado
+
+## Errores 503 {#503-errors}
+
+:::important Los errores 503 siempre son del servidor
+Un `503 Service Unavailable` **no es un error de POS**: significa que el servidor no pudo gestionar la solicitud. Compruebe:
+
+1. Carga del servidor y recursos disponibles
+2. Trabajadores de PHP (pueden estar agotados)
+3. Límite de memoria de PHP: auméntelo a **256 MB o más**
+4. Registros del servidor de su proveedor de alojamiento web (póngase en contacto con su proveedor; tiene acceso a lo que la aplicación no puede ver)
+:::
+
+## Compatibilidad de versiones de WooCommerce {#woocommerce-version-compatibility}
+
+Una actualización de WooCommerce puede hacer que el POS deje de funcionar ocasionalmente. Actualice siempre WooCommerce primero en un [sitio de pruebas](/support/troubleshooting/plugin-conflicts#before-you-start-use-a-staging-site) y mantenga WCPOS actualizado para que incluya las correcciones de compatibilidad más recientes.
+
+Problemas conocidos:
+
+- **WooCommerce 10.5.0** — interrumpió la carga de productos en el POS (síntoma: solo se muestran ~10 productos; el escaneo de códigos de barras y la búsqueda dejan de funcionar) e introdujo una caché experimental de productos que puede causar **crecimiento excesivo de postmeta** y agotamiento de memoria. **Solución:** actualice WCPOS a la versión más reciente (incluye la corrección y una migración de limpieza), o revierta WooCommerce a [10.4.3](https://downloads.wordpress.org/plugin/woocommerce.10.4.3.zip).
+
+Si una actualización de WooCommerce hace que el POS deje de funcionar, revierta WooCommerce a la versión anterior (mediante la pestaña **Avanzado** en la página del plugin en WordPress.org) y notifique el problema.
+
+## Comprender las métricas del servidor {#understanding-server-metrics}
+
+WCPOS recopila automáticamente métricas de rendimiento del servidor con cada operación de obtención de datos (productos, pedidos, clientes, etc.). Estas métricas se pueden consultar en la pantalla [Registros](/support/logs).
+
+### Métricas típicas del servidor {#typical-server-metrics}
 
 ```json
 {
@@ -26,72 +76,72 @@ WCPOS recopila automáticamente métricas de rendimiento del servidor con cada o
 ```
 
 **Desglose:**
-- **`total`** - Número de registros procesados (24,692 IDs de productos)
-- **`execution_time`** - Tiempo tomado para completar la operación (76.64 milisegundos)
+- **`total`** - Número de registros procesados (24,692 ID de productos)
+- **`execution_time`** - Tiempo necesario para completar la operación (76.64 milisegundos)
 - **`server_load`** - Promedios de carga del servidor durante 1, 5 y 15 minutos
 
-## Carga del Servidor Explicada {#server-load-explained}
+## Explicación de la carga del servidor {#server-load-explained}
 
-La carga del servidor representa la carga promedio del sistema durante diferentes períodos de tiempo:
+La carga del servidor representa la carga media del sistema durante distintos periodos de tiempo:
 
-- **Primer valor** - Promedio de 1 minuto (15.21)
-- **Segundo valor** - Promedio de 5 minutos (16.16)
-- **Tercer valor** - Promedio de 15 minutos (16.77)
+- **Primer valor** - media de 1 minuto (15.21)
+- **Segundo valor** - media de 5 minutos (16.16)
+- **Tercer valor** - media de 15 minutos (16.77)
 
-### Interpretación de la Carga {#load-interpretation}
+### Interpretación de la carga {#load-interpretation}
 
-Los valores de carga del servidor pueden ser engañosos y deben interpretarse con cuidado:
+Los valores de carga del servidor pueden resultar engañosos y deben interpretarse con cuidado:
 
-:::warning Los Valores de Carga Pueden Ser Engañosos
-Los promedios de carga del servidor no siempre se correlacionan directamente con el rendimiento. Un servidor con altos valores de carga (15+) aún puede ser muy receptivo si tiene suficientes recursos y está bien optimizado. **Enfócate en los tiempos de ejecución en lugar de los valores de carga por sí solos.**
+:::warning Los valores de carga pueden resultar engañosos
+Las medias de carga del servidor no siempre se correlacionan directamente con el rendimiento. Un servidor con valores de carga altos (15+) puede seguir respondiendo muy bien si cuenta con recursos suficientes y está bien optimizado. **Céntrese en los tiempos de ejecución, no solo en los valores de carga.**
 :::
 
-**Directrices Generales:**
-- **Carga relativa a núcleos de CPU** - Una carga de 8.0 en un servidor de 8 núcleos significa utilización total
-- **Sostenida vs. temporal** - Picos breves son normales, alta carga sostenida puede indicar problemas
-- **El rendimiento importa más** - Un servidor receptivo con alta carga es mejor que un servidor lento con baja carga
+**Directrices generales:**
+- **Carga relativa a los núcleos de CPU** - Una carga de 8.0 en un servidor de 8 núcleos significa una utilización completa
+- **Sostenida frente a temporal** - Los picos breves son normales; una carga alta sostenida puede indicar problemas
+- **El rendimiento importa más** - Un servidor con buena respuesta y carga alta es mejor que un servidor lento con carga baja
 
-**Qué observar:**
+**Qué se debe vigilar:**
 - **Tiempos de ejecución en aumento** con el tiempo
-- **Carga creciendo constantemente** sin explicación
-- **Alta carga Y tiempos de ejecución lentos** juntos
+- **Carga en crecimiento constante** sin explicación
+- **Carga alta Y tiempos de ejecución lentos** al mismo tiempo
 
-## Referencias de Rendimiento {#performance-benchmarks}
+## Pruebas comparativas de rendimiento {#performance-benchmarks}
 
-### Directrices de Tiempo de Ejecución {#execution-time-guidelines}
+### Directrices sobre tiempos de ejecución {#execution-time-guidelines}
 
 | Operación | Bueno | Aceptable | Deficiente | Crítico |
-|-----------|-------|-----------|------------|---------|
-| **Recuperación de Producto** | < 100ms | 100-500ms | 500ms-2s | > 2s |
-| **Creación de Pedido** | < 200ms | 200-800ms | 800ms-3s | > 3s |
+|-----------|------|------------|------|----------|
+| **Obtención de productos** | < 100ms | 100-500ms | 500ms-2s | > 2s |
+| **Creación de pedidos** | < 200ms | 200-800ms | 800ms-3s | > 3s |
 
-### Consideraciones del Conteo de Registros {#record-count-considerations}
+### Consideraciones sobre el recuento de registros {#record-count-considerations}
 
-El tiempo de ejecución debe escalar razonablemente con el conteo de registros:
+El tiempo de ejecución debería escalar de forma razonable con el número de registros:
 
 ```json
 // Good scaling examples
-{"total": "100", "execution_time": "15.2 ms"}    // 0.15ms por registro
-{"total": "1000", "execution_time": "89.4 ms"}   // 0.09ms por registro
-{"total": "10000", "execution_time": "234.1 ms"} // 0.02ms por registro
+{"total": "100", "execution_time": "15.2 ms"}    // 0.15ms per record
+{"total": "1000", "execution_time": "89.4 ms"}   // 0.09ms per record
+{"total": "10000", "execution_time": "234.1 ms"} // 0.02ms per record
 
 // Poor scaling examples
-{"total": "100", "execution_time": "500.0 ms"}   // 5.0ms por registro
-{"total": "1000", "execution_time": "8000.0 ms"} // 8.0ms por registro
+{"total": "100", "execution_time": "500.0 ms"}   // 5.0ms per record
+{"total": "1000", "execution_time": "8000.0 ms"} // 8.0ms per record
 ```
 
-## Diagnóstico de Problemas de Rendimiento {#diagnosing-performance-issues}
+## Diagnóstico de problemas de rendimiento {#diagnosing-performance-issues}
 
-### Paso 1: Monitorea los Registros {#step-1-monitor-the-logs}
+### Paso 1: Supervisar los registros {#step-1-monitor-the-logs}
 
-1. Abre **Registros** desde el panel de navegación
-2. Realiza la operación lenta (sincroniza productos, crea un pedido, etc.)
-3. Busca la entrada de registro correspondiente
-4. Expande el contexto para ver las métricas
+1. Abra **Registros** desde el panel de navegación
+2. Realice la operación lenta (sincronizar productos, crear pedido, etc.)
+3. Busque la entrada de registro correspondiente
+4. Expanda el contexto para ver las métricas
 
-### Paso 2: Analiza las Métricas {#step-2-analyse-the-metrics}
+### Paso 2: Analizar las métricas {#step-2-analyse-the-metrics}
 
-**Alto tiempo de ejecución + Alta carga del servidor = Problema de recursos del servidor**
+**Tiempo de ejecución alto + carga del servidor alta = problema de recursos del servidor**
 ```json
 {
   "total": "5000",
@@ -99,9 +149,9 @@ El tiempo de ejecución debe escalar razonablemente con el conteo de registros:
   "server_load": "[12.45, 11.23, 10.87]"
 }
 ```
-*Solución: Aumentar los recursos del servidor o optimizar la configuración del servidor*
+*Solución: Aumente los recursos del servidor u optimice la configuración del servidor*
 
-**Alto tiempo de ejecución + Carga normal del servidor = Problema de plugin/base de datos**
+**Tiempo de ejecución alto + carga del servidor normal = problema de plugin/base de datos**
 ```json
 {
   "total": "1000",
@@ -109,9 +159,9 @@ El tiempo de ejecución debe escalar razonablemente con el conteo de registros:
   "server_load": "[1.23, 1.45, 1.67]"
 }
 ```
-*Solución: Identificar plugins lentos o optimizar consultas de base de datos*
+*Solución: Identifique plugins lentos u optimice las consultas de la base de datos*
 
-**Tiempo de ejecución normal + Alta carga del servidor = Sobrecarga general del servidor**
+**Tiempo de ejecución normal + carga alta del servidor = sobrecarga general del servidor**
 ```json
 {
   "total": "2000",
@@ -119,120 +169,120 @@ El tiempo de ejecución debe escalar razonablemente con el conteo de registros:
   "server_load": "[8.90, 9.12, 8.45]"
 }
 ```
-*Solución: Reducir la carga del servidor de otros procesos o actualizar recursos*
+*Solución: reducir la carga del servidor generada por otros procesos o ampliar los recursos*
 
-## Problemas Comunes de Rendimiento {#common-performance-problems}
+## Problemas habituales de rendimiento {#common-performance-problems}
 
-### 1. Recursos Insuficientes del Servidor {#1-insufficient-server-resources}
+### 1. Recursos insuficientes del servidor {#1-insufficient-server-resources}
 
 **Síntomas:**
-- Carga del servidor consistentemente alta (> 4.0 en la mayoría de los servidores)
+- Carga del servidor constantemente alta (> 4.0 en la mayoría de los servidores)
 - Tiempos de ejecución largos en todas las operaciones
-- Frecuentes tiempos de espera
+- Tiempos de espera agotados frecuentes
 
 **Soluciones:**
-- **Actualizar CPU** - Más núcleos manejan mejor las solicitudes concurrentes
-- **Aumentar RAM** - Reduce el I/O en disco y mejora el almacenamiento en caché
+- **Actualizar la CPU** - Más núcleos gestionan mejor las solicitudes simultáneas
+- **Aumentar la RAM** - Reduce la E/S de disco y mejora el almacenamiento en caché
 - **Usar almacenamiento SSD** - Mejora drásticamente el rendimiento de la base de datos
-- **Optimizar configuraciones PHP** - Aumentar memory_limit, max_execution_time
+- **Optimizar los ajustes de PHP** - Aumentar memory_limit, max_execution_time
 
-### 2. Consultas de Base de Datos Lentas {#2-slow-database-queries}
+### 2. Consultas lentas a la base de datos {#2-slow-database-queries}
 
 **Síntomas:**
-- Altos tiempos de ejecución con carga normal del servidor
-- Recuperación de productos/pedidos especialmente lenta
+- Tiempos de ejecución elevados con carga normal del servidor
+- Obtención de productos/pedidos especialmente lenta
 - Códigos de error relacionados con la base de datos en los registros
 
 **Soluciones:**
-- **Habilitar WooCommerce HPOS** - La mejora de rendimiento en base de datos más significativa
-- **Usar almacenamiento en caché de objetos** - Redis o Memcached si están disponibles de tu host
-- **Mantener WordPress actualizado** - Las actualizaciones del núcleo suelen incluir optimizaciones de base de datos
-- **Limitar revisiones de publicaciones** - Añadir `define('WP_POST_REVISIONS', 3);` a wp-config.php
+- **Activar WooCommerce HPOS** - La mejora más importante para el rendimiento de la base de datos
+- **Usar la caché de objetos** - Redis o Memcached si el proveedor de alojamiento lo ofrece
+- **Mantener WordPress actualizado** - Las actualizaciones del núcleo suelen incluir optimizaciones de la base de datos
+- **Limitar las revisiones de entradas** - Añadir `define('WP_POST_REVISIONS', 3);` a wp-config.php
 
-### 3. Interferencia de Plugins {#3-plugin-interference}
+### 3. Interferencia de plugins {#3-plugin-interference}
 
 **Síntomas:**
-- Degradación repentina del rendimiento después de actualizaciones de plugins
+- Degradación repentina del rendimiento después de actualizar plugins
 - Operaciones específicas mucho más lentas que otras
-- Altos tiempos de ejecución con carga normal del servidor
+- Tiempos de ejecución elevados con carga normal del servidor
 
-**Soluciones de resolución de problemas:**
-1. **Probar en staging** - Desactivar todos los plugins excepto WooCommerce y WCPOS
-2. **Medir la línea base** - Registrar tiempos de ejecución con plugins mínimos
-3. **Habilitar gradualmente** - Añadir plugins uno por uno para identificar culpables
-4. **Verificar ganchos de plugins** - Buscar plugins que se enganchan en acciones de WooCommerce
+**Solución de problemas:**
+1. **Prueba en staging** - Desactive todos los plugins excepto WooCommerce y WCPOS
+2. **Medición de referencia** - Registre los tiempos de ejecución con el mínimo de plugins
+3. **Activación gradual** - Añada los plugins uno por uno para identificar los responsables
+4. **Revisión de hooks de plugins** - Busque plugins conectados a acciones de WooCommerce
 
-**Plugins problemáticos comunes:**
-- Plugins de SEO pesados durante operaciones de productos
+**Plugins problemáticos habituales:**
+- Plugins de SEO pesados durante operaciones con productos
 - Sistemas complejos de gestión de inventario
 - Plugins de análisis/seguimiento en tiempo real
-- Plugins personalizados mal codificados
+- Plugins personalizados mal programados
 
 ### 4. Configuración de WordPress/WooCommerce {#4-wordpresswoocommerce-configuration}
 
 **Síntomas:**
-- Rendimiento inconsistente
-- Errores relacionados con memoria en los registros
-- Tablero de administración lento
+- Rendimiento irregular
+- Errores relacionados con la memoria en los registros
+- Escritorio de administración lento
 
-**Lista de verificación de optimización:**
-- **Versión de PHP** - Usar PHP 8.0+ para mejor rendimiento
-- **WooCommerce HPOS** - Habilitar almacenamiento de pedidos de alto rendimiento (ver abajo)
-- **Almacenamiento en caché de WordPress** - Habilitar almacenamiento en caché de objetos si está disponible
-- **Configuraciones de WooCommerce** - Optimizar tamaños de imagen de productos
+**Lista de comprobación de optimización:**
+- **Versión de PHP** - Utilice PHP 8.0+ para mejorar el rendimiento
+- **WooCommerce HPOS** - Active el almacenamiento de pedidos de alto rendimiento (véase más abajo)
+- **Caché de WordPress** - Active la caché de objetos si está disponible
+- **Ajustes de WooCommerce** - Optimice los tamaños de las imágenes de los productos
 
-### Almacenamiento de Pedidos de Alto Rendimiento de WooCommerce (HPOS) {#woocommerce-high-performance-order-storage-hpos}
+### Almacenamiento de pedidos de alto rendimiento (HPOS) de WooCommerce {#woocommerce-high-performance-order-storage-hpos}
 
-:::tip La Mejora de Rendimiento Más Grande
-**HPOS es una de las mejoras de rendimiento más significativas que puedes hacer para WooCommerce.** Almacena pedidos en tablas de base de datos personalizadas en lugar de en la tabla de publicaciones de WordPress, mejorando drásticamente el rendimiento para tiendas con muchos pedidos.
+:::tip Mayor mejora de rendimiento
+**HPOS es una de las mejoras de rendimiento más importantes que se pueden implementar en WooCommerce.** Almacena los pedidos en tablas de base de datos personalizadas en lugar de la tabla de entradas de WordPress, lo que mejora considerablemente el rendimiento de las tiendas con muchos pedidos.
 :::
 
-**Beneficios:**
-- **Consultas de pedido más rápidas** - Pedidos almacenados en estructura de base de datos optimizada
-- **Carga reducida de la base de datos** - Separa pedidos de publicaciones/páginas
-- **Mejor escalabilidad** - Maneja eficientemente grandes números de pedidos
-- **Mejor desempeño en la administración** - Pantallas de gestión de pedidos más rápidas
+**Ventajas:**
+- **Consultas de pedidos más rápidas** - Pedidos almacenados en una estructura de base de datos optimizada
+- **Menor carga de base de datos** - Separa los pedidos de las entradas/páginas
+- **Mejor escalabilidad** - Gestiona grandes volúmenes de pedidos de forma eficiente
+- **Mejor rendimiento de administración** - Pantallas de gestión de pedidos más rápidas
 
-**Cómo Habilitar:**
-1. Ve a `WooCommerce > Configuración > Avanzado > Características`
-2. Habilita "Almacenamiento de pedidos de alto rendimiento"
-3. Sigue el proceso de migración
+**Cómo activarlo:**
+1. Acceda a `WooCommerce > Ajustes > Advanced > Features`
+2. Active "Almacenamiento de pedidos de alto rendimiento"
+3. Seguir el proceso de migración
 
-**Aprende Más:**
+**Más información:**
 - [Documentación de WooCommerce HPOS](https://woocommerce.com/document/high-performance-order-storage/)
-- [Guía de Migración HPOS](https://woocommerce.com/document/high-performance-order-storage/#section-3)
+- [Guía de migración de HPOS](https://woocommerce.com/document/high-performance-order-storage/#section-3)
 
-## Mejores Prácticas de Monitoreo del Servidor {#server-monitoring-best-practices}
+## Prácticas recomendadas de supervisión del servidor {#server-monitoring-best-practices}
 
-### 1. Revisiones de Rendimiento Regulares {#1-regular-performance-checks}
+### 1. Comprobaciones periódicas del rendimiento {#1-regular-performance-checks}
 
-- **Revisiones Semanales** - Verificar registros por tendencias de rendimiento
-- **Mediciones de Línea Base** - Registrar tiempos de ejecución normales
-- **Monitoreo en Horas Picos** - Monitorear durante períodos de alta actividad
+- **Revisiones semanales** - Comprobar los registros para detectar tendencias de rendimiento
+- **Mediciones de referencia** - Registrar los tiempos de ejecución normales
+- **Supervisión en horas punta** - Supervisar durante los períodos de mucho tráfico
 
-### 2. Establecer Alertas de Rendimiento {#2-set-performance-alerts}
+### 2. Configurar alertas de rendimiento {#2-set-performance-alerts}
 
-Monitorea estos signos de advertencia:
-- Tiempos de ejecución > 1000ms consistentemente
-- Carga del servidor > 5.0 durante períodos prolongados
-- Frecuentes errores de tiempo de espera en los registros
+Supervisar estas señales de advertencia:
+- Tiempos de ejecución > 1000ms de forma constante
+- Carga del servidor > 5.0 durante periodos prolongados
+- Errores frecuentes de tiempo de espera en los registros
 
-### 3. Planificación de Capacidad {#3-capacity-planning}
+### 3. Planificación de capacidad {#3-capacity-planning}
 
-Rastrear tendencias de crecimiento:
-- **Crecimiento del conteo de registros** - Productos, pedidos, clientes
-- **Degradación del rendimiento** - Cómo escalan los tiempos de ejecución
-- **Utilización de recursos** - CPU, memoria, uso del disco
+Supervise las tendencias de crecimiento:
+- **Crecimiento del recuento de registros** - Productos, pedidos, clientes
+- **Degradación del rendimiento** - Cómo escala el tiempo de ejecución
+- **Uso de recursos** - CPU, memoria, uso de disco
 
-## Estrategias de Optimización del Servidor {#server-optimisation-strategies}
+## Estrategias de optimización del servidor {#server-optimisation-strategies}
 
-### 1. Mejores Prácticas de WordPress/WooCommerce {#1-wordpresswoocommerce-best-practices}
+### 1. Prácticas recomendadas de WordPress/WooCommerce {#1-wordpresswoocommerce-best-practices}
 
-**Habilita HPOS:**
-- La mejora de rendimiento más impactante para WooCommerce
-- Consulta la sección de HPOS arriba para más detalles
+**Habilitar HPOS:**
+- La mejora de rendimiento más significativa para WooCommerce
+- Consulte la sección sobre HPOS anterior para obtener más detalles
 
-**Configuración de PHP (consulta con tu host):**
+**Configuración de PHP (consulte con su proveedor de alojamiento):**
 ```ini
 memory_limit = 512M
 max_execution_time = 300
@@ -248,40 +298,64 @@ define('WP_POST_REVISIONS', 3);
 define('WP_DEBUG_LOG', true);
 ```
 
-### 2. Optimización a Nivel de Alojamiento {#2-hosting-level-optimizations}
+### 2. Optimizaciones a nivel de alojamiento {#2-hosting-level-optimizations}
 
-**Almacenamiento en Caché de Objetos:**
-- Pregunta a tu host sobre la disponibilidad de Redis o Memcached
-- Muchos hosts administrados de WordPress proporcionan esto automáticamente
+**Caché de objetos:**
+- Consulte con su proveedor de alojamiento sobre la disponibilidad de Redis o Memcached
+- Muchos proveedores de alojamiento gestionado de WordPress ofrecen esto automáticamente
 
 **Versión de PHP:**
-- Usar PHP 8.0+ para mejoras significativas en el rendimiento
-- La mayoría de los hosts permiten un fácil cambio de versión de PHP
+- Utilice PHP 8.0+ para obtener mejoras significativas de rendimiento
+- La mayoría de los proveedores de alojamiento permiten cambiar fácilmente la versión de PHP
 
-**Recursos del Servidor:**
-- Asegurarse de tener RAM adecuada (mínimo 1GB, preferiblemente 2GB+)
-- El almacenamiento SSD proporciona un rendimiento de base de datos mucho mejor que los discos tradicionales
+**Recursos del servidor:**
+- Compruebe que haya RAM suficiente (mínimo 1GB, preferiblemente 2GB+)
+- El almacenamiento SSD ofrece un rendimiento de base de datos mucho mejor que las unidades tradicionales
 
-## Cuándo Buscar Ayuda {#when-to-seek-help}
+## Notas específicas de alojamiento {#hosting-specific-notes}
 
-Contacta a tu proveedor de alojamiento o a un desarrollador de WordPress si:
+Algunos proveedores de alojamiento y CDN requieren configuración para permitir que el POS acceda a la API REST de WooCommerce:
 
-- **La carga del servidor consistentemente > 8.0** a pesar de los esfuerzos de optimización
-- **Los tiempos de ejecución > 5000ms** para operaciones simples
+| Alojamiento / servicio | Problema | Solución |
+| --- | --- | --- |
+| **Alojamiento de GoDaddy** | El firewall del sitio web bloquea las llamadas a la API REST de `/wp-json/` (errores como _"Received 'undefined'"_) | `Website Security > Firewall > Ajustes > Access Control > Allow URL Paths` → añadir `/wp-json/` |
+| **Alojamiento de WP Engine** | La API REST debe habilitarse explícitamente | Habilitar la API REST; añadir los endpoints de API a la lista de permitidos en su firewall si es necesario |
+| **Servicio de Cloudflare** | Puede bloquear solicitudes de la API REST y almacenar en caché respuestas de API | Comprobar las reglas del firewall; añadir una regla de página para **omitir la caché** para `/wp-json/*` |
+| **Alojamiento de WordPress.com** | Problemas de compatibilidad con la API REST / carga de productos (solo se muestran 9–10 productos) | Usar WordPress.org autoalojado para una compatibilidad completa |
+| **Alojamiento compartido** | Muy pocos workers de PHP / poca memoria para llamadas simultáneas del POS | Migrar a un VPS o a un alojamiento WordPress gestionado |
+
+Los plugins de seguridad (Wordfence, etc.) pueden bloquear la API REST de formas similares — consulte [Conflictos de plugins](/support/troubleshooting/plugin-conflicts) para ver la lista completa y las soluciones.
+
+### HTTP 414 — URI demasiado largo {#http-414-uri-too-long}
+
+Los carritos grandes, o el token de acceso incluido en la URL de finalización de compra, pueden superar el límite de longitud de URL del servidor (la solicitud de finalización de compra usa `GET`). Esto puede depender del navegador y empeorar por la caché del navegador.
+
+**Solución temporal:** borrar primero la caché del navegador y, a continuación, aumentar el límite de longitud de URL del servidor:
+
+- **Apache:** `LimitRequestLine 65536` en `httpd.conf`
+- **Nginx:** `large_client_header_buffers 4 65536;` en `nginx.conf`
+- Si no tiene acceso a la configuración, solicite a su proveedor de alojamiento que la ajuste.
+
+## Cuándo solicitar ayuda {#when-to-seek-help}
+
+Póngase en contacto con su proveedor de alojamiento o con un desarrollador de WordPress si:
+
+- **La carga del servidor se mantiene > 8.0** a pesar de los esfuerzos de optimización
+- **Tiempos de ejecución > 5000ms** para operaciones simples
 - **Errores de memoria** que aparecen con frecuencia en los registros
-- **Consultas de base de datos que tardan > 2 segundos** consistentemente
+- **Consultas de base de datos que tardan > 2 segundos** de forma constante
 
-Proporcionales:
-- Métricas del servidor de tus registros
+Facilíteles lo siguiente:
+- Métricas del servidor de sus registros
 - Lista de plugins activos
 - Especificaciones del servidor (CPU, RAM, tipo de almacenamiento)
 - Versiones de WordPress y WooCommerce
 
-## Documentación Relacionada {#related-documentation}
+## Documentación relacionada {#related-documentation}
 
 <LinkCards>
-  <LinkCard to="/support/logs" title="Registros" description="Cómo acceder e interpretar métricas del servidor" />
-  <LinkCard to="/support/performance/checkout" title="Rendimiento de Checkout" description="Optimiza el procesamiento de pagos" />
-  <LinkCard to="/error-codes" title="Códigos de Error" description="Entender códigos de error relacionados con el rendimiento" />
-  <LinkCard to="/category/troubleshooting" title="Resolución de Problemas" description="Guías generales de resolución de problemas" />
+  <LinkCard to="/support/logs" title="Registros" description="Cómo acceder a las métricas del servidor e interpretarlas" />
+  <LinkCard to="/support/performance/checkout" title="Rendimiento del proceso de pago" description="Optimizar el procesamiento de pagos" />
+  <LinkCard to="/error-codes" title="Códigos de error" description="Comprender los códigos de error relacionados con el rendimiento" />
+  <LinkCard to="/category/troubleshooting" title="Solución de problemas" description="Guías generales de solución de problemas" />
 </LinkCards>
