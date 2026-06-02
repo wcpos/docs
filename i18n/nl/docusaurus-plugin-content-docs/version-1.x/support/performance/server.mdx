@@ -1,0 +1,361 @@
+---
+title: "Serverprestaties"
+sidebar_label: "Serverprestaties"
+sidebar_position: 2
+description: "Optimaliseer de WordPress-serverprestaties voor WCPOS, inclusief HPOS, caching, database-optimalisatie en hostingaanbevelingen."
+---
+
+import Image from "@theme/IdealImage";
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+
+Serverprestaties hebben een directe invloed op de snelheid en het reactievermogen van uw WCPOS-applicatie. De POS voert veel REST API-oproepen uit, dus **serverresponstijd is het voornaamste knelpunt** — De snelheid van POS is sterk afhankelijk van de hostingkwaliteit. Deze handleiding helpt u bij het bewaken, diagnosticeren en optimaliseren van de serverprestaties met behulp van de ingebouwde statistieken en technieken voor probleemoplossing.
+
+## Minimale serververeisten {#minimum-server-requirements}
+
+Voor een responsieve POS in productie raden wij minimaal het volgende aan:
+
+<RequirementsList>
+  <RequirementItem label="CPU">4+ CPU-kernen</RequirementItem>
+  <RequirementItem label="RAM-geheugen">4 GB of meer</RequirementItem>
+  <RequirementItem label="PHP">PHP 7.4+ (8.x aanbevolen)</RequirementItem>
+  <RequirementItem label="Database">MySQL 8.0+ of MariaDB 11.x</RequirementItem>
+  <RequirementItem label="Opslag">SSD of NVMe</RequirementItem>
+  <RequirementItem label="SSL">HTTPS is vereist — de WooCommerce REST API zal zonder deze niet werken</RequirementItem>
+</RequirementsList>
+
+:::warning Shared hosting is vaak niet genoeg
+Shared hosting heeft vaak te weinig PHP-workers en te weinig geheugen voor POS-workloads, waardoor er veel gelijktijdige API-oproepen plaatsvinden. Voor productie-POS-gebruik wordt een **VPS of beheerde WordPress-host** sterk aanbevolen. Van `WordPress.com` beheerde hosting is ook bekend dat deze compatibiliteitsproblemen met REST API kent (sommige gebruikers zien slechts 9-10 producten uit grote catalogi) - zelf-gehoste `WordPress.org` wordt aanbevolen voor volledige compatibiliteit.
+:::
+
+### Door de gemeenschap gevalideerde optimalisatiestack {#community-validated-optimisation-stack}
+
+Gebruikers rapporteren de beste POS-prestaties met deze combinatie:
+
+- **MariaDB 11.4** (sneller dan MySQL voor WooCommerce-workloads)
+- **HPOS ingeschakeld** (zie hieronder)
+- **LiteSpeed of Redis** objectcaching
+- **NVMe** opslag
+- **PHP OPcache** ingeschakeld
+
+## 503 fouten {#503-errors}
+
+:::important 503-fouten vinden altijd plaats aan de serverzijde
+Een `503 Service Unavailable` is **geen POS-bug** — het betekent dat de server het verzoek niet kon verwerken. Controleer:
+
+1. Serverbelasting en beschikbare bronnen
+2. PHP-werknemers (ze kunnen uitgeput zijn)
+3. PHP geheugenlimiet — verhogen tot **256 MB of meer**
+4. De serverlogboeken van uw webhost (neem contact op met uw host; zij kunnen zien wat de applicatie niet kan)
+:::
+
+## WooCommerce Versiecompatibiliteit {#woocommerce-version-compatibility}
+
+Een WooCommerce-update kan af en toe de POS kapot maken. Update WooCommerce altijd eerst op een [stagingsite](/support/troubleshooting/plugin-conflicts#before-you-start-use-a-staging-site) en houd WCPOS up-to-date, zodat deze de nieuwste compatibiliteitsoplossingen bevat.
+
+Bekende problemen:
+
+- **WooCommerce 10.5.0** — verbrak het laden van producten in de POS (symptoom: slechts ongeveer 10 producten worden weergegeven; barcodescannen en zoeken werken niet meer) en introduceerde een experimentele productcache die **postmeta-bloat** en geheugenuitputting kan veroorzaken. **Opgelost:** update WCPOS naar de nieuwste versie (deze bevat de oplossing en een opschoonmigratie), of zet WooCommerce terug naar [10.4.3](https://downloads.wordpress.org/plugin/woocommerce.10.4.3.zip).
+
+Als een WooCommerce-update de POS verbreekt, rol WooCommerce terug naar de vorige versie (via het tabblad **Geavanceerd** op de WordPress.org-pagina van de plug-in) en rapporteer dit.
+
+## Serverstatistieken begrijpen {#understanding-server-metrics}
+
+WCPOS verzamelt automatisch serverprestatiestatistieken bij elke gegevensophaalbewerking (producten, bestellingen, klanten, enz.). U kunt deze statistieken bekijken in het scherm [Logs](/support/logs).
+
+### Typische serverstatistieken {#typical-server-metrics}
+
+```json
+{
+  "total": "24692",
+  "execution_time": "76.64 ms",
+  "server_load": "[15.20605469,16.16357422,16.76806641]"
+}
+```
+
+**Uitsplitsing:**
+- **`total`** - Aantal verwerkte records (24.692 product-ID's)
+- **`execution_time`** - Tijd die nodig is om de bewerking te voltooien (76,64 milliseconden)
+- **`server_load`** - Serverbelasting duurt gemiddeld 1, 5 en 15 minuten
+
+## Serverbelasting uitgelegd {#server-load-explained}
+
+De serverbelasting vertegenwoordigt de gemiddelde systeembelasting over verschillende tijdsperioden:
+
+- **Eerste waarde** - gemiddelde over 1 minuut (15,21)
+- **Tweede waarde** - gemiddelde over 5 minuten (16,16)
+- **Derde waarde** - 15 minuten gemiddelde (16,77)
+
+### Interpretatie laden {#load-interpretation}
+
+Serverbelastingswaarden kunnen misleidend zijn en moeten zorgvuldig worden geïnterpreteerd:
+
+:::warning Laadwaarden kunnen misleidend zijn
+Gemiddelden van de serverbelasting correleren niet altijd direct met de prestaties. Een server met hoge belastingswaarden (15+) kan nog steeds zeer responsief zijn als deze over voldoende bronnen beschikt en goed is geoptimaliseerd. **Focus op uitvoeringstijden in plaats van alleen waarden te laden.**
+:::
+
+**Algemene richtlijnen:**
+- **Belasting ten opzichte van CPU-cores** - Een belasting van 8,0 op een 8-core server betekent volledige benutting
+- **Aanhoudend versus tijdelijk** - Korte pieken zijn normaal, aanhoudende hoge belasting kan op problemen duiden
+- **Prestaties zijn belangrijker** - Een responsieve server met hoge belasting is beter dan een trage server met lage belasting
+
+**Waar moet je op letten:**
+- **Uitvoeringstijden nemen in de loop van de tijd toe**
+- **De belasting groeit voortdurend** zonder uitleg
+- **Zowel hoge belasting EN langzame uitvoeringstijden** samen
+
+## Prestatiebenchmarks {#performance-benchmarks}
+
+### Richtlijnen voor uitvoeringstijd {#execution-time-guidelines}
+
+| Operatie | Goed | Acceptabel | Arm | Kritisch |
+|-----------|------|------------|------|----------|
+| **Product ophalen** | < 100 ms | 100-500 ms | 500 ms-2s | > 2s |
+| **Bestelling aanmaken** | < 200 ms | 200-800 ms | 800 ms-3s | > 3s |
+
+### Overwegingen bij het aantal records {#record-count-considerations}
+
+De uitvoeringstijd moet redelijkerwijs worden geschaald met het aantal records:
+
+```json
+// Good scaling examples
+{"total": "100", "execution_time": "15.2 ms"}    // 0.15ms per record
+{"total": "1000", "execution_time": "89.4 ms"}   // 0.09ms per record
+{"total": "10000", "execution_time": "234.1 ms"} // 0.02ms per record
+
+// Poor scaling examples
+{"total": "100", "execution_time": "500.0 ms"}   // 5.0ms per record
+{"total": "1000", "execution_time": "8000.0 ms"} // 8.0ms per record
+```
+
+## Prestatieproblemen diagnosticeren {#diagnosing-performance-issues}
+
+### Stap 1: Controleer de logboeken {#step-1-monitor-the-logs}
+
+1. Open **Logboeken** vanuit de navigatielade
+2. Voer de langzame handeling uit (producten synchroniseren, bestelling plaatsen, etc.)
+3. Zoek naar de bijbehorende logboekvermelding
+4. Vouw de context uit om statistieken te bekijken
+
+### Stap 2: Analyseer de statistieken {#step-2-analyse-the-metrics}
+
+**Hoge uitvoeringstijd + Hoge serverbelasting = Probleem met serverbronnen**
+```json
+{
+  "total": "5000",
+  "execution_time": "3500.0 ms",
+  "server_load": "[12.45, 11.23, 10.87]"
+}
+```
+*Oplossing: verhoog de serverbronnen of optimaliseer de serverconfiguratie*
+
+**Hoge uitvoeringstijd + Normale serverbelasting = Plug-in/databaseprobleem**
+```json
+{
+  "total": "1000",
+  "execution_time": "2800.0 ms",
+  "server_load": "[1.23, 1.45, 1.67]"
+}
+```
+*Oplossing: Identificeer langzame plug-ins of optimaliseer databasequery's*
+
+**Normale uitvoeringstijd + Hoge serverbelasting = Algemene serveroverbelasting**
+```json
+{
+  "total": "2000",
+  "execution_time": "150.0 ms",
+  "server_load": "[8.90, 9.12, 8.45]"
+}
+```
+*Oplossing: verminder de serverbelasting door andere processen of upgrade bronnen*
+
+## Veelvoorkomende prestatieproblemen {#common-performance-problems}
+
+### 1. Onvoldoende serverbronnen {#1-insufficient-server-resources}
+
+**Symptomen:**
+- Consequent hoge serverbelasting (> 4,0 op de meeste servers)
+- Lange uitvoeringstijden voor alle bewerkingen
+- Frequente time-outs
+
+**Oplossingen:**
+- **CPU upgraden** - Meer kernen verwerken gelijktijdige verzoeken beter
+- **Verhoog RAM** - Vermindert schijf-I/O en verbetert caching
+- **Gebruik SSD-opslag** - Verbetert de databaseprestaties aanzienlijk
+- **Optimaliseer de PHP-instellingen** - Verhoog de geheugenlimiet, max_execution_time
+
+### 2. Langzame databasequery's {#2-slow-database-queries}
+
+**Symptomen:**
+- Hoge uitvoeringstijden bij normale serverbelasting
+- Bijzonder langzaam ophalen van producten/bestellingen
+- Databasegerelateerde foutcodes in logboeken
+
+**Oplossingen:**
+- ** WooCommerce inschakelen HPOS** - De grootste verbetering van de databaseprestaties
+- **Gebruik objectcaching** - Redis of Memcached indien beschikbaar bij uw host
+- **Houd WordPress up-to-date** - Kernupdates omvatten vaak database-optimalisaties
+- **Beperk berichtrevisies** - Voeg `define('WP_POST_REVISIONS', 3);` toe aan wp-config.php
+
+### 3. Plugin-interferentie {#3-plugin-interference}
+
+**Symptomen:**
+- Plotselinge prestatievermindering na updates van plug-ins
+- Specifieke bewerkingen zijn veel langzamer dan andere
+- Hoge uitvoeringstijden bij normale serverbelasting
+
+**Problemen oplossen:**
+1. **Test op staging** - Schakel alle plug-ins uit, behalve WooCommerce en WCPOS
+2. **Meet basislijn** - Registreer uitvoeringstijden met minimale plug-ins
+3. **Geleidelijk inschakelen** - Voeg plug-ins één voor één toe om boosdoeners te identificeren
+4. **Controleer plug-in hooks** - Zoek naar plug-ins die aansluiten bij WooCommerce-acties
+
+**Veelvoorkomende problematische plug-ins:**
+- Zware SEO-plug-ins tijdens productbewerkingen
+- Complexe voorraadbeheersystemen
+- Real-time analyse-/trackingplug-ins
+- Slecht gecodeerde aangepaste plug-ins
+
+### 4. WordPress/WooCommerce-configuratie {#4-wordpresswoocommerce-configuration}
+
+**Symptomen:**
+- Inconsistente prestaties
+- Geheugengerelateerde fouten in logboeken
+- Langzaam beheerdersdashboard
+
+**Optimalisatiechecklist:**
+- **PHP-versie** - Gebruik PHP 8.0+ voor betere prestaties
+- **WooCommerce HPOS** - Maak hoogwaardige orderopslag mogelijk (zie hieronder)
+- **WordPress caching** - Schakel objectcaching in, indien beschikbaar
+- **WooCommerce instellingen** - Optimaliseer de afmetingen van productafbeeldingen
+
+### WooCommerce Hoogwaardige orderopslag (HPOS) {#woocommerce-high-performance-order-storage-hpos}
+
+:::tip Grootste prestatieoverwinning
+**HPOS is een van de belangrijkste prestatieverbeteringen die u kunt aanbrengen voor WooCommerce.** Het slaat bestellingen op in aangepaste databasetabellen in plaats van de WordPress berichtentabel, waardoor de prestaties voor winkels met veel bestellingen dramatisch worden verbeterd.
+:::
+
+**Voordelen:**
+- **Sneller opvragen van bestellingen** - Bestellingen opgeslagen in een geoptimaliseerde databasestructuur
+- **Verminderde databasebelasting** - Scheidt bestellingen van berichten/pagina's
+- **Betere schaalbaarheid** - Verwerkt grote aantallen bestellingen efficiënt
+- **Verbeterde beheerdersprestaties** - Snellere schermen voor orderbeheer
+
+**Hoe in te schakelen:**
+1. Ga naar `WooCommerce > Settings > Advanced > Features`
+2. Schakel 'Krachtige orderopslag' in
+3. Volg het migratieproces
+
+**Meer informatie:**
+- [WooCommerce HPOS-documentatie](https://woocommerce.com/document/high-performance-order-storage/)
+- [HPOS Migratiehandleiding](https://woocommerce.com/document/high-performance-order-storage/#section-3)
+
+## Beste praktijken voor servermonitoring {#server-monitoring-best-practices}
+
+### 1. Regelmatige prestatiecontroles {#1-regular-performance-checks}
+
+- **Wekelijkse beoordelingen** - Controleer logboeken op prestatietrends
+- **Nulmetingen** - Registreer normale uitvoeringstijden
+- **Piektijdmonitoring** - Monitor tijdens perioden met veel verkeer
+
+### 2. Stel prestatiewaarschuwingen in {#2-set-performance-alerts}
+
+Let op deze waarschuwingssignalen:
+- Uitvoeringstijden > 1000 ms consistent
+- Serverbelasting > 5,0 voor langere perioden
+- Frequente time-outfouten in logboeken
+
+### 3. Capaciteitsplanning {#3-capacity-planning}
+
+Volg groeitrends:
+- **Recordaantalgroei** - Producten, bestellingen, klanten
+- **Prestatievermindering** - Hoe de uitvoeringstijd schaalt
+- **Bronnengebruik** - CPU, geheugen, schijfgebruik
+
+## Strategieën voor serveroptimalisatie {#server-optimisation-strategies}
+
+### 1. WordPress/WooCommerce Beste praktijken {#1-wordpresswoocommerce-best-practices}
+
+** HPOS inschakelen:**
+- De meest impactvolle prestatieverbetering voor WooCommerce
+- Zie het gedeelte HPOS hierboven voor meer informatie
+
+**PHP Configuratie (raadpleeg uw host):**
+```ini
+memory_limit = 512M
+max_execution_time = 300
+max_input_vars = 3000
+```
+
+**WordPress-configuratie:**
+```php
+// In wp-config.php - limit post revisions
+define('WP_POST_REVISIONS', 3);
+
+// Enable WordPress debug logging if needed
+define('WP_DEBUG_LOG', true);
+```
+
+### 2. Optimalisaties op hostingniveau {#2-hosting-level-optimizations}
+
+**Objectcaching:**
+- Vraag uw host naar de beschikbaarheid van Redis of Memcached
+- Veel beheerde WordPress-hosts bieden dit automatisch aan
+
+**PHP-versie:**
+- Gebruik PHP 8.0+ voor aanzienlijke prestatieverbeteringen
+- Bij de meeste hosts is het eenvoudig schakelen tussen PHP-versies mogelijk
+
+**Serverbronnen:**
+- Zorg voor voldoende RAM (minimaal 1 GB, bij voorkeur 2 GB+)
+- SSD-opslag biedt veel betere databaseprestaties dan traditionele schijven
+
+## Hostingspecifieke opmerkingen {#hosting-specific-notes}
+
+Sommige hosts en CDN's hebben configuratie nodig om de POS de WooCommerce REST API te laten bereiken:
+
+| Gastheer / dienst | Probleem | Repareren |
+| --- | --- | --- |
+| **GoDaddy** | De firewall van de website blokkeert `/wp-json/` REST API-oproepen (fouten zoals _'Ontvangen 'undefined''_) | `Website Security > Firewall > Settings > Access Control > Allow URL Paths` → `/wp-json/` toevoegen |
+| **WP Engine** | REST API moet expliciet worden ingeschakeld | Schakel de REST API in; zet indien nodig API-eindpunten op de witte lijst in hun firewall |
+| **Cloudflare** | Kan REST API-verzoeken blokkeren en kan API-reacties in de cache opslaan | Controleer firewallregels; voeg een paginaregel toe om **cache te omzeilen** voor `/wp-json/*` |
+| **WordPress.com** | REST API / compatibiliteitsproblemen met het laden van producten (slechts 9-10 producten worden weergegeven) | Gebruik zelf-gehoste WordPress.org voor volledige compatibiliteit |
+| **Gedeelde hosting** | Te weinig PHP-werkrollen/weinig geheugen voor gelijktijdige POS-oproepen | Verplaats naar een VPS- of beheerde WordPress-host |
+
+Beveiligingsplug-ins (Wordfence, enz.) kunnen de REST API op vergelijkbare manieren blokkeren — zie [Plug-inconflicten](/support/troubleshooting/plugin-conflicts) voor de volledige lijst en oplossingen.
+
+### HTTP 414 — URI te lang {#http-414-uri-too-long}
+
+Grote winkelwagentjes, of het toegangstoken dat bij het afrekenen URL is inbegrepen, kunnen de URL-lengtelimiet van de server overschrijden (het afrekenverzoek gebruikt `GET`). Dit kan browserspecifiek zijn en verergerd worden door browsercache.
+
+**Oplossing:** wis eerst de browsercache en verhoog vervolgens de URL-lengtelimiet van de server:
+
+- **Apache:** `LimitRequestLine 65536` in `httpd.conf`
+- **Nginx:** `large_client_header_buffers 4 65536;` in `nginx.conf`
+- Als u geen configuratietoegang heeft, vraag dan uw hostingprovider om dit aan te passen.
+
+## Wanneer moet u hulp zoeken {#when-to-seek-help}
+
+Neem contact op met uw hostingprovider of een WordPress-ontwikkelaar als:
+
+- **Serverbelasting consistent > 8.0** ondanks optimalisatie-inspanningen
+- **Uitvoeringstijden > 5000 ms** voor eenvoudige handelingen
+- **Geheugenfouten** verschijnen vaak in logboeken
+- **Databasequery's duren consistent > 2 seconden**
+
+Geef ze:
+- Serverstatistieken uit uw logboeken
+- Lijst met actieve plug-ins
+- Serverspecificaties (CPU, RAM, opslagtype)
+- WordPress- en WooCommerce-versies
+
+## Gerelateerde documentatie {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/support/logs" title="Logboeken" description="Hoe u serverstatistieken kunt openen en interpreteren" />
+  <LinkCard to="/support/performance/checkout" title="Afrekenprestaties" description="Optimaliseer de betalingsverwerking" />
+  <LinkCard to="/error-codes" title="Foutcodes" description="Begrijp prestatiegerelateerde foutcodes" />
+  <LinkCard to="/category/troubleshooting" title="Problemen oplossen" description="Algemene handleidingen voor probleemoplossing" />
+</LinkCards>
