@@ -54,7 +54,12 @@ const STALE_FAIL_THRESHOLD = 1;
 // Sweep queue shaping (--audit-json only; see buildTranslationAudit). Env-
 // overridable so a one-off run can widen scope, e.g. AUDIT_EXCLUDE='(?!)' to
 // translate everything including the deprecated version.
-const AUDIT_EXCLUDE_DEFAULT = 'versioned_docs/version-0\\.4\\.x/';
+const AUDIT_EXCLUDE_DEFAULT = 'version-0\\.4\\.x'; // matches both the docs path and the version-0.4.x.json sidebar file
+// Docs sidebar/category label source files, e.g.
+// i18n/en/docusaurus-plugin-content-docs/version-1.x.json. These carry the
+// collapsible category labels (Receipts, Hardware, …) and get key-level
+// completeness checking against a freshly regenerated English baseline.
+const SIDEBAR_JSON_RE = /docusaurus-plugin-content-docs\/version-[^/]+\.json$/;
 const AUDIT_DEPRIORITIZE_DEFAULT = '/error-codes/';
 
 // ---------------------------------------------------------------------------
@@ -406,6 +411,36 @@ function jsonSourceToTranslatedPath(sourcePath, locale) {
   return sourcePath.replace(/^i18n\/en\//, `i18n/${locale}/`);
 }
 
+function parseJsonOrNull(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+// Docusaurus chrome translations (sidebar/category labels, navbar, footer) live in
+// i18n/<locale>/.../*.json as { key: { message, description } }. A translation file
+// can EXIST yet be behind its English source — e.g. after the sidebar is restructured
+// the category keys change, but the per-locale files keep the old key set, so the new
+// buckets fall back to English in the UI. Existence alone (missing_json) does not catch
+// this. Returns the English keys whose message is absent or empty in the translation —
+// the sidebar analogue of findMissingSections for .mdx. We only flag source→translation
+// drops, never extra keys the translation carries, so a translation is never re-forwarded
+// for keys English no longer has.
+function findMissingJsonKeys(sourceContent, translatedContent) {
+  const src = parseJsonOrNull(sourceContent);
+  const tr = parseJsonOrNull(translatedContent);
+  if (!src || typeof src !== 'object') return [];
+  if (!tr || typeof tr !== 'object') return Object.keys(src);
+  const messageOf = (entry) => (entry && typeof entry === 'object' ? entry.message : entry);
+  return Object.keys(src).filter((key) => {
+    if (messageOf(src[key]) == null || messageOf(src[key]) === '') return false; // nothing to translate
+    const m = messageOf(tr[key]);
+    return m == null || m === '';
+  });
+}
+
 // buildTranslationAudit feeds the self-healing sweep, which forwards the first
 // `batch_size` entries to Aide. Two knobs shape that queue (the audit is the
 // sweep's ONLY consumer, so these do not affect the PR gate):
@@ -453,9 +488,22 @@ function buildTranslationAudit({
   const jsonList = jsonSources || allEnglishJsonSourceFiles();
   for (const source of jsonList) {
     if (!existsSync(source) || excludeSource(source)) continue;
+    // Key-level completeness needs a trustworthy (freshly regenerated) English
+    // baseline. This change refreshes only the docs sidebar/category source
+    // (docusaurus-plugin-content-docs/version-*.json), so the incomplete_json
+    // check is scoped to it; the other chrome files (code.json, navbar/footer)
+    // keep the existence-only missing_json check until their EN baseline is
+    // likewise refreshed.
+    const checkKeyCompleteness = SIDEBAR_JSON_RE.test(source);
+    const sourceContent = checkKeyCompleteness ? readFile(source) : null;
     for (const locale of locales) {
       const tp = jsonSourceToTranslatedPath(source, locale);
-      if (tp && !existsSync(tp)) add(source, locale, 'missing_json');
+      if (!tp) continue;
+      if (!existsSync(tp)) {
+        add(source, locale, 'missing_json');
+      } else if (checkKeyCompleteness && findMissingJsonKeys(sourceContent, readFile(tp)).length > 0) {
+        add(source, locale, 'incomplete_json');
+      }
     }
   }
 
@@ -594,6 +642,7 @@ module.exports = {
   allSourceDocs,
   allEnglishJsonSourceFiles,
   jsonSourceToTranslatedPath,
+  findMissingJsonKeys,
   buildTranslationAudit,
   listIncompleteSources,
   evaluateFile,

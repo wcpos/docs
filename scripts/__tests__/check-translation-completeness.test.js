@@ -11,6 +11,7 @@ const {
   findLeftoverProse,
   headingAnchors,
   findMissingSections,
+  findMissingJsonKeys,
   isStub,
   listIncompleteSources,
   buildTranslationAudit,
@@ -246,6 +247,61 @@ describe('findMissingSections (stale detection)', () => {
   });
 });
 
+describe('findMissingJsonKeys (sidebar/chrome JSON completeness)', () => {
+  const en = JSON.stringify({
+    'version.label': { message: '1.x' },
+    'sidebar.sidebar.category.Getting Started': { message: 'Getting Started' },
+    'sidebar.sidebar.category.Receipts': { message: 'Receipts' },
+    'sidebar.sidebar.category.Hardware': { message: 'Hardware' },
+  });
+
+  it('returns the source keys missing from the translation', () => {
+    const de = JSON.stringify({
+      'version.label': { message: '1.x' },
+      'sidebar.sidebar.category.Getting Started': { message: 'Erste Schritte' },
+    });
+    expect(findMissingJsonKeys(en, de).sort()).toEqual([
+      'sidebar.sidebar.category.Hardware',
+      'sidebar.sidebar.category.Receipts',
+    ]);
+  });
+
+  it('treats an empty message as missing', () => {
+    const de = JSON.stringify({
+      'version.label': { message: '1.x' },
+      'sidebar.sidebar.category.Getting Started': { message: 'Erste Schritte' },
+      'sidebar.sidebar.category.Receipts': { message: '' },
+      'sidebar.sidebar.category.Hardware': { message: 'Hardware-DE' },
+    });
+    expect(findMissingJsonKeys(en, de)).toEqual(['sidebar.sidebar.category.Receipts']);
+  });
+
+  it('returns nothing when every source key is present and non-empty', () => {
+    const de = JSON.stringify({
+      'version.label': { message: '1.x' },
+      'sidebar.sidebar.category.Getting Started': { message: 'Erste Schritte' },
+      'sidebar.sidebar.category.Receipts': { message: 'Belege' },
+      'sidebar.sidebar.category.Hardware': { message: 'Hardware' },
+    });
+    expect(findMissingJsonKeys(en, de)).toEqual([]);
+  });
+
+  it('ignores extra keys the translation carries (source no longer has them)', () => {
+    const de = JSON.stringify({
+      'version.label': { message: '1.x' },
+      'sidebar.sidebar.category.Getting Started': { message: 'Erste Schritte' },
+      'sidebar.sidebar.category.Receipts': { message: 'Belege' },
+      'sidebar.sidebar.category.Hardware': { message: 'Hardware' },
+      'sidebar.sidebar.category.OldRemovedBucket': { message: 'Alt' },
+    });
+    expect(findMissingJsonKeys(en, de)).toEqual([]);
+  });
+
+  it('treats a whole missing/unparseable translation as every key missing', () => {
+    expect(findMissingJsonKeys(en, 'not json').length).toBe(4);
+  });
+});
+
 describe('isStub', () => {
   const longSource = 'A fairly long English source document. '.repeat(40); // > 600 chars
 
@@ -400,6 +456,48 @@ describe('buildTranslationAudit', () => {
     });
 
     expect(audit).toEqual([{ source, locales: { de: ['stale'] } }]);
+  });
+
+  it('reports an existing-but-incomplete JSON (missing source keys) as a repair target', () => {
+    const source = 'i18n/en/docusaurus-plugin-content-docs/version-1.x.json';
+    const en = JSON.stringify({
+      'sidebar.sidebar.category.Getting Started': { message: 'Getting Started' },
+      'sidebar.sidebar.category.Receipts': { message: 'Receipts' }, // new bucket
+    });
+    // de exists but predates the restructure — has the old key, missing {Receipts}.
+    const de = JSON.stringify({
+      'sidebar.sidebar.category.Getting Started': { message: 'Erste Schritte' },
+    });
+    const files = new Map([
+      [source, en],
+      ['i18n/de/docusaurus-plugin-content-docs/version-1.x.json', de],
+    ]);
+    const audit = buildTranslationAudit({
+      sources: [],
+      jsonSources: [source],
+      locales: ['de'],
+      existsSync: (p) => files.has(p),
+      readFile: (p) => files.get(p),
+    });
+    expect(audit).toEqual([{ source, locales: { de: ['incomplete_json'] } }]);
+  });
+
+  it('does not flag a JSON that has every source key translated', () => {
+    const source = 'i18n/en/docusaurus-plugin-content-docs/version-1.x.json';
+    const en = JSON.stringify({ 'sidebar.sidebar.category.Receipts': { message: 'Receipts' } });
+    const de = JSON.stringify({ 'sidebar.sidebar.category.Receipts': { message: 'Belege' } });
+    const files = new Map([
+      [source, en],
+      ['i18n/de/docusaurus-plugin-content-docs/version-1.x.json', de],
+    ]);
+    const audit = buildTranslationAudit({
+      sources: [],
+      jsonSources: [source],
+      locales: ['de'],
+      existsSync: (p) => files.has(p),
+      readFile: (p) => files.get(p),
+    });
+    expect(audit).toEqual([]);
   });
 
   it('reports missing JSON chrome files as repair targets', () => {
