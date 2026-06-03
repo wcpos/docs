@@ -111,6 +111,17 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'Mac (Intel)',
   'Mac (Apple Silicon)',
   'Android (Beta)',
+  'Stripe Terminal',
+  'SumUp Terminal',
+  'Vipps MobilePay',
+  'Smart Coupons',
+  'StoreApps Smart Coupons',
+  'ATUM Multi-Inventory',
+  'WCPOS ATUM Integration',
+  'WCPOS Polylang',
+  'WCPOS WPML',
+  'WCPOS WP Multilang',
+  'WCPOS StoreApps Smart Coupons',
   "Cannot read properties of undefined (reading 'data')",
 ]);
 
@@ -232,12 +243,12 @@ function findLeftoverProse(sourceContent, translatedContent) {
   const sourceProse = new Set();
   for (const line of bodyLines(sourceContent)) {
     const p = lineToProse(line);
-    if (isSignificantProse(p)) sourceProse.add(p);
+    if (isSignificantProse(p) && !UNTRANSLATED_PROP_ALLOWLIST.has(p)) sourceProse.add(p);
   }
   const hits = [];
   for (const line of bodyLines(translatedContent)) {
     const p = lineToProse(line);
-    if (isSignificantProse(p) && sourceProse.has(p)) hits.push(p);
+    if (isSignificantProse(p) && !UNTRANSLATED_PROP_ALLOWLIST.has(p) && sourceProse.has(p)) hits.push(p);
   }
   return [...new Set(hits)];
 }
@@ -310,7 +321,11 @@ function evaluateFile(translatedPath, readFile = (p) => fs.readFileSync(p, 'utf8
 
 // Locales missing a (non-stub) translation for an English source that is
 // already translated elsewhere — i.e. a dropped locale.
-function findDroppedLocales(sourcePath, readFile = (p) => fs.readFileSync(p, 'utf8')) {
+function findDroppedLocales(
+  sourcePath,
+  readFile = (p) => fs.readFileSync(p, 'utf8'),
+  allowedMissingLocales = new Set()
+) {
   if (!fs.existsSync(sourcePath)) return [];
   const source = readFile(sourcePath);
   const present = [];
@@ -320,13 +335,25 @@ function findDroppedLocales(sourcePath, readFile = (p) => fs.readFileSync(p, 'ut
     if (tp && fs.existsSync(tp)) {
       if (isStub(source, readFile(tp), locale)) missing.push(`${locale} (stub)`);
       else present.push(locale);
-    } else {
+    } else if (!allowedMissingLocales.has(locale)) {
       missing.push(locale);
     }
   }
   // Only a problem if the doc is translated in some locales but not others.
   if (present.length === 0 || missing.length === 0) return [];
   return missing;
+}
+
+function deletedChangedLocales(files) {
+  const bySource = new Map();
+  for (const file of files) {
+    const sourcePath = getSourcePath(file);
+    const locale = localeOf(file);
+    if (!sourcePath || !locale || !fs.existsSync(sourcePath) || fs.existsSync(file)) continue;
+    if (!bySource.has(sourcePath)) bySource.set(sourcePath, new Set());
+    bySource.get(sourcePath).add(locale);
+  }
+  return bySource;
 }
 
 // ---------------------------------------------------------------------------
@@ -554,6 +581,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
     return 0;
   }
 
+  const allowedDroppedLocalesBySource = deletedChangedLocales(files);
   const problems = [];
   const checkedSources = new Set();
   const droppedBySource = [];
@@ -564,7 +592,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
     if (r.skipped) {
       if (r.sourcePath && !checkedSources.has(r.sourcePath)) {
         checkedSources.add(r.sourcePath);
-        const dropped = findDroppedLocales(r.sourcePath);
+        const dropped = findDroppedLocales(r.sourcePath, undefined, allowedDroppedLocalesBySource.get(r.sourcePath));
         if (dropped.length) droppedBySource.push({ source: r.sourcePath, dropped });
       }
       continue;
@@ -594,7 +622,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
     // Check the implicated source for dropped locales (once per source).
     if (r.sourcePath && !checkedSources.has(r.sourcePath)) {
       checkedSources.add(r.sourcePath);
-      const dropped = findDroppedLocales(r.sourcePath);
+      const dropped = findDroppedLocales(r.sourcePath, undefined, allowedDroppedLocalesBySource.get(r.sourcePath));
       if (dropped.length) droppedBySource.push({ source: r.sourcePath, dropped });
     }
   }
@@ -639,6 +667,7 @@ module.exports = {
   findMissingSections,
   isStub,
   findDroppedLocales,
+  deletedChangedLocales,
   allSourceDocs,
   allEnglishJsonSourceFiles,
   jsonSourceToTranslatedPath,

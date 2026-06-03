@@ -144,9 +144,11 @@ describe('findUntranslatedProps', () => {
 
   it('does not flag allowlisted product/platform labels (prop or title), but still flags real leaks', () => {
     const src =
-      '<DownloadButton label="Mac (Apple Silicon)" />\n\n![iOS build](/y.png "iOS (TestFlight)")\n\n<AccordionItem question="How do I install it?">\n';
+      '<DownloadButton label="Mac (Apple Silicon)" />\n<Card title="Stripe Terminal" />\n<Card title="WCPOS WPML" />\n\n![iOS build](/y.png "iOS (TestFlight)")\n\n<AccordionItem question="How do I install it?">\n';
     const hits = findUntranslatedProps(src, src);
     expect(hits).not.toContain('label="Mac (Apple Silicon)"'); // allowlisted — kept on purpose
+    expect(hits).not.toContain('title="Stripe Terminal"'); // allowlisted product name
+    expect(hits).not.toContain('title="WCPOS WPML"'); // allowlisted extension name
     expect(hits).not.toContain('title="iOS (TestFlight)"'); // allowlisted — kept on purpose
     expect(hits).toContain('question="How do I install it?"'); // genuine leak — still flagged
   });
@@ -169,6 +171,22 @@ Each gateway can be enabled or disabled for the POS.
 
   it('passes a fully translated document', () => {
     const translated = `Die Checkout-Einstellungsseite steuert Zahlungsgateways.
+
+Jedes Gateway kann für das POS aktiviert oder deaktiviert werden.
+`;
+    expect(findLeftoverProse(source, translated)).toHaveLength(0);
+  });
+
+  it('does not flag allowlisted product names left verbatim in prose', () => {
+    const source = `Stripe Terminal
+
+WCPOS WP Multilang
+
+Each gateway can be enabled or disabled for the POS.
+`;
+    const translated = `Stripe Terminal
+
+WCPOS WP Multilang
 
 Jedes Gateway kann für das POS aktiviert oder deaktiviert werden.
 `;
@@ -320,11 +338,39 @@ describe('isStub', () => {
 });
 
 describe('main', () => {
-  it('reports dropped locales when a changed translation path was deleted', () => {
+  it('allows dropped locales when the changed translation path was deleted', () => {
     const cwd = process.cwd();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'translation-check-'));
     const sourcePath = 'docs/foo.mdx';
     const deletedPath = 'i18n/de/docusaurus-plugin-content-docs/current/foo.mdx';
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      process.chdir(tmp);
+      fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+      fs.writeFileSync(sourcePath, 'The Checkout Settings page controls payment gateways.\n');
+      for (const locale of LOCALES.filter((l) => l !== 'de')) {
+        const translatedPath = sourceToTranslatedPath(sourcePath, locale);
+        fs.mkdirSync(path.dirname(translatedPath), { recursive: true });
+        fs.writeFileSync(translatedPath, 'La pagina de ajustes controla las pasarelas de pago.\n');
+      }
+
+      expect(main([deletedPath])).toBe(0);
+      expect(log.mock.calls.flat().join('\n')).toContain('Translation completeness OK');
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      process.chdir(cwd);
+      log.mockRestore();
+      error.mockRestore();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('reports dropped locales when the missing path was not deleted in this change', () => {
+    const cwd = process.cwd();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'translation-check-'));
+    const sourcePath = 'docs/foo.mdx';
     const presentPath = 'i18n/es/docusaurus-plugin-content-docs/current/foo.mdx';
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -336,7 +382,7 @@ describe('main', () => {
       fs.writeFileSync(sourcePath, 'The Checkout Settings page controls payment gateways.\n');
       fs.writeFileSync(presentPath, 'La pagina de ajustes controla las pasarelas de pago.\n');
 
-      expect(main([deletedPath])).toBe(1);
+      expect(main([presentPath])).toBe(1);
       expect(error.mock.calls.flat().join('\n')).toContain('missing/stub in:');
     } finally {
       process.chdir(cwd);
