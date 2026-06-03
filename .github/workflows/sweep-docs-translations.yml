@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: docs-translation-sweep
@@ -39,21 +40,41 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Find existing docs translation PR
+        id: open_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN_PRS_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '[.[] | select(.head.ref | startswith("aide/docs-translations-")) | select(.head.repo.full_name == env.GITHUB_REPOSITORY) | {number, url: .html_url, head: .head.ref}]')
+          COUNT=$(node -e 'const prs = JSON.parse(process.argv[1]); process.stdout.write(String(prs.length));' "$OPEN_PRS_JSON")
+          if [ "$COUNT" -gt 0 ]; then
+            echo "has_open_pr=true" >> "$GITHUB_OUTPUT"
+            echo "Existing Aide docs translation PR(s) open; skipping new dispatch: $OPEN_PRS_JSON"
+          else
+            echo "has_open_pr=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup pnpm
+        if: steps.open_pr.outputs.has_open_pr != 'true'
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
 
       - name: Setup Node.js
+        if: steps.open_pr.outputs.has_open_pr != 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '22.13.1'
 
       - name: Install dependencies
+        if: steps.open_pr.outputs.has_open_pr != 'true'
         run: pnpm install
 
       - name: Generate English source translations
+        if: steps.open_pr.outputs.has_open_pr != 'true'
         run: pnpm write-translations --locale en
 
       - name: Find translation repair targets (batched)
+        if: steps.open_pr.outputs.has_open_pr != 'true'
         id: gaps
         env:
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '8' }}
@@ -72,14 +93,14 @@ jobs:
           echo "Translation repair targets: $TOTAL total. Forwarding this run: $BATCH_TARGETS"
 
       - name: Require OpenClaw secrets
-        if: steps.gaps.outputs.has_files == 'true' && github.event.inputs.dry_run != 'true'
+        if: steps.open_pr.outputs.has_open_pr != 'true' && steps.gaps.outputs.has_files == 'true' && github.event.inputs.dry_run != 'true'
         env:
           OPENCLAW_HOOKS_TOKEN: ${{ secrets.OPENCLAW_HOOKS_TOKEN }}
         run: |
           test -n "$OPENCLAW_HOOKS_TOKEN" || { echo "OPENCLAW_HOOKS_TOKEN secret is required"; exit 1; }
 
       - name: Forward gap files to Aide
-        if: steps.gaps.outputs.has_files == 'true' && github.event.inputs.dry_run != 'true'
+        if: steps.open_pr.outputs.has_open_pr != 'true' && steps.gaps.outputs.has_files == 'true' && github.event.inputs.dry_run != 'true'
         env:
           OPENCLAW_BASE_URL: ${{ vars.OPENCLAW_BASE_URL }}
           OPENCLAW_HOOKS_TOKEN: ${{ secrets.OPENCLAW_HOOKS_TOKEN }}
