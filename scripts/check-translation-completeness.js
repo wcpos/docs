@@ -51,6 +51,11 @@ const PROSE_FAIL_THRESHOLD = 3;
 // explicit {#slug} that is preserved verbatim across locales, so a missing slug
 // is a missing section, not a translation artifact.
 const STALE_FAIL_THRESHOLD = 1;
+// Sweep queue shaping (--audit-json only; see buildTranslationAudit). Env-
+// overridable so a one-off run can widen scope, e.g. AUDIT_EXCLUDE='(?!)' to
+// translate everything including the deprecated version.
+const AUDIT_EXCLUDE_DEFAULT = 'versioned_docs/version-0\\.4\\.x/';
+const AUDIT_DEPRIORITIZE_DEFAULT = '/error-codes/';
 
 // ---------------------------------------------------------------------------
 // Path mapping
@@ -401,12 +406,22 @@ function jsonSourceToTranslatedPath(sourcePath, locale) {
   return sourcePath.replace(/^i18n\/en\//, `i18n/${locale}/`);
 }
 
+// buildTranslationAudit feeds the self-healing sweep, which forwards the first
+// `batch_size` entries to Aide. Two knobs shape that queue (the audit is the
+// sweep's ONLY consumer, so these do not affect the PR gate):
+//   - excludeSource(source): drop a source entirely. Default skips the deprecated
+//     version-0.4.x docs — not worth re-translating a superseded version.
+//   - priority(source): lower sorts first within the otherwise-alphabetical queue.
+//     Default pushes the ~60 boilerplate error-code reference pages behind the
+//     hand-written content guides so the high-value pages translate first.
 function buildTranslationAudit({
   readFile = (p) => fs.readFileSync(p, 'utf8'),
   existsSync = fs.existsSync,
   sources,
   jsonSources,
   locales = LOCALES,
+  excludeSource = () => false,
+  priority = () => 0,
 } = {}) {
   const bySource = new Map();
   const add = (source, locale, reason) => {
@@ -418,7 +433,7 @@ function buildTranslationAudit({
 
   const srcList = sources || allSourceDocs();
   for (const source of srcList) {
-    if (!existsSync(source)) continue;
+    if (!existsSync(source) || excludeSource(source)) continue;
     const sourceContent = readFile(source);
     for (const locale of locales) {
       const tp = sourceToTranslatedPath(source, locale);
@@ -437,14 +452,16 @@ function buildTranslationAudit({
 
   const jsonList = jsonSources || allEnglishJsonSourceFiles();
   for (const source of jsonList) {
-    if (!existsSync(source)) continue;
+    if (!existsSync(source) || excludeSource(source)) continue;
     for (const locale of locales) {
       const tp = jsonSourceToTranslatedPath(source, locale);
       if (tp && !existsSync(tp)) add(source, locale, 'missing_json');
     }
   }
 
-  return [...bySource.values()].sort((a, b) => a.source.localeCompare(b.source));
+  return [...bySource.values()].sort(
+    (a, b) => priority(a.source) - priority(b.source) || a.source.localeCompare(b.source)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -453,7 +470,16 @@ function buildTranslationAudit({
 
 function main(argv = process.argv.slice(2), env = process.env) {
   if (argv.includes('--audit-json')) {
-    process.stdout.write(JSON.stringify(buildTranslationAudit()));
+    const excludeRe = new RegExp(env.AUDIT_EXCLUDE || AUDIT_EXCLUDE_DEFAULT);
+    const deprioritizeRe = new RegExp(env.AUDIT_DEPRIORITIZE || AUDIT_DEPRIORITIZE_DEFAULT);
+    process.stdout.write(
+      JSON.stringify(
+        buildTranslationAudit({
+          excludeSource: (s) => excludeRe.test(s),
+          priority: (s) => (deprioritizeRe.test(s) ? 1 : 0),
+        })
+      )
+    );
     return 0;
   }
 
