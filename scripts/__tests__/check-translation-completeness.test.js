@@ -144,9 +144,11 @@ describe('findUntranslatedProps', () => {
 
   it('does not flag allowlisted product/platform labels (prop or title), but still flags real leaks', () => {
     const src =
-      '<DownloadButton label="Mac (Apple Silicon)" />\n\n![iOS build](/y.png "iOS (TestFlight)")\n\n<AccordionItem question="How do I install it?">\n';
+      '<DownloadButton label="Mac (Apple Silicon)" />\n<Card title="Stripe Terminal" />\n<Card title="WCPOS WPML" />\n\n![iOS build](/y.png "iOS (TestFlight)")\n\n<AccordionItem question="How do I install it?">\n';
     const hits = findUntranslatedProps(src, src);
     expect(hits).not.toContain('label="Mac (Apple Silicon)"'); // allowlisted — kept on purpose
+    expect(hits).not.toContain('title="Stripe Terminal"'); // allowlisted product name
+    expect(hits).not.toContain('title="WCPOS WPML"'); // allowlisted extension name
     expect(hits).not.toContain('title="iOS (TestFlight)"'); // allowlisted — kept on purpose
     expect(hits).toContain('question="How do I install it?"'); // genuine leak — still flagged
   });
@@ -169,6 +171,22 @@ Each gateway can be enabled or disabled for the POS.
 
   it('passes a fully translated document', () => {
     const translated = `Die Checkout-Einstellungsseite steuert Zahlungsgateways.
+
+Jedes Gateway kann für das POS aktiviert oder deaktiviert werden.
+`;
+    expect(findLeftoverProse(source, translated)).toHaveLength(0);
+  });
+
+  it('does not flag allowlisted product names left verbatim in prose', () => {
+    const source = `Stripe Terminal
+
+WCPOS WP Multilang
+
+Each gateway can be enabled or disabled for the POS.
+`;
+    const translated = `Stripe Terminal
+
+WCPOS WP Multilang
 
 Jedes Gateway kann für das POS aktiviert oder deaktiviert werden.
 `;

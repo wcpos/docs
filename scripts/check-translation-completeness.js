@@ -111,6 +111,17 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'Mac (Intel)',
   'Mac (Apple Silicon)',
   'Android (Beta)',
+  'Stripe Terminal',
+  'SumUp Terminal',
+  'Vipps MobilePay',
+  'Smart Coupons',
+  'StoreApps Smart Coupons',
+  'ATUM Multi-Inventory',
+  'WCPOS ATUM Integration',
+  'WCPOS Polylang',
+  'WCPOS WPML',
+  'WCPOS WP Multilang',
+  'WCPOS StoreApps Smart Coupons',
   "Cannot read properties of undefined (reading 'data')",
 ]);
 
@@ -232,12 +243,12 @@ function findLeftoverProse(sourceContent, translatedContent) {
   const sourceProse = new Set();
   for (const line of bodyLines(sourceContent)) {
     const p = lineToProse(line);
-    if (isSignificantProse(p)) sourceProse.add(p);
+    if (isSignificantProse(p) && !UNTRANSLATED_PROP_ALLOWLIST.has(p)) sourceProse.add(p);
   }
   const hits = [];
   for (const line of bodyLines(translatedContent)) {
     const p = lineToProse(line);
-    if (isSignificantProse(p) && sourceProse.has(p)) hits.push(p);
+    if (isSignificantProse(p) && !UNTRANSLATED_PROP_ALLOWLIST.has(p) && sourceProse.has(p)) hits.push(p);
   }
   return [...new Set(hits)];
 }
