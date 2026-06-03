@@ -1,0 +1,301 @@
+---
+title: 热敏打印机模板
+sidebar_label: 热敏模板
+sidebar_position: 4
+description: 为支持 Epson 和 Star 的 ESC/POS 热敏打印机创建基于 XML 的收据模板。
+---
+
+热敏模板使用 XML 格式，同一个模板既能生成屏幕预览，也能生成 ESC/POS 打印机命令。它们使用与 [HTML 模板](/receipts/html-templates)相同的 `{{variable}}` 占位符进行数据绑定。
+
+如果你的收据打印机通过[打印机设置](/hardware/printers)连接，请选择此引擎。
+
+## XML 元素 {#xml-elements}
+
+### 根元素 {#root-element}
+
+每个热敏模板都以 `<receipt>` 根元素开始：
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### 文本和格式 {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### 对齐 {#alignment}
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### 文本大小 {#text-size}
+
+可以分别缩放文本的宽度和高度：
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### 表格布局 {#tabular-layout}
+
+使用 `<row>` 和 `<col>` 创建对齐的列：
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+列宽以字符数计算。使用 `width="*"` 可创建吸收剩余空间的弹性列，使模板无需修改即可适配不同纸宽：
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### 分隔线和间距 {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Default single rule -->
+<line style="double" />        <!-- Printer-native double rule -->
+<line style="dashed" />        <!-- Character dashes across the width -->
+<line style="dotted" />        <!-- Character dots across the width -->
+<feed lines="2" />             <!-- Blank lines -->
+```
+
+`<line/>`（或 `style="single"`）和 `style="double"` 会打印打印机原生线条。`dashed` 和 `dotted` 会在当前列宽内打印基于字符的分隔线，当你希望热敏预览截图中也能看到清晰分隔线时很有用。
+
+### 打印机命令 {#printer-commands}
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### 条码和二维码 {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<barcode type="qrcode" scale="3">{{fiscal.qr_payload}}</barcode>
+```
+
+## 示例：简单 80mm 收据 {#example-simple-80mm-receipt}
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## 星号宽度列 {#star-width-columns}
+
+`width="*"` 功能让模板不依赖特定纸宽。不要为某种纸张尺寸硬编码列宽，而是对需要伸展的列使用 `*`：
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+在 80mm 打印机（48 字符）上，商品名称可获得 38 个字符。在 58mm 打印机（32 字符）上，它可获得 22 个字符。固定列在两种纸宽下保持相同大小。
+
+## 模板预览 {#template-preview}
+
+模板编辑器会在编辑时显示**实时热敏预览**。预览将 XML 渲染为带样式的等宽 HTML，模拟收据打印到纸上的外观。更改会在短暂延迟后更新（300ms 防抖）。
+
+同一个模板同时生成预览和 ESC/POS 打印机输出，不需要单独的“打印”模板。条码和二维码在预览中渲染为内联 SVG，在打印机上渲染为原生 ESC/POS 命令（或栅格图像）。
+
+## 编写提示和常见陷阱 {#authoring-tips-and-pitfalls}
+
+热敏打印有一些 HTML 中不存在的陷阱。下面是作者最常遇到的问题。
+
+### 将带样式标题包在 `<text>` 中以产生换行 {#wrap-styled-headings-in-text-for-a-line-break}
+
+样式容器 — `<bold>`、`<size>`、`<underline>`、`<align>` — **本身不会输出换行**。只有 `<text>` 和块级元素（`<line/>`、`<row>`、`<feed>`）会产生换行。
+
+```xml
+<!-- ❌ Bug: the heading runs together with whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Fix: wrap the inner content in <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+内置的 80mm 图库模板会为每个标题使用这种模式。
+
+### 避免在窄行内使用 `<size width="2">` {#avoid-size-width2-inside-narrow-rows}
+
+双倍宽度文本会**将有效字符数翻倍**。在 80mm 打印机上能放下的标题，可能会在常见的 42 列 80mm 打印机上溢出；在 58mm 纸上则只剩 16 个字符。
+
+对于醒目的值（大号总计、厨房订单号），请输出独立的缩放行，而不是把它包在多列 `<row>` 内：
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a bold total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+### 使用 `width="*"` 创建不依赖纸宽的布局 {#use-width-for-paper-width-agnostic-layouts}
+
+`width="*"`（星号）列会吸收固定宽度列之后的剩余宽度。同一模板可以在 32 列（58mm）、42 列（标准 80mm）和 48 列（宽 80mm）打印机上正确渲染，无需修改：
+
+```xml
+<!-- Works on 58mm AND 80mm without changes -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+如果使用硬编码数字宽度，请**按 42 预算**，而不是 48。总和为 48 的行会在常见的 42 列 80mm 打印机上换行。
+
+### `<align>` 块内的居中样式标题 {#centred-styled-headings-inside-align-blocks}
+
+在 `<align mode="center">`（或 `right`）中，直接放入的样式标题 — `<bold>`、`<size>`、`<underline>`、`<invert>` — 后面跟着另一行时，会自动作为独立行关闭。居中的放大店名上方或下方接居中地址行，即使没有显式 `<text>` 包裹，也能干净打印。
+
+在对齐块外，请保留 `<text>` 包裹。
+
+### ESC/POS 标点规范化 {#escpos-punctuation-normalisation}
+
+当打印机语言是 ESC/POS 时，编码器会在写入前将排版标点规范化为安全 ASCII：
+
+- 短横线、长横线、数字横线、Unicode 减号 → `-`
+- 弯引号 → 直引号
+- 不换行空格 → 普通空格
+
+因此，即使打印机没有 Unicode 字体，`Mon–Sat 9:00–18:00` 和 `"open"` 也能正确打印。Star 打印机（`star-line` / `star-prnt`）会**保留**原始排版，因此请使用打印机字体支持的字符。
+
+### 非拉丁和从右到左书写的文字 {#non-latin-and-rtl-scripts}
+
+热敏打印机使用内置字体和代码页打印文本，因此阿拉伯语、希伯来语、波斯语、乌尔都语等非拉丁文字只有在打印机设置为匹配代码页（例如阿拉伯语的 CP864 / Windows-1256）时才能正确打印。否则会出现空白或乱码。
+
+这些文字最可靠的方法是 **Full receipt raster**，它将整张收据渲染为图像，从而无论打印机内置字体如何，都能按设计打印。启用栅格模式请参阅[打印机设置](/hardware/printers)。
+
+:::note 热敏硬件需要热敏模板
+热敏打印机无法打印整页 **HTML** 模板；打印任务必须渲染为 ESC/POS 或 Star 命令，而 HTML 无法表达这些命令。热敏硬件请使用热敏模板；对于整页 A4/Letter HTML，请打印到系统/PDF 打印机，或通过 [PrintNode](/receipts/cloud-printing#setup-printnode) 打印。
+:::
+
+### 标志和图像 {#logos-and-images}
+
+使用 `<image>` 嵌入标志：
+
+```xml
+<align mode="center">
+  <image src="data:image/png;base64,..." />
+</align>
+```
+
+WCPOS 会在客户端栅格化图像：解码、将透明度压平为白色、按打印机点数预算调整大小、转换为单色（标志使用 Atkinson 抖动，条码使用阈值处理），然后发送 ESC/POS 或 Star 图像命令。
+
+- **点数预算**：58mm 宽 384 点，80mm 宽 576 点。
+- **接受的来源**：`data:image/png` 和 `data:image/jpeg` 数据 URL、绝对 `http(s)` URL，以及同源根相对路径。协议相对 `//`、反斜杠和百分号编码的 `..` 路径遍历会被拒绝。
+- **推荐格式**：透明或白色背景的高对比度 PNG。JPEG 可用，但压缩伪影可能打印成噪点。
+- **SVG 尚不支持 raw 热敏输出**。
+
+### 提示 {#tips}
+
+- **从图库模板开始** — 图库中的热敏模板使用了上面的所有模式，并已在真实打印机上验证。
+- 如果门店使用不同打印机，请**测试两种纸张尺寸**，或者坚持使用 `width="*"` 列。
+- 货币请使用 **`_display` 字段** — 它们已经支持本地化。
+- **保持简单** — 热敏打印的格式工具比 HTML 少。依靠 `<row>` + `<col width="*">`，让打印机完成它擅长的工作。
