@@ -234,6 +234,13 @@ describe('findMissingSections (stale detection)', () => {
     expect(findMissingSections(source, translated)).toEqual(['lines']);
   });
 
+  it('strips inline code inside a heading line before reading its anchor', () => {
+    // A heading that documents the `{#foo}` syntax in inline code must still
+    // yield only its own trailing anchor, not the bracketed example.
+    const source = ['## The `{#foo}` placeholder {#placeholder-syntax}', ''].join('\n');
+    expect([...headingAnchors(source)]).toEqual(['placeholder-syntax']);
+  });
+
   it('returns nothing when the source has no anchors', () => {
     expect(findMissingSections('# Plain\n\nNo anchors here.', 'anything')).toEqual([]);
   });
