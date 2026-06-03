@@ -9,6 +9,8 @@ const {
   isSignificantProse,
   findUntranslatedProps,
   findLeftoverProse,
+  headingAnchors,
+  findMissingSections,
   isStub,
   listIncompleteSources,
   buildTranslationAudit,
@@ -173,6 +175,59 @@ Jedes Gateway kann für das POS aktiviert oder deaktiviert werden.
   });
 });
 
+describe('findMissingSections (stale detection)', () => {
+  const en = [
+    '---', 'title: Tax', '---', '',
+    '## Display settings {#display-settings}', 'Body.', '',
+    '## Troubleshooting {#troubleshooting}', 'Newly added section.', '',
+    '### Tax is zero {#tax-is-zero}', 'More.', '',
+  ].join('\n');
+
+  it('flags anchors the source has but the translation lacks', () => {
+    const stale = [
+      '---', 'title: Impuestos', '---', '',
+      '## Ajustes de visualización {#display-settings}', 'Cuerpo.', '',
+    ].join('\n');
+    expect(findMissingSections(en, stale).sort()).toEqual(['tax-is-zero', 'troubleshooting']);
+  });
+
+  it('returns nothing when the translation has every source anchor', () => {
+    const fresh = [
+      '## Ajustes {#display-settings}', '',
+      '## Resolución {#troubleshooting}', '',
+      '### Cero {#tax-is-zero}', '',
+    ].join('\n');
+    expect(findMissingSections(en, fresh)).toEqual([]);
+  });
+
+  it('does not flag a renamed anchor when no section was dropped (no net deficit)', () => {
+    // EN `## F.A.Q. {#faq}` but the translated heading auto-slugs to {#f-a-q}.
+    // Same number of headings → the section exists, it is not stale.
+    const enFaq = ['## Intro {#intro}', '', '## F.A.Q. {#faq}', ''].join('\n');
+    const trRenamed = ['## Introducción {#intro}', '', '## Preguntas {#f-a-q}', ''].join('\n');
+    expect(findMissingSections(enFaq, trRenamed)).toEqual([]);
+  });
+
+  it('ignores extra anchors the translation adds (no false positive, no sweep loop)', () => {
+    const extra = [
+      '## Ajustes {#display-settings}', '',
+      '## Resolución {#troubleshooting}', '',
+      '### Cero {#tax-is-zero}', '',
+      '## Encabezado traducido {#extra-local-anchor}', '',
+    ].join('\n');
+    expect(findMissingSections(en, extra)).toEqual([]);
+  });
+
+  it('does not count anchors inside code fences', () => {
+    const source = ['## Real {#real}', '', '```', 'text {#fenced}', '```', ''].join('\n');
+    expect([...headingAnchors(source)]).toEqual(['real']);
+  });
+
+  it('returns nothing when the source has no anchors', () => {
+    expect(findMissingSections('# Plain\n\nNo anchors here.', 'anything')).toEqual([]);
+  });
+});
+
 describe('isStub', () => {
   const longSource = 'A fairly long English source document. '.repeat(40); // > 600 chars
 
@@ -259,6 +314,23 @@ describe('listIncompleteSources (self-healing sweep input)', () => {
     expect(result.map((r) => r.source)).toContain(source);
     expect(result[0].gaps.some((g) => g.includes('(stub)'))).toBe(true);
   });
+
+  it('flags a stale translation (missing a section the source has) as a gap', () => {
+    const present = new Set([source, ...LOCALES.map((l) => sourceToTranslatedPath(source, l))]);
+    const enSource = [
+      '## Uno {#one}', 'x'.repeat(400), '', '## Dos {#two}', 'y'.repeat(400), '',
+    ].join('\n');
+    // de is a faithful but stale translation missing the {#two} section; the rest are current.
+    const stale = ['## Uno {#one}', 'x'.repeat(400), ''].join('\n');
+    const result = listIncompleteSources({
+      sources: [source],
+      existsSync: (p) => present.has(p),
+      readFile: (p) =>
+        p === source ? enSource : p === sourceToTranslatedPath(source, 'de') ? stale : enSource,
+    });
+    expect(result.map((r) => r.source)).toContain(source);
+    expect(result[0].gaps).toContain('de (stale)');
+  });
 });
 
 
@@ -289,6 +361,27 @@ describe('buildTranslationAudit', () => {
         },
       },
     ]);
+  });
+
+  it('reports a stale translation (missing a source section) as a repair target', () => {
+    const files = new Map();
+    const enSource = [
+      '## Intro {#intro}', 'A'.repeat(400), '',
+      '## Troubleshooting {#troubleshooting}', 'B'.repeat(400), '',
+    ].join('\n');
+    files.set(source, enSource);
+    // es is current; de is a faithful translation of an older revision missing {#troubleshooting}.
+    files.set(sourceToTranslatedPath(source, 'es'), enSource);
+    files.set(sourceToTranslatedPath(source, 'de'), ['## Einführung {#intro}', 'A'.repeat(400), ''].join('\n'));
+
+    const audit = buildTranslationAudit({
+      sources: [source],
+      locales: ['es', 'de'],
+      existsSync: (p) => files.has(p),
+      readFile: (p) => files.get(p),
+    });
+
+    expect(audit).toEqual([{ source, locales: { de: ['stale'] } }]);
   });
 
   it('reports missing JSON chrome files as repair targets', () => {
