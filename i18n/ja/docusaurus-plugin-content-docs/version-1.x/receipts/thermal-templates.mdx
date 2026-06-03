@@ -1,0 +1,301 @@
+---
+title: サーマルプリンターテンプレート
+sidebar_label: サーマルテンプレート
+sidebar_position: 4
+description: Epson と Star に対応した ESC/POS サーマルプリンター向けの XML ベースのレシートテンプレートを作成します。
+---
+
+サーマルテンプレートは XML 形式を使用し、同じテンプレートから画面プレビューと ESC/POS プリンターコマンドの両方を生成します。データバインディングには [HTML テンプレート](/receipts/html-templates) と同じ `{{variable}}` プレースホルダーを使います。
+
+[プリンター設定](/hardware/printers)で接続されたレシートプリンターがある場合は、このエンジンを選択してください。
+
+## XML 要素 {#xml-elements}
+
+### ルート要素 {#root-element}
+
+すべてのサーマルテンプレートは `<receipt>` ルートから始まります。
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### テキストと書式 {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### 配置 {#alignment}
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### 文字サイズ {#text-size}
+
+文字の幅と高さを個別に拡大できます。
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### 表形式レイアウト {#tabular-layout}
+
+揃った列には `<row>` と `<col>` を使います。
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+列幅は文字数です。残りの幅を吸収する柔軟な列には `width="*"` を使います。これにより、用紙幅が違ってもテンプレートを変更せずに利用できます。
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### 区切り線と余白 {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Default single rule -->
+<line style="double" />        <!-- Printer-native double rule -->
+<line style="dashed" />        <!-- Character dashes across the width -->
+<line style="dotted" />        <!-- Character dots across the width -->
+<feed lines="2" />             <!-- Blank lines -->
+```
+
+`<line/>`（または `style="single"`）と `style="double"` は、プリンターのネイティブ罫線を印刷します。`dashed` と `dotted` は、現在の列幅全体に文字ベースの区切りを印刷します。サーマルプレビューのスクリーンショットでも見える区切りが必要な場合に便利です。
+
+### プリンターコマンド {#printer-commands}
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### バーコードと QR コード {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<barcode type="qrcode" scale="3">{{fiscal.qr_payload}}</barcode>
+```
+
+## 例: シンプルな 80mm レシート {#example-simple-80mm-receipt}
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## スター幅の列 {#star-width-columns}
+
+`width="*"` 機能により、テンプレートは用紙幅に依存しにくくなります。特定の用紙サイズに合わせて列幅を固定する代わりに、伸ばしたい列に `*` を使います。
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+80mm プリンター（48 文字）では商品名に 38 文字が割り当てられます。58mm プリンター（32 文字）では 22 文字です。固定列はどちらでも同じサイズのままです。
+
+## テンプレートプレビュー {#template-preview}
+
+テンプレートエディターは、編集中に**ライブサーマルプレビュー**を表示します。プレビューは XML を等幅 HTML として描画し、紙に印刷されたときの見た目をシミュレートします。変更は短い遅延後（300ms のデバウンス）に更新されます。
+
+同じテンプレートから、プレビューと ESC/POS プリンター出力の両方が生成されます。別の印刷テンプレートは不要です。バーコードと QR コードはプレビューではインライン SVG として、プリンターではネイティブ ESC/POS コマンド（またはラスター画像）として出力されます。
+
+## 作成時のヒントと落とし穴 {#authoring-tips-and-pitfalls}
+
+サーマル印刷には HTML にはない注意点があります。作成者がよく遭遇するものをまとめます。
+
+### 改行のため、装飾見出しを `<text>` で包む {#wrap-styled-headings-in-text-for-a-line-break}
+
+装飾コンテナ — `<bold>`、`<size>`、`<underline>`、`<align>` — は**それ自体では改行を出力しません**。改行を出すのは `<text>` とブロック要素（`<line/>`、`<row>`、`<feed>`）です。
+
+```xml
+<!-- ❌ Bug: the heading runs together with whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Fix: wrap the inner content in <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+同梱の 80mm ギャラリーテンプレートは、すべての見出しでこのパターンを使っています。
+
+### 狭い行内で `<size width="2">` を避ける {#avoid-size-width2-inside-narrow-rows}
+
+倍幅テキストは**実効文字数を2倍にします**。80mm プリンターに収まる見出しでも、一般的な 42 列の 80mm プリンターでははみ出すことがあり、58mm 用紙では残りが 16 文字しかありません。
+
+大きな合計やキッチン注文番号などの目立つ値は、複数列の `<row>` 内に入れるのではなく、独立した拡大行として出力します。
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a bold total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+### 用紙幅に依存しないレイアウトには `width="*"` を使う {#use-width-for-paper-width-agnostic-layouts}
+
+`width="*"`（スター）列は、固定幅列の後に残った幅を吸収します。同じテンプレートが、32 列（58mm）、42 列（標準 80mm）、48 列（幅広 80mm）のプリンターで正しく描画されます。
+
+```xml
+<!-- Works on 58mm AND 80mm without changes -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+数値の固定幅を使う場合は、48 ではなく **42 を基準に配分**してください。合計が 48 になる行は、一般的な 42 列 80mm プリンターで折り返されます。
+
+### `<align>` ブロック内の中央揃え装飾見出し {#centred-styled-headings-inside-align-blocks}
+
+`<align mode="center">`（または `right`）の中では、`<bold>`、`<size>`、`<underline>`、`<invert>` などの直接の装飾見出しの後に別の行が続くと、その見出しは自動的に独立した行として閉じられます。中央揃えで拡大した店名の下に中央揃えの住所を置いても、明示的な `<text>` ラップなしで正しく印刷されます。
+
+配置ブロックの外では、`<text>` ラップを使い続けてください。
+
+### ESC/POS 句読点の正規化 {#escpos-punctuation-normalisation}
+
+プリンター言語が ESC/POS の場合、エンコーダーは書き込み前にタイポグラフィ記号を安全な ASCII に正規化します。
+
+- en ダッシュ、em ダッシュ、数字ダッシュ、Unicode マイナス → `-`
+- カーリー引用符 → 直線引用符
+- ノーブレークスペース → 通常のスペース
+
+そのため、Unicode フォントのないプリンターでも `Mon–Sat 9:00–18:00` や `"open"` は正しく印刷されます。Star プリンター（`star-line` / `star-prnt`）は元のタイポグラフィを**保持**するため、プリンターのフォントが対応する文字で作成してください。
+
+### 非ラテン文字と右から左の文字 {#non-latin-and-rtl-scripts}
+
+サーマルプリンターは内蔵フォントとコードページで文字を印刷します。アラビア語、ヘブライ語、ペルシア語、ウルドゥー語などの非ラテン文字は、対応するコードページ（例: アラビア語なら CP864 / Windows-1256）に設定されている場合にのみ正しく印刷されます。そうでない場合は空白や文字化けになります。
+
+これらの文字では、レシート全体を画像として描画する **Full receipt raster** が確実です。プリンター内蔵フォントに依存せず、設計どおりに印刷できます。ラスター方式を有効にするには [プリンター設定](/hardware/printers) を参照してください。
+
+:::note サーマルハードウェアにはサーマルテンプレートが必要です
+サーマルプリンターはフルページの **HTML** テンプレートを印刷できません。ジョブは ESC/POS または Star コマンドに変換される必要があり、HTML ではそれを表現できません。サーマルハードウェアにはサーマルテンプレートを使ってください。A4/Letter のフルページ HTML は、システム/PDF プリンターまたは [PrintNode](/receipts/cloud-printing#setup-printnode) 経由で印刷します。
+:::
+
+### ロゴと画像 {#logos-and-images}
+
+ロゴを埋め込むには `<image>` を使います。
+
+```xml
+<align mode="center">
+  <image src="data:image/png;base64,..." />
+</align>
+```
+
+WCPOS はクライアント側で画像をラスター化します。デコードし、透明部分を白で平坦化し、プリンターのドット予算に合わせてリサイズし、モノクロに変換して（ロゴは Atkinson ディザリング、バーコードはしきい値処理）、ESC/POS または Star の画像コマンドを送信します。
+
+- **ドット予算**: 58mm は幅 384 ドット、80mm は幅 576 ドット。
+- **利用可能なソース**: `data:image/png` と `data:image/jpeg` のデータ URL、絶対 `http(s)` URL、同一オリジンのルート相対パス。プロトコル相対 `//`、バックスラッシュ、パーセントエンコードされた `..` トラバーサルは拒否されます。
+- **推奨形式**: 透明または白背景の高コントラスト PNG。JPEG も使えますが、圧縮ノイズが印刷に出ることがあります。
+- **SVG はまだ raw サーマル出力ではサポートされていません**。
+
+### ヒント {#tips}
+
+- **ギャラリーテンプレートから始める** — ギャラリーのサーマルテンプレートは上記のパターンを使い、実機プリンターで検証されています。
+- 店舗で異なるプリンターを使う場合は、**両方の用紙サイズをテスト**するか、`width="*"` 列を使ってください。
+- 通貨には **`_display` フィールド**を使ってください。すでにロケール対応済みです。
+- **シンプルに保つ** — サーマル印刷は HTML より書式ツールが少ない設計です。`<row>` + `<col width="*">` を中心に使い、プリンターに任せてください。

@@ -1,0 +1,301 @@
+---
+title: 열전사 프린터 템플릿
+sidebar_label: 열전사 템플릿
+sidebar_position: 4
+description: Epson 및 Star 지원을 포함한 ESC/POS 열전사 프린터용 XML 기반 영수증 템플릿을 만듭니다.
+---
+
+열전사 템플릿은 하나의 템플릿에서 화면 미리보기와 ESC/POS 프린터 명령을 모두 만드는 XML 형식을 사용합니다. 데이터 바인딩에는 [HTML 템플릿](/receipts/html-templates)과 동일한 `{{variable}}` 플레이스홀더를 사용합니다.
+
+[프린터 설정](/hardware/printers)을 통해 연결된 영수증 프린터가 있다면 이 엔진을 선택하세요.
+
+## XML 요소 {#xml-elements}
+
+### 루트 요소 {#root-element}
+
+모든 열전사 템플릿은 `<receipt>` 루트로 시작합니다.
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### 텍스트와 서식 {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### 정렬 {#alignment}
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### 텍스트 크기 {#text-size}
+
+텍스트의 너비와 높이를 각각 조절할 수 있습니다.
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### 표 형태 레이아웃 {#tabular-layout}
+
+정렬된 열에는 `<row>`와 `<col>`을 사용합니다.
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+열 너비는 문자 수 기준입니다. 남은 공간을 흡수하는 유연한 열에는 `width="*"`를 사용하세요. 이렇게 하면 용지 폭이 달라도 템플릿을 수정하지 않고 사용할 수 있습니다.
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### 구분선과 여백 {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Default single rule -->
+<line style="double" />        <!-- Printer-native double rule -->
+<line style="dashed" />        <!-- Character dashes across the width -->
+<line style="dotted" />        <!-- Character dots across the width -->
+<feed lines="2" />             <!-- Blank lines -->
+```
+
+`<line/>`(또는 `style="single"`)과 `style="double"`은 프린터의 기본 선을 출력합니다. `dashed`와 `dotted`는 활성 열 너비 전체에 문자 기반 구분선을 출력하므로 열전사 미리보기 스크린샷에서도 보이는 구분선이 필요할 때 유용합니다.
+
+### 프린터 명령 {#printer-commands}
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### 바코드와 QR 코드 {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<barcode type="qrcode" scale="3">{{fiscal.qr_payload}}</barcode>
+```
+
+## 예시: 간단한 80mm 영수증 {#example-simple-80mm-receipt}
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## 별표 너비 열 {#star-width-columns}
+
+`width="*"` 기능은 템플릿을 용지 폭에 독립적으로 만들어 줍니다. 특정 용지 크기에 맞춰 열 너비를 고정하지 말고, 늘어나야 하는 열에 `*`를 사용하세요.
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+80mm 프린터(48자)에서는 상품명이 38자를 얻습니다. 58mm 프린터(32자)에서는 22자를 얻습니다. 고정 열은 두 경우 모두 같은 크기로 유지됩니다.
+
+## 템플릿 미리보기 {#template-preview}
+
+템플릿 편집기는 편집하는 동안 **실시간 열전사 미리보기**를 표시합니다. 미리보기는 XML을 스타일이 적용된 고정폭 HTML로 렌더링하여 영수증이 종이에 어떻게 보일지 시뮬레이션합니다. 변경 사항은 짧은 지연 후(300ms 디바운스) 업데이트됩니다.
+
+같은 템플릿이 미리보기와 ESC/POS 프린터 출력을 모두 생성하므로 별도의 "인쇄" 템플릿이 필요하지 않습니다. 바코드와 QR 코드는 미리보기에서는 인라인 SVG로, 프린터에서는 네이티브 ESC/POS 명령(또는 래스터 이미지)으로 렌더링됩니다.
+
+## 작성 팁과 주의점 {#authoring-tips-and-pitfalls}
+
+열전사 인쇄에는 HTML에는 없는 몇 가지 함정이 있습니다. 작성자가 가장 자주 만나는 항목입니다.
+
+### 줄바꿈을 위해 꾸민 제목을 `<text>`로 감싸기 {#wrap-styled-headings-in-text-for-a-line-break}
+
+스타일 컨테이너인 `<bold>`, `<size>`, `<underline>`, `<align>`은 **그 자체로 줄바꿈을 만들지 않습니다**. `<text>`와 블록 요소(`<line/>`, `<row>`, `<feed>`)만 줄바꿈을 만듭니다.
+
+```xml
+<!-- ❌ Bug: the heading runs together with whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Fix: wrap the inner content in <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+포함된 80mm 갤러리 템플릿은 모든 제목에 이 패턴을 사용합니다.
+
+### 좁은 행 안에서 `<size width="2">` 피하기 {#avoid-size-width2-inside-narrow-rows}
+
+두 배 너비 텍스트는 **실제 문자 수를 두 배로 계산**합니다. 80mm 프린터에 맞는 제목도 일반적인 42열 80mm 프린터에서는 넘칠 수 있고, 58mm 용지에서는 16자만 남습니다.
+
+큰 합계나 주방 주문 번호처럼 눈에 띄는 값은 여러 열 `<row>` 안에 넣지 말고 독립된 확대 줄로 출력하세요.
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a bold total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+### 용지 폭에 독립적인 레이아웃에는 `width="*"` 사용 {#use-width-for-paper-width-agnostic-layouts}
+
+`width="*"`(별표) 열은 고정 폭 열을 제외한 나머지 폭을 흡수합니다. 같은 템플릿이 32열(58mm), 42열(표준 80mm), 48열(넓은 80mm) 프린터에서 수정 없이 올바르게 렌더링됩니다.
+
+```xml
+<!-- Works on 58mm AND 80mm without changes -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+숫자 고정 너비를 사용한다면 48이 아니라 **42를 기준으로 계산**하세요. 합계가 48인 행은 흔한 42열 80mm 프린터에서 줄바꿈됩니다.
+
+### `<align>` 블록 안의 가운데 정렬된 스타일 제목 {#centred-styled-headings-inside-align-blocks}
+
+`<align mode="center">`(또는 `right`) 안에서 `<bold>`, `<size>`, `<underline>`, `<invert>` 같은 직접 스타일 제목 뒤에 다른 줄이 오면 해당 제목은 자동으로 자기 줄로 닫힙니다. 가운데 정렬된 확대 매장명 위/아래에 주소 줄이 있어도 명시적인 `<text>` 래핑 없이 깨끗하게 출력됩니다.
+
+정렬 블록 밖에서는 `<text>` 래핑을 유지하세요.
+
+### ESC/POS 문장부호 정규화 {#escpos-punctuation-normalisation}
+
+프린터 언어가 ESC/POS이면 인코더는 쓰기 전에 타이포그래피 문장부호를 안전한 ASCII로 정규화합니다.
+
+- 엔 대시, 엠 대시, 숫자 대시, 유니코드 마이너스 → `-`
+- 둥근 따옴표 → 직선 따옴표
+- 줄바꿈 없는 공백 → 일반 공백
+
+따라서 유니코드 폰트가 없는 프린터에서도 `Mon–Sat 9:00–18:00` 및 `"open"`이 올바르게 인쇄됩니다. Star 프린터(`star-line` / `star-prnt`)는 원래 타이포그래피를 **보존**하므로 프린터 폰트가 지원하는 문자로 작성하세요.
+
+### 비라틴 및 오른쪽에서 왼쪽으로 쓰는 문자 {#non-latin-and-rtl-scripts}
+
+열전사 프린터는 내장 폰트와 코드 페이지로 텍스트를 출력하므로 아랍어, 히브리어, 페르시아어, 우르두어 등 비라틴 문자는 프린터가 맞는 코드 페이지(예: 아랍어용 CP864 / Windows-1256)로 설정된 경우에만 올바르게 출력됩니다. 그렇지 않으면 빈칸이나 깨진 문자가 나옵니다.
+
+이러한 문자는 전체 영수증을 이미지로 렌더링하는 **Full receipt raster** 방식이 가장 안정적입니다. 프린터 내장 폰트와 관계없이 설계한 그대로 인쇄됩니다. 래스터 모드 활성화는 [프린터 설정](/hardware/printers)을 참고하세요.
+
+:::note 열전사 하드웨어에는 열전사 템플릿이 필요합니다
+열전사 프린터는 전체 페이지 **HTML** 템플릿을 인쇄할 수 없습니다. 작업은 ESC/POS 또는 Star 명령으로 렌더링되어야 하며, HTML은 이를 표현할 수 없습니다. 열전사 하드웨어에는 열전사 템플릿을 사용하세요. A4/Letter 전체 페이지 HTML은 시스템/PDF 프린터나 [PrintNode](/receipts/cloud-printing#setup-printnode)를 통해 인쇄하세요.
+:::
+
+### 로고와 이미지 {#logos-and-images}
+
+로고를 포함하려면 `<image>`를 사용합니다.
+
+```xml
+<align mode="center">
+  <image src="data:image/png;base64,..." />
+</align>
+```
+
+WCPOS는 클라이언트에서 이미지를 래스터화합니다. 이미지를 디코딩하고, 투명도를 흰색으로 평탄화하고, 프린터 도트 예산에 맞게 크기를 조정하고, 단색으로 변환한 뒤(로고는 Atkinson 디더링, 바코드는 임계값 처리) ESC/POS 또는 Star 이미지 명령을 보냅니다.
+
+- **도트 예산**: 58mm는 폭 384도트, 80mm는 폭 576도트.
+- **허용되는 소스**: `data:image/png` 및 `data:image/jpeg` 데이터 URL, 절대 `http(s)` URL, 동일 출처 루트 상대 경로. 프로토콜 상대 `//`, 백슬래시, 퍼센트 인코딩된 `..` 경로 이동은 거부됩니다.
+- **권장 형식**: 투명 또는 흰 배경의 고대비 PNG. JPEG도 가능하지만 압축 아티팩트가 잡음처럼 인쇄될 수 있습니다.
+- **SVG는 아직 raw 열전사 출력에서 지원되지 않습니다**.
+
+### 팁 {#tips}
+
+- **갤러리 템플릿에서 시작하세요** — 갤러리의 열전사 템플릿은 위 패턴을 모두 사용하며 실제 프린터로 검증되었습니다.
+- 매장에서 다른 프린터를 쓴다면 **두 용지 크기를 모두 테스트**하거나 `width="*"` 열을 사용하세요.
+- 통화에는 **`_display` 필드**를 사용하세요. 이미 로케일을 반영합니다.
+- **단순하게 유지하세요** — 열전사 인쇄는 HTML보다 서식 도구가 적도록 설계되었습니다. `<row>` + `<col width="*">`에 의존하고 프린터가 처리하게 하세요.

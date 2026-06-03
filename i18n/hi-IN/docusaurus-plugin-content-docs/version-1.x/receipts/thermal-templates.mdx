@@ -1,0 +1,301 @@
+---
+title: थर्मल प्रिंटर टेम्पलेट
+sidebar_label: थर्मल टेम्पलेट
+sidebar_position: 4
+description: Epson और Star समर्थन के साथ ESC/POS थर्मल प्रिंटर के लिए XML-आधारित रसीद टेम्पलेट बनाएं।
+---
+
+थर्मल टेम्पलेट XML फ़ॉर्मैट का उपयोग करते हैं, जिससे एक ही टेम्पलेट से स्क्रीन पूर्वावलोकन और ESC/POS प्रिंटर कमांड दोनों बनते हैं। डेटा बाइंडिंग के लिए ये [HTML टेम्पलेट](/receipts/html-templates) जैसे ही `{{variable}}` प्लेसहोल्डर उपयोग करते हैं।
+
+यदि आपके पास [प्रिंटर सेटअप](/hardware/printers) के माध्यम से जुड़ा रसीद प्रिंटर है, तो इस इंजन को चुनें।
+
+## XML तत्व {#xml-elements}
+
+### रूट तत्व {#root-element}
+
+हर थर्मल टेम्पलेट `<receipt>` रूट से शुरू होता है:
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80mm paper -->
+  <!-- 32 characters = 58mm paper -->
+</receipt>
+```
+
+### टेक्स्ट और फ़ॉर्मैटिंग {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold>Bold text</bold>
+<underline>Underlined text</underline>
+<invert>Inverted (white on black)</invert>
+```
+
+### संरेखण {#alignment}
+
+```xml
+<align mode="left">Left aligned</align>
+<align mode="center">Centered</align>
+<align mode="right">Right aligned</align>
+```
+
+### टेक्स्ट आकार {#text-size}
+
+टेक्स्ट की चौड़ाई और ऊंचाई को अलग-अलग स्केल करें:
+
+```xml
+<size width="2" height="2">Double-size text</size>
+<size width="2" height="1">Wide text</size>
+<size width="1" height="2">Tall text</size>
+```
+
+### सारणीबद्ध लेआउट {#tabular-layout}
+
+समानांतर कॉलम के लिए `<row>` और `<col>` का उपयोग करें:
+
+```xml
+<row>
+  <col width="24">Item name</col>
+  <col width="8" align="right">Qty</col>
+  <col width="16" align="right">Price</col>
+</row>
+```
+
+कॉलम चौड़ाइयां अक्षरों में होती हैं। बची हुई जगह लेने वाले लचीले कॉलम के लिए `width="*"` उपयोग करें। इससे टेम्पलेट अलग-अलग पेपर चौड़ाइयों पर बिना बदलाव काम करते हैं:
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+### विभाजक और स्पेसिंग {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Default single rule -->
+<line style="double" />        <!-- Printer-native double rule -->
+<line style="dashed" />        <!-- Character dashes across the width -->
+<line style="dotted" />        <!-- Character dots across the width -->
+<feed lines="2" />             <!-- Blank lines -->
+```
+
+`<line/>` (या `style="single"`) और `style="double"` प्रिंटर की मूल लाइन प्रिंट करते हैं। `dashed` और `dotted` सक्रिय कॉलम चौड़ाई में अक्षर-आधारित विभाजक प्रिंट करते हैं, जो तब उपयोगी है जब थर्मल पूर्वावलोकन स्क्रीनशॉट में भी स्पष्ट विभाजक चाहिए।
+
+### प्रिंटर कमांड {#printer-commands}
+
+```xml
+<cut />              <!-- Full paper cut -->
+<cut mode="partial" /> <!-- Partial cut (leaves a tab) -->
+<drawer />           <!-- Open cash drawer -->
+```
+
+### बारकोड और QR कोड {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<barcode type="qrcode" scale="3">{{fiscal.qr_payload}}</barcode>
+```
+
+## उदाहरण: सरल 80mm रसीद {#example-simple-80mm-receipt}
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <size width="2" height="2">{{store.name}}</size>
+  </align>
+  <feed lines="1" />
+  <align mode="center">
+    <text>{{store.address_1}}</text>
+    <text>{{store.city}} {{store.state}} {{store.postcode}}</text>
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers -->
+  <row>
+    <col width="*"><bold>Item</bold></col>
+    <col width="4" align="right"><bold>Qty</bold></col>
+    <col width="12" align="right"><bold>Total</bold></col>
+  </row>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <row>
+    <col width="*"><bold>TOTAL</bold></col>
+    <col width="16" align="right"><bold>{{totals.total_display}}</bold></col>
+  </row>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+## स्टार-चौड़ाई कॉलम {#star-width-columns}
+
+`width="*"` सुविधा टेम्पलेट को पेपर-चौड़ाई से स्वतंत्र बनाती है। किसी एक पेपर आकार के लिए कॉलम चौड़ाई हार्डकोड करने के बजाय, जिस कॉलम को फैलना चाहिए उसके लिए `*` उपयोग करें:
+
+```xml
+<!-- Works on 58mm (32 char) AND 80mm (48 char) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+80mm प्रिंटर (48 अक्षर) पर आइटम नाम को 38 अक्षर मिलते हैं। 58mm प्रिंटर (32 अक्षर) पर उसे 22 अक्षर मिलते हैं। स्थिर कॉलम दोनों पर समान आकार में रहते हैं।
+
+## टेम्पलेट पूर्वावलोकन {#template-preview}
+
+टेम्पलेट संपादक बदलाव करते समय **लाइव थर्मल पूर्वावलोकन** दिखाता है। पूर्वावलोकन XML को स्टाइल किए गए monospace HTML के रूप में रेंडर करता है, जिससे कागज पर रसीद कैसी दिखेगी इसका अनुमान मिलता है। बदलाव थोड़ी देरी के बाद अपडेट होते हैं (300ms debounce)।
+
+यही टेम्पलेट पूर्वावलोकन और ESC/POS प्रिंटर आउटपुट दोनों बनाता है; अलग "print" टेम्पलेट की जरूरत नहीं होती। बारकोड और QR कोड पूर्वावलोकन में inline SVG के रूप में और प्रिंटर पर native ESC/POS कमांड (या raster image) के रूप में रेंडर होते हैं।
+
+## लेखन सुझाव और सामान्य समस्याएं {#authoring-tips-and-pitfalls}
+
+थर्मल प्रिंटिंग में कुछ ऐसी सावधानियां हैं जो HTML में नहीं होतीं। ये सबसे आम समस्याएं हैं।
+
+### लाइन ब्रेक के लिए स्टाइल वाली हेडिंग को `<text>` में लपेटें {#wrap-styled-headings-in-text-for-a-line-break}
+
+स्टाइल कंटेनर — `<bold>`, `<size>`, `<underline>`, `<align>` — **अपने आप लाइन ब्रेक नहीं देते**। केवल `<text>` और block elements (`<line/>`, `<row>`, `<feed>`) ऐसा करते हैं।
+
+```xml
+<!-- ❌ Bug: the heading runs together with whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Fix: wrap the inner content in <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+बंडल किए गए 80mm gallery templates हर heading के लिए यही pattern इस्तेमाल करते हैं।
+
+### संकरी rows में `<size width="2">` से बचें {#avoid-size-width2-inside-narrow-rows}
+
+Double-width text **प्रभावी character count को दोगुना** कर देता है। जो headline 80mm printer पर फिट होती है, वह आम 42-column 80mm printer पर overflow कर सकती है, और 58mm paper पर केवल 16 characters छोड़ती है।
+
+प्रमुख values (बड़े totals, kitchen order numbers) के लिए multi-column `<row>` में रखने के बजाय एक अलग scaled line emit करें:
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a bold total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+### पेपर-चौड़ाई से स्वतंत्र layout के लिए `width="*"` उपयोग करें {#use-width-for-paper-width-agnostic-layouts}
+
+`width="*"` (star) कॉलम fixed-width columns के बाद बची हुई जगह लेता है। वही टेम्पलेट 32-column (58mm), 42-column (80mm standard), और 48-column (80mm wide) printers पर बिना बदलाव सही render होता है:
+
+```xml
+<!-- Works on 58mm AND 80mm without changes -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+यदि आप hard-coded numeric widths उपयोग करते हैं, तो उन्हें **42 के अनुसार budget करें**, 48 के अनुसार नहीं। जिन rows का योग 48 है वे आम 42-column 80mm printers पर wrap होंगी।
+
+### `<align>` blocks में centered styled headings {#centred-styled-headings-inside-align-blocks}
+
+`<align mode="center">` (या `right`) के अंदर direct styled heading — `<bold>`, `<size>`, `<underline>`, `<invert>` — के बाद दूसरी line आने पर heading अपने आप अपनी line में बंद हो जाती है। Centered scaled store name के नीचे centered address line explicit `<text>` wrap के बिना भी साफ प्रिंट होती है।
+
+Alignment block के बाहर `<text>` wrap रखें।
+
+### ESC/POS विराम-चिह्न सामान्यीकरण {#escpos-punctuation-normalisation}
+
+जब printer language ESC/POS होती है, encoder लिखने से पहले typographic punctuation को सुरक्षित ASCII में normalise करता है:
+
+- En dash, em dash, figure dash और Unicode minus → `-`
+- घुमावदार quotes → सीधे quotes
+- Non-breaking space → सामान्य space
+
+इसलिए `Mon–Sat 9:00–18:00` और `"open"` Unicode font न होने वाले printers पर भी सही print होते हैं। Star printers (`star-line` / `star-prnt`) original typography को **preserve** करते हैं, इसलिए ऐसे characters लिखें जिन्हें printer font support करता हो।
+
+### Non-Latin और right-to-left scripts {#non-latin-and-rtl-scripts}
+
+Thermal printers built-in font और code page से text print करते हैं, इसलिए Arabic, Hebrew, Persian, Urdu और अन्य non-Latin scripts तभी सही print होते हैं जब printer matching code page (जैसे Arabic के लिए CP864 / Windows-1256) पर सेट हो। अन्यथा blanks या garbled characters मिलते हैं।
+
+इन scripts के लिए भरोसेमंद तरीका **Full receipt raster** है, जो पूरी receipt को image के रूप में render करता है ताकि वह printer के built-in fonts से स्वतंत्र होकर design के अनुसार print हो। Raster mode सक्षम करने के लिए [Printer Setup](/hardware/printers) देखें।
+
+:::note Thermal hardware को thermal template चाहिए
+Thermal printer full-page **HTML** template print नहीं कर सकता — job को ESC/POS या Star commands में render होना पड़ता है, जिसे HTML व्यक्त नहीं कर सकता। Thermal hardware के लिए thermal template उपयोग करें; full-page A4/Letter HTML के लिए system/PDF printer या [PrintNode](/receipts/cloud-printing#setup-printnode) के माध्यम से print करें।
+:::
+
+### Logos और images {#logos-and-images}
+
+Logo embed करने के लिए `<image>` उपयोग करें:
+
+```xml
+<align mode="center">
+  <image src="data:image/png;base64,..." />
+</align>
+```
+
+WCPOS client पर images को rasterise करता है — decode करना, transparency को white पर flatten करना, printer dot budget के अनुसार resize करना, monochrome में बदलना (logos के लिए Atkinson dithering, barcodes के लिए threshold), और फिर ESC/POS या Star image commands भेजना।
+
+- **Dot budgets**: 58mm के लिए 384 dots wide, 80mm के लिए 576 dots wide।
+- **Accepted sources**: `data:image/png` और `data:image/jpeg` data URLs, absolute `http(s)` URLs, और same-origin root-relative paths। Protocol-relative `//`, backslashes, और percent-encoded `..` traversal reject किए जाते हैं।
+- **Recommended format**: transparent या white background वाला high-contrast PNG। JPEG काम करता है, लेकिन compression artefacts noise की तरह print हो सकते हैं।
+- **SVG अभी raw thermal output के लिए supported नहीं है**।
+
+### Tips {#tips}
+
+- **Gallery template से शुरू करें** — gallery के thermal templates ऊपर के सभी patterns उपयोग करते हैं और real printers पर validate किए गए हैं।
+- यदि आपके stores अलग printers उपयोग करते हैं तो **दोनों paper sizes test करें**, या `width="*"` columns पर टिके रहें।
+- Currency के लिए **`_display` fields** उपयोग करें — वे पहले से locale-aware हैं।
+- **सरल रखें** — thermal में HTML की तुलना में कम formatting tools हैं। `<row>` + `<col width="*">` पर भरोसा करें और printer को काम करने दें।
