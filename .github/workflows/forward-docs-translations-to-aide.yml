@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: docs-translation-forward-${{ github.ref }}
@@ -64,15 +65,31 @@ jobs:
           fi
           echo "Detected files: $FILES_JSON"
 
-      - name: Require OpenClaw secrets
+      - name: Find existing docs translation PR
         if: steps.changes.outputs.has_files == 'true'
+        id: open_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN_PRS_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '[.[] | select(.head.ref | startswith("aide/docs-translations-")) | {number, url: .html_url, head: .head.ref}]')
+          COUNT=$(node -e 'const prs = JSON.parse(process.argv[1]); process.stdout.write(String(prs.length));' "$OPEN_PRS_JSON")
+          if [ "$COUNT" -gt 0 ]; then
+            echo "has_open_pr=true" >> "$GITHUB_OUTPUT"
+            echo "Existing Aide docs translation PR(s) open; skipping new dispatch: $OPEN_PRS_JSON"
+          else
+            echo "has_open_pr=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Require OpenClaw secrets
+        if: steps.changes.outputs.has_files == 'true' && steps.open_pr.outputs.has_open_pr != 'true'
         env:
           OPENCLAW_HOOKS_TOKEN: ${{ secrets.OPENCLAW_HOOKS_TOKEN }}
         run: |
           test -n "$OPENCLAW_HOOKS_TOKEN" || { echo "OPENCLAW_HOOKS_TOKEN secret is required"; exit 1; }
 
       - name: Forward translation changes to Aide
-        if: steps.changes.outputs.has_files == 'true'
+        if: steps.changes.outputs.has_files == 'true' && steps.open_pr.outputs.has_open_pr != 'true'
         env:
           OPENCLAW_BASE_URL: ${{ vars.OPENCLAW_BASE_URL }}
           OPENCLAW_HOOKS_TOKEN: ${{ secrets.OPENCLAW_HOOKS_TOKEN }}
