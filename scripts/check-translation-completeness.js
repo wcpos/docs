@@ -275,7 +275,10 @@ function isStub(sourceContent, translatedContent, locale) {
   return ratio < min;
 }
 
-// Evaluate one translated file. Returns { file, untranslatedProps, leftoverProse, stub }.
+// Evaluate one translated file. Returns
+// { file, untranslatedProps, leftoverProse, stub, missingSections }, where
+// missingSections is the array of source heading anchors absent from the
+// translation (non-empty only when the translation has a net heading deficit).
 function evaluateFile(translatedPath, readFile = (p) => fs.readFileSync(p, 'utf8')) {
   const sourcePath = getSourcePath(translatedPath);
   const locale = localeOf(translatedPath);
