@@ -19,14 +19,26 @@ const DEFAULT_DISALLOWED_AUTHORS = new Set([
   'coderabbitai[bot]',
   'coderabbit[bot]',
 ]);
-const LOCALE_PREFIX_RE = /^\s*(?:[-*]\s+)?(?:[A-Z]{2}(?:-[A-Z]{2})?):\s+\S|^\s*\|\s*(?:[A-Z]{2}(?:-[A-Z]{2})?):/;
+const LOCALE_PREFIXES = new Set(['AR', 'DE', 'EN', 'ES', 'FR', 'HI', 'HI-IN', 'IT', 'JA', 'KO', 'NL', 'PT', 'PT-BR', 'ZH', 'ZH-CN']);
+const LINE_LOCALE_PREFIX_RE = /^\s*(?:[-*]\s+)?([A-Z]{2}(?:-[A-Z]{2})?):\s+\S/;
+const TABLE_LOCALE_PREFIX_RE = /^\s*\|\s*([A-Z]{2}(?:-[A-Z]{2})?):/;
 const PLACEHOLDER_FRONTMATTER_RE = /^\s*(?:title|sidebar_label|description):\s*(?:Ubersetzt|Traducido|Traduit|Tradotto|Vertaald|Translated|अनुवादित|مترجم|翻译)\s*-/;
 
 function runGit(args, options = {}) {
-  return execFileSync('git', args, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', options.allowFailure ? 'ignore' : 'pipe'],
-  }).trim();
+  try {
+    return execFileSync('git', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', options.allowFailure ? 'ignore' : 'pipe'],
+    }).trim();
+  } catch (err) {
+    if (options.allowFailure) return '';
+    throw err;
+  }
+}
+
+function hasLocalePrefix(line) {
+  const match = line.match(LINE_LOCALE_PREFIX_RE) || line.match(TABLE_LOCALE_PREFIX_RE);
+  return Boolean(match && LOCALE_PREFIXES.has(match[1]));
 }
 
 function findTranslationMarkerIssues(filePath, content) {
@@ -38,7 +50,7 @@ function findTranslationMarkerIssues(filePath, content) {
     const trimmed = line.trimEnd();
     if (!trimmed) return;
 
-    if (LOCALE_PREFIX_RE.test(trimmed)) {
+    if (hasLocalePrefix(trimmed)) {
       issues.push({
         path: filePath,
         line: index + 1,

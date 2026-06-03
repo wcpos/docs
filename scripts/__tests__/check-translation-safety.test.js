@@ -1,6 +1,7 @@
 const {
   findTranslationMarkerIssues,
   findDisallowedTranslationAuthors,
+  changedTranslationFiles,
 } = require('../check-translation-safety');
 
 describe('findTranslationMarkerIssues', () => {
@@ -55,9 +56,15 @@ describe('findTranslationMarkerIssues', () => {
   });
 
   it('allows natural translated words that are not marker prefixes', () => {
-    const content = `---\ntitle: Payment methods\n---\n\nLa tienda permite productos traducidos sin duplicados.\nالعناصر المترجمة متاحة في نقطة البيع.\n`;
+    const content = `---\ntitle: Payment methods\n---\n\nUI: Use the button to sync products.\nQA: Verify the translated checkout screen.\nOK: The receipt printer is connected.\nLa tienda permite productos traducidos sin duplicados.\nالعناصر المترجمة متاحة في نقطة البيع.\n`;
 
     expect(findTranslationMarkerIssues('i18n/es/file.mdx', content)).toEqual([]);
+  });
+});
+
+describe('changedTranslationFiles', () => {
+  it('returns an empty list when the comparison ref is unavailable', () => {
+    expect(changedTranslationFiles('refs/heads/__missing_translation_safety_ref__')).toEqual([]);
   });
 });
 
