@@ -236,13 +236,14 @@ function findLeftoverProse(sourceContent, translatedContent) {
 // in the corpus carries one (`## Foo {#foo}`) and the slug is kept verbatim when
 // translated, so the anchor set is a structural fingerprint of a page's sections
 // that is comparable across locales. bodyLines() already drops frontmatter, code
-// fences and imports, so only real heading anchors are counted.
+// fences and imports; inline code is stripped here so examples like `{{#lines}}`
+// are not counted as section anchors.
 function headingAnchors(text) {
   const out = new Set();
   for (const line of bodyLines(text)) {
-    const re = /\{#([A-Za-z0-9_-]+)\}/g;
-    let m;
-    while ((m = re.exec(line))) out.add(m[1]);
+    const withoutInlineCode = line.replace(/`[^`]*`/g, '');
+    const m = /^\s{0,3}#{1,6}\s+.*\{#([A-Za-z0-9_-]+)\}\s*(?:#+\s*)?$/.exec(withoutInlineCode);
+    if (m) out.add(m[1]);
   }
   return out;
 }

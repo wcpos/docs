@@ -223,6 +223,17 @@ describe('findMissingSections (stale detection)', () => {
     expect([...headingAnchors(source)]).toEqual(['real']);
   });
 
+  it('does not let inline Mustache examples mask a missing heading anchor', () => {
+    const source = ['## Intro {#intro}', '', '## lines {#lines}', 'Line item details.', ''].join('\n');
+    const translated = [
+      '## Intro {#intro}', '',
+      'Loop with `{{#lines}}...{{/lines}}`.',
+      '',
+    ].join('\n');
+
+    expect(findMissingSections(source, translated)).toEqual(['lines']);
+  });
+
   it('returns nothing when the source has no anchors', () => {
     expect(findMissingSections('# Plain\n\nNo anchors here.', 'anything')).toEqual([]);
   });
