@@ -338,11 +338,39 @@ describe('isStub', () => {
 });
 
 describe('main', () => {
-  it('reports dropped locales when a changed translation path was deleted', () => {
+  it('allows dropped locales when the changed translation path was deleted', () => {
     const cwd = process.cwd();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'translation-check-'));
     const sourcePath = 'docs/foo.mdx';
     const deletedPath = 'i18n/de/docusaurus-plugin-content-docs/current/foo.mdx';
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      process.chdir(tmp);
+      fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+      fs.writeFileSync(sourcePath, 'The Checkout Settings page controls payment gateways.\n');
+      for (const locale of LOCALES.filter((l) => l !== 'de')) {
+        const translatedPath = sourceToTranslatedPath(sourcePath, locale);
+        fs.mkdirSync(path.dirname(translatedPath), { recursive: true });
+        fs.writeFileSync(translatedPath, 'La pagina de ajustes controla las pasarelas de pago.\n');
+      }
+
+      expect(main([deletedPath])).toBe(0);
+      expect(log.mock.calls.flat().join('\n')).toContain('Translation completeness OK');
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      process.chdir(cwd);
+      log.mockRestore();
+      error.mockRestore();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('reports dropped locales when the missing path was not deleted in this change', () => {
+    const cwd = process.cwd();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'translation-check-'));
+    const sourcePath = 'docs/foo.mdx';
     const presentPath = 'i18n/es/docusaurus-plugin-content-docs/current/foo.mdx';
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -354,7 +382,7 @@ describe('main', () => {
       fs.writeFileSync(sourcePath, 'The Checkout Settings page controls payment gateways.\n');
       fs.writeFileSync(presentPath, 'La pagina de ajustes controla las pasarelas de pago.\n');
 
-      expect(main([deletedPath])).toBe(1);
+      expect(main([presentPath])).toBe(1);
       expect(error.mock.calls.flat().join('\n')).toContain('missing/stub in:');
     } finally {
       process.chdir(cwd);
