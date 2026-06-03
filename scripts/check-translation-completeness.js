@@ -12,9 +12,16 @@
  *   2. Whole prose blocks (and entire files) were left in English when a
  *      translation step failed, because the block merger falls back to the
  *      English source with no completeness check.
+ *   3. A translation can be fully localized and the right length, yet be a
+ *      faithful render of an OLDER revision of the source — missing whole
+ *      sections that were added to English later. The prose checks above all
+ *      pass (it is not English, not a stub), so the drift is silent. We catch
+ *      it by comparing heading anchors ({#slug}): an anchor the source has and
+ *      the translation lacks means a section went missing — a "stale" file.
  *
  * This script compares each translated .mdx against its English source and
- * flags content that is byte-identical English where it should be localized.
+ * flags content that is byte-identical English where it should be localized, or
+ * structurally behind the source.
  *
  * Usage:
  *   node scripts/check-translation-completeness.js --changed   # files changed vs BASE_REF (default origin/main)
@@ -39,6 +46,11 @@ const STUB_MIN_SOURCE_CHARS = 600;
 // Tolerate up to this many incidental identical prose lines (e.g. a language
 // name that is spelled the same in both languages) before failing a file.
 const PROSE_FAIL_THRESHOLD = 3;
+// A translation missing at least this many heading anchors that its source has
+// is stale (behind the source revision). One is enough: every heading carries an
+// explicit {#slug} that is preserved verbatim across locales, so a missing slug
+// is a missing section, not a translation artifact.
+const STALE_FAIL_THRESHOLD = 1;
 
 // ---------------------------------------------------------------------------
 // Path mapping
@@ -220,6 +232,41 @@ function findLeftoverProse(sourceContent, translatedContent) {
   return [...new Set(hits)];
 }
 
+// Explicit heading anchors ({#slug}) in a document's body. Every section heading
+// in the corpus carries one (`## Foo {#foo}`) and the slug is kept verbatim when
+// translated, so the anchor set is a structural fingerprint of a page's sections
+// that is comparable across locales. bodyLines() already drops frontmatter, code
+// fences and imports; inline code is stripped here so examples like `{{#lines}}`
+// are not counted as section anchors.
+function headingAnchors(text) {
+  const out = new Set();
+  for (const line of bodyLines(text)) {
+    const withoutInlineCode = line.replace(/`[^`]*`/g, '');
+    const m = /^\s{0,3}#{1,6}\s+.*\{#([A-Za-z0-9_-]+)\}\s*(?:#+\s*)?$/.exec(withoutInlineCode);
+    if (m) out.add(m[1]);
+  }
+  return out;
+}
+
+// Sections that exist in the current source but are missing from a translation of
+// an older revision. Returns the source anchors absent from the translation — but
+// ONLY when the translation has a net heading deficit (fewer headings than the
+// source). The net check is what makes this robust: a heading's explicit slug can
+// legitimately differ between locales when it is auto-derived from heading text
+// rather than preserved verbatim (EN `## F.A.Q. {#faq}` vs a translation that
+// slugs to {#f-a-q}; apostrophes and slashes do the same). A pure rename keeps the
+// count equal (deficit 0) and must NOT be flagged, or the sweep would loop forever
+// re-translating a page that is actually current. Only a genuinely dropped section
+// lowers the count. A translation may also legitimately ADD anchors (e.g. an
+// explicit slug on its title); those make the deficit negative and are ignored.
+function findMissingSections(sourceContent, translatedContent) {
+  const src = headingAnchors(sourceContent);
+  if (src.size === 0) return [];
+  const tr = headingAnchors(translatedContent);
+  if (src.size - tr.size < STALE_FAIL_THRESHOLD) return [];
+  return [...src].filter((slug) => !tr.has(slug));
+}
+
 // True when a translation is suspiciously short relative to a substantial source.
 function isStub(sourceContent, translatedContent, locale) {
   if (sourceContent.length < STUB_MIN_SOURCE_CHARS) return false;
@@ -228,7 +275,10 @@ function isStub(sourceContent, translatedContent, locale) {
   return ratio < min;
 }
 
-// Evaluate one translated file. Returns { file, untranslatedProps, leftoverProse, stub }.
+// Evaluate one translated file. Returns
+// { file, untranslatedProps, leftoverProse, stub, missingSections }, where
+// missingSections is the array of source heading anchors absent from the
+// translation (non-empty only when the translation has a net heading deficit).
 function evaluateFile(translatedPath, readFile = (p) => fs.readFileSync(p, 'utf8')) {
   const sourcePath = getSourcePath(translatedPath);
   const locale = localeOf(translatedPath);
@@ -244,6 +294,7 @@ function evaluateFile(translatedPath, readFile = (p) => fs.readFileSync(p, 'utf8
     untranslatedProps: findUntranslatedProps(source, translated),
     leftoverProse: findLeftoverProse(source, translated),
     stub: isStub(source, translated, locale),
+    missingSections: findMissingSections(source, translated),
   };
 }
 
@@ -302,8 +353,8 @@ function allSourceDocs(
   return listFiles(['versioned_docs']).filter((f) => /\.mdx?$/.test(f));
 }
 
-// Source docs that are missing or stubbed in at least one locale — the input
-// for the self-healing translation sweep. Uses the same missing/stub
+// Source docs that are missing, stubbed, or stale in at least one locale — the
+// input for the self-healing translation sweep. Uses the same missing/stub/stale
 // definition as the completeness gate, so the sweep and the PR gate never
 // disagree about what "incomplete" means.
 function listIncompleteSources({
@@ -322,8 +373,11 @@ function listIncompleteSources({
       if (!tp) continue;
       if (!existsSync(tp)) {
         gaps.push(locale);
-      } else if (isStub(sourceContent, readFile(tp), locale)) {
-        gaps.push(`${locale} (stub)`);
+      } else {
+        const translated = readFile(tp);
+        if (isStub(sourceContent, translated, locale)) gaps.push(`${locale} (stub)`);
+        else if (findMissingSections(sourceContent, translated).length >= STALE_FAIL_THRESHOLD)
+          gaps.push(`${locale} (stale)`);
       }
     }
     if (gaps.length) incomplete.push({ source, gaps });
@@ -377,6 +431,7 @@ function buildTranslationAudit({
       if (isStub(sourceContent, translated, locale)) add(source, locale, 'stub');
       if (findUntranslatedProps(sourceContent, translated).length > 0) add(source, locale, 'untranslated_props');
       if (findLeftoverProse(sourceContent, translated).length >= PROSE_FAIL_THRESHOLD) add(source, locale, 'english_prose');
+      if (findMissingSections(sourceContent, translated).length >= STALE_FAIL_THRESHOLD) add(source, locale, 'stale');
     }
   }
 
@@ -454,6 +509,12 @@ function main(argv = process.argv.slice(2), env = process.env) {
         `${r.leftoverProse.length} English prose line(s) left untranslated, e.g. "${r.leftoverProse[0].slice(0, 70)}"`
       );
     }
+    if (r.missingSections.length >= STALE_FAIL_THRESHOLD) {
+      fileProblems.push(
+        `stale: ${r.missingSections.length} section(s) in the English source are missing here ` +
+          `(translation of an older revision), e.g. {#${r.missingSections[0]}}`
+      );
+    }
     if (fileProblems.length) problems.push({ file: r.file, issues: fileProblems });
 
     // Check the implicated source for dropped locales (once per source).
@@ -479,8 +540,9 @@ function main(argv = process.argv.slice(2), env = process.env) {
     console.error(`    - translated in some locales but missing/stub in: ${d.dropped.join(', ')}`);
   }
   console.error(
-    '\nThese strings render as English to non-English readers. Translate the flagged' +
-      '\ncontent (including JSX prop values like question=/title=/alt=) and re-run.\n'
+    '\nThese render as English to non-English readers, or are behind the English' +
+      '\nsource. Translate the flagged content (including JSX prop values like' +
+      '\nquestion=/title=/alt=), bring stale files up to the current revision, and re-run.\n'
   );
   return 1;
 }
@@ -499,6 +561,8 @@ module.exports = {
   isSignificantProse,
   findUntranslatedProps,
   findLeftoverProse,
+  headingAnchors,
+  findMissingSections,
   isStub,
   findDroppedLocales,
   allSourceDocs,
