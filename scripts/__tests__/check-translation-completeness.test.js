@@ -438,4 +438,39 @@ describe('buildTranslationAudit', () => {
 
     expect(audit).toEqual([]);
   });
+
+  it('drops sources matched by excludeSource (e.g. the deprecated version)', () => {
+    const keep = 'versioned_docs/version-1.x/foo.mdx';
+    const drop = 'versioned_docs/version-0.4.x/foo.mdx';
+    const present = new Set([keep, drop]); // both missing in nl
+    const audit = buildTranslationAudit({
+      sources: [keep, drop],
+      locales: ['nl'],
+      existsSync: (p) => present.has(p),
+      readFile: () => 'body',
+      excludeSource: (s) => /version-0\.4\.x\//.test(s),
+    });
+    expect(audit.map((e) => e.source)).toEqual([keep]);
+  });
+
+  it('orders deprioritized sources after content while keeping each group alphabetical', () => {
+    const sources = [
+      'versioned_docs/version-1.x/error-codes/API01001.mdx',
+      'versioned_docs/version-1.x/coupons/index.mdx',
+      'versioned_docs/version-1.x/settings/index.mdx',
+    ];
+    const present = new Set(sources); // each missing in nl
+    const audit = buildTranslationAudit({
+      sources,
+      locales: ['nl'],
+      existsSync: (p) => present.has(p),
+      readFile: () => 'body',
+      priority: (s) => (/\/error-codes\//.test(s) ? 1 : 0),
+    });
+    expect(audit.map((e) => e.source)).toEqual([
+      'versioned_docs/version-1.x/coupons/index.mdx',
+      'versioned_docs/version-1.x/settings/index.mdx',
+      'versioned_docs/version-1.x/error-codes/API01001.mdx', // deprioritized → last
+    ]);
+  });
 });
