@@ -2,7 +2,7 @@
 title: Cloud Printing
 sidebar_label: Cloud Printing
 sidebar_position: 2
-description: Print WCPOS receipts to printers that aren't attached to the till — Star CloudPRNT, Epson Server Direct Print, and PrintNode.
+description: Print WCPOS receipts to printers that aren't attached to the till — Star Online, Star CloudPRNT, Epson Server Direct Print, and PrintNode.
 ---
 
 import Steps from '@site/src/components/Steps';
@@ -23,7 +23,7 @@ With **local printing**, the device running the POS talks straight to the printe
 **Cloud printing** is for everything else: a printer in a different location, on a different network, or one you want every device to share without configuring it on each one. There are two delivery models:
 
 - **Polling printers.** The printer reaches out to WCPOS over the internet on a schedule, asks "do you have anything for me?", and pulls down any waiting jobs. WCPOS never connects to the printer — the printer always starts the conversation. This is how **Star CloudPRNT** and **Epson Server Direct Print** work.
-- **PrintNode.** WCPOS submits the print job to the [PrintNode](https://www.printnode.com/) cloud service, and a small desktop client running on a computer near the printer picks it up and prints it. The printer can be almost anything that computer can already print to.
+- **Hosted relay providers.** WCPOS submits the print job to a hosted service, and that service delivers it to the printer. This is how **Star Online** and **PrintNode** work. Star Online delivers to Star CloudPRNT printers registered in your stario.online account; PrintNode delivers through its desktop client to almost any printer that computer can already print to.
 
 :::info Why a printer that polls?
 A polling printer doesn't need an open port, a static IP, or any firewall changes — it only ever makes outbound requests. That makes it ideal for a printer at a remote site or behind a router you don't control. The trade-off is a short delay: the printer only prints when its next poll comes around.
@@ -37,6 +37,9 @@ Pick the provider that matches your hardware.
   <FeatureCard icon="print" title="Star CloudPRNT">
     For Star thermal printers running the **CloudPRNT** firmware. The printer polls WCPOS and pulls jobs. Receipts are rendered to the printer's native commands. Needs a thermal template.
   </FeatureCard>
+  <FeatureCard icon="print" title="Star Online">
+    For Star printers registered in a **stario.online** account. WCPOS submits Star Document Markup to Star's hosted service, and the printer collects it from Star Online. Needs a thermal template.
+  </FeatureCard>
   <FeatureCard icon="print" title="Epson Server Direct Print">
     For Epson ePOS printers that support **Server Direct Print**. The printer polls WCPOS and pulls jobs as ePOS-Print XML. Needs a thermal template.
   </FeatureCard>
@@ -48,6 +51,7 @@ Pick the provider that matches your hardware.
 | Provider | Hardware | How jobs flow | Templates |
 |----------|----------|---------------|-----------|
 | **Star CloudPRNT** | Star thermal printer with CloudPRNT firmware | Printer polls WCPOS | Thermal only |
+| **Star Online** | Star printer registered in stario.online | WCPOS submits Star Document Markup to Star Online | Thermal only |
 | **Epson Server Direct Print** | Epson ePOS printer with Server Direct Print | Printer polls WCPOS | Thermal only |
 | **PrintNode** | Any OS-connected printer + PrintNode client | WCPOS submits a PDF to PrintNode | Any template |
 
@@ -106,6 +110,40 @@ Choose the target printer from the list of printers reported by the PrintNode cl
   </StepCard>
 </Steps>
 
+### Star Online {#setup-star-online}
+
+Use Star Online when your Star printer is already registered to a **stario.online** account and you want Star's hosted service to handle delivery.
+
+<Steps>
+  <StepCard number="1" title="Get the CloudPRNT URL">
+
+In stario.online, open **Device Groups** and copy the group's **CloudPRNT URL**. It should look like `https://device.stario.online/cloudprnt/...` or `https://eu-device.stario.online/cloudprnt/...`.
+
+  </StepCard>
+  <StepCard number="2" title="Create an API key with permissions">
+
+In stario.online, create an API key for WCPOS. The key must have permission to list devices and print to them. At minimum, enable:
+
+- **EnumDevices** — required when WCPOS fetches the device list
+- **ViewDevice** — used for device status checks
+- **PrintToDevice** — required to submit print jobs
+- **ViewDeviceGroups** — recommended for group lookup and diagnostics
+
+An API key can exist and still fail if these permissions are not enabled.
+
+  </StepCard>
+  <StepCard number="3" title="Enter the URL and API key in WCPOS">
+
+Add a printer in **POS → Settings → Cloud Print**, choose **Star Online** as the provider, then paste the CloudPRNT URL and API key. Click **Fetch my devices**.
+
+  </StepCard>
+  <StepCard number="4" title="Select the Star device" isLast>
+
+Choose the printer from the device list and save. WCPOS stores the API key server-side and uses the selected device's access identifier when submitting jobs to Star Online.
+
+  </StepCard>
+</Steps>
+
 ## Auto-print rules {#auto-print}
 
 Auto-print rules decide what prints where, automatically — written as plain sentences. A rule is **scope × printer × template**, for example:
@@ -115,7 +153,7 @@ Auto-print rules decide what prints where, automatically — written as plain se
 When a matching order completes, WCPOS renders the chosen **template** server-side into the format the printer needs and queues it — there's nothing for the cashier to do.
 
 :::note Template compatibility matters
-Star and Epson printers can only use **thermal** templates, because the job has to be rendered to the printer's native command language (ESC/POS for Star, ePOS-Print for Epson). PrintNode can use **any** template — thermal or full-page HTML — because the job is rendered to a **PDF**. If a template doesn't appear as an option for a printer, it's because the printer can't render that format. See [Thermal Templates](/receipts/thermal-templates) for creating thermal layouts.
+Star and Epson printers can only use **thermal** templates, because the job has to be rendered to the printer's native command language (Star Document Markup or ESC/POS for Star, ePOS-Print for Epson). PrintNode can use **any** template — thermal or full-page HTML — because the job is rendered to a **PDF**. If a template doesn't appear as an option for a printer, it's because the printer can't render that format. See [Thermal Templates](/receipts/thermal-templates) for creating thermal layouts.
 :::
 
 ## Per-store printers (Pro) {#per-store-printers}
@@ -140,8 +178,8 @@ You don't have to wait for an auto-print rule. From the **checkout / receipt scr
 
 How the receipt is produced depends on the printer:
 
-- **Star** — the receipt is rendered **on the device** and handed to the printer through CloudPRNT.
-- **Epson and PrintNode** — the receipt is rendered **on the server** from the selected order and template, then delivered to the printer.
+- **Star CloudPRNT** — the receipt is rendered **on the device** and handed to the printer through CloudPRNT.
+- **Star Online, Epson, and PrintNode** — the receipt is rendered **on the server** from the selected order and template, then delivered to the printer or hosted relay.
 
 ## Test print & connection status {#status}
 
@@ -151,8 +189,11 @@ The card also shows a live status:
 
 | Provider | Status | Meaning |
 |----------|--------|---------|
-| **Star / Epson** | **Waiting** | The printer hasn't checked in yet — WCPOS is waiting for its first poll. |
-| **Star / Epson** | **Connected** | The printer polled WCPOS recently and is collecting jobs. |
+| **Star CloudPRNT / Epson** | **Waiting** | The printer hasn't checked in yet — WCPOS is waiting for its first poll. |
+| **Star CloudPRNT / Epson** | **Connected** | The printer polled WCPOS recently and is collecting jobs. |
+| **Star Online** | **Online** | Star Online reports the selected device is available. |
+| **Star Online** | **Offline** | Star Online reports the selected device is not available. |
+| **Star Online** | **Unknown** | WCPOS could not confirm the device status from Star Online. |
 | **PrintNode** | **Online** | The PrintNode service reports the client and printer are available. |
 | **PrintNode** | **Offline** | PrintNode reports the client or printer is unavailable. |
 
@@ -166,6 +207,17 @@ The card also shows a live status:
   - The **poll URL and token** in the printer's firmware exactly match what WCPOS generated. A single wrong character means every poll is rejected — regenerate the token in WCPOS and re-enter it if you're unsure.
   - The printer can actually **reach your site** over the internet (correct DNS, no firewall blocking outbound HTTPS, valid SSL certificate on your store).
   - **Polling is enabled** in the printer's CloudPRNT / Server Direct Print configuration, with a sensible interval. Reboot the printer after changing its settings.
+
+  </AccordionItem>
+
+  <AccordionItem question="Star Online says the API key is unauthorised or forbidden">
+
+  Star Online separates **authentication** from **permissions**:
+
+  - **401 / authentication failed** means the API key itself was not accepted. Check that the key was copied correctly, has not been revoked, and belongs to the expected Star Online account/region.
+  - **403 / forbidden** means the API key was accepted but is not authorised for the requested action. Edit the key in stario.online and enable the required permissions, especially **EnumDevices** for **Fetch my devices** and **PrintToDevice** for printing.
+
+  If **Fetch my devices** succeeds but no printers appear, check the stario.online **Device Groups** page. The group must contain at least one connected device, and the CloudPRNT URL in WCPOS must point to that same group.
 
   </AccordionItem>
 
