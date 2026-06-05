@@ -80,6 +80,7 @@ slug: /original-path
 **Translate:** title, sidebar_label, description
 **Keep exactly (do not change the value):** sidebar_position, slug, custom_edit_url, id, pagination_prev, pagination_next
 **Do NOT add fields that don't exist in the source**
+**ALWAYS wrap the `description` value in double quotes** (`description: "..."`), exactly as shown above. Many languages put a colon inside the sentence, and an unquoted colon breaks the YAML frontmatter and fails the site build. If the value contains a double quote, escape it as `\"`.
 
 ### 2. Import Statements
 ```javascript

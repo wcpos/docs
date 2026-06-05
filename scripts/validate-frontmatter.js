@@ -21,6 +21,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const matter = require('gray-matter');
 const yaml = require('js-yaml');
 const glob = require('glob');
@@ -309,15 +310,134 @@ function fixBrokenLinks(content) {
 }
 
 /**
+ * Canonicalize the `description` frontmatter value to a single enforced form:
+ * a double-quoted scalar (JSON-style escaping, which is valid YAML).
+ *
+ * This is the ONE policy. It is deterministic and idempotent, so the translation
+ * pipeline, the QA pass, and CI all converge on the same output instead of
+ * drifting between quoted and unquoted forms run-to-run. As a side effect it
+ * repairs the most common build-breaker: an unquoted description whose value
+ * contains a colon (e.g. `description: ...WCPOS: foo`), which YAML otherwise
+ * parses as a mapping pair and fails the build.
+ *
+ * Only single-line descriptions are normalised; YAML block scalars (`>`/`|`)
+ * are left untouched.
+ *
+ * @param {string} content - Full MDX file content
+ * @returns {{ changed: boolean, content: string }}
+ */
+function canonicalizeDescriptionQuoting(content) {
+  const frontmatter = extractFrontmatter(content);
+  if (frontmatter === null) {
+    return { changed: false, content };
+  }
+
+  const lines = frontmatter.split('\n');
+  const descLineIdxs = lines
+    .map((line, i) => (/^description:/.test(line) ? i : -1))
+    .filter((i) => i !== -1);
+
+  // Operate only on a single, top-level description line. Zero or multiple
+  // matches means there is nothing to do or the frontmatter is shaped in a way
+  // we can't safely reason about line-by-line.
+  if (descLineIdxs.length !== 1) {
+    return { changed: false, content };
+  }
+  const idx = descLineIdxs[0];
+  const raw = lines[idx].slice('description:'.length).trim();
+
+  // Leave empty values and YAML block scalars (`>`/`|`) alone — out of scope.
+  if (raw === '' || raw.startsWith('>') || raw.startsWith('|')) {
+    return { changed: false, content };
+  }
+
+  // Resolve the intended string value. Prefer the value as parsed by YAML (the
+  // source of truth); fall back to the literal raw text only when the
+  // frontmatter doesn't parse (the unquoted-colon break we want to repair).
+  let value;
+  let parsedDescription;
+  try {
+    const data = yaml.load(frontmatter);
+    if (data && typeof data === 'object' && typeof data.description === 'string') {
+      parsedDescription = data.description;
+    }
+  } catch {
+    // Invalid YAML — handled by the literal fallback below.
+  }
+
+  if (parsedDescription !== undefined) {
+    value = parsedDescription;
+  } else {
+    // Frontmatter doesn't parse, OR `description` isn't a clean string (e.g. a
+    // mangled title that absorbed the description across lines). Take the raw
+    // line literally; the validity guard below rejects anything unsafe.
+    const isQuoted =
+      raw.length >= 2 &&
+      ((raw.startsWith('"') && raw.endsWith('"')) ||
+        (raw.startsWith("'") && raw.endsWith("'")));
+    value = isQuoted ? raw.slice(1, -1) : raw;
+  }
+
+  const canonicalLine = `description: ${JSON.stringify(value)}`;
+  if (canonicalLine === lines[idx]) {
+    return { changed: false, content };
+  }
+
+  const newLines = lines.slice();
+  newLines[idx] = canonicalLine;
+  const newFrontmatter = newLines.join('\n');
+
+  // Safety guard: never emit invalid YAML, and never silently change the
+  // meaning of the description. If the rewrite doesn't parse cleanly to the
+  // same value, leave the file untouched for the build gate to surface.
+  try {
+    const reparsed = yaml.load(newFrontmatter);
+    if (!reparsed || typeof reparsed.description !== 'string') {
+      return { changed: false, content };
+    }
+    if (parsedDescription !== undefined && reparsed.description !== parsedDescription) {
+      return { changed: false, content };
+    }
+  } catch {
+    return { changed: false, content };
+  }
+
+  const newContent = content.replace(
+    /^---\n[\s\S]*?\n---/,
+    `---\n${newFrontmatter}\n---`
+  );
+  return { changed: true, content: newContent };
+}
+
+/**
  * Process a single file: validate and optionally fix
  * @param {string} filePath - Path to MDX file
- * @param {object} options - { fix: boolean }
+ * @param {object} options - { fix: boolean, check: boolean }
  * @returns {{ status: 'valid'|'fixed'|'error', error?: string, fixes?: string[] }}
  */
 function processFile(filePath, options = { fix: true }) {
   let content = fs.readFileSync(filePath, 'utf8');
   let wasFixed = false;
   const allFixes = [];
+
+  // 0. Enforce the description quoting policy (always double-quoted). Runs first
+  //    because it also repairs the unquoted-colon break that the targeted YAML
+  //    fixers below do not handle.
+  const canon = canonicalizeDescriptionQuoting(content);
+  if (canon.changed) {
+    if (options.check) {
+      return {
+        status: 'error',
+        error:
+          'description not in canonical double-quoted form (run: node scripts/validate-frontmatter.js --fix)',
+      };
+    }
+    if (options.fix) {
+      content = canon.content;
+      wasFixed = true;
+      allFixes.push('description-quoting');
+    }
+  }
 
   // 1. Check and fix frontmatter
   const fmValidation = validateFrontmatter(content);
@@ -364,13 +484,12 @@ function processFile(filePath, options = { fix: true }) {
 }
 
 /**
- * Process multiple files matching a glob pattern
- * @param {string} pattern - Glob pattern
- * @param {object} options - { fix: boolean, quiet: boolean }
+ * Process an explicit list of files.
+ * @param {string[]} files - File paths
+ * @param {object} options - { fix: boolean, quiet: boolean, check: boolean }
  * @returns {{ valid: number, fixed: number, errors: Array<{file: string, error: string}> }}
  */
-function processFiles(pattern, options = { fix: true, quiet: false }) {
-  const files = glob.sync(pattern);
+function processFileList(files, options = { fix: true, quiet: false }) {
   const results = { valid: 0, fixed: 0, errors: [] };
 
   for (const file of files) {
@@ -394,20 +513,74 @@ function processFiles(pattern, options = { fix: true, quiet: false }) {
   return results;
 }
 
+/**
+ * Process multiple files matching a glob pattern
+ * @param {string} pattern - Glob pattern
+ * @param {object} options - { fix: boolean, quiet: boolean, check: boolean }
+ * @returns {{ valid: number, fixed: number, errors: Array<{file: string, error: string}> }}
+ */
+function processFiles(pattern, options = { fix: true, quiet: false }) {
+  return processFileList(glob.sync(pattern), options);
+}
+
+/**
+ * Content (md/mdx) files changed in this branch vs a base ref. Mirrors the
+ * `--changed` discovery in check-translation-completeness.js so the CI gate
+ * only enforces the quoting policy on what a PR actually touches — never the
+ * whole-corpus backlog.
+ * @param {string} baseRef - e.g. 'origin/main'
+ * @returns {string[]}
+ */
+function gitChangedContentFiles(baseRef) {
+  const out = execFileSync(
+    'git',
+    [
+      'diff',
+      '--name-only',
+      '--diff-filter=ACMR',
+      `${baseRef}...HEAD`,
+      '--',
+      'docs/**/*.md',
+      'docs/**/*.mdx',
+      'versioned_docs/**/*.md',
+      'versioned_docs/**/*.mdx',
+      'i18n/**/*.mdx',
+    ],
+    { encoding: 'utf8' }
+  );
+  return out.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
 // CLI
 if (require.main === module) {
   const args = process.argv.slice(2);
-  const fix = !args.includes('--no-fix');
+  // --check: enforcement mode for CI. Never writes; reports any file that is not
+  // already in canonical form (or is otherwise invalid) as an error → exit 1.
+  const check = args.includes('--check');
+  // --changed: scope to files changed vs BASE_REF (default origin/main), so the
+  // CI gate enforces the policy on a PR's own files, not the whole-corpus backlog.
+  const changed = args.includes('--changed');
+  const fix = !check && !args.includes('--no-fix');
   const quiet = args.includes('--quiet');
-  const pattern =
-    args.find((a) => !a.startsWith('--')) || 'i18n/**/*.mdx';
 
-  if (!quiet) {
-    console.log(`Validating MDX frontmatter: ${pattern}`);
-    console.log(`Auto-fix: ${fix ? 'enabled' : 'disabled'}\n`);
+  let files;
+  let label;
+  if (changed) {
+    const baseRef = process.env.BASE_REF || 'origin/main';
+    files = gitChangedContentFiles(baseRef);
+    label = `${files.length} changed file(s) vs ${baseRef}`;
+  } else {
+    const pattern = args.find((a) => !a.startsWith('--')) || 'i18n/**/*.mdx';
+    files = glob.sync(pattern);
+    label = pattern;
   }
 
-  const results = processFiles(pattern, { fix, quiet });
+  if (!quiet) {
+    console.log(`Validating MDX frontmatter: ${label}`);
+    console.log(`Mode: ${check ? 'check (no writes)' : `auto-fix ${fix ? 'enabled' : 'disabled'}`}\n`);
+  }
+
+  const results = processFileList(files, { fix, quiet, check });
 
   const total = results.valid + results.fixed + results.errors.length;
 
@@ -441,6 +614,7 @@ module.exports = {
   fixPartialQuoting,
   fixBackslashEscapedQuotes,
   fixFrontmatter,
+  canonicalizeDescriptionQuoting,
   findBrokenLinks,
   fixBrokenLinks,
   processFile,

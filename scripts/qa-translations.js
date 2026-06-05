@@ -105,6 +105,7 @@ WHAT TO PRESERVE UNCHANGED:
 - Import statements
 - Component names: <Icon name="x" />
 - Frontmatter keys (only translate title, sidebar_label, description values)
+- ALWAYS keep the frontmatter \`description\` value wrapped in double quotes (description: "..."); an unquoted colon breaks the YAML and fails the build
 
 OUTPUT: The complete corrected ${localeName} document, starting with --- (frontmatter). No explanations.`
       },
