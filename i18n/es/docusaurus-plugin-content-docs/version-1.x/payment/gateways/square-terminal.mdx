@@ -1,0 +1,208 @@
+---
+title: Pasarela Square Terminal
+description: "Cobro de pagos presenciales en dispositivos Square Terminal con WCPOS"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# Pasarela Square Terminal {#square-terminal-gateway}
+
+La pasarela Square Terminal permite cobrar pagos de pedidos de WooCommerce en hardware [Square Terminal](https://squareup.com/hardware/terminal) directamente desde WCPOS. El pago se solicita desde WooCommerce y se completa en un dispositivo Square Terminal emparejado; el resultado se registra en el pedido.
+
+## Características {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="credit-card" title="Integración de hardware">
+    Envío de pagos a dispositivos Square Terminal emparejados para cobrar pagos con tarjeta presente
+  </FeatureCard>
+  <FeatureCard icon="link" title="Emparejamiento sencillo">
+    Emparejamiento de terminales desde WooCommerce mediante un código de dispositivo Square de corta duración
+  </FeatureCard>
+  <FeatureCard icon="bolt" title="Confirmación por webhook">
+    Los webhooks verificados de Square confirman la finalización del pago, con estado en tiempo real durante la espera
+  </FeatureCard>
+  <FeatureCard icon="shield" title="Transacciones seguras">
+    Procesamiento de pagos con tarjeta presente compatible con PCI, gestionado en hardware de Square
+  </FeatureCard>
+  <FeatureCard icon="desktop" title="Sandbox y producción">
+    Validar contra el Square Sandbox antes de cambiar a pagos en producción
+  </FeatureCard>
+</FeatureGrid>
+
+## Cómo funciona {#how-it-works}
+
+A diferencia de las pasarelas basadas en SDK de navegador, Square Terminal utiliza la **API de Terminal del lado del servidor** de Square. Al iniciar un pago, WooCommerce crea un Terminal Checkout para el pedido y Square lo envía al dispositivo emparejado. El cliente paga en el terminal y Square notifica al sitio mediante un webhook firmado. El webhook es la señal de finalización autoritativa; el POS también realiza sondeos para que el estado se actualice mientras se espera.
+
+Esto significa que el dispositivo Square Terminal debe estar en línea e iniciar sesión en la misma cuenta y ubicación de Square, y el sitio debe ser accesible públicamente a través de HTTPS para que Square pueda entregar los webhooks.
+
+## Instalación {#installation}
+
+<Steps>
+  <StepCard number="1" title="Instalar Square Terminal for WooCommerce">
+
+Instalar desde `WP Admin > POS > Ajustes > Extensiones`, o descargar el último **archivo zip del plugin** (no el zip de código fuente de GitHub ni el tarball) desde la [página de lanzamientos de GitHub](https://github.com/wcpos/square-terminal-for-woocommerce/releases) y subirlo mediante `Plugins > Añadir nuevo > Subir plugin`.
+
+  </StepCard>
+  <StepCard number="2" title="Configurar los ajustes de Square">
+
+1. Navegar a `WP Admin > WooCommerce > Ajustes > Pagos`
+2. Buscar **Square Terminal** en la lista de métodos de pago y hacer clic en él para abrir los ajustes
+3. Seleccionar el **Entorno** (`Sandbox` para pruebas, `Production` para pagos en producción)
+4. Introducir el **Token de acceso** para el entorno seleccionado (Sandbox o Production), disponible en el [Panel de desarrolladores de Square](https://developer.squareup.com/apps)
+5. Introducir el **ID de ubicación** — la ubicación de Square donde se procesan los pagos con Terminal
+6. Introducir la **Clave de firma del webhook** y la **URL de notificación del webhook** (consultar el siguiente paso)
+7. Hacer clic en **Validar configuración** para confirmar que las credenciales funcionan correctamente y luego guardar
+
+:::note
+No es necesario activar la pasarela Square Terminal en la configuración de WooCommerce. Se activará específicamente para el POS en un paso posterior.
+:::
+
+  </StepCard>
+  <StepCard number="3" title="Configurar webhooks en Square">
+
+Square envía un webhook firmado cuando finaliza un pago con Terminal, y esto es lo que marca el pedido como pagado.
+
+1. En el [Panel de desarrolladores de Square](https://developer.squareup.com/apps), abrir la aplicación e ir a la sección **Webhooks**
+2. Agregar una suscripción para el evento **`terminal.checkout.updated`**
+3. Establezca la URL de notificación con la **URL de notificación de Webhook** que se muestra en la configuración del plugin — debe coincidir **exactamente**
+4. Copie la **Clave de firma del Webhook** en la configuración del plugin para que los eventos entrantes puedan ser verificados
+
+:::warning Importante
+La URL de notificación de Webhook en Square debe coincidir exactamente con el valor en la configuración del plugin, y la Clave de firma del Webhook debe ser correcta. Si no coinciden, los pagos de Square se completarán en el dispositivo, pero el pedido de WooCommerce no se actualizará.
+:::
+
+  </StepCard>
+  <StepCard number="4" title="Vincular el Square Terminal">
+
+1. En la misma página de configuración, haga clic en **Crear código de dispositivo**
+2. Se generará y mostrará un código de vinculación
+3. En el Square Terminal, inicie sesión e introduzca el código en la pantalla de vinculación de dispositivos
+4. Una vez vinculado, el terminal quedará asociado a la ubicación configurada. Tome nota del **ID del dispositivo** — será necesario introducirlo al procesar un pago
+
+:::warning Importante
+El terminal debe estar correctamente vinculado y en línea antes de procesar pagos. Asegúrese de que la vinculación esté completa antes de continuar.
+:::
+
+  </StepCard>
+  <StepCard number="5" title="Activar en WCPOS" isLast>
+
+1. Ir a `WP Admin > POS > Ajustes > Finalizar compra`
+2. Buscar la pasarela **Square Terminal** en la lista
+3. Activar la pasarela para su uso en el POS
+4. Guardar los ajustes
+
+  </StepCard>
+</Steps>
+
+## Uso {#usage}
+
+### Procesamiento de pagos {#processing-payments}
+
+1. **Agregar artículos**: Agregar productos al carrito en el POS
+2. **Seleccionar pasarela**: Elegir "Square Terminal" como método de pago
+3. **Elegir dispositivo**: Introducir el **ID del dispositivo Terminal** del terminal emparejado que debe recibir el pago
+4. **Iniciar pago**: Hacer clic en **Iniciar pago** — Square envía el cobro al dispositivo
+5. **Pago del cliente**: El cliente acerca, inserta o desliza su tarjeta en el Square Terminal
+6. **Finalización automática**: Cuando el webhook verificado de Square confirma el pago, el pedido se marca como pagado. El estado se actualiza en tiempo real mientras se espera.
+
+### Controles de pago {#payment-controls}
+
+Al utilizar la pasarela Square Terminal, se dispone de las siguientes opciones:
+
+- **Iniciar pago**: Enviar una nueva solicitud de pago al terminal seleccionado
+- **Cancelar pago**: Cancelar un pago que se encuentra en curso en el terminal
+- **Estado del pago**: Un área de estado en tiempo real muestra la situación actual del pago
+- **Registro de pagos**: Un registro por pedido documenta cada paso y resultado relevante de Square
+
+### Gestión de pedidos {#order-management}
+
+- **Finalización autorizada por webhook**: Los pedidos se marcan como pagados únicamente cuando un webhook verificado de Square confirma el pago del Terminal
+- **Seguimiento de pagos**: Los identificadores de Square y un registro de pagos se almacenan en el pedido, y los pasos clave se escriben en las notas del pedido
+- **Generación de recibos**: Se generan recibos POS estándar tras los pagos realizados correctamente
+
+## Requisitos {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Cuenta de Square">Cuenta de vendedor de Square activa</RequirementItem>
+  <RequirementItem label="Credenciales de API">Access Token, Location ID y Webhook Signature Key del panel de desarrolladores de Square</RequirementItem>
+  <RequirementItem label="Hardware compatible">Un dispositivo Square Terminal, en línea y con sesión iniciada en la misma ubicación de Square</RequirementItem>
+  <RequirementItem label="Sitio HTTPS público">El sitio debe ser accesible a través de HTTPS para que Square pueda entregar los webhooks</RequirementItem>
+  <RequirementItem label="WCPOS">Se requiere la versión Pro para el cobro en POS</RequirementItem>
+</RequirementsList>
+
+## Compatibilidad de hardware {#hardware-compatibility}
+
+:::important Requisitos de conectividad
+Square Terminal utiliza la API Terminal del lado del servidor de Square: el cobro se crea en el sitio y Square lo envía al dispositivo emparejado. El terminal debe estar en línea y conectado a la misma cuenta y ubicación de Square, y el sitio debe recibir webhooks de Square a través de HTTPS para que los pedidos se actualicen.
+:::
+
+### Terminales compatibles {#supported-terminals}
+
+- **Square Terminal** ✅ — Terminal de mostrador dedicado de Square para pagos con tarjeta
+
+## Alcance y limitaciones {#scope-and-limitations}
+
+:::note Alcance de la versión v0.1
+- Esta versión inicial se centra en los flujos de **POS / pago de pedidos**. La disponibilidad en el proceso de pago del escaparate orientado al cliente está desactivada de forma predeterminada y debe habilitarse explícitamente.
+- Solo **permite cobrar pagos**; los reembolsos aún no son compatibles. Los identificadores de Square se almacenan en el pedido para que la compatibilidad con reembolsos pueda añadirse posteriormente.
+:::
+
+## Solución de problemas {#troubleshooting}
+
+### Problemas frecuentes {#common-issues}
+
+<Accordion>
+  <AccordionItem question="El dispositivo no se empareja">
+
+  - Es necesario verificar que el código de dispositivo se haya introducido antes de su vencimiento; de ser necesario, se puede generar uno nuevo con **Crear código de dispositivo**
+  - Es necesario confirmar que el terminal está en línea y conectado a la misma cuenta de Square y el mismo **ID de ubicación** que el plugin
+  - Es necesario verificar que el **Entorno** (Sandbox/Producción) y el **Token de acceso** coincidan con la cuenta en la que el terminal ha iniciado sesión
+
+  </AccordionItem>
+
+  <AccordionItem question="La validación de configuración falla">
+
+  - Es necesario verificar que el **Token de acceso** coincida con el **Entorno** seleccionado (un token de Sandbox no funcionará en Producción, y viceversa)
+  - Es necesario confirmar que el **ID de ubicación** pertenece a esa cuenta
+  - Se recomienda copiar nuevamente el token desde el Panel de desarrolladores de Square en caso de que haya caracteres adicionales
+
+  </AccordionItem>
+
+  <AccordionItem question="El pago se completa en el terminal pero el pedido no se actualiza">
+
+  - La **URL de notificación de webhook** en Square debe coincidir **exactamente** con la configuración del plugin
+  - Es necesario verificar que el evento **`terminal.checkout.updated`** esté suscrito en el Panel de desarrolladores de Square
+  - Es necesario confirmar que la **Clave de firma del webhook** en el plugin coincida con la de Square
+  - Asegúrese de que el sitio sea accesible públicamente a través de HTTPS; verifique los intentos de entrega de webhooks en el panel de Square
+
+  </AccordionItem>
+
+  <AccordionItem question="El pago no se inicia">
+
+  - Confirme que se ha introducido un **ID de dispositivo Terminal** válido y que el dispositivo está emparejado y en línea
+  - Verifique que el dispositivo haya iniciado sesión en el **ID de ubicación** configurado
+  - Revise el **Registro de pagos** y los registros de errores de WordPress en busca de mensajes de la API de Square
+
+  </AccordionItem>
+</Accordion>
+
+### Obtener ayuda {#getting-help}
+
+Para soporte técnico:
+- Visite el [repositorio de GitHub](https://github.com/wcpos/square-terminal-for-woocommerce) para reportar problemas
+- Consulte la [documentación de la API de Square Terminal](https://developer.squareup.com/docs/terminal-api/overview) para orientación sobre hardware y API
+- Contacte con el soporte de Square para problemas de cuenta y hardware
+
+## Capturas de pantalla {#screenshots}
+
+Se añadirán capturas de pantalla en una actualización futura para mostrar:
+- Configuración de credenciales de Square, webhook y emparejamiento de dispositivo
+- Activación de la pasarela en los ajustes de WCPOS
+- Flujo de procesamiento de pagos en el cobro del POS
