@@ -14,6 +14,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const matter = require('gray-matter');
 const yaml = require('js-yaml');
+const { canonicalizeDescriptionQuoting } = require('./validate-frontmatter');
 
 // Get languages from docusaurus.config.js
 const docusaurusConfig = require('../docusaurus.config.js');
@@ -240,6 +241,12 @@ async function processMdxFile(filePath, targetLocale) {
     const importsBlock = sourceImports.join('\n') + '\n\n';
     translatedContent = matter.stringify(importsBlock + parsed.content, parsed.data);
   }
+
+  // Enforce the single frontmatter quoting policy: `description` is always
+  // double-quoted. Deterministic + idempotent, so the model's run-to-run
+  // quoting whims can never drift the corpus or ship an unquoted colon that
+  // breaks the build. This is the same normaliser CI enforces (--check).
+  translatedContent = canonicalizeDescriptionQuoting(translatedContent).content;
 
   return translatedContent;
 }

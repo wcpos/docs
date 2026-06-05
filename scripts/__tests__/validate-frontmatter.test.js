@@ -6,6 +6,7 @@ const {
   fixPartialQuoting,
   fixBackslashEscapedQuotes,
   fixFrontmatter,
+  canonicalizeDescriptionQuoting,
   findBrokenLinks,
   fixBrokenLinks,
 } = require('../validate-frontmatter');
@@ -352,6 +353,92 @@ Body content`;
     expect(result.fixed).toBe(true);
     expect(result.content).toContain('title: "');
     expect(validateFrontmatter(result.content).valid).toBe(true);
+  });
+});
+
+describe('canonicalizeDescriptionQuoting', () => {
+  const wrap = (fm) => `---\n${fm}\n---\n\nBody`;
+  const descLine = (content) =>
+    content.match(/^description:.*$/m)?.[0];
+
+  it('quotes an unquoted description (the enforced policy)', () => {
+    const result = canonicalizeDescriptionQuoting(
+      wrap('title: T\ndescription: Apply discounts at the register')
+    );
+    expect(result.changed).toBe(true);
+    expect(descLine(result.content)).toBe(
+      'description: "Apply discounts at the register"'
+    );
+  });
+
+  it('repairs the unquoted-colon build-breaker', () => {
+    // The exact shape that broke the build: a colon inside an unquoted value.
+    const result = canonicalizeDescriptionQuoting(
+      wrap('description: Aplica descuentos en la caja de WCPOS: descuentos rápidos.')
+    );
+    expect(result.changed).toBe(true);
+    expect(descLine(result.content)).toBe(
+      'description: "Aplica descuentos en la caja de WCPOS: descuentos rápidos."'
+    );
+    // And the result is now valid YAML frontmatter.
+    expect(validateFrontmatter(result.content).valid).toBe(true);
+  });
+
+  it('is idempotent on an already-canonical description', () => {
+    const canonical = wrap('description: "Already canonical."');
+    const result = canonicalizeDescriptionQuoting(canonical);
+    expect(result.changed).toBe(false);
+    expect(result.content).toBe(canonical);
+  });
+
+  it('normalises single-quoted to double-quoted', () => {
+    const result = canonicalizeDescriptionQuoting(
+      wrap("description: 'Single quoted value'")
+    );
+    expect(result.changed).toBe(true);
+    expect(descLine(result.content)).toBe(
+      'description: "Single quoted value"'
+    );
+  });
+
+  it('escapes internal double quotes', () => {
+    const result = canonicalizeDescriptionQuoting(
+      wrap('description: Says "hello" to you')
+    );
+    expect(result.changed).toBe(true);
+    expect(descLine(result.content)).toBe(
+      'description: "Says \\"hello\\" to you"'
+    );
+    expect(validateFrontmatter(result.content).valid).toBe(true);
+  });
+
+  it('leaves files without a description untouched', () => {
+    const content = wrap('title: T\nsidebar_label: L');
+    const result = canonicalizeDescriptionQuoting(content);
+    expect(result.changed).toBe(false);
+    expect(result.content).toBe(content);
+  });
+
+  it('does not touch YAML block scalars', () => {
+    const content = wrap('description: >\n  A folded\n  description');
+    const result = canonicalizeDescriptionQuoting(content);
+    expect(result.changed).toBe(false);
+  });
+
+  it('never corrupts a mangled file (title absorbed the description)', () => {
+    // Real shape from paypal-reader.mdx: the title is an unterminated double
+    // quote whose closing quote lives on the description line, so YAML parses
+    // the whole thing as one multi-line title. Rewriting the description line
+    // would strand the title quote → invalid YAML. Must leave it untouched.
+    const content = `---
+title: "Reader Gateway (Zettle).\\"
+description: \\"Accept card payments in person"
+---
+
+Body`;
+    const result = canonicalizeDescriptionQuoting(content);
+    expect(result.changed).toBe(false);
+    expect(result.content).toBe(content);
   });
 });
 
