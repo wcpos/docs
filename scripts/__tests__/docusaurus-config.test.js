@@ -10,3 +10,33 @@ describe('docusaurus locale configuration', () => {
     expect(config.i18n.localeConfigs.nl.label).toBe('Nederlands');
   });
 });
+
+describe('docusaurus frontmatter parsing', () => {
+  it('canonicalizes unquoted description colons before parsing', async () => {
+    const parsed = await config.markdown.parseFrontMatter({
+      fileContent: `---
+title: Descuentos del carrito
+description: Aplica descuentos en la caja de WCPOS: descuentos rápidos.
+---
+
+Contenido`,
+      defaultParseFrontMatter: ({ fileContent }) => {
+        expect(fileContent).toContain(
+          'description: "Aplica descuentos en la caja de WCPOS: descuentos rápidos."'
+        );
+
+        return {
+          frontMatter: {
+            description:
+              'Aplica descuentos en la caja de WCPOS: descuentos rápidos.',
+          },
+          content: 'Contenido',
+        };
+      },
+    });
+
+    expect(parsed.frontMatter.description).toBe(
+      'Aplica descuentos en la caja de WCPOS: descuentos rápidos.'
+    );
+  });
+});

@@ -1,4 +1,7 @@
 const {themes} = require('prism-react-renderer');
+const {
+  canonicalizeDescriptionQuoting,
+} = require('./scripts/validate-frontmatter');
 
 /** @type {import('@docusaurus/types').DocusaurusConfig} */
 module.exports = {
@@ -11,6 +14,10 @@ module.exports = {
   favicon: 'img/favicon.ico',
   markdown: {
     mermaid: true,
+    async parseFrontMatter(params) {
+      const fileContent = canonicalizeDescriptionQuoting(params.fileContent).content;
+      return params.defaultParseFrontMatter({...params, fileContent});
+    },
     hooks: {
       onBrokenMarkdownLinks: 'warn',
     },
