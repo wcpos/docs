@@ -1,0 +1,208 @@
+---
+title: Square Terminal ゲートウェイ
+description: "WCPOS で Square Terminal デバイスを使った対面決済を受け付ける"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# Square Terminal ゲートウェイ
+
+Square Terminal ゲートウェイを使うと、WCPOS から直接 [Square Terminal](https://squareup.com/hardware/terminal) ハードウェアで WooCommerce 注文の支払いを受け付けられます。支払いは WooCommerce からリクエストされ、ペアリング済みの Square Terminal デバイスで完了し、その結果が注文に書き戻されます。
+
+## 機能 {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="credit-card" title="ハードウェア連携">
+    ペアリング済みの Square Terminal デバイスへ支払いを送信し、対面カード決済を受け付けます
+  </FeatureCard>
+  <FeatureCard icon="link" title="簡単なペアリング">
+    短時間だけ有効な Square デバイスコードを使って WooCommerce から端末をペアリングします
+  </FeatureCard>
+  <FeatureCard icon="bolt" title="Webhook による確認">
+    検証済みの Square webhook が完了を確認し、待機中もライブステータスを表示します
+  </FeatureCard>
+  <FeatureCard icon="shield" title="安全な取引">
+    PCI 準拠の対面カード処理は Square ハードウェア上で行われます
+  </FeatureCard>
+  <FeatureCard icon="desktop" title="サンドボックスと本番">
+    ライブ決済へ切り替える前に Square Sandbox で検証できます
+  </FeatureCard>
+</FeatureGrid>
+
+## 仕組み {#how-it-works}
+
+ブラウザー SDK 型のゲートウェイとは異なり、Square Terminal は Square の **サーバー側 Terminal API** を使います。支払いを開始すると、WooCommerce が注文用の Terminal Checkout を作成し、Square がそれをペアリング済みデバイスへ送信します。顧客は端末で支払い、Square は署名付き webhook でサイトへ通知します。webhook が完了を示す正式な信号です。POS もポーリングするため、待機中にステータスが更新されます。
+
+そのため、Square Terminal デバイスはオンラインで、同じ Square アカウントとロケーションにサインインしている必要があります。また、Square が webhook を配信できるように、サイトは HTTPS で公開到達可能でなければなりません。
+
+## インストール {#installation}
+
+<Steps>
+  <StepCard number="1" title="Square Terminal for WooCommerce をインストール">
+
+`WP Admin > POS > Settings > Extensions` からインストールするか、[GitHub releases ページ](https://github.com/wcpos/square-terminal-for-woocommerce/releases)から最新の **プラグイン zip アセット**（GitHub のソースコード zip や tarball ではありません）をダウンロードし、`Plugins > Add New > Upload Plugin` からアップロードします。
+
+  </StepCard>
+  <StepCard number="2" title="Square 設定を構成">
+
+1. `WP Admin > WooCommerce > Settings > Payments` へ移動します
+2. 支払い方法一覧で **Square Terminal** を見つけ、クリックして設定を開きます
+3. **Environment** を選択します（テストは `Sandbox`、ライブ決済は `Production`）
+4. 選択した環境（Sandbox または Production）の **Access Token** を入力します。これは [Square Developer Dashboard](https://developer.squareup.com/apps) で確認できます
+5. Terminal 決済を受け付ける Square ロケーションの **Location ID** を入力します
+6. **Webhook Signature Key** と **Webhook Notification URL** を入力します（次の手順を参照）
+7. **Validate Settings** をクリックして認証情報が機能することを確認し、保存します
+
+:::note
+WooCommerce 設定で Square Terminal ゲートウェイを有効にする必要はありません。後の手順で POS 用に個別に有効化します。
+:::
+
+  </StepCard>
+  <StepCard number="3" title="Square で webhook を設定">
+
+Terminal 決済が完了すると Square は署名付き webhook を送信し、それによって注文が支払い済みとしてマークされます。
+
+1. [Square Developer Dashboard](https://developer.squareup.com/apps) でアプリケーションを開き、**Webhooks** セクションへ移動します
+2. **`terminal.checkout.updated`** イベントのサブスクリプションを追加します
+3. 通知 URL をプラグイン設定に表示されている **Webhook Notification URL** に設定します。これは **完全に一致** している必要があります
+4. 受信イベントを検証できるように、**Webhook Signature Key** をプラグイン設定へコピーします
+
+:::warning 重要
+Square の Webhook Notification URL はプラグイン設定の値と完全に一致し、Webhook Signature Key も正しい必要があります。一致しない場合、Square 決済はデバイス上で完了しても WooCommerce 注文は更新されません。
+:::
+
+  </StepCard>
+  <StepCard number="4" title="Square Terminal をペアリング">
+
+1. 同じ設定ページで **Create Device Code** をクリックします
+2. ペアリングコードが生成され、画面に表示されます
+3. Square Terminal にサインインし、デバイスペアリング画面でコードを入力します
+4. ペアリングが完了すると、端末は設定済みロケーションに関連付けられます。支払い時に入力する **Device ID** を控えておきます
+
+:::warning 重要
+支払いを処理する前に、端末が正常にペアリングされオンラインである必要があります。続行する前にペアリングが完了していることを確認してください。
+:::
+
+  </StepCard>
+  <StepCard number="5" title="WCPOS で有効化" isLast>
+
+1. `WP Admin > POS > Settings > Checkout` へ移動します
+2. 一覧で **Square Terminal** ゲートウェイを見つけます
+3. POS で使用するためにゲートウェイを有効化します
+4. 設定を保存します
+
+  </StepCard>
+</Steps>
+
+## 使い方 {#usage}
+
+### 支払い処理 {#processing-payments}
+
+1. **商品を追加**: POS のカートに商品を追加します
+2. **ゲートウェイを選択**: 支払い方法として "Square Terminal" を選びます
+3. **デバイスを選択**: 支払いを受け付けるペアリング済み端末の **Terminal Device ID** を入力します
+4. **支払いを開始**: **Start Payment** をクリックすると、Square が checkout をデバイスへ送信します
+5. **顧客の支払い**: 顧客が Square Terminal でカードをタップ、挿入、またはスワイプします
+6. **自動完了**: Square の検証済み webhook が支払いを確認すると、注文は支払い済みになります。待機中もライブステータスが更新されます。
+
+### 支払いコントロール {#payment-controls}
+
+Square Terminal ゲートウェイを使用すると、次の操作ができます。
+
+- **Start Payment**: 選択した端末へ新しい支払いリクエストを送信します
+- **Cancel Payment**: 端末で進行中の支払いをキャンセルします
+- **Payment Status**: ライブステータス領域に現在の支払い状態が表示されます
+- **Payment Log**: 注文ごとのログに、Square の重要な手順と結果が記録されます
+
+### 注文管理 {#order-management}
+
+- **Webhook を正式な完了信号として使用**: 検証済みの Square webhook が Terminal 決済を確認した場合にのみ、注文は支払い済みとしてマークされます
+- **支払い追跡**: Square 識別子と支払いログが注文に保存され、主要な手順は注文メモにも書き込まれます
+- **レシート生成**: 支払い成功後、標準の POS レシートが生成されます
+
+## 要件 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Square アカウント">有効な Square 販売者アカウント</RequirementItem>
+  <RequirementItem label="API 認証情報">Square Developer Dashboard の Access Token、Location ID、Webhook Signature Key</RequirementItem>
+  <RequirementItem label="対応ハードウェア">オンラインで同じ Square ロケーションにサインインしている Square Terminal デバイス</RequirementItem>
+  <RequirementItem label="公開 HTTPS サイト">Square が webhook を配信できるように、サイトは HTTPS で到達可能である必要があります</RequirementItem>
+  <RequirementItem label="WCPOS">POS checkout には Pro バージョンが必要です</RequirementItem>
+</RequirementsList>
+
+## ハードウェア互換性 {#hardware-compatibility}
+
+:::important 接続要件
+Square Terminal は Square のサーバー側 Terminal API を使います。checkout はサイトで作成され、Square によってペアリング済みデバイスへ配信されます。端末はオンラインで同じ Square アカウントとロケーションにサインインしている必要があり、注文を更新するにはサイトが HTTPS 経由で Square webhook を受信できる必要があります。
+:::
+
+### 対応端末 {#supported-terminals}
+
+- **Square Terminal** ✅ — Square 専用のカウンター用カード端末
+
+## 範囲と制限 {#scope-and-limitations}
+
+:::note v0.1 の範囲
+- この初期リリースは **POS / order-pay** フローに重点を置いています。顧客向け storefront checkout での利用はデフォルトで無効で、明示的に有効化する必要があります。
+- **支払いの回収のみ** に対応しています。返金はまだサポートされていません。返金サポートを後で追加できるよう、Square 識別子は注文に保存されます。
+:::
+
+## トラブルシューティング {#troubleshooting}
+
+### よくある問題 {#common-issues}
+
+<Accordion>
+  <AccordionItem question="デバイスをペアリングできない">
+
+  - Device Code の有効期限が切れる前に入力したことを確認してください。必要であれば **Create Device Code** で新しいコードを生成します
+  - 端末がオンラインで、プラグインと同じ Square アカウントおよび **Location ID** にサインインしていることを確認します
+  - **Environment**（Sandbox/Production）と **Access Token** が、端末がサインインしているアカウントと一致していることを確認します
+
+  </AccordionItem>
+
+  <AccordionItem question="設定の検証に失敗する">
+
+  - **Access Token** が選択した **Environment** と一致していることを確認します（Sandbox トークンは Production では機能せず、その逆も同様です）
+  - **Location ID** がそのアカウントに属していることを確認します
+  - 不要な文字が入っていないか確認するため、Square Developer Dashboard からトークンを再コピーします
+
+  </AccordionItem>
+
+  <AccordionItem question="端末で支払いは完了するが注文が更新されない">
+
+  - Square の **Webhook Notification URL** はプラグイン設定と **完全に一致** している必要があります
+  - Square Developer Dashboard で **`terminal.checkout.updated`** イベントが購読されていることを確認します
+  - プラグインの **Webhook Signature Key** が Square のキーと一致していることを確認します
+  - サイトが HTTPS で公開到達可能であることを確認し、Square Dashboard で webhook 配信試行を確認します
+
+  </AccordionItem>
+
+  <AccordionItem question="支払いを開始できない">
+
+  - 有効な **Terminal Device ID** が入力され、デバイスがペアリング済みでオンラインであることを確認します
+  - デバイスが設定済みの **Location ID** にサインインしていることを確認します
+  - Square API メッセージについて **Payment Log** と WordPress エラーログを確認します
+
+  </AccordionItem>
+</Accordion>
+
+### ヘルプを受ける {#getting-help}
+
+技術サポート:
+- 問題の報告は [GitHub リポジトリ](https://github.com/wcpos/square-terminal-for-woocommerce) を利用してください
+- ハードウェアと API の案内は [Square Terminal API ドキュメント](https://developer.squareup.com/docs/terminal-api/overview) を確認してください
+- アカウントやハードウェアの問題は Square サポートへお問い合わせください
+
+## スクリーンショット {#screenshots}
+
+今後のアップデートで次の内容を示すスクリーンショットを追加予定です。
+- Square 認証情報、webhook、デバイスペアリング設定
+- WCPOS 設定でのゲートウェイ有効化
+- POS checkout での支払い処理ワークフロー
