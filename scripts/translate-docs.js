@@ -38,8 +38,14 @@ const LOCALE_NAMES = {
   'zh-CN': 'Simplified Chinese',
 };
 
-// Initialize OpenAI client
-const openai = new OpenAI();
+let openai;
+
+function getOpenAIClient() {
+  if (!openai) {
+    openai = new OpenAI();
+  }
+  return openai;
+}
 
 // Load translation context
 let translationContext = '';
@@ -74,7 +80,7 @@ ${content}`;
   }
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAIClient().chat.completions.create({
       model: 'gpt-4o-mini',
       max_tokens: 16384,
       messages: [
@@ -162,6 +168,41 @@ function validateFrontmatter(content) {
   }
 }
 
+function normalizeTranslatedFrontmatter(translatedContent, sourceData, filePath) {
+  // Validate frontmatter exists in translation
+  if (!translatedContent.startsWith('---')) {
+    console.warn(`WARNING: Translation lost frontmatter for ${filePath}, restoring...`);
+    // Reconstruct with original frontmatter
+    const translatedBody = translatedContent;
+    translatedContent = matter.stringify(translatedBody, sourceData);
+  }
+
+  // Enforce the description quoting policy before YAML validation so translated
+  // descriptions with unquoted colons are repaired instead of falling back to
+  // source frontmatter.
+  translatedContent = canonicalizeDescriptionQuoting(translatedContent).content;
+
+  // Validate and fix frontmatter YAML
+  let validation = validateFrontmatter(translatedContent);
+  if (!validation.valid) {
+    console.warn(`  WARNING: Invalid frontmatter YAML, attempting to fix...`);
+    translatedContent = fixFrontmatterQuoting(translatedContent);
+
+    // Re-validate after fix attempt
+    validation = validateFrontmatter(translatedContent);
+    if (!validation.valid) {
+      console.error(`  ERROR: Could not fix frontmatter for ${filePath}: ${validation.error}`);
+      console.error(`  Falling back to source frontmatter with translated body`);
+      // Extract translated body and use source frontmatter
+      const bodyMatch = translatedContent.match(/^---[\s\S]*?---\n([\s\S]*)$/);
+      const translatedBody = bodyMatch ? bodyMatch[1] : translatedContent;
+      translatedContent = matter.stringify(translatedBody, sourceData);
+    }
+  }
+
+  return translatedContent;
+}
+
 /**
  * Restore code blocks from source - AI often translates code comments
  * This ensures code blocks are identical to source
@@ -206,31 +247,11 @@ async function processMdxFile(filePath, targetLocale) {
   // Restore code blocks from source (AI often translates comments)
   translatedContent = restoreCodeBlocks(sourceContent, translatedContent);
 
-  // Validate frontmatter exists in translation
-  if (!translatedContent.startsWith('---')) {
-    console.warn(`WARNING: Translation lost frontmatter for ${filePath}, restoring...`);
-    // Reconstruct with original frontmatter
-    const translatedBody = translatedContent;
-    translatedContent = matter.stringify(translatedBody, sourceParsed.data);
-  }
-
-  // Validate and fix frontmatter YAML
-  let validation = validateFrontmatter(translatedContent);
-  if (!validation.valid) {
-    console.warn(`  WARNING: Invalid frontmatter YAML, attempting to fix...`);
-    translatedContent = fixFrontmatterQuoting(translatedContent);
-    
-    // Re-validate after fix attempt
-    validation = validateFrontmatter(translatedContent);
-    if (!validation.valid) {
-      console.error(`  ERROR: Could not fix frontmatter for ${filePath}: ${validation.error}`);
-      console.error(`  Falling back to source frontmatter with translated body`);
-      // Extract translated body and use source frontmatter
-      const bodyMatch = translatedContent.match(/^---[\s\S]*?---\n([\s\S]*)$/);
-      const translatedBody = bodyMatch ? bodyMatch[1] : translatedContent;
-      translatedContent = matter.stringify(translatedBody, sourceParsed.data);
-    }
-  }
+  translatedContent = normalizeTranslatedFrontmatter(
+    translatedContent,
+    sourceParsed.data,
+    filePath
+  );
 
   // Validate imports are preserved
   const translatedImports = translatedContent.match(/^import .+$/gm) || [];
@@ -432,7 +453,13 @@ async function main() {
   console.log('\nTranslation completed!');
 }
 
-main().catch((error) => {
-  console.error('Translation failed:', error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('Translation failed:', error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  normalizeTranslatedFrontmatter,
+};
