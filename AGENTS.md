@@ -30,3 +30,23 @@ must not be rewritten by AI reviewers or generic fixer agents.
   translation pipeline or `node scripts/check-translation-safety.js`.
 - Never commit visible locale markers such as `DE:`, `HI:`, `AR:`, or placeholder
   prefixes such as `Ubersetzt -`, `Translated -`, `مترجم -`, or `अनुवादित -`.
+
+## Frontmatter quoting policy
+
+The MDX frontmatter `description:` value is **ALWAYS double-quoted**
+(`description: "..."`) — in every locale and in the English source. This is an
+enforced, deterministic policy, not a style preference, and it applies to
+everyone who generates or edits docs (the translation pipeline, AI reviewers,
+and CI-fix agents alike).
+
+- **Never remove the quotes** from a `description`, and never "simplify"
+  `description: "..."` to an unquoted value. Many descriptions contain a colon;
+  an unquoted colon makes YAML read the value as a mapping pair, which breaks the
+  frontmatter and fails the production build.
+- When writing or translating frontmatter, keep `description` double-quoted and
+  escape any internal `"` as `\"`.
+- The canonical form is produced by `node scripts/validate-frontmatter.js --fix`
+  and enforced in CI by `node scripts/validate-frontmatter.js --check --changed`.
+  Do not hand-roll a different quoting style — run the fixer.
+- Do **not** raise a review finding asking to drop these quotes; it would
+  contradict this policy and the CI gate.
