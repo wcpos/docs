@@ -49,6 +49,8 @@ import {
   faRocket,
   faDownload,
   faPhone,
+  faTableCellsLarge,
+  faWandMagicSparkles,
 } from '@fortawesome/free-solid-svg-icons';
 import {
   faDiscord,
@@ -87,6 +89,7 @@ const iconMap = {
   'warning': faExclamationTriangle,
   'info': faCircleInfo,
   'globe': faGlobe,
+  'grid': faTableCellsLarge,
   'building': faBuilding,
   'desktop': faDesktop,
   'mobile': faMobileScreen,
@@ -105,6 +108,7 @@ const iconMap = {
   'shield': faShield,
   'link': faLink,
   'code': faCode,
+  'sparkles': faWandMagicSparkles,
   'terminal': faTerminal,
   'puzzle-piece': faPuzzlePiece,
   'crown': faCrown,
