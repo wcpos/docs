@@ -205,6 +205,20 @@ module.exports = {
     },
   },
   plugins: [
+    function silenceKnownWebpackWarnings() {
+      return {
+        name: 'silence-known-webpack-warnings',
+        configureWebpack() {
+          return {
+            ignoreWarnings: [
+              (warning) =>
+                warning.module?.resource?.includes('vscode-languageserver-types/lib/umd/main.js') &&
+                warning.message?.includes('Critical dependency: require function is used'),
+            ],
+          };
+        },
+      };
+    },
     [
       '@docusaurus/plugin-ideal-image',
       {
