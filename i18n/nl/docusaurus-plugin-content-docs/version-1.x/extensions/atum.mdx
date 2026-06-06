@@ -1,0 +1,128 @@
+---
+title: WCPOS ATUM-integratie
+sidebar_label: ATUM
+description: "Koppel WCPOS Pro-winkels aan ATUM Multi-Inventory-locaties voor voorraad, prijzen en SKU's per locatie in de POS."
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# WCPOS ATUM-integratie {#wcpos-atum-integration}
+
+Integreert [ATUM Multi-Inventory](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/) met [WCPOS Pro](/getting-started/pro-license), zodat locatiegebaseerde voorraad, prijzen en SKU's beschikbaar zijn op het verkooppunt.
+
+Met ATUM Multi-Inventory kun je de voorraad van een product verdelen over meerdere voorraadlocaties, zoals magazijnen en fysieke winkels. Deze plugin koppelt die ATUM-locaties aan WCPOS Pro-[winkels](/stores), zodat elke POS-terminal de juiste voorraadniveaus, prijzen en SKU's voor zijn fysieke locatie ziet.
+
+## Functies {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="box" title="Voorraad per locatie">
+    Elke winkel haalt voorraadhoeveelheden op uit de toegewezen ATUM-voorraadlocatie in plaats van uit de samengevoegde WooCommerce-voorraad.
+  </FeatureCard>
+  <FeatureCard icon="store" title="Flexibele prijzen">
+    Kies prijzen uit WooCommerce-standaarden, WCPOS Pro-prijzen per winkel of ATUM-locatiespecifieke prijzen.
+  </FeatureCard>
+  <FeatureCard icon="barcode" title="Locatie-SKU's">
+    Vervang optioneel de hoofd-SKU van het product door een ATUM-locatiespecifieke SKU in de POS.
+  </FeatureCard>
+  <FeatureCard icon="sync" title="Voorraadbeweging met auditspoor">
+    Bestellingen trekken voorraad af en herstellen voorraad op de juiste ATUM-locatie, met volledige auditgeschiedenis in `atum_inventory_orders`.
+  </FeatureCard>
+  <FeatureCard icon="arrow-right" title="Terugschrijven van productbewerkingen">
+    POS-bewerkingen aan voorraad, prijs en SKU synchroniseren terug naar de gekoppelde ATUM-voorraadrij voor die locatie.
+  </FeatureCard>
+</FeatureGrid>
+
+## Installatie {#installation}
+
+<Steps>
+  <StepCard number="1" title="ATUM en Multi-Inventory installeren">
+
+Installeer [ATUM Inventory Management](https://wordpress.org/plugins/atum-stock-manager-for-woocommerce/) en de [ATUM Multi-Inventory add-on](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/). Configureer daarna je voorraadlocaties in ATUM.
+
+  </StepCard>
+  <StepCard number="2" title="WCPOS ATUM-integratie installeren">
+
+Installeer vanuit `WP Admin > POS > Instellingen > Extensies`, of download de nieuwste release van de [GitHub-releasespagina](https://github.com/wcpos/wcpos-atum/releases) en upload die via `Plugins > Nieuwe toevoegen > Plugin uploaden`.
+
+  </StepCard>
+  <StepCard number="3" title="Winkels aan ATUM-locaties koppelen" isLast>
+
+Ga naar `POS > Winkels`, bewerk een winkel en configureer het zijbalkgedeelte **ATUM-voorraad**. Kies de voorraadlocatie die de winkel moet gebruiken, selecteer een prijsbron en schakel eventueel SKU-overschrijvingen in.
+
+  </StepCard>
+</Steps>
+
+## Winkelconfiguratie {#store-configuration}
+
+De plugin voegt een gedeelte **ATUM-voorraad** toe aan de zijbalk van de WCPOS Pro-winkeleditor met drie instellingen per winkel:
+
+- **Voorraadlocatie** — welke ATUM-locatie deze winkel gebruikt voor voorraad.
+- **Prijsbron** — waar productprijzen vandaan komen:
+  - *Standaard* — standaard WooCommerce-prijzen
+  - *WCPOS Pro* — prijzen per winkel die in WCPOS Pro zijn ingesteld
+  - *ATUM* — locatiespecifieke prijzen uit de ATUM-voorraad
+- **SKU-overschrijving** — gebruik optioneel locatiespecifieke SKU's van ATUM in plaats van de hoofd-SKU van het product.
+
+## POS-gedrag {#pos-behavior}
+
+Wanneer een winkel een ATUM-locatie heeft toegewezen, wordt de productdata die aan de POS wordt geleverd automatisch aangepast:
+
+- **Voorraadhoeveelheden** weerspiegelen de voorraad van de specifieke locatie, niet de totale WooCommerce-voorraad.
+- **Voorraadstatus** wordt opnieuw berekend op basis van de hoeveelheid op die locatie.
+- **Prijzen** komen uit de ingestelde prijsbron.
+- **SKU's** worden vervangen door de ATUM-locatie-SKU wanneer overschrijven is ingeschakeld.
+
+Alle aanpassingen gebeuren transparant via de WCPOS REST API. Er zijn geen wijzigingen nodig aan de POS-app. Productbewerkingen vanuit de POS worden ook teruggeschreven naar de gekoppelde ATUM-voorraadrij; zie [Terugschrijven van productbewerkingen](#product-edit-write-back) hieronder.
+
+## Voorraadbeheer {#stock-management}
+
+Voor POS-bestellingen die worden geplaatst bij winkels met een gekoppelde ATUM-locatie, laat de plugin ATUM's eigen voorraadaftrek de schrijfoperatie uitvoeren, maar stuurt die naar de juiste locatie:
+
+1. **Injectie in REST-payload.** Wanneer de POS een bestelling maakt of bijwerkt, injecteert de plugin een `mi_inventories`-item op elke orderregel zodat ATUM weet uit welke locatie de voorraad moet komen. Zonder dit zou ATUM terugvallen op de hoofdvoorraad.
+2. **Locatiegebonden voorraadfilter.** De plugin filtert ATUM's lijst met kandidaatvoorraden tot alleen de items die gekoppeld zijn aan de locatieterm van de winkel, zodat bij aftrek en herstel de juiste voorraad wordt gekozen.
+
+ATUM voert zelf de daadwerkelijke voorraadwijziging bij bestelling en terugbetaling uit en schrijft rijen naar `atum_inventory_orders` met het echte `order_id`, waardoor het auditspoor van ATUM behouden blijft.
+
+## Terugschrijven van productbewerkingen {#product-edit-write-back}
+
+Wanneer een kassamedewerker of manager een product of variatie vanuit de POS bewerkt, synchroniseren de wijzigingen terug naar de ATUM-voorraadrij die aan de locatie van die winkel is gekoppeld, niet alleen naar het hoofdproduct in WooCommerce. Zo blijven voorraad, prijs en SKU per locatie synchroon met ATUM zonder handmatige updates in `WP Admin`.
+
+Het terugschrijven wordt geactiveerd bij WCPOS REST-updates van producten en variaties (`POST`, `PUT`, `PATCH` naar `/wcpos/v1/products/...`) die een `store_id` bevatten. De plugin zoekt de gekoppelde ATUM-locatie van de winkel op en werkt alleen de voorraadrij voor die locatie bij. Andere locaties blijven ongemoeid.
+
+### Wat wordt gesynchroniseerd {#what-syncs}
+
+Het terugschrijven respecteert de configuratie van elke winkel, zodat ATUM-data alleen verandert wanneer de winkel die data werkelijk beheert:
+
+| Veld | Wanneer het synchroniseert |
+| --- | --- |
+| **Voorraadhoeveelheid** | Altijd — elke winkel met een gekoppelde ATUM-locatie houdt zijn locatierij synchroon. |
+| **Normale prijs / Aanbiedingsprijs / Prijs** | Alleen wanneer de **Prijsbron** van de winkel op *ATUM* staat. |
+| **SKU** | Alleen wanneer **SKU-overschrijving** voor de winkel is ingeschakeld. |
+
+Als de winkel *Standaard* of *WCPOS Pro* gebruikt voor prijzen, blijven ATUM-prijsvelden ongewijzigd zodat ATUM als referentieprijs blijft dienen in plaats van als bron van waarheid. Hetzelfde geldt voor SKU's wanneer overschrijven uit staat.
+
+### Wat geen terugschrijving activeert {#what-doesnt-trigger-write-back}
+
+- Productaanmaak; alleen updates schrijven terug. Nieuwe producten volgen de normale WooCommerce-opslagroute.
+- Aanvragen zonder `store_id`; de POS moet de plugin vertellen naar welke locatie moet worden geschreven.
+- Winkels zonder gekoppelde ATUM-locatie.
+- Producten zonder bestaande ATUM-voorraadrij voor de locatie van de winkel. De plugin maakt geen nieuwe voorraadrijen aan, maar werkt alleen bestaande bij.
+
+## Vereisten {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WordPress">WordPress 5.9+ met PHP 7.4+</RequirementItem>
+  <RequirementItem label="WooCommerce">WooCommerce is geïnstalleerd en geactiveerd</RequirementItem>
+  <RequirementItem label="ATUM">ATUM Inventory Management en de ATUM Multi-Inventory add-on</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro — multi-store is een Pro-functie</RequirementItem>
+</RequirementsList>
+
+## Gerelateerd {#related}
+
+- [Multi-winkel](/stores) — prijzen per winkel, adressen en kassamedewerkertoewijzing
+- Bron: [github.com/wcpos/wcpos-atum](https://github.com/wcpos/wcpos-atum)

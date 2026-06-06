@@ -1,0 +1,128 @@
+---
+title: WCPOS ATUM 集成
+sidebar_label: ATUM
+description: "将 WCPOS Pro 店铺与 ATUM 多仓库库存位置关联，实现 POS 端按位置管理库存、定价和 SKU。"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# WCPOS ATUM 集成 {#wcpos-atum-integration}
+
+将 [ATUM Multi-Inventory](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/) 与 [WCPOS Pro](/getting-started/pro-license) 集成，实现基于位置的库存管理、定价和 SKU 功能。
+
+ATUM Multi-Inventory 允许将产品库存分配到多个库存位置——仓库、零售店铺等。此插件将这些 ATUM 位置与 WCPOS Pro [店铺](/stores)关联，使每个 POS 终端能够看到其实际位置对应的正确库存数量、价格和 SKU。
+
+## 功能 {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="box" title="按位置库存">
+    每个店铺从其分配的 ATUM 库存位置获取库存数量，而非使用 WooCommerce 的汇总库存。
+  </FeatureCard>
+  <FeatureCard icon="store" title="灵活定价">
+    可选择 WooCommerce 默认价格、WCPOS Pro 按店铺价格或 ATUM 按位置价格。
+  </FeatureCard>
+  <FeatureCard icon="barcode" title="位置 SKU">
+    可选择在 POS 中将产品的主 SKU 替换为 ATUM 特定库存位置的 SKU。
+  </FeatureCard>
+  <FeatureCard icon="sync" title="可审计的库存变动">
+    订单在正确的 ATUM 库存位置扣减和恢复库存，并在 `atum_inventory_orders` 中保留完整的审计记录。
+  </FeatureCard>
+  <FeatureCard icon="arrow-right" title="产品编辑回写">
+    在 POS 中对库存、价格和 SKU 的编辑会同步回写到该位置对应的 ATUM 库存行。
+  </FeatureCard>
+</FeatureGrid>
+
+## 安装 {#installation}
+
+<Steps>
+  <StepCard number="1" title="安装 ATUM 和 Multi-Inventory">
+
+安装 [ATUM Inventory Management](https://wordpress.org/plugins/atum-stock-manager-for-woocommerce/) 和 [ATUM Multi-Inventory 附加组件](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/)。在 ATUM 中配置库存位置。
+
+  </StepCard>
+  <StepCard number="2" title="安装 WCPOS ATUM 集成插件">
+
+从 `WP Admin > POS > 设置 > 扩展` 安装，或从 [GitHub 发布页面](https://github.com/wcpos/wcpos-atum/releases)下载最新版本，然后通过 `插件 > 新增 > 上传插件` 上传安装。
+
+  </StepCard>
+  <StepCard number="3" title="将店铺映射到 ATUM 库存位置" isLast>
+
+前往 `POS > 商店`，编辑一个店铺，然后配置 **ATUM 库存** 侧边栏部分。选择该店铺应使用的库存位置，选择定价来源，并可选择启用 SKU 覆盖。
+
+  </StepCard>
+</Steps>
+
+## 店铺配置 {#store-configuration}
+
+该插件在 WCPOS Pro 店铺编辑器侧边栏中添加了一个 **ATUM 库存** 部分，每个店铺包含三项设置：
+
+- **库存位置** — 该店铺从哪个 ATUM 位置提取库存。
+- **定价来源** — 产品价格的来源：
+  - *默认* — 标准 WooCommerce 价格
+  - *WCPOS Pro* — 在 WCPOS Pro 中设置的按店铺定价
+  - *ATUM* — 来自 ATUM 库存的按位置定价
+- **SKU 覆盖** — 可选择使用 ATUM 中按位置设置的 SKU，替代产品的主 SKU。
+
+## POS 行为 {#pos-behavior}
+
+当店铺分配了 ATUM 位置后，提供给 POS 的产品数据会自动调整：
+
+- **库存数量** 反映的是特定位置的库存，而非 WooCommerce 的汇总库存。
+- **库存状态** 根据该位置的数量重新计算。
+- **价格**来自已配置的定价来源。
+- 如果启用了 SKU 覆盖，**SKU** 将替换为 ATUM 库存位置的 SKU。
+
+所有调整均通过 WCPOS REST API 透明完成，POS 应用端无需任何更改。从 POS 进行的产品编辑也会写回到映射的 ATUM 库存行；请参阅下方的[产品编辑回写](#product-edit-write-back)。
+
+## 库存管理 {#stock-management}
+
+对于在映射了 ATUM 库存位置的店铺中下达的 POS 订单，插件让 ATUM 的原生库存扣减流程处理写入操作，但会将其引导至正确的位置：
+
+1. **REST 载荷注入。**当 POS 创建或更新订单时，插件会在每个行项目上注入一个 `mi_inventories` 条目，以便 ATUM 知道从哪个位置扣减库存。如果没有此注入，ATUM 将回退到主库存。
+2. **按位置筛选库存。**插件会将 ATUM 的候选库存列表筛选为仅与店铺映射位置术语关联的库存，确保在扣减和恢复时选择正确的库存行。
+
+ATUM 本身在订单和退款时执行实际的库存变更，将行写入 `atum_inventory_orders` 并使用真实的 `order_id`——保留 ATUM 的审计跟踪记录。
+
+## 产品编辑回写 {#product-edit-write-back}
+
+当收银员或管理员从 POS 编辑产品或变体时，更改会同步回该店铺位置映射的 ATUM 库存行，而不仅仅是 WooCommerce 主产品。这使得每个位置的库存、价格和 SKU 与 ATUM 保持同步，无需在 `WP Admin` 中手动更新。
+
+回写在 WCPOS 产品和变体 REST 更新（`POST`、`PUT`、`PATCH` 到 `/wcpos/v1/products/...` 的请求）包含 `store_id` 时触发。插件会查找该店铺映射的 ATUM 库存位置，并仅更新该位置的库存行——其他位置不受影响。
+
+### 同步内容 {#what-syncs}
+
+回写操作会遵循每个店铺的配置，因此只有当店铺实际拥有该数据时，ATUM 数据才会发生变化：
+
+| 字段 | 同步条件 |
+| --- | --- |
+| **库存数量** | 始终同步——每个映射了 ATUM 库存位置的店铺都会保持其位置行同步。 |
+| **原价 / 促销价 / 价格** | 仅当店铺的**定价来源**设置为 *ATUM* 时同步。 |
+| **SKU** | 仅当店铺启用了 **SKU 覆盖**时同步。 |
+
+如果店铺使用*默认*或 *WCPOS Pro* 定价，ATUM 价格字段将保持不变，这样 ATUM 将继续作为参考价格而非最终数据源。SKU 在未启用覆盖时同理。
+
+### 不会触发回写的情况 {#what-doesnt-trigger-write-back}
+
+- 产品创建操作（只有更新操作才会触发回写——新产品会走 WooCommerce 的正常保存流程）。
+- 不包含 `store_id` 的请求——POS 必须告知插件要写入哪个库存位置。
+- 未映射 ATUM 库存位置的店铺。
+- 在店铺对应库存位置下没有现有 ATUM 库存行的产品——插件不会创建新的库存行，只会更新已有的。
+
+## 系统要求 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WordPress">WordPress 5.9+ 且 PHP 7.4+</RequirementItem>
+  <RequirementItem label="WooCommerce">已安装并激活 WooCommerce</RequirementItem>
+  <RequirementItem label="ATUM">ATUM Inventory Management 和 ATUM Multi-Inventory 附加组件</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro — 多店铺是 Pro 功能</RequirementItem>
+</RequirementsList>
+
+## 相关内容 {#related}
+
+- [多店铺](/stores) — 按店铺设置定价、地址和收银员分配
+- 源码：[github.com/wcpos/wcpos-atum](https://github.com/wcpos/wcpos-atum)
