@@ -1,0 +1,128 @@
+---
+title: WCPOS ATUM Integration
+sidebar_label: ATUM
+description: "POS में per-location stock, pricing और SKUs के लिए WCPOS Pro stores को ATUM Multi-Inventory locations से link करें."
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# WCPOS ATUM Integration {#wcpos-atum-integration}
+
+[ATUM Multi-Inventory](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/) को [WCPOS Pro](/getting-started/pro-license) से integrate करता है, जिससे Point of Sale पर location-based inventory, pricing और SKUs मिलते हैं।
+
+ATUM Multi-Inventory आपको किसी product का stock कई inventory locations, जैसे warehouses और retail stores, में बाँटने देता है। यह plugin उन ATUM locations को WCPOS Pro [stores](/stores) से जोड़ता है, ताकि हर POS terminal अपनी physical location के लिए सही stock levels, prices और SKUs देखे।
+
+## विशेषताएँ {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="box" title="हर स्थान का स्टॉक">
+    प्रत्येक store aggregate WooCommerce stock के बजाय अपने assigned ATUM inventory location से stock quantities लेता है।
+  </FeatureCard>
+  <FeatureCard icon="store" title="लचीली कीमतें">
+    WooCommerce defaults, WCPOS Pro per-store prices, या ATUM location-specific prices में से pricing चुनें।
+  </FeatureCard>
+  <FeatureCard icon="barcode" title="स्थान-विशिष्ट SKU">
+    POS में product के main SKU को optional रूप से ATUM location-specific SKU से बदलें।
+  </FeatureCard>
+  <FeatureCard icon="sync" title="ऑडिट-सुरक्षित स्टॉक मूवमेंट">
+    Orders सही ATUM location पर stock deduct और restore करते हैं, और `atum_inventory_orders` में पूरा audit trail रखते हैं।
+  </FeatureCard>
+  <FeatureCard icon="arrow-right" title="उत्पाद edits का write-back">
+    POS से किए गए stock, price और SKU edits उस location की mapped ATUM inventory row में वापस sync होते हैं।
+  </FeatureCard>
+</FeatureGrid>
+
+## इंस्टॉलेशन {#installation}
+
+<Steps>
+  <StepCard number="1" title="ATUM और Multi-Inventory इंस्टॉल करें">
+
+[ATUM Inventory Management](https://wordpress.org/plugins/atum-stock-manager-for-woocommerce/) और [ATUM Multi-Inventory add-on](https://www.stockmanagementlabs.com/addons/atum-multi-inventory/) install करें। ATUM में अपनी inventory locations configure करें।
+
+  </StepCard>
+  <StepCard number="2" title="WCPOS ATUM Integration इंस्टॉल करें">
+
+`WP Admin > POS > Settings > Extensions` से install करें, या [GitHub releases page](https://github.com/wcpos/wcpos-atum/releases) से latest release डाउनलोड करके `Plugins > Add New > Upload Plugin` से upload करें।
+
+  </StepCard>
+  <StepCard number="3" title="Stores को ATUM locations से map करें" isLast>
+
+`POS > Stores` पर जाएँ, store edit करें और **ATUM Inventory** sidebar section configure करें। Store को उपयोग करनी वाली inventory location चुनें, pricing source चुनें और optional रूप से SKU overrides enable करें।
+
+  </StepCard>
+</Steps>
+
+## Store configuration {#store-configuration}
+
+Plugin WCPOS Pro store editor sidebar में **ATUM Inventory** section जोड़ता है, जिसमें हर store के लिए तीन settings होती हैं:
+
+- **Inventory Location** — यह store किस ATUM location से stock लेता है।
+- **Pricing Source** — product prices कहाँ से आते हैं:
+  - *Default* — standard WooCommerce prices
+  - *WCPOS Pro* — WCPOS Pro में set per-store pricing
+  - *ATUM* — ATUM inventory से location-specific prices
+- **SKU Override** — optional रूप से product के main SKU के बजाय ATUM location-specific SKUs उपयोग करें।
+
+## POS व्यवहार {#pos-behavior}
+
+जब किसी store को ATUM location assigned होता है, POS को served product data अपने आप adjust होता है:
+
+- **Stock quantities** specific location की inventory दिखाती हैं, aggregate WooCommerce stock नहीं।
+- **Stock status** location की quantity के आधार पर फिर से calculate होता है।
+- **Prices** configured pricing source से आते हैं।
+- **SKUs** override enabled होने पर ATUM location SKU से बदल जाते हैं।
+
+सभी adjustments WCPOS REST API के through transparent तरीके से होते हैं। POS app side पर कोई change आवश्यक नहीं है। POS से किए गए product edits भी mapped ATUM inventory row में वापस लिखे जाते हैं; नीचे [product edits के write-back](#product-edit-write-back) देखें।
+
+## Stock management {#stock-management}
+
+Mapped ATUM location वाले stores में रखे गए POS orders के लिए plugin ATUM के native stock deduction flow को write संभालने देता है, लेकिन उसे सही location की ओर steer करता है:
+
+1. **REST payload injection.** जब POS order create या update करता है, plugin हर line item पर `mi_inventories` entry inject करता है ताकि ATUM जान सके कि किस location से stock लेना है। इसके बिना ATUM main inventory पर fallback करता।
+2. **Location-scoped inventory filter.** Plugin ATUM की candidate inventory list को केवल उन entries तक filter करता है जो store के mapped location term से linked हैं, ताकि reduction और restoration दोनों में सही one चुना जाए।
+
+ATUM खुद order और refund पर actual stock change करता है और real `order_id` के साथ `atum_inventory_orders` में rows लिखता है, जिससे ATUM का audit trail सुरक्षित रहता है।
+
+## Product edits का write-back {#product-edit-write-back}
+
+जब cashier या manager POS से product या variation edit करता है, changes उस store की location से mapped ATUM inventory row में वापस sync होते हैं, केवल main WooCommerce product में नहीं। इससे हर location का stock, price और SKU `WP Admin` में manual updates के बिना ATUM के साथ sync रहता है।
+
+Write-back WCPOS product और variation REST updates (`POST`, `PUT`, `PATCH` to `/wcpos/v1/products/...`) पर trigger होता है जिनमें `store_id` शामिल है। Plugin store की mapped ATUM location lookup करता है और केवल उस location की inventory row update करता है। बाकी locations untouched रहती हैं।
+
+### क्या sync होता है {#what-syncs}
+
+Write-back हर store की configuration का सम्मान करता है, ताकि ATUM data तभी बदले जब store वास्तव में उस data का owner हो:
+
+| फ़ील्ड | कब sync होता है |
+| --- | --- |
+| **Stock quantity** | हमेशा — mapped ATUM location वाला हर store अपनी location row को sync में रखता है। |
+| **Regular price / Sale price / Price** | केवल जब store का **Pricing Source** *ATUM* पर set हो। |
+| **SKU** | केवल जब store के लिए **SKU Override** enabled हो। |
+
+अगर store *Default* या *WCPOS Pro* pricing उपयोग करता है, ATUM price fields untouched रहते हैं ताकि ATUM source of truth के बजाय reference price बना रहे। Override बंद होने पर SKUs पर भी यही लागू होता है।
+
+### क्या write-back trigger नहीं करता {#what-doesnt-trigger-write-back}
+
+- Product creation; केवल updates write back करते हैं। नए products WooCommerce के normal save path से गुजरते हैं।
+- `store_id` के बिना requests; POS को plugin को बताना होगा कि किस location में write करना है।
+- Mapped ATUM location के बिना stores।
+- Store की location के लिए existing ATUM inventory row के बिना products। Plugin नई inventory rows नहीं बनाता, केवल existing rows update करता है।
+
+## आवश्यकताएँ {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WordPress">WordPress 5.9+ with PHP 7.4+</RequirementItem>
+  <RequirementItem label="WooCommerce">WooCommerce इंस्टॉल और सक्रिय है</RequirementItem>
+  <RequirementItem label="ATUM">ATUM Inventory Management और ATUM Multi-Inventory add-on</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro — multi-store एक Pro feature है</RequirementItem>
+</RequirementsList>
+
+## संबंधित {#related}
+
+- [Multi-Store](/stores) — per-store pricing, addresses और cashier assignment
+- स्रोत: [github.com/wcpos/wcpos-atum](https://github.com/wcpos/wcpos-atum)
