@@ -15,6 +15,7 @@ const {
   isStub,
   listIncompleteSources,
   buildTranslationAudit,
+  auditSeverityRank,
   LOCALES,
   main,
 } = require('../check-translation-completeness');
@@ -616,5 +617,43 @@ describe('buildTranslationAudit', () => {
       'versioned_docs/version-1.x/settings/index.mdx',
       'versioned_docs/version-1.x/error-codes/API01001.mdx', // deprioritized → last
     ]);
+  });
+
+  it('repairs looks-broken pages before missing, and missing before stale', () => {
+    // Alphabetically the order would be a-missing, b-stale, c-props; severity
+    // ordering must flip it so the page that renders raw English comes first.
+    const propsSrc = 'versioned_docs/version-1.x/c-props.mdx';
+    const missingSrc = 'versioned_docs/version-1.x/a-missing.mdx';
+    const staleSrc = 'versioned_docs/version-1.x/b-stale.mdx';
+    const files = new Map();
+    // c-props: body translated, but the question prop is left in English → untranslated_props (rank 0)
+    files.set(propsSrc, '<AccordionItem question="How do I add a store?">\nThe checkout settings page controls the gateways.\n');
+    files.set(sourceToTranslatedPath(propsSrc, 'es'), '<AccordionItem question="How do I add a store?">\nLa pagina de ajustes controla las pasarelas.\n');
+    // b-stale: the es translation is missing the {#setup} section → stale (rank 2)
+    files.set(staleSrc, '## Intro {#intro}\nBody.\n\n## Setup {#setup}\nMore body.\n');
+    files.set(sourceToTranslatedPath(staleSrc, 'es'), '## Introduccion {#intro}\nCuerpo.\n');
+    // a-missing: the es translation is absent → missing (rank 1)
+    files.set(missingSrc, 'The checkout settings page controls the gateways.\n');
+
+    const audit = buildTranslationAudit({
+      sources: [missingSrc, staleSrc, propsSrc], // intentionally unsorted
+      locales: ['es'],
+      existsSync: (p) => files.has(p),
+      readFile: (p) => files.get(p),
+    });
+
+    expect(audit.map((e) => e.source)).toEqual([propsSrc, missingSrc, staleSrc]);
+  });
+
+  it('auditSeverityRank ranks looks-broken < not-translated < drift', () => {
+    expect(auditSeverityRank({ source: 'x', locales: { de: ['untranslated_props'] } })).toBe(0);
+    expect(auditSeverityRank({ source: 'x', locales: { de: ['english_prose'] } })).toBe(0);
+    expect(auditSeverityRank({ source: 'x', locales: { de: ['missing'] } })).toBe(1);
+    expect(auditSeverityRank({ source: 'x', locales: { de: ['stub'] } })).toBe(1);
+    expect(auditSeverityRank({ source: 'x', locales: { de: ['stale'] } })).toBe(2);
+    // worst reason across all locales wins
+    expect(
+      auditSeverityRank({ source: 'x', locales: { de: ['stale'], nl: ['untranslated_props'] } })
+    ).toBe(0);
   });
 });
