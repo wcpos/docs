@@ -1,11 +1,15 @@
 name: Sweep Docs Translations (self-healing)
 
-# Periodically finds docs that are missing/stubbed in ANY locale and asks Aide
-# to translate them, so a newly-added locale or any missed page self-heals
-# without a human having to notice. Uses the same gap definition as the
-# Translation Completeness gate (check-translation-completeness.js) and the same
-# /translation/webhook path as forward-docs-translations-to-aide.yml; Aide opens
-# the usual `aide/docs-translations-*` PR. Batched to bound per-run cost.
+# Periodically finds docs that are missing/stubbed/stale OR rendering raw English
+# (untranslated UI props / leftover prose) in ANY locale and asks Aide to repair
+# them, so a newly-added locale or any missed page self-heals without a human
+# having to notice. Uses the same gap definition as the Translation Completeness
+# gate (check-translation-completeness.js --audit-json), whose queue is ordered
+# worst-first: pages that render raw English are forwarded before merely-missing
+# pages, and missing before stale drift. Same /translation/webhook path as
+# forward-docs-translations-to-aide.yml; Aide opens the usual
+# `aide/docs-translations-*` PR. Batched (batch_size, default 12) to bound
+# per-run cost; raise it via workflow_dispatch for a one-off backlog drain.
 
 on:
   schedule:
@@ -15,7 +19,7 @@ on:
       batch_size:
         description: 'Max source files to forward this run (bounds per-run translation cost)'
         required: false
-        default: '8'
+        default: '12'
       dry_run:
         description: 'List the gap files but do not forward them to Aide'
         type: boolean
@@ -77,7 +81,7 @@ jobs:
         if: steps.open_pr.outputs.has_open_pr != 'true'
         id: gaps
         env:
-          BATCH_SIZE: ${{ github.event.inputs.batch_size || '8' }}
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '12' }}
         run: |
           AUDIT_PATH="${RUNNER_TEMP:-/tmp}/translation_audit.json"
           node scripts/check-translation-completeness.js --audit-json > "$AUDIT_PATH"

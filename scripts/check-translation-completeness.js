@@ -468,6 +468,25 @@ function findMissingJsonKeys(sourceContent, translatedContent) {
   });
 }
 
+// Repair-queue severity tiers (--audit-json ordering only). Within a priority
+// group, fix what *looks broken* before what is merely *not yet translated*:
+//   0 — looks broken: raw English renders inside an otherwise-localized page
+//       (untranslated UI props / leftover English prose). Most visible to readers.
+//   1 — not translated: the whole page/file falls back to English (missing / stub).
+//   2 — drift: a localized page is behind the source revision (stale / incomplete JSON).
+const AUDIT_SEVERITY_LOOKS_BROKEN = new Set(['untranslated_props', 'english_prose']);
+const AUDIT_SEVERITY_NOT_TRANSLATED = new Set(['missing', 'stub', 'missing_json']);
+function auditSeverityRank(entry) {
+  let rank = 2;
+  for (const reasons of Object.values(entry.locales)) {
+    for (const reason of reasons) {
+      if (AUDIT_SEVERITY_LOOKS_BROKEN.has(reason)) return 0;
+      if (AUDIT_SEVERITY_NOT_TRANSLATED.has(reason)) rank = 1;
+    }
+  }
+  return rank;
+}
+
 // buildTranslationAudit feeds the self-healing sweep, which forwards the first
 // `batch_size` entries to Aide. Two knobs shape that queue (the audit is the
 // sweep's ONLY consumer, so these do not affect the PR gate):
@@ -476,6 +495,9 @@ function findMissingJsonKeys(sourceContent, translatedContent) {
 //   - priority(source): lower sorts first within the otherwise-alphabetical queue.
 //     Default pushes the ~60 boilerplate error-code reference pages behind the
 //     hand-written content guides so the high-value pages translate first.
+// Within each priority group entries are then ordered by auditSeverityRank, so a
+// page that renders raw English (untranslated props / leftover prose) is repaired
+// before one that is merely missing, and missing before stale drift.
 function buildTranslationAudit({
   readFile = (p) => fs.readFileSync(p, 'utf8'),
   existsSync = fs.existsSync,
@@ -535,7 +557,10 @@ function buildTranslationAudit({
   }
 
   return [...bySource.values()].sort(
-    (a, b) => priority(a.source) - priority(b.source) || a.source.localeCompare(b.source)
+    (a, b) =>
+      priority(a.source) - priority(b.source) ||
+      auditSeverityRank(a) - auditSeverityRank(b) ||
+      a.source.localeCompare(b.source)
   );
 }
 
@@ -673,6 +698,7 @@ module.exports = {
   jsonSourceToTranslatedPath,
   findMissingJsonKeys,
   buildTranslationAudit,
+  auditSeverityRank,
   listIncompleteSources,
   evaluateFile,
   main,

@@ -1,0 +1,187 @@
+name: Translation Audit Report (non-blocking)
+
+# Visibility for the translation backlog that the PR gate cannot see. The gate
+# (check-translations.yml) runs `--changed`, so it only catches regressions in a
+# PR diff; pre-existing debt sitting on main grows silently. This job runs the
+# full `--audit-json` (the same queue the self-healing sweep drains) on a
+# schedule and writes a human-readable breakdown to the run summary. It NEVER
+# fails the build — it reports, it does not gate. Mirrors the sweep's queue, so
+# it reflects current-version (1.x) docs; the deprecated 0.4.x docs are excluded.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-translation-audit-report
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22.13.1'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Generate English source translations
+        # Refresh the EN baseline so sidebar/category JSON key checks compare
+        # against current source, matching the sweep (avoids stale false positives).
+        run: pnpm write-translations --locale en
+
+      - name: Build audit report
+        run: |
+          AUDIT_PATH="${RUNNER_TEMP:-/tmp}/translation_audit.json"
+          set +e
+          node scripts/check-translation-completeness.js --audit-json > "$AUDIT_PATH" 2> "$AUDIT_PATH.err"
+          AUDIT_STATUS=$?
+          set -e
+          AUDIT_STATUS="$AUDIT_STATUS" AUDIT_ERR_PATH="$AUDIT_PATH.err" node - "$AUDIT_PATH" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
+          const fs = require('node:fs');
+
+          const LOOKS_BROKEN = new Set(['untranslated_props', 'english_prose']);
+          const NOT_TRANSLATED = new Set(['missing', 'stub', 'missing_json']);
+          const severity = (entry) => {
+            let rank = 2;
+            for (const reasons of Object.values(entry.locales)) {
+              for (const r of reasons) {
+                if (LOOKS_BROKEN.has(r)) return 0;
+                if (NOT_TRANSLATED.has(r)) rank = 1;
+              }
+            }
+            return rank;
+          };
+          const SEVERITY_LABEL = [
+            'Looks broken — renders raw English (untranslated props / leftover prose)',
+            'Not translated — whole page falls back to English (missing / stub)',
+            'Stale drift — localized page is behind the source revision',
+          ];
+
+          const out = [];
+          out.push('# Translation Audit Report');
+          out.push('');
+          const auditStatus = Number(process.env.AUDIT_STATUS || '0');
+          const auditErr = process.env.AUDIT_ERR_PATH && fs.existsSync(process.env.AUDIT_ERR_PATH)
+            ? fs.readFileSync(process.env.AUDIT_ERR_PATH, 'utf8').trim()
+            : '';
+          if (auditStatus !== 0) {
+            out.push('⚠️ **Translation audit generation failed**. The report could not determine whether translation gaps exist.');
+            out.push('');
+            out.push(`Command exited with status ${auditStatus}.`);
+            if (auditErr) {
+              out.push('');
+              out.push('```');
+              out.push(auditErr.slice(-4000));
+              out.push('```');
+            }
+            fs.writeFileSync(1, out.join('\n') + '\n');
+            process.exit(0);
+          }
+
+          const auditRaw = fs.readFileSync(process.argv[2], 'utf8');
+          if (!auditRaw.trim()) {
+            out.push('⚠️ **Translation audit produced no JSON output**. The report could not determine whether translation gaps exist.');
+            fs.writeFileSync(1, out.join('\n') + '\n');
+            process.exit(0);
+          }
+
+          let audit;
+          try {
+            audit = JSON.parse(auditRaw);
+          } catch (error) {
+            out.push('⚠️ **Translation audit output was not valid JSON**. The report could not determine whether translation gaps exist.');
+            out.push('');
+            out.push(`Parse error: ${error.message}`);
+            fs.writeFileSync(1, out.join('\n') + '\n');
+            process.exit(0);
+          }
+
+          const hasExpectedShape = Array.isArray(audit) && audit.every((entry) => (
+            entry &&
+            typeof entry === 'object' &&
+            entry.locales &&
+            typeof entry.locales === 'object'
+          ));
+          if (!hasExpectedShape) {
+            out.push('⚠️ **Translation audit output shape was unexpected**. Expected an array of entries with locale reason maps.');
+            fs.writeFileSync(1, out.join('\n') + '\n');
+            process.exit(0);
+          }
+
+          if (audit.length === 0) {
+            out.push('✅ **No translation gaps** in the actionable (current-version) queue. Every locale is complete.');
+            fs.writeFileSync(1, out.join('\n') + '\n');
+            process.exit(0);
+          }
+
+          // Severity tiers (per source page — worst reason wins).
+          const tierCounts = [0, 0, 0];
+          for (const e of audit) tierCounts[severity(e)]++;
+          out.push(`**${audit.length} source pages** need translation work (mirrors the self-healing sweep queue; current version only, ordered worst-first).`);
+          out.push('');
+          out.push('## By severity');
+          out.push('');
+          out.push('| Tier | Meaning | Pages |');
+          out.push('| --- | --- | ---: |');
+          for (let i = 0; i < 3; i++) out.push(`| ${i} | ${SEVERITY_LABEL[i]} | ${tierCounts[i]} |`);
+          out.push('');
+
+          // Per-locale: how many source pages have a gap in that locale, + reason tallies.
+          const byLocale = new Map();
+          const byReason = new Map();
+          for (const e of audit) {
+            for (const [loc, reasons] of Object.entries(e.locales)) {
+              byLocale.set(loc, (byLocale.get(loc) || 0) + 1);
+              for (const r of reasons) byReason.set(r, (byReason.get(r) || 0) + 1);
+            }
+          }
+          out.push('## By locale');
+          out.push('');
+          out.push('| Locale | Pages with gaps |');
+          out.push('| --- | ---: |');
+          for (const [loc, n] of [...byLocale.entries()].sort((a, b) => b[1] - a[1])) {
+            out.push(`| ${loc} | ${n} |`);
+          }
+          out.push('');
+
+          out.push('## By reason (locale occurrences)');
+          out.push('');
+          out.push('| Reason | Count |');
+          out.push('| --- | ---: |');
+          for (const [r, n] of [...byReason.entries()].sort((a, b) => b[1] - a[1])) {
+            out.push(`| \`${r}\` | ${n} |`);
+          }
+          out.push('');
+
+          // The worst-first head of the queue — what the next sweep run repairs.
+          out.push('## Next up (head of the repair queue)');
+          out.push('');
+          out.push('| # | Source page | Locales | Reasons |');
+          out.push('| ---: | --- | --- | --- |');
+          audit.slice(0, 15).forEach((e, i) => {
+            const locs = Object.keys(e.locales).join(', ');
+            const reasons = [...new Set(Object.values(e.locales).flat())].join(', ');
+            out.push(`| ${i + 1} | ${e.source.replace('versioned_docs/', '')} | ${locs} | ${reasons} |`);
+          });
+          out.push('');
+          out.push('_The nightly sweep forwards the top `batch_size` (default 12) of these to Aide. Raise `batch_size` via workflow_dispatch on the sweep to drain faster._');
+
+          fs.writeFileSync(1, out.join('\n') + '\n');
+          console.error(`Translation audit: ${audit.length} source pages need work (looks-broken=${tierCounts[0]}, not-translated=${tierCounts[1]}, stale=${tierCounts[2]}).`);
+          NODE
