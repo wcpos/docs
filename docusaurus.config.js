@@ -6,7 +6,10 @@ const {
 /** @type {import('@docusaurus/types').DocusaurusConfig} */
 module.exports = {
   title: 'WCPOS - Point of Sale for WooCommerce',
-  clientModules: [require.resolve('./src/fontawesome.js')],
+  clientModules: [
+    require.resolve('./src/fontawesome.js'),
+    require.resolve('./src/analytics/posthog.js'),
+  ],
   tagline: '',
   url: 'https://docs.wcpos.com',
   baseUrl: '/',
@@ -181,9 +184,8 @@ module.exports = {
         theme: {
           customCss: require.resolve('./src/css/custom.css'),
         },
-        gtag: {
-          trackingID: 'G-08SJ28P1E5',
-        }
+        // Analytics: PostHog (self-hosted) via ./src/analytics/posthog.js,
+        // replacing Google Analytics. See plans/2026-06-16-posthog-docs-analytics.md.
       },
     ],
   ],
