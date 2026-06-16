@@ -48,10 +48,12 @@ jobs:
       - name: Build audit report
         run: |
           AUDIT_PATH="${RUNNER_TEMP:-/tmp}/translation_audit.json"
-          node scripts/check-translation-completeness.js --audit-json > "$AUDIT_PATH" || true
-          node - "$AUDIT_PATH" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
+          set +e
+          node scripts/check-translation-completeness.js --audit-json > "$AUDIT_PATH" 2> "$AUDIT_PATH.err"
+          AUDIT_STATUS=$?
+          set -e
+          AUDIT_STATUS="$AUDIT_STATUS" AUDIT_ERR_PATH="$AUDIT_PATH.err" node - "$AUDIT_PATH" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
           const fs = require('node:fs');
-          const audit = JSON.parse(fs.readFileSync(process.argv[2], 'utf8') || '[]');
 
           const LOOKS_BROKEN = new Set(['untranslated_props', 'english_prose']);
           const NOT_TRANSLATED = new Set(['missing', 'stub', 'missing_json']);
@@ -74,6 +76,42 @@ jobs:
           const out = [];
           out.push('# Translation Audit Report');
           out.push('');
+          const auditStatus = Number(process.env.AUDIT_STATUS || '0');
+          const auditErr = process.env.AUDIT_ERR_PATH && fs.existsSync(process.env.AUDIT_ERR_PATH)
+            ? fs.readFileSync(process.env.AUDIT_ERR_PATH, 'utf8').trim()
+            : '';
+          if (auditStatus !== 0) {
+            out.push('⚠️ **Translation audit generation failed**. The report could not determine whether translation gaps exist.');
+            out.push('');
+            out.push(`Command exited with status ${auditStatus}.`);
+            if (auditErr) {
+              out.push('');
+              out.push('```');
+              out.push(auditErr.slice(-4000));
+              out.push('```');
+            }
+            fs.writeFileSync(1, out.join('\n') + '\n');
+            process.exit(0);
+          }
+
+          const auditRaw = fs.readFileSync(process.argv[2], 'utf8');
+          if (!auditRaw.trim()) {
+            out.push('⚠️ **Translation audit produced no JSON output**. The report could not determine whether translation gaps exist.');
+            fs.writeFileSync(1, out.join('\n') + '\n');
+            process.exit(0);
+          }
+
+          let audit;
+          try {
+            audit = JSON.parse(auditRaw);
+          } catch (error) {
+            out.push('⚠️ **Translation audit output was not valid JSON**. The report could not determine whether translation gaps exist.');
+            out.push('');
+            out.push(`Parse error: ${error.message}`);
+            fs.writeFileSync(1, out.join('\n') + '\n');
+            process.exit(0);
+          }
+
           if (audit.length === 0) {
             out.push('✅ **No translation gaps** in the actionable (current-version) queue. Every locale is complete.');
             fs.writeFileSync(1, out.join('\n') + '\n');
