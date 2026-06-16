@@ -229,5 +229,51 @@ module.exports = {
         disableInDev: false,
       },
     ],
+    // Make the docs machine-readable for AI agents / LLMs.
+    // Generates, per locale, during `build`:
+    //   /llms.txt        - hierarchical index linking to the markdown sources
+    //   /llms-full.txt   - the entire docs corpus in a single file
+    //   /<route>.md      - a clean Markdown version of every page
+    // Works off the rendered HTML, so it always matches what is actually
+    // published (version 1.x at the root) and resolves MDX/partials/icons.
+    [
+      '@signalwire/docusaurus-plugin-llms-txt',
+      {
+        siteTitle: 'WCPOS Documentation',
+        siteDescription:
+          'WCPOS is a free, open-source Point of Sale (POS) application for WooCommerce. It turns any WooCommerce-powered online store into a fully-featured retail POS system.',
+        depth: 2,
+        enableDescriptions: true,
+        content: {
+          enableMarkdownFiles: true,
+          enableLlmsFullTxt: true,
+          includeDocs: true,
+          // Only the current version (1.x, served at the root). Older versions
+          // (e.g. /0.4.x/) would add stale, contradictory answers for agents.
+          includeVersionedDocs: false,
+          includePages: false,
+          includeBlog: false,
+          // Drop the Algolia search page and any older version paths.
+          excludeRoutes: ['/search', '/search/**', '/0.4.x/**'],
+        },
+        // Preserve the curated outbound links from the previous hand-written
+        // static/llms.txt so agents still see the key entry points.
+        optionalLinks: [
+          {title: 'WCPOS Website', url: 'https://wcpos.com', description: 'Product website and downloads'},
+          {title: 'GitHub', url: 'https://github.com/wcpos', description: 'Source code and issue tracker'},
+          {title: 'Discord', url: 'https://wcpos.com/discord', description: 'Community support chat'},
+          {title: 'WordPress.org plugin', url: 'https://wordpress.org/plugins/woocommerce-pos/', description: 'Free version on the WordPress plugin directory'},
+          {title: 'WCPOS Pro', url: 'https://wcpos.com/pro', description: 'Pro features and licensing'},
+        ],
+      },
+    ],
+    // Human-facing affordance: a "Copy page" button with one-click
+    // "Open in ChatGPT / Claude / Perplexity / Gemini" actions on every doc page.
+    [
+      'docusaurus-plugin-copy-page-button',
+      {
+        enabledActions: ['copy', 'view', 'chatgpt', 'claude', 'perplexity', 'gemini'],
+      },
+    ],
   ],
 };
