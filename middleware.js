@@ -1,4 +1,4 @@
-import {rewrite, next} from '@vercel/edge';
+import { rewrite, next } from '@vercel/edge';
 
 /**
  * Content negotiation for AI agents.
