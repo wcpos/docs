@@ -1,0 +1,118 @@
+---
+title: Endpoint-toegang per rol
+sidebar_label: Endpoint-toegang per rol
+sidebar_position: 3
+description: "Ontwikkelaarsreferentie over welke WCPOS REST-endpoints toegankelijk zijn voor elke standaardrol (administrator, shop_manager, cashier), plus het gedrag bij tokenverloop en diagnosetips."
+---
+
+Deze pagina documenteert welke WCPOS REST-endpoints toegankelijk zijn voor elk van de drie standaardrollen die in POS-workflows worden gebruikt:
+
+- `administrator`
+- `shop_manager`
+- `cashier`
+
+Voor configuratie van rollen en capabilities gericht op gebruikers, zie [Toegang tot de POS](/settings/wp-admin/access).
+
+## Samenvatting {#summary}
+
+Het standaard toegangsmodel is:
+
+- **`administrator`** — volledige POS- en beheertoegang.
+- **`shop_manager`** — volledige POS- en beheertoegang, behalve plug-in-uitbreidingsacties die capabilities voor plug-in-installatie vereisen.
+- **`cashier`** — toegang tot de normale POS-verkoopworkflow, maar geen toegang tot beheer, instellingen, logs of winkelbeheer.
+
+De endpoint-matrix wordt geverifieerd door integratietests die hetzelfde authenticatiepad doorlopen als de POS-app (WCPOS bearer-toegangstokens, niet alleen `wp_set_current_user()`). Asserties voor toegestane endpoints bevestigen dat een rol geen `401` of `403` ontvangt. Sommige endpoints kunnen nog steeds normale gegevens of bedrijfsfouten zoals `400` of `404` retourneren wanneer de test minimale fixtures gebruikt — die responses bewijzen nog steeds dat de gebruiker de auth-/permissielaag is gepasseerd.
+
+## Endpoint-toegangsmatrix gratis plug-in {#free-plugin-endpoint-access-matrix}
+
+| Gebied | Endpoint-voorbeelden | Admin | Shop Manager | Cashier | Opmerkingen |
+|---|---|---:|---:|---:|---|
+| Instellingenindex | `GET /wcpos/v1/settings` | ✅ | ✅ | ✅ | Openbare/leesbare POS-instellingenindex |
+| Stores | `GET /wcpos/v1/stores` | ✅ | ✅ | ✅ | POS-bootgegevens |
+| Kassiersprofiel | `GET /wcpos/v1/cashier/{id}` | ✅ | ✅ | ✅ | Eigen kassiersgegevens |
+| Kassierswinkels | `GET /wcpos/v1/cashier/{id}/stores` | ✅ | ✅ | ✅ | Winkeltoegang voor huidige kassier |
+| Producten | `GET /wcpos/v1/products` | ✅ | ✅ | ✅ | Catalogus bladeren |
+| Variaties | `GET /wcpos/v1/products/variations` | ✅ | ✅ | ✅ | Catalogus bladeren |
+| Categorieën | `GET /wcpos/v1/products/categories` | ✅ | ✅ | ✅ | Catalogusfilters |
+| Tags | `GET /wcpos/v1/products/tags` | ✅ | ✅ | ✅ | Catalogusfilters |
+| Brands | `GET /wcpos/v1/products/brands` | ✅ | ✅ | ✅ | Catalogusfilters |
+| Coupons | `GET /wcpos/v1/coupons` | ✅ | ✅ | ✅ | POS-couponopzoeking |
+| Bestellingen lezen | `GET /wcpos/v1/orders` | ✅ | ✅ | ✅ | POS-bestelgeschiedenis |
+| Bestellingen aanmaken | `POST /wcpos/v1/orders` | ✅ | ✅ | ✅ | Verkoopworkflow |
+| Bestellingen bijwerken | `PATCH /wcpos/v1/orders/{id}` | ✅ | ✅ | ✅ | POS-bestellingen voltooien/bijwerken |
+| Checkout lezen/aanmaken | `/wcpos/v1/orders/{id}/checkout` | ✅ | ✅ | ✅ | Betalingsflow |
+| Bonnen | `GET /wcpos/v1/receipts/{order_id}` | ✅ | ✅ | ✅ | Bonweergave |
+| Bestelstatussen | `GET /wcpos/v1/data/order_statuses` | ✅ | ✅ | ✅ | POS-statusgegevens |
+| Klanten lezen | `GET /wcpos/v1/customers` | ✅ | ✅ | ✅ | Klanten zoeken/weergeven |
+| Klanten aanmaken | `POST /wcpos/v1/customers` | ✅ | ✅ | ✅ | Klant aanmaken in POS |
+| Klanten bijwerken | `PATCH /wcpos/v1/customers/{id}` | ✅ | ✅ | ✅ | Klant bewerken in POS |
+| Belastingen | `GET /wcpos/v1/taxes` | ✅ | ✅ | ✅ | Gegevens voor checkout-/belastingberekening |
+| Belastingklassen | `GET /wcpos/v1/taxes/classes` | ✅ | ✅ | ✅ | Gegevens voor checkout-/belastingberekening |
+| Verzendmethoden | `GET /wcpos/v1/shipping_methods` | ✅ | ✅ | ✅ | Checkout-/verzendgegevens |
+| Betaalgateways | `GET /wcpos/v1/payment-gateways` | ✅ | ✅ | ✅ | Betalingsopties |
+| Gateway-bootstrap | `POST /wcpos/v1/payment-gateways/{id}/bootstrap` | ✅ | ✅ | ✅ | Betalingsconfiguratie |
+| Sjablonen | `GET /wcpos/v1/templates` | ✅ | ✅ | ✅ | Bon-/sjabloonleesacties |
+| Actief sjabloon | `GET /wcpos/v1/templates/active` | ✅ | ✅ | ✅ | Bon-/sjabloonleesacties |
+| Sjabloongalerij | `GET /wcpos/v1/templates/gallery` | ✅ | ✅ | ✅ | Sjabloonleesacties |
+| Algemene instellingen | `GET /wcpos/v1/settings/general` | ✅ | ✅ | ❌ | Alleen-beheer |
+| Checkout-instellingen | `GET /wcpos/v1/settings/checkout` | ✅ | ✅ | ❌ | Alleen-beheer |
+| Belasting-ID-instellingen | `GET /wcpos/v1/settings/tax_ids` | ✅ | ✅ | ❌ | Alleen-beheer |
+| Instellingen betaalgateways | `GET /wcpos/v1/settings/payment-gateways` | ✅ | ✅ | ❌ | Alleen-beheer |
+| Uitbreidingencatalogus/-beheer | `GET /wcpos/v1/extensions` | ✅ | ✅ | ❌ | Alleen-beheer |
+| Logs | `GET /wcpos/v1/logs` | ✅ | ✅ | ❌ | Alleen-beheer |
+
+## Endpoint-toegangsmatrix Pro-plug-in {#pro-plugin-endpoint-access-matrix}
+
+| Gebied | Endpoint-voorbeelden | Admin | Shop Manager | Cashier | Opmerkingen |
+|---|---|---:|---:|---:|---|
+| Winkelbewerkingsgegevens | `GET /wcpos/v1/stores/{id}/edit` | ✅ | ✅ | ❌ | Winkelbeheer |
+| Winkel aanmaken | `POST /wcpos/v1/stores` | ✅ | ✅ | ❌ | Winkelbeheer |
+| Winkel bijwerken | `PATCH /wcpos/v1/stores/{id}` | ✅ | ✅ | ❌ | Winkelbeheer |
+| Licentie-instellingen bijwerken | `POST /wcpos/v1/settings/license` | ✅ | ✅ | ❌ | Pro-beheer |
+| Uitbreidingsacties | `POST /wcpos/v1/extensions/action` | ✅ | ❌ | ❌ | Vereist capability voor plug-in installeren/beheren |
+| Bestelrestituties | `POST /wcpos/v1/orders/{id}/refunds` | ✅ | ✅ | ✅ | Behandeld als POS-bewerking |
+
+## Dekking tokenverloop {#token-expiry-coverage}
+
+| Scenario | Admin | Shop Manager | Cashier | Verwacht resultaat |
+|---|---:|---:|---:|---|
+| Geldig toegangstoken | ✅ getest | ✅ getest | ✅ getest | Toegestane endpoints retourneren geen `401` of `403` |
+| Verlopen toegangstoken | ✅ getest | ✅ getest | ✅ getest | Verzoek faalt bij de WCPOS-auth-gate met gebruiker `0` |
+| Geldig vernieuwingstoken na verlopen toegang | ✅ getest | ✅ getest | ✅ getest | Er wordt een nieuw toegangstoken uitgegeven en de toegang wordt hersteld |
+| Verlopen vernieuwingstoken | ✅ getest | ✅ getest | ✅ getest | Kan geen nieuw toegangstoken aanmaken |
+
+## Fouten diagnosticeren {#diagnosing-failures}
+
+Als een standaard `shop_manager` een fout ziet zoals:
+
+> Request still unauthorized after token refresh - please log in again
+
+Geeft de endpoint-matrix aan dat dit **niet** komt doordat de standaard `shop_manager`-rol fundamenteel geen POS-toegang heeft. Waarschijnlijke oorzaken om te onderzoeken:
+
+1. Sitespecifieke corruptie van rollen/capabilities.
+2. Een endpoint dat niet door de matrix wordt gedekt.
+3. Verouderd of verlopen retry-gedrag voor toegangstokens in de client.
+4. Verstoring door een beveiligings- of authenticatieplug-in van een derde partij.
+5. Pro- of winkelspecifieke toegangsregels, of aangepaste code.
+
+### Permissiefout vs. tokenfout {#permission-failure-vs-token-failure}
+
+De POS-frontend kan dezelfde token-refresh-fout weergeven voor beide gevallen, nadat hij een `401` of `403` ontvangt, een token-refresh probeert en de retry nog steeds niet geautoriseerd is. De twee soorten fouten zien er aan de serverkant anders uit:
+
+Een **echte rol-/capabilityfout** ziet er meestal zo uit:
+
+```text
+status: 403
+current_user: <actual user id>
+access token expired: false
+```
+
+Een **token-/authfout** ziet er meestal zo uit:
+
+```text
+status: 403
+current_user: 0
+access token expired: true or invalid
+```
+
+Gebruik dit onderscheid bij het triëren van POS-toegangsproblemen — een `current_user` die niet nul is wijst op capabilities, terwijl `current_user: 0` op de auth-/tokenlaag wijst.

@@ -1,0 +1,118 @@
+---
+title: 역할별 엔드포인트 접근
+sidebar_label: 역할별 엔드포인트 접근
+sidebar_position: 3
+description: "각 기본 역할(administrator, shop_manager, cashier)이 접근할 수 있는 WCPOS REST 엔드포인트에 대한 개발자 참조 자료와 토큰 만료 동작 및 진단 팁."
+---
+
+이 페이지는 POS 워크플로에서 사용되는 세 가지 기본 역할이 각각 접근할 수 있는 WCPOS REST 엔드포인트를 문서화합니다:
+
+- `administrator`
+- `shop_manager`
+- `cashier`
+
+사용자용 역할 및 기능 구성에 대해서는 [POS 접근](/settings/wp-admin/access)을 참조하세요.
+
+## 요약 {#summary}
+
+기본 접근 모델은 다음과 같습니다:
+
+- **`administrator`** — 전체 POS 및 관리 접근.
+- **`shop_manager`** — 플러그인 설치 기능이 필요한 플러그인 확장 작업을 제외한 전체 POS 및 관리 접근.
+- **`cashier`** — 일반적인 POS 판매 워크플로 접근, 단 관리, 설정, 로그 또는 매장 관리 접근은 불가.
+
+엔드포인트 매트릭스는 POS 앱과 동일한 인증 경로(단순한 `wp_set_current_user()`가 아닌 WCPOS 베어러 액세스 토큰)를 거치는 통합 테스트로 검증됩니다. 허용된 엔드포인트 어설션은 역할이 `401` 또는 `403`을 받지 않음을 확인합니다. 일부 엔드포인트는 테스트가 최소 픽스처를 사용할 때 정상 데이터 또는 `400`이나 `404` 같은 비즈니스 오류를 반환할 수 있으며, 이러한 응답도 사용자가 인증/권한 계층을 통과했음을 증명합니다.
+
+## 무료 플러그인 엔드포인트 접근 매트릭스 {#free-plugin-endpoint-access-matrix}
+
+| 영역 | 엔드포인트 예시 | Admin | Shop Manager | Cashier | 참고 |
+|---|---|---:|---:|---:|---|
+| 설정 인덱스 | `GET /wcpos/v1/settings` | ✅ | ✅ | ✅ | 공개/읽기 가능한 POS 설정 인덱스 |
+| 매장 | `GET /wcpos/v1/stores` | ✅ | ✅ | ✅ | POS 부팅 데이터 |
+| 캐셔 프로필 | `GET /wcpos/v1/cashier/{id}` | ✅ | ✅ | ✅ | 자신의 캐셔 데이터 |
+| 캐셔 매장 | `GET /wcpos/v1/cashier/{id}/stores` | ✅ | ✅ | ✅ | 현재 캐셔의 매장 접근 |
+| 제품 | `GET /wcpos/v1/products` | ✅ | ✅ | ✅ | 카탈로그 탐색 |
+| 변형 | `GET /wcpos/v1/products/variations` | ✅ | ✅ | ✅ | 카탈로그 탐색 |
+| 카테고리 | `GET /wcpos/v1/products/categories` | ✅ | ✅ | ✅ | 카탈로그 필터 |
+| 태그 | `GET /wcpos/v1/products/tags` | ✅ | ✅ | ✅ | 카탈로그 필터 |
+| 브랜드 | `GET /wcpos/v1/products/brands` | ✅ | ✅ | ✅ | 카탈로그 필터 |
+| 쿠폰 | `GET /wcpos/v1/coupons` | ✅ | ✅ | ✅ | POS 쿠폰 조회 |
+| 주문 읽기 | `GET /wcpos/v1/orders` | ✅ | ✅ | ✅ | POS 주문 내역 |
+| 주문 생성 | `POST /wcpos/v1/orders` | ✅ | ✅ | ✅ | 판매 워크플로 |
+| 주문 업데이트 | `PATCH /wcpos/v1/orders/{id}` | ✅ | ✅ | ✅ | POS 주문 완료/업데이트 |
+| 결제 읽기/생성 | `/wcpos/v1/orders/{id}/checkout` | ✅ | ✅ | ✅ | 결제 흐름 |
+| 영수증 | `GET /wcpos/v1/receipts/{order_id}` | ✅ | ✅ | ✅ | 영수증 렌더링 |
+| 주문 상태 | `GET /wcpos/v1/data/order_statuses` | ✅ | ✅ | ✅ | POS 상태 데이터 |
+| 고객 읽기 | `GET /wcpos/v1/customers` | ✅ | ✅ | ✅ | 고객 검색/목록 |
+| 고객 생성 | `POST /wcpos/v1/customers` | ✅ | ✅ | ✅ | POS에서 고객 생성 |
+| 고객 업데이트 | `PATCH /wcpos/v1/customers/{id}` | ✅ | ✅ | ✅ | POS에서 고객 편집 |
+| 세금 | `GET /wcpos/v1/taxes` | ✅ | ✅ | ✅ | 결제/세금 계산 데이터 |
+| 세금 등급 | `GET /wcpos/v1/taxes/classes` | ✅ | ✅ | ✅ | 결제/세금 계산 데이터 |
+| 배송 방법 | `GET /wcpos/v1/shipping_methods` | ✅ | ✅ | ✅ | 결제/배송 데이터 |
+| 결제 게이트웨이 | `GET /wcpos/v1/payment-gateways` | ✅ | ✅ | ✅ | 결제 옵션 |
+| 게이트웨이 부트스트랩 | `POST /wcpos/v1/payment-gateways/{id}/bootstrap` | ✅ | ✅ | ✅ | 결제 설정 |
+| 템플릿 | `GET /wcpos/v1/templates` | ✅ | ✅ | ✅ | 영수증/템플릿 읽기 |
+| 활성 템플릿 | `GET /wcpos/v1/templates/active` | ✅ | ✅ | ✅ | 영수증/템플릿 읽기 |
+| 템플릿 갤러리 | `GET /wcpos/v1/templates/gallery` | ✅ | ✅ | ✅ | 템플릿 읽기 |
+| 일반 설정 | `GET /wcpos/v1/settings/general` | ✅ | ✅ | ❌ | 관리 전용 |
+| 결제 설정 | `GET /wcpos/v1/settings/checkout` | ✅ | ✅ | ❌ | 관리 전용 |
+| 세금 ID 설정 | `GET /wcpos/v1/settings/tax_ids` | ✅ | ✅ | ❌ | 관리 전용 |
+| 결제 게이트웨이 설정 | `GET /wcpos/v1/settings/payment-gateways` | ✅ | ✅ | ❌ | 관리 전용 |
+| 확장 카탈로그/관리 | `GET /wcpos/v1/extensions` | ✅ | ✅ | ❌ | 관리 전용 |
+| 로그 | `GET /wcpos/v1/logs` | ✅ | ✅ | ❌ | 관리 전용 |
+
+## Pro 플러그인 엔드포인트 접근 매트릭스 {#pro-plugin-endpoint-access-matrix}
+
+| 영역 | 엔드포인트 예시 | Admin | Shop Manager | Cashier | 참고 |
+|---|---|---:|---:|---:|---|
+| 매장 편집 데이터 | `GET /wcpos/v1/stores/{id}/edit` | ✅ | ✅ | ❌ | 매장 관리 |
+| 매장 생성 | `POST /wcpos/v1/stores` | ✅ | ✅ | ❌ | 매장 관리 |
+| 매장 업데이트 | `PATCH /wcpos/v1/stores/{id}` | ✅ | ✅ | ❌ | 매장 관리 |
+| 라이선스 설정 업데이트 | `POST /wcpos/v1/settings/license` | ✅ | ✅ | ❌ | Pro 관리 |
+| 확장 작업 | `POST /wcpos/v1/extensions/action` | ✅ | ❌ | ❌ | 플러그인 설치/관리 기능 필요 |
+| 주문 환불 | `POST /wcpos/v1/orders/{id}/refunds` | ✅ | ✅ | ✅ | POS 작업으로 취급 |
+
+## 토큰 만료 적용 범위 {#token-expiry-coverage}
+
+| 시나리오 | Admin | Shop Manager | Cashier | 예상 결과 |
+|---|---:|---:|---:|---|
+| 유효한 액세스 토큰 | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 | 허용된 엔드포인트는 `401` 또는 `403`을 반환하지 않음 |
+| 만료된 액세스 토큰 | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 | 요청이 사용자 `0`으로 WCPOS 인증 게이트에서 실패 |
+| 만료된 액세스 이후 유효한 리프레시 토큰 | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 | 새 액세스 토큰이 발급되고 접근이 복원됨 |
+| 만료된 리프레시 토큰 | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 | 새 액세스 토큰을 발급할 수 없음 |
+
+## 실패 진단 {#diagnosing-failures}
+
+기본 `shop_manager`가 다음과 같은 오류를 보는 경우:
+
+> Request still unauthorized after token refresh - please log in again
+
+엔드포인트 매트릭스는 이것이 기본 `shop_manager` 역할이 근본적으로 POS 접근 권한이 없기 때문이 **아님**을 나타냅니다. 조사할 만한 원인은 다음과 같습니다:
+
+1. 사이트별 역할/기능 손상.
+2. 매트릭스에 포함되지 않은 엔드포인트.
+3. 클라이언트의 오래되었거나 만료된 액세스 토큰 재시도 동작.
+4. 서드파티 보안 또는 인증 플러그인 간섭.
+5. Pro 또는 매장별 접근 규칙, 또는 사용자 정의 코드.
+
+### 권한 실패 vs. 토큰 실패 {#permission-failure-vs-token-failure}
+
+POS 프런트엔드는 `401` 또는 `403`을 받고 토큰 갱신을 시도한 후에도 재시도가 여전히 권한이 없을 때 두 경우 모두에 대해 동일한 토큰 갱신 오류를 표시할 수 있습니다. 두 가지 실패 모드는 서버 측에서 다르게 나타납니다:
+
+**실제 역할/기능 실패**는 일반적으로 다음과 같습니다:
+
+```text
+status: 403
+current_user: <actual user id>
+access token expired: false
+```
+
+**토큰/인증 실패**는 일반적으로 다음과 같습니다:
+
+```text
+status: 403
+current_user: 0
+access token expired: true or invalid
+```
+
+POS 접근 문제를 분류할 때 이 구분을 활용하세요 — 0이 아닌 `current_user`는 기능을 가리키고, `current_user: 0`은 인증/토큰 계층을 가리킵니다.

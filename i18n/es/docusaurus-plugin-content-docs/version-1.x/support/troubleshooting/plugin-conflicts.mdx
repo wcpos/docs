@@ -213,6 +213,76 @@ Para plugins esenciales que no se pueden reemplazar:
 **Plugins de Análisis:** Generalmente seguros a menos que sean muy pesados  
 **Plugins de Contenido Básico:** Por lo general, compatibles  
 
+## Conflictos de Plugin Conocidos {#known-plugin-conflicts}
+
+Los plugins a continuación son conocidos por interferir con WCPOS. Muchos problemas ya se han corregido automáticamente en versiones recientes de WCPOS — **actualizar a la última versión** los resuelve sin necesidad de configuración.
+
+:::tip La mayoría de las soluciones son "excluir el POS"
+El hilo común: WCPOS depende de la API REST de WooCommerce y renderiza algunos flujos (inicio de sesión, pago, recibos) en iframes. La solución habitual es **excluir los endpoints/URLs del POS** (`/wp-json/wcpos/`, `/wp-json/wc/v3/` y la ruta `/pos/`) del otro plugin — no desactivarlo por completo.
+:::
+
+### Plugins de seguridad e inicio de sesión {#security-and-login-plugins}
+
+Estos son la fuente **más común** de conflictos, especialmente para el inicio de sesión de la aplicación de escritorio/móvil.
+
+| Plugin | Síntoma | Solución |
+| --- | --- | --- |
+| **Wordfence** | El firewall bloquea la API REST; el campo de código 2FA no se renderiza en el iframe de inicio de sesión; una CSP restrictiva puede bloquear los recursos del POS | Incluye en la lista blanca `/wp-json/wcpos/` y `/wp-json/wc/v3/` en el firewall. Para 2FA: desactívalo temporalmente para los usuarios del POS. La CSP se elimina automáticamente en v1.9.0+ |
+| **Really Simple Security** | Bloquea el acceso a la API / fuerza redirecciones | Desactiva cualquier restricción de la API REST en los ajustes **Advanced** del plugin |
+| **WPS Hide Login** | La URL de inicio de sesión personalizada rompe el iframe de inicio de sesión de la aplicación | Usa la URL de inicio de sesión estándar `/wp-admin/` para el acceso al POS |
+| **iThemes / Solid Security** | Bloquea la API REST o desencadena bloqueos por fuerza bruta debido a las llamadas del POS | Incluye en la lista blanca solo los endpoints del POS y la propia IP del servidor — evita reglas de IP generales |
+| **Sucuri** | El WAF bloquea las solicitudes de API | Incluye en la lista blanca los endpoints de la API REST en el panel de Sucuri |
+| **Security Optimizer** | Bloquea el inicio de sesión del POS de administración (_"use customize login URL"_) | Inicia sesión en WP Admin a través de la URL personalizada primero, luego ve a `/pos` |
+| **Force Login** (y plugins de autenticación REST similares) | `/wp-json/` devuelve 401/403; las aplicaciones más antiguas reportaban _"Site does not seem to be a WordPress site"_ | Permite el acceso no autenticado a los endpoints del POS, o desactívalo durante la conexión inicial. Las aplicaciones v1.x ahora muestran el mensaje de error real |
+| **LoginPress** | Fuerza el inicio de sesión basado en correo electrónico; rompe el inicio de sesión multiusuario del POS | Permite el inicio de sesión con nombre de usuario, o desactívalo para el acceso al POS |
+| **Plugins de autenticación JWT** | 403 en todas las solicitudes de la API del POS tras la activación (el inicio de sesión puede tener éxito, todo lo demás falla) | Corregido automáticamente en v1.8.x+. En versiones más antiguas, desactiva el plugin JWT o excluye los endpoints del POS |
+| **Captcha / reCAPTCHA** | Bucle de inicio de sesión en la aplicación de escritorio (el captcha no puede renderizarse en el iframe) | Desactiva el captcha para la URL de inicio de sesión del POS |
+| **Defender Pro** | El encabezado `X-Frame-Options` bloquea todos los iframes del POS (inicio de sesión, pago, recibos) | Agrega una excepción específica del POS para `/pos/` en lugar de desactivar `X-Frame-Options` en todo el sitio |
+| **Jetpack CRM Client Portal** | Rompe el inicio de sesión del POS por completo | Desactiva solo la extensión Client Portal |
+
+### Plugins de rendimiento, caché y optimización {#performance-caching-optimisation-plugins}
+
+| Plugin | Síntoma | Solución |
+| --- | --- | --- |
+| **WP Rocket, Autoptimize, Hummingbird, Smush** | Diferir/minificar JS rompe el proceso de pago y Stripe Terminal | Excluye las URL de `/pos/` de la optimización de JS |
+| **LiteSpeed Cache** | Bucle de recarga constante en el pago en la aplicación de escritorio; CSP restrictiva | Actualiza WCPOS, purga la caché, excluye las páginas del POS del almacenamiento en caché. La CSP se elimina automáticamente en v1.9.0+ |
+| **Image Prioritizer** | Satura el encabezado HTTP `Link`, rompiendo el descubrimiento de la API REST; la aplicación de escritorio muestra _"does not appear to be a WordPress site"_ | Desactiva el plugin |
+
+### Creadores de páginas e inyectores de front-end {#page-builders-front-end-injectors}
+
+| Plugin | Síntoma | Solución |
+| --- | --- | --- |
+| **Elementor** | `elementor-frontend.js` rompe el acordeón de pago dentro del iframe del POS — los métodos de pago no se expanden | Excluye las páginas del POS de la carga de scripts de Elementor |
+| **Omnisend / plugins de marketing** | Inyectan scripts en el iframe de pago, rompiendo el diseño y los pagos | Usa los **Checkout Settings** del POS para desactivar los scripts no esenciales |
+| **MyStickyElements / Complianz** | Inyectan superposiciones (botones fijos, banners de cookies) en el iframe de pago | Configúralos para excluir las URL de `/pos/` |
+
+### Extensiones de WooCommerce y otros plugins {#woocommerce-extensions-other-plugins}
+
+| Plugin | Síntoma | Solución |
+| --- | --- | --- |
+| **WooCommerce Subscriptions** | Conflicto del script de migración durante la actualización de v1.7→v1.8 | Desactiva Subscriptions, activa POS Pro (deja que se ejecute la migración), luego vuelve a habilitarlo |
+| **WP Activity Log** | Registra cada acción del POS → saturación de postmeta → _"only 10 products"_ | Desactívalo, o excluye los tipos de entrada del POS del registro |
+| **Jetpack / Astra / Xero** (cualquier cosa que enganche `save_post`) | Filas de meta duplicadas en cada llamada a la API del POS (una tienda llegó a 36 867 filas en un producto) | Corregido automáticamente en v1.8.12+ (gratuito) / v1.8.14+ (Pro) con una migración de limpieza — solo actualiza |
+| **Stripe Tax** | Incompatible con pedidos creados por la API REST (cómo el POS crea pedidos) | Sin solución alternativa — incompatible |
+| **Mollie** | Puede ocultar el método BACS (transferencia bancaria) del pago del POS | Actualiza Mollie a la última versión |
+| **CTX Feed** | Errores 403 intermitentes en la página de ajustes del POS | Desactívalo para confirmar; no hay solución alternativa conocida |
+| **Plugins de escáner de código de barras de terceros** | Corrompen el JSON de la API de pedidos, rompiendo la creación/visualización de pedidos | Desactívalos; usa el escaneo de código de barras integrado del POS |
+| **MailerLite** (Signup Forms + WooCommerce) | Error 500 en la creación de pedidos del POS (agotamiento de memoria) | Desactívalo para confirmar, luego contacta a MailerLite |
+| **The Courier Guy Shipping** | La creación de pedidos del POS falla con un error del servidor | Revierte a una versión anterior, o contacta al desarrollador |
+| **PixelYourSite / PixelMySite** | Error fatal: _call to member function `is_type()` on bool_ | Desactívalo temporalmente |
+| **Google Listings & Ads** | Conflicto del autoloader → error crítico _"Class WCPOS\…\Stores not found"_ | Elimina todos los plugins del POS y reinstala solo la última versión Pro independiente |
+
+:::warning Stripe Terminal: no lo habilites globalmente
+La pasarela **Stripe Terminal** debe habilitarse **solo** dentro de los Ajustes del POS, nunca en `WooCommerce > Settings > Payments`. Habilitarla globalmente hace que aparezca en el pago de tu tienda pública y bloquea el flujo de pago en línea.
+:::
+
+### Conflictos a nivel de servidor {#server-level-conflicts}
+
+| Fuente | Síntoma | Solución |
+| --- | --- | --- |
+| **Encabezados CSP personalizados** (`.htaccess`, Nginx o un plugin de seguridad) | El POS se queda atascado en el logo; JS/CSS bloqueados | Se eliminan automáticamente en las páginas del POS en v1.9.0+. Para CSP a nivel de servidor, permite `cdn.jsdelivr.net` en `script-src`/`style-src`, o agrega una excepción para `/pos/` |
+| **GoDaddy Website Firewall** | Bloquea `/wp-json/` (_"Received 'undefined'"_) | Permite la ruta de URL `/wp-json/` en el firewall — consulta [Rendimiento del Servidor](/support/performance/server#hosting-specific-notes) |
+
 ## Consejos de Prevención {#prevention-tips}
 
 ### Mantenimiento Regular {#regular-maintenance}

@@ -1,0 +1,180 @@
+---
+title: HTML 템플릿
+sidebar_label: HTML 템플릿
+sidebar_position: 3
+description: "Mustache 스타일 플레이스홀더를 사용하여 로직 없는 HTML 영수증 템플릿을 만들고 사용자 정의합니다."
+---
+
+HTML 템플릿은 `{{variable}}` 플레이스홀더를 사용하는 로직 없는 Mustache 스타일 구문을 사용합니다. POS 앱에서 클라이언트 측으로 렌더링되므로 **오프라인에서 작동합니다** — 영수증을 표시하거나 인쇄하는 데 서버 연결이 필요하지 않습니다.
+
+대부분의 사용자에게 권장되는 엔진입니다.
+
+## 구문 {#syntax}
+
+### 변수 {#variables}
+
+이중 중괄호를 사용하여 데이터를 삽입합니다:
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+미리 서식이 지정된 통화 값(예: `12.5` 대신 `$12.50`)에는 `_display` 변형을 사용하세요. 사용 가능한 모든 필드는 [영수증 데이터 참조](/receipts/receipt-data)를 확인하세요.
+
+### 섹션 (반복 및 조건문) {#sections-loops-and-conditionals}
+
+배열을 반복하거나 콘텐츠를 조건부로 표시하려면 `{{#section}}...{{/section}}`을 사용하세요:
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+### 반전 섹션 {#inverted-sections}
+
+값이 비어 있거나 false일 때 콘텐츠를 표시하려면 `{{^section}}...{{/section}}`을 사용하세요:
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+### 현지화된 레이블 {#localised-labels}
+
+매장의 언어에 맞게 조정되는 번역 가능한 레이블에는 `{{i18n.key}}`를 사용하세요:
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+## 일반적인 패턴 {#common-patterns}
+
+### 매장 헤더 {#store-header}
+
+`store.address_lines` 배열은 영수증용으로 미리 서식이 지정되어 있습니다 — 개별 주소 필드를 이어 붙이는 대신 이 배열을 반복하세요.
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+### 할인이 적용된 라인 항목 {#line-items-with-discounts}
+
+라인 항목의 `discounts` 필드는 할인 금액을 양수로 나타내거나, 할인이 없을 때는 `0`입니다. Mustache는 `0`을 falsy로 취급하므로 `{{#discounts}}...{{/discounts}}`가 올바른 가드입니다.
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+### 세금 요약 {#tax-summary}
+
+```html
+{{#tax_summary}}
+<div class="tax-line">
+  <span>{{label}} ({{rate}}%)</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+### 결제 세부 정보 {#payment-details}
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+### 바코드 및 QR 코드 {#barcodes-and-qr-codes}
+
+`<barcode>` 요소를 사용하세요 — [감열 템플릿](/receipts/thermal-templates)과 동일한 구문입니다. 값은 요소 안에 들어가며, 심볼로지는 `type` 속성에 설정합니다. 렌더러는 각 요소를 인라인 SVG로 대체합니다.
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
+```
+
+`type` 속성은 템플릿에 **문자 그대로** 설정해야 합니다 — 플레이스홀더에서 가져올 수 없습니다. `type`이 `qr` 또는 `qrcode`이면 HTML 및 감열 템플릿 모두에서 QR 코드로 렌더링됩니다.
+
+선택한 바코드 유형이 값을 인코딩할 수 없는 경우(예: 숫자가 아니거나 길이가 잘못된 EAN-13 데이터), 미리보기에 원래 값과 함께 `Barcode error` 또는 `QR code error` 블록이 표시되므로 값을 수정하거나 호환되는 유형으로 전환할 수 있습니다.
+
+모든 [bwip-js 심볼로지](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types)가 지원됩니다 — `code128`, `qrcode`, `ean13`, `ean8`, `upca`, `pdf417`, `datamatrix` 등 다양합니다.
+
+## 스타일링 {#styling}
+
+로직 없는 템플릿은 렌더링 전에 WordPress의 `wp_kses_post`를 통해 새니타이즈되며, 이는 **`<style>`, `<head>` 및 문서 수준 태그를 제거**합니다. 각 요소에 **인라인 스타일**을 사용하세요:
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+동일한 제한이 `<script>`, `<link>` 및 기타 비콘텐츠 태그에도 적용됩니다 — 이들은 제거되므로 외부 CSS나 JavaScript에 의존하지 마세요.
+
+:::tip 흑백용으로 설계됨
+영수증은 보통 흑백 감열 또는 레이저 프린터로 인쇄됩니다. 이를 염두에 두고 설계하세요 — 색상 채우기 대신 **글꼴 굵기, 여백, 글꼴 대비, 수평선**을 사용하여 계층을 표현하세요. 색상 배경과 회색 텍스트는 흑백 출력에서 사라지거나 탁한 하프톤으로 인쇄됩니다.
+:::
+
+:::tip 감열 프린터 없이 감열지 느낌이 필요한가요?
+갤러리의 **Narrow Receipt** 카드에서 **Use Template**을 클릭하세요 — 브라우저 인쇄, HTML 지원 감열 프린터(Sunmi/Imin WebView 장치), 일반 용지에서 깔끔하게 인쇄되는 monospace 72mm 폭 레이아웃입니다. 원시 ESC/POS 감열 프린터용이 아닙니다 — 그런 경우에는 **Simple Thermal Receipt** XML 템플릿을 사용하세요.
+:::
+
+## 모범 사례 {#best-practices}
+
+- 모든 통화 값에는 **`_display` 필드를 사용**하세요 — 로케일을 인식하는 서식을 자동으로 처리합니다
+- 템플릿이 여러 언어에서 작동하도록 텍스트를 하드코딩하는 대신 **`{{i18n.*}}` 레이블을 사용**하세요
+- **조건문에는 섹션을 사용**하세요 — 선택적 필드를 `{{#field}}...{{/field}}`로 감싸서 비어 있을 때 숨겨지도록 하세요
+- 처음부터 만들기보다는 **갤러리 템플릿에서 시작**하세요
+- 활성화하기 전에 템플릿 편집기에서 **미리보기로 테스트**하세요

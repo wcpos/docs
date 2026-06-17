@@ -1,0 +1,180 @@
+---
+title: HTML 模板
+sidebar_label: HTML 模板
+sidebar_position: 3
+description: "使用 Mustache 风格的占位符创建和自定义无逻辑的 HTML 收据模板。"
+---
+
+HTML 模板使用无逻辑的 Mustache 风格语法，带有 `{{variable}}` 占位符。它们在 POS 应用中于客户端渲染，这意味着它们**可离线工作**——显示或打印收据无需服务器连接。
+
+这是大多数用户推荐使用的引擎。
+
+## 语法 {#syntax}
+
+### 变量 {#variables}
+
+使用双花括号插入数据：
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+对预格式化的货币值使用 `_display` 变体（例如 `$12.50` 而非 `12.5`）。所有可用字段请参阅[收据数据参考](/receipts/receipt-data)。
+
+### 分区（循环和条件） {#sections-loops-and-conditionals}
+
+使用 `{{#section}}...{{/section}}` 来遍历数组或有条件地显示内容：
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+### 反向分区 {#inverted-sections}
+
+使用 `{{^section}}...{{/section}}` 在某个值为空或为假时显示内容：
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+### 本地化标签 {#localised-labels}
+
+使用 `{{i18n.key}}` 表示可翻译的标签，它们会适应商店的语言：
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+## 常见模式 {#common-patterns}
+
+### 商店页眉 {#store-header}
+
+`store.address_lines` 数组已为收据预格式化——直接遍历它，而不要逐个拼接各个地址字段。
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+### 带折扣的行项目 {#line-items-with-discounts}
+
+行项目的 `discounts` 字段是以正数表示的折扣金额，无折扣时为 `0`。Mustache 将 `0` 视为假值，因此 `{{#discounts}}...{{/discounts}}` 是正确的判断方式。
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+### 税务汇总 {#tax-summary}
+
+```html
+{{#tax_summary}}
+<div class="tax-line">
+  <span>{{label}} ({{rate}}%)</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+### 支付详情 {#payment-details}
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+### 条形码和二维码 {#barcodes-and-qr-codes}
+
+使用 `<barcode>` 元素——与[热敏模板](/receipts/thermal-templates)相同的语法。值放在元素内部；符号体系通过 `type` 属性设置。渲染器会用一个内联 SVG 替换每个元素。
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
+```
+
+`type` 属性必须在模板中**直接**设置——它不能来自占位符。`type` 为 `qr` 或 `qrcode` 时，在 HTML 和热敏模板中都会渲染为二维码。
+
+如果所选的条码类型无法对该值进行编码（例如非数字或长度错误的 EAN-13 数据），预览会显示一个带有原始值的 `Barcode error` 或 `QR code error` 块，以便您修正值或切换到兼容的类型。
+
+支持所有 [bwip-js 符号体系](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types)——`code128`、`qrcode`、`ean13`、`ean8`、`upca`、`pdf417`、`datamatrix` 等许多类型。
+
+## 样式 {#styling}
+
+无逻辑模板在渲染前会通过 WordPress 的 `wp_kses_post` 进行清理，这会**移除 `<style>`、`<head>` 和文档级标签**。请在每个元素上使用**内联样式**：
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+同样的限制也适用于 `<script>`、`<link>` 和其他非内容标签——它们会被移除，因此不要依赖外部 CSS 或 JavaScript。
+
+:::tip 专为黑白设计
+收据通常打印在黑白热敏或激光打印机上。请据此进行设计——使用**字重、留白、字体对比和水平分隔线**来表现层次，而不要使用彩色填充。彩色背景和灰色文字在黑白输出上要么消失，要么打印成浑浊的半色调。
+:::
+
+:::tip 没有热敏打印机也想要热敏纸的效果？
+在模板库的 **Narrow Receipt** 卡片上点击 **Use Template**——这是一个等宽、72mm 宽的布局，在浏览器打印、支持 HTML 的热敏打印机（Sunmi/Imin WebView 设备）和标准纸张上都能干净地打印。它不适用于原始 ESC/POS 热敏打印机——对那些打印机请使用 **Simple Thermal Receipt** XML 模板。
+:::
+
+## 最佳实践 {#best-practices}
+
+- **对所有货币值使用 `_display` 字段**——它们会自动处理区域感知的格式化
+- **使用 `{{i18n.*}}` 标签**而非硬编码文本，使模板可跨语言使用
+- **使用分区表示条件**——将可选字段包裹在 `{{#field}}...{{/field}}` 中，以便它们在为空时被隐藏
+- **从模板库的模板开始**，而不是从头构建
+- **在激活前用模板编辑器中的预览进行测试**

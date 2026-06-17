@@ -133,6 +133,13 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'NIF/CIF Spain',
   // WooCommerce REST API: a product/feature name, not prose.
   'WooCommerce REST API',
+  // Cloud-print provider / firmware / service names — brand identifiers a user
+  // matches verbatim in printer firmware or a hosted dashboard; translating
+  // them would be wrong. Kept English in every locale (see receipts/cloud-printing).
+  'Star CloudPRNT',
+  'Star Online',
+  'Epson Server Direct Print',
+  'PrintNode',
   // Default WordPress theme names, referenced in troubleshooting (switch to a
   // stock theme to isolate plugin conflicts).
   'Twenty Twenty-Four',
