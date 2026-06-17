@@ -177,6 +177,76 @@ import SupportContact from '@site/src/components/SupportContact';
 2. **충돌하는 기능을 비활성화하기 위해 플러그인 특정 후크 사용**
 3. **POS 관련 페이지에서 플러그인을 비활성화하기 위해 조건부 로직 사용**
 
+## 알려진 플러그인 충돌 {#known-plugin-conflicts}
+
+아래 플러그인은 WCPOS와 충돌하는 것으로 알려져 있습니다. 많은 문제가 최근 WCPOS 버전에서 이미 자동으로 수정되었습니다 — **최신 버전으로 업데이트**하면 별도의 구성 없이 이러한 문제가 해결됩니다.
+
+:::tip 대부분의 수정은 "POS를 제외"하는 것
+공통점은 다음과 같습니다: WCPOS는 WooCommerce REST API에 의존하며 일부 흐름(로그인, 결제, 영수증)을 iframe으로 렌더링합니다. 일반적인 수정 방법은 다른 플러그인에서 **POS 엔드포인트/URL**(`/wp-json/wcpos/`, `/wp-json/wc/v3/` 및 `/pos/` 경로)을 **제외**하는 것이며, 플러그인을 완전히 비활성화하는 것이 아닙니다.
+:::
+
+### 보안 및 로그인 플러그인 {#security-and-login-plugins}
+
+이들은 특히 데스크톱/모바일 앱 로그인에서 **가장 흔한** 충돌 원인입니다.
+
+| 플러그인 | 증상 | 해결 방법 |
+| --- | --- | --- |
+| **Wordfence** | 방화벽이 REST API를 차단함; 로그인 iframe에서 2FA 코드 필드가 렌더링되지 않음; 제한적인 CSP가 POS 자산을 차단할 수 있음 | 방화벽에서 `/wp-json/wcpos/`와 `/wp-json/wc/v3/`를 허용 목록에 추가하세요. 2FA의 경우: POS 사용자에 대해 일시적으로 비활성화하세요. CSP는 v1.9.0+에서 자동으로 제거됩니다 |
+| **Really Simple Security** | API 접근 차단 / 강제 리디렉션 | 플러그인의 **Advanced** 설정에서 REST API 제한을 비활성화하세요 |
+| **WPS Hide Login** | 사용자 정의 로그인 URL이 앱 로그인 iframe을 손상시킴 | POS 접근에는 표준 `/wp-admin/` 로그인 URL을 사용하세요 |
+| **iThemes / Solid Security** | REST API를 차단하거나 POS 호출로 인해 무차별 대입 잠금이 발생함 | POS 엔드포인트와 서버 자체 IP만 허용 목록에 추가하세요 — 전체 IP 규칙은 피하세요 |
+| **Sucuri** | WAF가 API 요청을 차단함 | Sucuri 대시보드에서 REST API 엔드포인트를 허용 목록에 추가하세요 |
+| **Security Optimizer** | 관리자 POS 로그인을 차단함 (_"use customize login URL"_) | 먼저 사용자 정의 URL을 통해 WP Admin에 로그인한 다음 `/pos`로 이동하세요 |
+| **Force Login** (및 유사한 REST 인증 플러그인) | `/wp-json/`이 401/403을 반환함; 이전 앱은 _"Site does not seem to be a WordPress site"_를 보고함 | POS 엔드포인트에 대한 인증되지 않은 접근을 허용하거나 초기 연결 중에 비활성화하세요. v1.x 앱은 이제 실제 오류 메시지를 표시합니다 |
+| **LoginPress** | 이메일 기반 로그인을 강제함; 다중 사용자 POS 로그인을 손상시킴 | 사용자 이름 로그인을 허용하거나 POS 접근에 대해 비활성화하세요 |
+| **JWT Authentication 플러그인** | 활성화 후 모든 POS API 요청에서 403 발생 (로그인은 성공할 수 있으나 나머지는 모두 실패) | v1.8.x+에서 자동 수정됨. 이전 버전에서는 JWT 플러그인을 비활성화하거나 POS 엔드포인트를 제외하세요 |
+| **Captcha / reCAPTCHA** | 데스크톱 앱에서 로그인 루프 발생 (captcha가 iframe에서 렌더링되지 않음) | POS 로그인 URL에 대해 captcha를 비활성화하세요 |
+| **Defender Pro** | `X-Frame-Options` 헤더가 모든 POS iframe(로그인, 결제, 영수증)을 차단함 | 사이트 전체에서 `X-Frame-Options`를 비활성화하는 대신 `/pos/`에 대한 POS 전용 예외를 추가하세요 |
+| **Jetpack CRM Client Portal** | POS 로그인을 완전히 손상시킴 | Client Portal 확장만 비활성화하세요 |
+
+### 성능, 캐싱 및 최적화 플러그인 {#performance-caching-optimisation-plugins}
+
+| 플러그인 | 증상 | 해결 방법 |
+| --- | --- | --- |
+| **WP Rocket, Autoptimize, Hummingbird, Smush** | JS 지연/축소가 결제 및 Stripe Terminal을 손상시킴 | JS 최적화에서 `/pos/` URL을 제외하세요 |
+| **LiteSpeed Cache** | 데스크톱 앱의 결제에서 지속적인 새로 고침 루프; 제한적인 CSP | WCPOS를 업데이트하고 캐시를 비운 후 POS 페이지를 캐싱에서 제외하세요. CSP는 v1.9.0+에서 자동 제거됩니다 |
+| **Image Prioritizer** | HTTP `Link` 헤더를 과도하게 채워 REST API 검색을 손상시킴; 데스크톱 앱이 _"does not appear to be a WordPress site"_를 표시함 | 플러그인을 비활성화하세요 |
+
+### 페이지 빌더 및 프런트엔드 주입기 {#page-builders-front-end-injectors}
+
+| 플러그인 | 증상 | 해결 방법 |
+| --- | --- | --- |
+| **Elementor** | `elementor-frontend.js`가 POS iframe 내부의 결제 아코디언을 손상시킴 — 결제 방법이 확장되지 않음 | Elementor 스크립트 로딩에서 POS 페이지를 제외하세요 |
+| **Omnisend / 마케팅 플러그인** | 결제 iframe에 스크립트를 주입하여 레이아웃과 결제를 손상시킴 | POS **Checkout Settings**를 사용하여 필수가 아닌 스크립트를 비활성화하세요 |
+| **MyStickyElements / Complianz** | 결제 iframe에 오버레이(고정 버튼, 쿠키 배너)를 주입함 | `/pos/` URL을 제외하도록 구성하세요 |
+
+### WooCommerce 확장 및 기타 플러그인 {#woocommerce-extensions-other-plugins}
+
+| 플러그인 | 증상 | 해결 방법 |
+| --- | --- | --- |
+| **WooCommerce Subscriptions** | v1.7→v1.8 업그레이드 중 마이그레이션 스크립트 충돌 | Subscriptions를 비활성화하고 POS Pro를 활성화한 다음(마이그레이션 실행) 다시 활성화하세요 |
+| **WP Activity Log** | 모든 POS 작업을 기록 → postmeta 비대화 → _"only 10 products"_ | 비활성화하거나 POS 게시물 유형을 로깅에서 제외하세요 |
+| **Jetpack / Astra / Xero** (`save_post`에 후킹하는 모든 것) | 모든 POS API 호출에서 중복 메타 행 발생 (한 매장은 한 제품에서 36,867행에 도달) | v1.8.12+(무료) / v1.8.14+(Pro)에서 정리 마이그레이션으로 자동 수정됨 — 업데이트만 하면 됩니다 |
+| **Stripe Tax** | REST API로 생성된 주문(POS가 주문을 생성하는 방식)과 호환되지 않음 | 해결 방법 없음 — 호환되지 않음 |
+| **Mollie** | POS 결제에서 BACS(은행 송금) 방법을 숨길 수 있음 | Mollie를 최신 버전으로 업데이트하세요 |
+| **CTX Feed** | POS 설정 페이지에서 간헐적인 403 오류 | 비활성화하여 확인하세요; 알려진 해결 방법 없음 |
+| **서드파티 바코드 스캐너 플러그인** | 주문 API JSON을 손상시켜 주문 생성/표시를 손상시킴 | 비활성화하세요; POS의 기본 바코드 스캐닝을 사용하세요 |
+| **MailerLite** (Signup Forms + WooCommerce) | POS 주문 생성 시 500 오류 (메모리 고갈) | 비활성화하여 확인한 다음 MailerLite에 문의하세요 |
+| **The Courier Guy Shipping** | POS 주문 생성이 서버 오류로 실패함 | 이전 버전으로 롤백하거나 개발자에게 문의하세요 |
+| **PixelYourSite / PixelMySite** | 치명적 오류: _call to member function `is_type()` on bool_ | 일시적으로 비활성화하세요 |
+| **Google Listings & Ads** | 오토로더 충돌 → _"Class WCPOS\…\Stores not found"_ 치명적 오류 | 모든 POS 플러그인을 삭제하고 최신 Pro 독립형만 다시 설치하세요 |
+
+:::warning Stripe Terminal: 전역적으로 활성화하지 마세요
+**Stripe Terminal** 게이트웨이는 POS 설정 내에서**만** 활성화해야 하며, `WooCommerce > Settings > Payments`에서는 절대 활성화하지 마세요. 전역적으로 활성화하면 공개 스토어 결제에 표시되어 온라인 결제 흐름이 충돌합니다.
+:::
+
+### 서버 수준 충돌 {#server-level-conflicts}
+
+| 원인 | 증상 | 해결 방법 |
+| --- | --- | --- |
+| **사용자 정의 CSP 헤더** (`.htaccess`, Nginx 또는 보안 플러그인) | POS가 로고에서 멈춤; JS/CSS 차단됨 | v1.9.0+에서 POS 페이지에서 자동 제거됨. 서버 수준 CSP의 경우 `script-src`/`style-src`에서 `cdn.jsdelivr.net`을 허용하거나 `/pos/` 예외를 추가하세요 |
+| **GoDaddy Website Firewall** | `/wp-json/`을 차단함 (_"Received 'undefined'"_) | 방화벽에서 `/wp-json/` URL 경로를 허용하세요 — [서버 성능](/support/performance/server#hosting-specific-notes)을 참조하세요 |
+
 ## 일반적인 충돌 플러그인 유형 {#common-conflicting-plugin-types}
 
 ### 고위험 플러그인 카테고리 {#high-risk-plugin-categories}

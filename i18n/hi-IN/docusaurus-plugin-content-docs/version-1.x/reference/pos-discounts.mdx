@@ -1,0 +1,101 @@
+---
+title: POS छूट तकनीकी संदर्भ
+sidebar_label: POS Discounts
+description: "WCPOS कैसे POS लाइन-आइटम मूल्य ओवरराइड संग्रहीत करता है, वे WooCommerce कूपन के साथ कैसे इंटरैक्ट करते हैं, और उपलब्ध फ़िल्टर के लिए डेवलपर संदर्भ।"
+---
+
+# POS छूट तकनीकी संदर्भ
+
+यह पृष्ठ दस्तावेज़ करता है कि WCPOS कैशियर-लागू लाइन-आइटम मूल्य ओवरराइड को कैसे संभालता है — वे कैसे संग्रहीत होते हैं, वे WooCommerce कूपन के साथ कैसे इंटरैक्ट करते हैं, और कौन से फ़िल्टर उपलब्ध हैं। उपयोगकर्ता-सामना करने वाले दस्तावेज़ के लिए, [कार्ट छूट](/pos/cart/discounts) और [कूपन](/coupons) देखें।
+
+## POS मूल्य ओवरराइड कैसे संग्रहीत होते हैं {#how-pos-price-overrides-are-stored}
+
+जब एक कैशियर POS में किसी लाइन आइटम की कीमत सेट या बदलता है, तो प्रति-इकाई कीमतें `_woocommerce_pos_data` लाइन आइटम मेटा में JSON के रूप में संग्रहीत होती हैं:
+
+```json
+{
+  "price": "16.00",
+  "regular_price": "18.00",
+  "tax_status": "taxable"
+}
+```
+
+विविध (कस्टम) उत्पादों के लिए, यह मेटा कूपन सत्यापन के दौरान उपयोग किए जाने वाले `virtual`, `downloadable`, और `categories` फ़ील्ड भी ले जा सकता है।
+
+यह मेटा लाइन के लिए प्रति-इकाई कीमतों का आधिकारिक स्रोत है। लाइन आइटम पर WooCommerce का संग्रहीत `subtotal` `price * qty` से प्राप्त होता है (कर निष्कर्षण और राउंडिंग लागू के साथ)। संग्रहीत `total` कम हो सकता है जब कूपन छूट लागू होती है, इसलिए प्रति-इकाई परिशुद्धता के लिए आपको हमेशा `_woocommerce_pos_data.price` और `regular_price` पढ़ना चाहिए।
+
+## उप-योग मॉडल (v1.9.0+) {#subtotal-model-v190}
+
+v1.9.0 के अनुसार, WCPOS WooCommerce के मूल बिक्री-मूल्य शब्दार्थ के साथ संरेखित होता है:
+
+- `line_item.subtotal = price * qty` जहाँ `price` POS मूल्य है (किसी भी ओवरराइड के बाद)।
+- `line_item.total = subtotal - coupon_discount_for_line`।
+- `order.discount_total` **केवल कूपन छूट** को दर्शाता है, POS मूल्य ओवरराइड को नहीं।
+
+यह मेल खाता है कि WooCommerce बिक्री पर किसी उत्पाद को कैसे मानता है: `sale_price` उप-योग बन जाता है, और `discount_total` कूपन के लिए आरक्षित होता है। ऑर्डर पर कोई अलग "POS discount" लाइन नहीं होती।
+
+:::note 1.9.0-पूर्व से माइग्रेशन
+पुराने संस्करण `subtotal = regular_price * qty` भेजते थे, जिससे WooCommerce `discount_total = subtotal - total` की गणना करता था और POS मूल्य ओवरराइड को एक छूट के रूप में शामिल करता था। इसे बदल दिया गया क्योंकि यह कूपन गणित के साथ टकराता था: `recalculate_coupons()` `subtotal` को आधार मूल्य के रूप में उपयोग करता है, इसलिए कूपन मूल कीमत के विरुद्ध गणना करते और गलत योग उत्पन्न करते।
+
+पिछला सर्वर-साइड वर्कअराउंड — `recalculate_coupons()` के दौरान सक्रिय एक `woocommerce_order_item_get_subtotal` फ़िल्टर — को v1.9.0 में हटा दिया गया था। पूर्ण इतिहास के लिए [ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md) देखें।
+:::
+
+## कूपन इंटरैक्शन व्यवहार {#coupon-interaction-behaviour}
+
+कूपन समर्थन एक [WCPOS Pro](https://wcpos.com/pro) सुविधा है। जब किसी ऐसे ऑर्डर पर कूपन लागू किया जाता है जिसमें POS-छूट वाले आइटम होते हैं:
+
+1. कूपन `regular_price` मूल के बजाय **POS-छूट मूल्य** (`_woocommerce_pos_data.price` में मान) के विरुद्ध गणना करता है।
+2. जब एक कूपन हटाया जाता है, तो लाइन आइटम अपने POS-छूट मूल्य पर वापस आ जाता है।
+
+### `exclude_sale_items` व्यवहार {#exclude_sale_items-behaviour}
+
+जब `_woocommerce_pos_data.price < regular_price` होता है तो POS-छूट वाले आइटम को WooCommerce द्वारा "बिक्री पर" माना जाता है। `exclude_sale_items` सक्षम वाले कूपन इसलिए उन्हें छोड़ देंगे, जो इस बात के अनुरूप है कि WooCommerce नियमित बिक्री मूल्यों को कैसे मानता है।
+
+यदि आपको भिन्न व्यवहार की आवश्यकता है, तो नीचे `woocommerce_pos_item_is_on_sale` फ़िल्टर देखें।
+
+## उपलब्ध फ़िल्टर {#available-filters}
+
+### `woocommerce_pos_item_is_on_sale` {#woocommerce_pos_item_is_on_sale}
+
+ओवरराइड करें कि क्या एक POS-छूट वाले आइटम को कूपन सत्यापन उद्देश्यों के लिए "बिक्री पर" माना जाए।
+
+```php
+add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
+    // Allow coupons with exclude_sale_items to apply to POS-discounted items
+    return false;
+}, 10, 4 );
+```
+
+**पैरामीटर:**
+
+| पैरामीटर | प्रकार | विवरण |
+|---|---|---|
+| `$is_on_sale` | `bool` | क्या आइटम को बिक्री पर माना जाता है (डिफ़ॉल्ट: `price < regular_price`) |
+| `$product` | `WC_Product` | उत्पाद ऑब्जेक्ट |
+| `$item` | `WC_Order_Item_Product` | ऑर्डर लाइन आइटम |
+| `$pos_data` | `array` | डिकोड किया गया `_woocommerce_pos_data` JSON |
+
+## REST API एंडपॉइंट {#rest-api-endpoint}
+
+कूपन REST एंडपॉइंट **मुफ़्त प्लगइन** में `/wp-json/wcpos/v1/coupons` पर रहता है ताकि कूपन क्वेरी करते समय POS ऐप को कभी 404 प्राप्त न हो — उन साइटों पर भी जहाँ WCPOS Pro इंस्टॉल नहीं है। हालाँकि, उपयोगकर्ता-सामना करने वाली कूपन सुविधा के लिए स्वयं Pro की आवश्यकता होती है।
+
+कंट्रोलर POS-विशिष्ट जोड़ के साथ `WC_REST_Coupons_Controller` का विस्तार करता है:
+
+- ऑफ़लाइन-फ़र्स्ट सिंक के लिए UUID हैंडलिंग
+- अनुमति जाँच के लिए `access_woocommerce_pos` क्षमता
+- अनुकूलित बल्क-ID क्वेरी पथ जब `posts_per_page=-1` और `fields=id` (या `fields=id,date_modified_gmt`) का अनुरोध किया जाता है
+
+## रसीद डेटा एक्सपोज़र {#receipt-data-exposure}
+
+रसीद डेटा बिल्डर (`Receipt_Data_Builder`) उजागर करता है:
+
+- `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — प्रति-लाइन छूट राशि, `subtotal - total` के रूप में गणना की गई। v1.9.0 से यह POS मूल्य ओवरराइड के लिए **केवल कूपन छूट** को दर्शाता है, क्योंकि जब कोई कूपन लागू नहीं होता तो `subtotal === total` होता है।
+- `totals.discount_total`, `totals.discount_total_incl`, `totals.discount_total_excl` — `WC_Order::get_discount_total()` से ऑर्डर-स्तरीय कूपन छूट योग।
+- `discounts[]` — `label`, `code`, और `total` के साथ कूपन लाइन आइटम की सरणी।
+
+लाइन आइटम का अंडरस्कोर-उपसर्ग वाला मेटा (`_woocommerce_pos_data` सहित) `Receipt_Data_Builder::get_item_meta_pairs()` द्वारा `lines[].meta` से फ़िल्टर कर दिया जाता है, इसलिए `regular_price` टेम्पलेट को सीधे उपलब्ध नहीं होता है। यदि आपको रसीदों पर नियमित और POS मूल्य के बीच के अंतर को सामने लाने की आवश्यकता है, तो इसे [समर्थन](https://wcpos.com/support) के माध्यम से अनुरोध करें।
+
+## संबंधित {#related}
+
+- [कार्ट छूट](/pos/cart/discounts) — कैशियर-लागू छूट के लिए उपयोगकर्ता-सामना करने वाली मार्गदर्शिका
+- [कूपन](/coupons) — POS में WooCommerce कूपन के लिए उपयोगकर्ता-सामना करने वाली मार्गदर्शिका (Pro)

@@ -1,0 +1,77 @@
+---
+title: Architectuur
+sidebar_label: Architectuur
+sidebar_position: 2
+description: "Technische architectuur van WCPOS, met uitleg over hoe de POS-client communiceert met de WooCommerce REST API."
+---
+
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+
+Deze pagina legt de technische architectuur van WCPOS uit voor ontwikkelaars en gevorderde gebruikers.
+
+## Tweedelig systeem {#two-part-system}
+
+WCPOS is ontworpen als een tweedelig systeem:
+
+1. **PHP-plug-in:** Gehost op je server, dit is een relatief kleine plug-in die de [WooCommerce REST API](/reference/wc-rest-api) uitbreidt.
+
+2. **JavaScript-client:** Deze draait lokaal in je browser of de desktop-app, en later in iOS- en Android-apps.
+
+Je kunt het zien als twee aparte werelden:
+
+- De _PHP-wereld_ is waar databeheer plaatsvindt met behulp van WordPress en WooCommerce.
+- De _JavaScript-wereld_ repliceert je WooCommerce-winkel lokaal, geoptimaliseerd voor snel zoeken en offlinegebruik.
+
+<LocalizedSVG svgName="pos-client-woo-server" />
+
+## Gegevenssynchronisatie {#data-synchronization}
+
+Gegevens worden opgehaald uit WooCommerce via de [WooCommerce REST API](https://woocommerce.github.io/woocommerce-rest-api-docs/). Dit betekent dat de POS elk product, elke variatie, productcategorie, klant, belastingtarief en meer moet downloaden om ze lokaal op te slaan.
+
+Hoewel dit aanvankelijk tijdrovend kan zijn, zijn ze na het downloaden onmiddellijk beschikbaar zonder dat ze voortdurend van de server hoeven te worden opgehaald.
+
+### Wat wordt er gesynchroniseerd? {#what-gets-synced}
+
+- Producten en variaties
+- Productcategorieën en tags
+- Klanten
+- Belastingtarieven en belastingklassen
+- Betaalgateways (voor het afrekenen)
+- Bestellingen (voor de bestelgeschiedenis in Pro)
+
+### Synchronisatiestrategie {#sync-strategy}
+
+WCPOS gebruikt een incrementele synchronisatiestrategie:
+
+1. **Initiële synchronisatie:** Downloadt alle gegevens bij de eerste keer laden
+2. **Incrementele updates:** Haalt alleen wijzigingen op sinds de laatste synchronisatie
+3. **Achtergrondsynchronisatie:** Controleert periodiek op updates
+4. **Handmatige synchronisatie:** Gebruiker kan op elk moment een synchronisatie starten
+
+## Voor- en nadelen van de architectuur {#architecture-pros-and-cons}
+
+| Goed 😊 | Slecht 😟 |
+| ------------------------------------------------------------------ | -------------------------------------------------------- |
+| Zoeken in lokale gegevens is direct | Gegevens gesynchroniseerd houden is een uitdaging |
+| Gecachte gegevens offline beschikbaar | Beperkt door de WooCommerce REST API |
+| Mogelijkheid om betere native apps te maken voor desktop, iOS en Android | WordPress-thema's en hooks kunnen de POS-app niet aanpassen |
+
+## Lokale database {#local-database}
+
+De JavaScript-client slaat gegevens op in IndexedDB, een browsergebaseerde database. Dit biedt:
+
+- **Persistentie:** Gegevens blijven behouden na herstart van de browser
+- **Prestaties:** Snelle query's zonder netwerklatentie
+- **Offline bladeren:** Gecachte gegevens blijven toegankelijk zonder internet
+
+## Afrekenarchitectuur {#checkout-architecture}
+
+Het afrekenproces gebruikt een iframe/webview die de WooCommerce Order Pay-pagina laadt. Deze aanpak:
+
+- **Maakt gebruik van bestaande betaalgateways:** Elke WooCommerce-betaalgateway kan in de POS werken
+- **Handhaaft de beveiliging:** Betalingsverwerking verloopt via de veilige infrastructuur van WooCommerce
+- **Vermindert complexiteit:** Geen noodzaak om integraties van betaalgateways opnieuw te implementeren
+
+## API-uitbreidingen {#api-extensions}
+
+De PHP-plug-in breidt de WooCommerce REST API uit met extra endpoints voor POS-specifieke functionaliteit. Zie [WooCommerce REST API](/reference/wc-rest-api) voor details.

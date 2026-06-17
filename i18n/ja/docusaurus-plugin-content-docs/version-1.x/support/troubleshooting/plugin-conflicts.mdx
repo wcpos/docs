@@ -2,7 +2,7 @@
 title: プラグインの競合
 sidebar_label: プラグインの競合
 sidebar_position: 3
-description: WCPOSに影響を与えるWordPressプラグインの競合を特定し、系統的なトラブルシューティング手法を使って解決します。
+description: "WCPOSに影響を与えるWordPressプラグインの競合を特定し、系統的なトラブルシューティング手法を使って解決します。"
 ---
 
 import Image from "@theme/IdealImage";
@@ -212,6 +212,76 @@ import SupportContact from '@site/src/components/SupportContact';
 **ソーシャルメディアプラグイン:** 競合を引き起こすことはまれです
 **分析プラグイン:** 非常に重いものでない限り一般的に安全です
 **基本的なコンテンツプラグイン:** 通常互換性があります
+
+## 既知のプラグイン競合 {#known-plugin-conflicts}
+
+以下のプラグインは WCPOS に干渉することが知られています。多くの問題は最近の WCPOS バージョンですでに自動的に修正されています — **最新バージョンに更新する**ことで、設定なしにそれらが解決されます。
+
+:::tip ほとんどの修正は「POS を除外する」です
+共通点は次のとおりです。WCPOS は WooCommerce REST API に依存しており、一部のフロー（ログイン、支払い、レシート）を iframe でレンダリングします。通常の修正は、他のプラグインから **POS エンドポイント／URL**（`/wp-json/wcpos/`、`/wp-json/wc/v3/`、`/pos/` パス）を**除外する**ことであり、プラグインを完全に無効にすることではありません。
+:::
+
+### セキュリティ・ログインプラグイン {#security-and-login-plugins}
+
+これらは、特にデスクトップ／モバイルアプリのログインにおいて、**最も一般的な**競合の原因です。
+
+| プラグイン | 症状 | 修正 |
+| --- | --- | --- |
+| **Wordfence** | ファイアウォールが REST API をブロックする；2FA コードフィールドがログイン iframe 内でレンダリングされない；制限的な CSP が POS アセットをブロックすることがある | ファイアウォールで `/wp-json/wcpos/` と `/wp-json/wc/v3/` をホワイトリストに登録します。2FA の場合：POS ユーザーに対して一時的に無効にします。CSP は v1.9.0 以降で自動的に除去されます |
+| **Really Simple Security** | API アクセスをブロックする／リダイレクトを強制する | プラグインの **Advanced** 設定で REST API の制限を無効にします |
+| **WPS Hide Login** | カスタムログイン URL がアプリのログイン iframe を壊す | POS アクセスには標準の `/wp-admin/` ログイン URL を使用します |
+| **iThemes / Solid Security** | REST API をブロックするか、POS 呼び出しからブルートフォースロックアウトをトリガーする | POS エンドポイントとサーバー自身の IP のみをホワイトリストに登録します — 一律の IP ルールは避けてください |
+| **Sucuri** | WAF が API リクエストをブロックする | Sucuri ダッシュボードで REST API エンドポイントをホワイトリストに登録します |
+| **Security Optimizer** | 管理者の POS ログインをブロックする（_「カスタムログイン URL を使用してください」_） | 最初にカスタム URL から WP Admin にログインし、その後 `/pos` に移動します |
+| **Force Login**（および類似の REST 認証プラグイン） | `/wp-json/` が 401/403 を返す；古いアプリは _「サイトが WordPress サイトではないようです」_ と報告した | POS エンドポイントへの未認証アクセスを許可するか、初回接続時に無効にします。v1.x のアプリは実際のエラーメッセージを表示するようになりました |
+| **LoginPress** | メールベースのログインを強制する；マルチユーザーの POS ログインを壊す | ユーザー名でのログインを許可するか、POS アクセスに対して無効にします |
+| **JWT Authentication プラグイン** | 有効化後、すべての POS API リクエストで 403（ログインは成功しても、それ以外はすべて失敗する） | v1.8.x 以降で自動修正されました。古いバージョンでは、JWT プラグインを無効化するか、POS エンドポイントを除外します |
+| **Captcha / reCAPTCHA** | デスクトップアプリでのログインループ（captcha が iframe 内でレンダリングできない） | POS ログイン URL に対して captcha を無効にします |
+| **Defender Pro** | `X-Frame-Options` ヘッダーがすべての POS iframe（ログイン、支払い、レシート）をブロックする | サイト全体で `X-Frame-Options` を無効にするのではなく、`/pos/` に POS 固有の例外を追加します |
+| **Jetpack CRM Client Portal** | POS ログインを完全に壊す | Client Portal 拡張機能だけを無効にします |
+
+### パフォーマンス・キャッシュ・最適化プラグイン {#performance-caching-optimisation-plugins}
+
+| プラグイン | 症状 | 修正 |
+| --- | --- | --- |
+| **WP Rocket, Autoptimize, Hummingbird, Smush** | JS の遅延／最小化がチェックアウトと Stripe Terminal を壊す | JS 最適化から `/pos/` URL を除外します |
+| **LiteSpeed Cache** | デスクトップアプリのチェックアウトで絶え間ないリロードループ；制限的な CSP | WCPOS を更新し、キャッシュをパージし、POS ページをキャッシュから除外します。CSP は v1.9.0 以降で自動除去されます |
+| **Image Prioritizer** | HTTP の `Link` ヘッダーをスパムし、REST API ディスカバリーを壊す；デスクトップアプリが _「WordPress サイトではないようです」_ と表示する | プラグインを無効化します |
+
+### ページビルダー・フロントエンドインジェクター {#page-builders-front-end-injectors}
+
+| プラグイン | 症状 | 修正 |
+| --- | --- | --- |
+| **Elementor** | `elementor-frontend.js` が POS iframe 内のチェックアウトアコーディオンを壊す — 支払い方法が展開されない | Elementor のスクリプト読み込みから POS ページを除外します |
+| **Omnisend / マーケティングプラグイン** | チェックアウト iframe にスクリプトを注入し、レイアウトと支払いを壊す | POS の **Checkout Settings** を使用して、不要なスクリプトを無効にします |
+| **MyStickyElements / Complianz** | チェックアウト iframe にオーバーレイ（固定ボタン、Cookie バナー）を注入する | `/pos/` URL を除外するように設定します |
+
+### WooCommerce 拡張機能・その他のプラグイン {#woocommerce-extensions-other-plugins}
+
+| プラグイン | 症状 | 修正 |
+| --- | --- | --- |
+| **WooCommerce Subscriptions** | v1.7→v1.8 のアップグレード中の移行スクリプトの競合 | Subscriptions を無効化し、POS Pro を有効化し（移行を実行させ）、その後再度有効にします |
+| **WP Activity Log** | すべての POS アクションをログに記録 → postmeta の肥大化 → _「商品が 10 件しかない」_ | 無効化するか、POS の投稿タイプをログ記録から除外します |
+| **Jetpack / Astra / Xero**（`save_post` にフックするもの全般） | すべての POS API 呼び出しで重複したメタ行（あるストアでは 1 つの商品で 36,867 行に達した） | クリーンアップ移行により v1.8.12 以降（無料）／ v1.8.14 以降（Pro）で自動修正されました — 更新するだけです |
+| **Stripe Tax** | REST API で作成された注文（POS が注文を作成する方法）と互換性がない | 回避策なし — 互換性がありません |
+| **Mollie** | BACS（銀行振込）方法を POS チェックアウトから隠すことがある | Mollie を最新バージョンに更新します |
+| **CTX Feed** | POS 設定ページで断続的な 403 エラー | 確認のために無効化します；既知の回避策はありません |
+| **サードパーティのバーコードスキャナープラグイン** | 注文 API の JSON を破損させ、注文の作成／表示を壊す | それらを無効化します；POS の組み込みバーコードスキャンを使用します |
+| **MailerLite**（Signup Forms + WooCommerce） | POS の注文作成で 500 エラー（メモリ枯渇） | 確認のために無効化し、その後 MailerLite に連絡します |
+| **The Courier Guy Shipping** | POS の注文作成がサーバーエラーで失敗する | 以前のバージョンにロールバックするか、開発者に連絡します |
+| **PixelYourSite / PixelMySite** | 致命的エラー：_bool に対するメンバー関数 `is_type()` の呼び出し_ | 一時的に無効化します |
+| **Google Listings & Ads** | オートローダーの競合 → _「Class WCPOS\…\Stores not found」_ クリティカルエラー | すべての POS プラグインを削除し、最新の Pro スタンドアロンのみを再インストールします |
+
+:::warning Stripe Terminal：グローバルに有効にしないでください
+**Stripe Terminal** ゲートウェイは POS Settings 内で**のみ**有効にし、`WooCommerce > Settings > Payments` では決して有効にしないでください。グローバルに有効にすると、公開ストアのチェックアウトに表示され、オンラインチェックアウトフローがクラッシュします。
+:::
+
+### サーバーレベルの競合 {#server-level-conflicts}
+
+| 原因 | 症状 | 修正 |
+| --- | --- | --- |
+| **カスタム CSP ヘッダー**（`.htaccess`、Nginx、またはセキュリティプラグイン） | POS がロゴで止まる；JS/CSS がブロックされる | v1.9.0 以降では POS ページで自動除去されます。サーバーレベルの CSP の場合は、`script-src`/`style-src` で `cdn.jsdelivr.net` を許可するか、`/pos/` の例外を追加します |
+| **GoDaddy Website Firewall** | `/wp-json/` をブロックする（_「Received 'undefined'」_） | ファイアウォールで `/wp-json/` の URL パスを許可します — [サーバーパフォーマンス](/support/performance/server#hosting-specific-notes)を参照 |
 
 ## 予防のヒント {#prevention-tips}
 

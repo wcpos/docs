@@ -1,0 +1,118 @@
+---
+title: ロール別エンドポイントアクセス
+sidebar_label: ロール別エンドポイントアクセス
+sidebar_position: 3
+description: "各デフォルトロール（administrator、shop_manager、cashier）がアクセスできる WCPOS REST エンドポイントの開発者向けリファレンス。トークン有効期限の挙動と診断のヒントも含みます。"
+---
+
+このページでは、POS ワークフローで使用される 3 つのデフォルトロールそれぞれがアクセスできる WCPOS REST エンドポイントを文書化します：
+
+- `administrator`
+- `shop_manager`
+- `cashier`
+
+ユーザー向けのロールおよび権限の設定については、[POS へのアクセス](/settings/wp-admin/access)を参照してください。
+
+## 概要 {#summary}
+
+デフォルトのアクセスモデルは次のとおりです：
+
+- **`administrator`** — POS と管理機能へのフルアクセス。
+- **`shop_manager`** — プラグインインストール権限を必要とするプラグイン拡張アクションを除き、POS と管理機能へのフルアクセス。
+- **`cashier`** — 通常の POS 販売ワークフローへのアクセス。ただし、管理、設定、ログ、ストア管理へのアクセスはなし。
+
+エンドポイントマトリックスは、POS アプリと同じ認証パス（`wp_set_current_user()` だけでなく WCPOS のベアラーアクセストークン）を使用する統合テストによって検証されています。許可されたエンドポイントのアサーションは、ロールが `401` または `403` を受け取らないことを確認します。テストが最小限のフィクスチャを使用する場合、一部のエンドポイントは通常のデータや `400` や `404` などのビジネスエラーを返すことがあります — それらのレスポンスでも、ユーザーが認証／権限レイヤーを通過したことは証明されます。
+
+## 無料プラグインのエンドポイントアクセスマトリックス {#free-plugin-endpoint-access-matrix}
+
+| 領域 | エンドポイント例 | Admin | Shop Manager | Cashier | 備考 |
+|---|---|---:|---:|---:|---|
+| 設定インデックス | `GET /wcpos/v1/settings` | ✅ | ✅ | ✅ | 公開／読み取り可能な POS 設定インデックス |
+| ストア | `GET /wcpos/v1/stores` | ✅ | ✅ | ✅ | POS ブートデータ |
+| キャッシャープロフィール | `GET /wcpos/v1/cashier/{id}` | ✅ | ✅ | ✅ | 自分のキャッシャーデータ |
+| キャッシャーストア | `GET /wcpos/v1/cashier/{id}/stores` | ✅ | ✅ | ✅ | 現在のキャッシャーのストアアクセス |
+| 商品 | `GET /wcpos/v1/products` | ✅ | ✅ | ✅ | カタログの閲覧 |
+| バリエーション | `GET /wcpos/v1/products/variations` | ✅ | ✅ | ✅ | カタログの閲覧 |
+| カテゴリー | `GET /wcpos/v1/products/categories` | ✅ | ✅ | ✅ | カタログフィルター |
+| タグ | `GET /wcpos/v1/products/tags` | ✅ | ✅ | ✅ | カタログフィルター |
+| ブランド | `GET /wcpos/v1/products/brands` | ✅ | ✅ | ✅ | カタログフィルター |
+| クーポン | `GET /wcpos/v1/coupons` | ✅ | ✅ | ✅ | POS クーポン検索 |
+| 注文の読み取り | `GET /wcpos/v1/orders` | ✅ | ✅ | ✅ | POS 注文履歴 |
+| 注文の作成 | `POST /wcpos/v1/orders` | ✅ | ✅ | ✅ | 販売ワークフロー |
+| 注文の更新 | `PATCH /wcpos/v1/orders/{id}` | ✅ | ✅ | ✅ | POS 注文の完了／更新 |
+| チェックアウトの読み取り／作成 | `/wcpos/v1/orders/{id}/checkout` | ✅ | ✅ | ✅ | 支払いフロー |
+| レシート | `GET /wcpos/v1/receipts/{order_id}` | ✅ | ✅ | ✅ | レシートのレンダリング |
+| 注文ステータス | `GET /wcpos/v1/data/order_statuses` | ✅ | ✅ | ✅ | POS ステータスデータ |
+| 顧客の読み取り | `GET /wcpos/v1/customers` | ✅ | ✅ | ✅ | 顧客の検索／一覧 |
+| 顧客の作成 | `POST /wcpos/v1/customers` | ✅ | ✅ | ✅ | POS での顧客作成 |
+| 顧客の更新 | `PATCH /wcpos/v1/customers/{id}` | ✅ | ✅ | ✅ | POS での顧客編集 |
+| 税 | `GET /wcpos/v1/taxes` | ✅ | ✅ | ✅ | チェックアウト／税計算データ |
+| 税クラス | `GET /wcpos/v1/taxes/classes` | ✅ | ✅ | ✅ | チェックアウト／税計算データ |
+| 配送方法 | `GET /wcpos/v1/shipping_methods` | ✅ | ✅ | ✅ | チェックアウト／配送データ |
+| 支払いゲートウェイ | `GET /wcpos/v1/payment-gateways` | ✅ | ✅ | ✅ | 支払いオプション |
+| ゲートウェイのブートストラップ | `POST /wcpos/v1/payment-gateways/{id}/bootstrap` | ✅ | ✅ | ✅ | 支払いのセットアップ |
+| テンプレート | `GET /wcpos/v1/templates` | ✅ | ✅ | ✅ | レシート／テンプレートの読み取り |
+| アクティブなテンプレート | `GET /wcpos/v1/templates/active` | ✅ | ✅ | ✅ | レシート／テンプレートの読み取り |
+| テンプレートギャラリー | `GET /wcpos/v1/templates/gallery` | ✅ | ✅ | ✅ | テンプレートの読み取り |
+| 一般設定 | `GET /wcpos/v1/settings/general` | ✅ | ✅ | ❌ | 管理者専用 |
+| チェックアウト設定 | `GET /wcpos/v1/settings/checkout` | ✅ | ✅ | ❌ | 管理者専用 |
+| 税 ID 設定 | `GET /wcpos/v1/settings/tax_ids` | ✅ | ✅ | ❌ | 管理者専用 |
+| 支払いゲートウェイ設定 | `GET /wcpos/v1/settings/payment-gateways` | ✅ | ✅ | ❌ | 管理者専用 |
+| 拡張機能カタログ／管理 | `GET /wcpos/v1/extensions` | ✅ | ✅ | ❌ | 管理者専用 |
+| ログ | `GET /wcpos/v1/logs` | ✅ | ✅ | ❌ | 管理者専用 |
+
+## Pro プラグインのエンドポイントアクセスマトリックス {#pro-plugin-endpoint-access-matrix}
+
+| 領域 | エンドポイント例 | Admin | Shop Manager | Cashier | 備考 |
+|---|---|---:|---:|---:|---|
+| ストア編集データ | `GET /wcpos/v1/stores/{id}/edit` | ✅ | ✅ | ❌ | ストア管理 |
+| ストアの作成 | `POST /wcpos/v1/stores` | ✅ | ✅ | ❌ | ストア管理 |
+| ストアの更新 | `PATCH /wcpos/v1/stores/{id}` | ✅ | ✅ | ❌ | ストア管理 |
+| ライセンス設定の更新 | `POST /wcpos/v1/settings/license` | ✅ | ✅ | ❌ | Pro 管理 |
+| 拡張機能アクション | `POST /wcpos/v1/extensions/action` | ✅ | ❌ | ❌ | プラグインのインストール／管理権限が必要 |
+| 注文返金 | `POST /wcpos/v1/orders/{id}/refunds` | ✅ | ✅ | ✅ | POS 操作として扱われる |
+
+## トークン有効期限のカバレッジ {#token-expiry-coverage}
+
+| シナリオ | Admin | Shop Manager | Cashier | 期待される結果 |
+|---|---:|---:|---:|---|
+| 有効なアクセストークン | ✅ テスト済み | ✅ テスト済み | ✅ テスト済み | 許可されたエンドポイントは `401` または `403` を返さない |
+| 期限切れのアクセストークン | ✅ テスト済み | ✅ テスト済み | ✅ テスト済み | リクエストは WCPOS 認証ゲートでユーザー `0` として失敗する |
+| 期限切れアクセス後の有効なリフレッシュトークン | ✅ テスト済み | ✅ テスト済み | ✅ テスト済み | 新しいアクセストークンが発行され、アクセスが復元される |
+| 期限切れのリフレッシュトークン | ✅ テスト済み | ✅ テスト済み | ✅ テスト済み | 新しいアクセストークンを発行できない |
+
+## 失敗の診断 {#diagnosing-failures}
+
+デフォルトの `shop_manager` が次のようなエラーを見る場合：
+
+> Request still unauthorized after token refresh - please log in again
+
+エンドポイントマトリックスは、これがデフォルトの `shop_manager` ロールが根本的に POS アクセスを欠いているためでは**ない**ことを示しています。調査すべき考えられる原因：
+
+1. サイト固有のロール／権限の破損。
+2. マトリックスでカバーされていないエンドポイント。
+3. クライアントでの古いまたは期限切れのアクセストークンの再試行動作。
+4. サードパーティのセキュリティまたは認証プラグインの干渉。
+5. Pro またはストア固有のアクセスルール、あるいはカスタムコード。
+
+### 権限の失敗とトークンの失敗 {#permission-failure-vs-token-failure}
+
+POS フロントエンドは、`401` または `403` を受け取り、トークンの更新を試みても再試行がまだ認可されていない場合、両方のケースで同じトークン更新エラーを表示することがあります。これら 2 つの失敗モードは、サーバー側では異なって見えます：
+
+**実際のロール／権限の失敗**は通常、次のようになります：
+
+```text
+status: 403
+current_user: <actual user id>
+access token expired: false
+```
+
+**トークン／認証の失敗**は通常、次のようになります：
+
+```text
+status: 403
+current_user: 0
+access token expired: true or invalid
+```
+
+POS アクセスの問題をトリアージする際にこの区別を使用してください — ゼロでない `current_user` は権限を指し、`current_user: 0` は認証／トークンレイヤーを指します。

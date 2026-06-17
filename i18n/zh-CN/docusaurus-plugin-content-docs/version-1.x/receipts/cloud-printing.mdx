@@ -1,0 +1,249 @@
+---
+title: 云打印
+sidebar_label: 云打印
+sidebar_position: 2
+description: "将 WCPOS 收据打印到未连接到收银台的打印机——Star Online、Star CloudPRNT、Epson Server Direct Print 和 PrintNode。"
+---
+
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import FeatureCard from '@site/src/components/FeatureCard';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+云打印让 WCPOS 能够将收据发送到未直接连接运行收银台设备的打印机。在 WP Admin 中设置一次后，您的订单就会打印到厨房打印机、后台打印机或其他房间的打印机——无需每台设备各自去发现并与硬件配对。
+
+## 什么是云打印？ {#what-is-cloud-printing}
+
+使用**本地打印**时，运行 POS 的设备通过 USB、蓝牙或本地网络直接与打印机通信。当打印机就放在收银台旁边时，这是正确的选择——有关在同一设备上连接 USB、蓝牙和网络打印机的方法，请参阅[打印机设置](/hardware/printers)。
+
+**云打印**适用于其他所有情况：位于不同地点、不同网络上的打印机，或者您希望每台设备共享而无需在每台设备上分别配置的打印机。共有两种投递模式：
+
+- **轮询打印机。** 打印机按计划通过互联网主动联系 WCPOS，询问“有没有给我的任务？”，然后拉取所有待处理的任务。WCPOS 从不连接打印机——始终由打印机发起通信。**Star CloudPRNT** 和 **Epson Server Direct Print** 就是这样工作的。
+- **托管中继提供商。** WCPOS 将打印任务提交给托管服务，该服务再将其投递给打印机。**Star Online** 和 **PrintNode** 就是这样工作的。Star Online 投递到您 stario.online 账户中注册的 Star CloudPRNT 打印机；PrintNode 通过其桌面客户端投递到该计算机已经能够打印的几乎任何打印机。
+
+:::info 为什么用轮询打印机？
+轮询打印机不需要开放端口、静态 IP 或任何防火墙更改——它只发出出站请求。这使它非常适合位于远程站点或在您无法控制的路由器后面的打印机。代价是会有短暂延迟：打印机只在下一次轮询到来时才打印。
+:::
+
+## 选择提供商 {#providers}
+
+选择与您硬件匹配的提供商。
+
+<FeatureGrid>
+  <FeatureCard icon="print" title="Star CloudPRNT">
+    适用于运行 **CloudPRNT** 固件的 Star 热敏打印机。打印机轮询 WCPOS 并拉取任务。收据被渲染为打印机的原生命令。需要热敏模板。
+  </FeatureCard>
+  <FeatureCard icon="print" title="Star Online">
+    适用于在 **stario.online** 账户中注册的 Star 打印机。WCPOS 将 Star Document Markup 提交给 Star 的托管服务，打印机从 Star Online 收取它。需要热敏模板。
+  </FeatureCard>
+  <FeatureCard icon="print" title="Epson Server Direct Print">
+    适用于支持 **Server Direct Print** 的 Epson ePOS 打印机。打印机轮询 WCPOS 并以 ePOS-Print XML 拉取任务。需要热敏模板。
+  </FeatureCard>
+  <FeatureCard icon="desktop" title="PrintNode">
+    通过 **PrintNode 桌面客户端**，几乎可以在任何操作系统上配合您计算机能够打印的任何打印机使用。WCPOS 提交 PDF，因此您可以使用任何模板——包括整页 HTML 发票。
+  </FeatureCard>
+</FeatureGrid>
+
+| 提供商 | 硬件 | 任务流向 | 模板 |
+|----------|----------|---------------|-----------|
+| **Star CloudPRNT** | 带 CloudPRNT 固件的 Star 热敏打印机 | 打印机轮询 WCPOS | 仅热敏 |
+| **Star Online** | 在 stario.online 中注册的 Star 打印机 | WCPOS 将 Star Document Markup 提交给 Star Online | 仅热敏 |
+| **Epson Server Direct Print** | 带 Server Direct Print 的 Epson ePOS 打印机 | 打印机轮询 WCPOS | 仅热敏 |
+| **PrintNode** | 任何操作系统连接的打印机 + PrintNode 客户端 | WCPOS 将 PDF 提交给 PrintNode | 任何模板 |
+
+## 设置云打印机 {#setup}
+
+云打印机在 WP Admin 中配置一次，并在每台设备间共享——这与按设备存储的本地打印机不同。
+
+前往 **WP Admin > POS > Settings > Cloud Print** 并点击 **Add printer**。为其设置一个**名称**（例如“Kitchen”或“Back office”）。WCPOS 会自动从打印机派生出一个稳定的**打印机 ID**——它永远不会改变，因此可以放心地在打印机固件配置中引用它。
+
+打印机创建后，配置提供商端。
+
+### Star 或 Epson（轮询打印机） {#setup-polling}
+
+<Steps>
+  <StepCard number="1" title="在 WCPOS 中添加打印机">
+
+在 **WP Admin > POS > Settings > Cloud Print** 中，添加一台打印机，并选择 **Star CloudPRNT** 或 **Epson Server Direct Print** 作为提供商。WCPOS 会为该打印机生成一个**轮询 URL** 和一个**一次性令牌**。
+
+  </StepCard>
+  <StepCard number="2" title="复制轮询 URL 和令牌">
+
+复制生成的轮询 URL 和令牌。该**令牌只显示一次**——如果丢失，请从打印机卡片重新生成一个新令牌，并用新值更新打印机。
+
+  </StepCard>
+  <StepCard number="3" title="在打印机配置中输入它们" isLast>
+
+打开打印机的配置页面——Star 为 **CloudPRNT** 设置，Epson 为 **Server Direct Print** 设置——并粘贴轮询 URL 和令牌。如果打印机要求设置轮询间隔，请设置一个（通常为几秒）。如有需要，保存并重启打印机。
+
+在一个轮询周期内，打印机会签入，其在 WCPOS 中的状态会从 **Waiting** 变为 **Connected**。
+
+  </StepCard>
+</Steps>
+
+### PrintNode {#setup-printnode}
+
+<Steps>
+  <StepCard number="1" title="安装 PrintNode 桌面客户端">
+
+在一台已经能够打印到目标打印机的计算机上，安装 **PrintNode 客户端**并登录。客户端必须保持运行并在线，任务才能打印。
+
+  </StepCard>
+  <StepCard number="2" title="获取 PrintNode API 密钥">
+
+在您的 PrintNode 账户中，创建一个 **API 密钥**。这正是让 WCPOS 能够向您的 PrintNode 账户提交任务的凭据。
+
+  </StepCard>
+  <StepCard number="3" title="在 WCPOS 中输入 API 密钥">
+
+在 **WP Admin > POS > Settings > Cloud Print** 中添加一台打印机，选择 **PrintNode** 作为提供商，并粘贴 API 密钥。WCPOS 使用它来获取注册到您 PrintNode 账户的打印机列表。
+
+  </StepCard>
+  <StepCard number="4" title="选择打印机" isLast>
+
+从 PrintNode 客户端报告的打印机列表中选择目标打印机，然后保存。WCPOS 会将此打印机的任务提交给 PrintNode，客户端负责打印。
+
+  </StepCard>
+</Steps>
+
+### Star Online {#setup-star-online}
+
+当您的 Star 打印机已注册到 **stario.online** 账户，并且您希望由 Star 的托管服务处理投递时，请使用 Star Online。
+
+<Steps>
+  <StepCard number="1" title="获取 CloudPRNT URL">
+
+在 stario.online 中，打开 **Device Groups** 并复制该组的 **CloudPRNT URL**。它应类似于 `https://device.stario.online/cloudprnt/...` 或 `https://eu-device.stario.online/cloudprnt/...`。
+
+  </StepCard>
+  <StepCard number="2" title="创建带权限的 API 密钥">
+
+在 stario.online 中，为 WCPOS 创建一个 API 密钥。该密钥必须具有列出设备和向其打印的权限。至少需启用：
+
+- **EnumDevices** —— WCPOS 获取设备列表时所需
+- **ViewDevice** —— 用于设备状态检查
+- **PrintToDevice** —— 提交打印任务所需
+- **ViewDeviceGroups** —— 推荐用于组查询和诊断
+
+如果未启用这些权限，API 密钥即使存在也可能失败。
+
+  </StepCard>
+  <StepCard number="3" title="在 WCPOS 中输入 URL 和 API 密钥">
+
+在 **WP Admin > POS > Settings > Cloud Print** 中添加一台打印机，选择 **Star Online** 作为提供商，然后粘贴 CloudPRNT URL 和 API 密钥。点击 **Fetch my devices**。
+
+  </StepCard>
+  <StepCard number="4" title="选择 Star 设备" isLast>
+
+从设备列表中选择打印机并保存。WCPOS 在服务器端存储 API 密钥，并在向 Star Online 提交任务时使用所选设备的访问标识符。
+
+  </StepCard>
+</Steps>
+
+## 自动打印规则 {#auto-print}
+
+自动打印规则决定什么内容自动打印到哪里——以普通的句子形式编写。一条规则是 **范围 × 打印机 × 模板**，例如：
+
+> 将**每个订单**使用**厨房票据**打印到**厨房**。
+
+当匹配的订单完成时，WCPOS 会在服务器端将所选**模板**渲染成打印机所需的格式并加入队列——收银员无需做任何操作。
+
+:::note 模板兼容性很重要
+Star 和 Epson 打印机只能使用**热敏**模板，因为任务必须渲染为打印机的原生命令语言（Star 用 Star Document Markup 或 ESC/POS，Epson 用 ePOS-Print）。PrintNode 可以使用**任何**模板——热敏或整页 HTML——因为任务会渲染为 **PDF**。如果某个模板没有作为某台打印机的选项出现，那是因为该打印机无法渲染该格式。有关创建热敏布局的信息，请参阅[热敏模板](/receipts/thermal-templates)。
+:::
+
+## 按店铺打印机（Pro） {#per-store-printers}
+
+:::info Pro 功能
+按店铺打印路由需要 [WCPOS Pro](/getting-started/pro-license) 和[多店铺](/stores)设置。
+:::
+
+默认情况下，自动打印规则是全局的——所有店铺共享它们。使用 Pro 后，您可以为单个店铺设置其**专属**的云打印规则，使其订单打印到自己的打印机（某个地点的厨房票据不应在另一个地点打印）。
+
+在 **POS → Stores** 下编辑店铺，打开其 **Cloud Printing** 部分，然后点击 **Add rule**。每条规则包含：
+
+- **打印机 ID** —— 要发送到的云打印机的稳定 ID
+- **范围** —— **仅 POS 订单**（默认）、**仅在线订单**或**每个订单**
+- **格式** —— **StarPRNT**（默认）、**ESC/POS**、**Epson ePOS-Print** 或 **HTML**
+
+当订单属于某个拥有自己规则的店铺时，WCPOS 会将其路由到该店铺的打印机。如果某个店铺**没有**自己的规则，它会**回退到全局**自动打印规则——因此您只需配置有差异的店铺。
+
+## 手动打印 {#manual}
+
+您不必等待自动打印规则触发。在**结账/收据界面**上，收银员可以按需将收据发送到云打印机——便于重新打印，或将一次性票据路由到特定打印机。
+
+收据如何生成取决于打印机：
+
+- **Star CloudPRNT** —— 收据**在设备上**渲染，并通过 CloudPRNT 交给打印机。
+- **Star Online、Epson 和 PrintNode** —— 收据**在服务器上**根据所选订单和模板渲染，然后投递到打印机或托管中继。
+
+## 测试打印与连接状态 {#status}
+
+每张打印机卡片都有一个 **Test print** 按钮，可发送一段简短的诊断信息，以便您在依赖它处理真实订单之前确认打印机可达且格式正确。
+
+卡片还会显示实时状态：
+
+| 提供商 | 状态 | 含义 |
+|----------|--------|---------|
+| **Star CloudPRNT / Epson** | **Waiting** | 打印机尚未签入——WCPOS 正在等待它的首次轮询。 |
+| **Star CloudPRNT / Epson** | **Connected** | 打印机最近轮询了 WCPOS，正在收取任务。 |
+| **Star Online** | **Online** | Star Online 报告所选设备可用。 |
+| **Star Online** | **Offline** | Star Online 报告所选设备不可用。 |
+| **Star Online** | **Unknown** | WCPOS 无法从 Star Online 确认设备状态。 |
+| **PrintNode** | **Online** | PrintNode 服务报告客户端和打印机可用。 |
+| **PrintNode** | **Offline** | PrintNode 报告客户端或打印机不可用。 |
+
+## 故障排除 {#troubleshooting}
+
+<Accordion>
+  <AccordionItem question="打印机卡在 Waiting 状态">
+
+  始终停留在 **Waiting** 的轮询打印机从未成功联系到 WCPOS。请检查：
+
+  - 打印机固件中的**轮询 URL 和令牌**与 WCPOS 生成的完全一致。哪怕一个字符错误，每次轮询都会被拒绝——如果不确定，请在 WCPOS 中重新生成令牌并重新输入。
+  - 打印机确实能通过互联网**访问您的站点**（DNS 正确、没有防火墙阻止出站 HTTPS、您商店的 SSL 证书有效）。
+  - 打印机的 CloudPRNT / Server Direct Print 配置中**已启用轮询**，且间隔合理。更改设置后重启打印机。
+
+  </AccordionItem>
+
+  <AccordionItem question="Star Online 提示 API 密钥未授权或被禁止">
+
+  Star Online 将**身份验证**与**权限**分开：
+
+  - **401 / 身份验证失败**表示 API 密钥本身未被接受。请检查密钥是否复制正确、是否未被撤销，以及是否属于预期的 Star Online 账户/区域。
+  - **403 / 禁止**表示 API 密钥已被接受，但未被授权执行所请求的操作。在 stario.online 中编辑密钥并启用所需权限，尤其是 **Fetch my devices** 所需的 **EnumDevices** 和打印所需的 **PrintToDevice**。
+
+  如果 **Fetch my devices** 成功但没有打印机出现，请检查 stario.online 的 **Device Groups** 页面。该组必须至少包含一台已连接的设备，并且 WCPOS 中的 CloudPRNT URL 必须指向同一个组。
+
+  </AccordionItem>
+
+  <AccordionItem question="PrintNode 任务从不打印">
+
+  任务到达了 PrintNode，但没有从打印机输出。请检查：
+
+  - 连接打印机的计算机上的 **PrintNode 桌面客户端正在运行且在线**。如果计算机处于睡眠状态或客户端已关闭，则不会打印任何内容。
+  - 您在 WCPOS 中选择了**正确的打印机**——名称必须与客户端报告的打印机匹配。
+  - **API 密钥有效**且未被撤销。如果 PrintNode 将打印机显示为 Offline，请重新输入它。
+
+  </AccordionItem>
+
+  <AccordionItem question="我的模板无法为 Star 或 Epson 打印机选择">
+
+  Star 和 Epson 云打印机只能使用**热敏**模板，因为收据必须渲染为 ESC/POS 或 ePOS-Print 命令。HTML 和整页模板无法用这些格式表达，因此对这些打印机会被隐藏。
+
+  请选择[热敏模板](/receipts/thermal-templates)，或使用 **PrintNode** 打印机——PrintNode 渲染为 PDF，因此可以打印任何模板。
+
+  </AccordionItem>
+</Accordion>
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/printers" title="打印机设置" description="在同一设备或网络上连接打印机" />
+  <LinkCard to="/receipts" title="模板" description="收据模板系统" />
+  <LinkCard to="/receipts/thermal-templates" title="热敏模板" description="为 Star 和 Epson 打印机构建 ESC/POS 布局" />
+</LinkCards>

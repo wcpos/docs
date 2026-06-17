@@ -1,0 +1,249 @@
+---
+title: クラウド印刷
+sidebar_label: クラウド印刷
+sidebar_position: 2
+description: "レジに直接接続されていないプリンターに WCPOS のレシートを印刷します — Star Online、Star CloudPRNT、Epson Server Direct Print、PrintNode に対応。"
+---
+
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import FeatureCard from '@site/src/components/FeatureCard';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+クラウド印刷を使用すると、WCPOS はレジを実行しているデバイスに直接接続されていないプリンターへレシートを送信できます。WP Admin で一度設定すれば、各デバイスがハードウェアを自分で検出してペアリングする必要なく、注文がキッチンプリンター、バックオフィスのプリンター、または別室のプリンターに印刷されます。
+
+## クラウド印刷とは？ {#what-is-cloud-printing}
+
+**ローカル印刷**では、POS を実行しているデバイスが USB、Bluetooth、またはローカルネットワーク経由でプリンターと直接通信します。これは、プリンターがレジのすぐ隣にある場合に適した選択です。同じデバイスで USB、Bluetooth、ネットワークプリンターを接続する方法については、[プリンター設定](/hardware/printers)を参照してください。
+
+**クラウド印刷**は、それ以外のすべてのケース向けです。別の場所にあるプリンター、別のネットワーク上のプリンター、または各デバイスで個別に設定することなくすべてのデバイスで共有したいプリンターなどです。配信モデルは 2 つあります：
+
+- **ポーリング型プリンター。** プリンターはスケジュールに従ってインターネット経由で WCPOS にアクセスし、「私宛のものはありますか？」と尋ね、待機中のジョブをすべて取得します。WCPOS がプリンターに接続することはありません — 常にプリンターが通信を開始します。これが **Star CloudPRNT** と **Epson Server Direct Print** の動作方式です。
+- **ホスト型リレープロバイダー。** WCPOS はホスト型サービスに印刷ジョブを送信し、そのサービスがプリンターに配信します。これが **Star Online** と **PrintNode** の動作方式です。Star Online は stario.online アカウントに登録された Star CloudPRNT プリンターに配信します。PrintNode はデスクトップクライアントを介して、そのコンピューターが既に印刷できるほぼすべてのプリンターに配信します。
+
+:::info なぜポーリングするプリンターなのか？
+ポーリング型プリンターは、開いたポート、固定 IP、ファイアウォールの変更を必要としません — 常にアウトバウンドのリクエストを行うだけです。そのため、リモートサイトにあるプリンターや、管理していないルーターの背後にあるプリンターに最適です。トレードオフは短い遅延です。プリンターは次のポーリングが来たときにのみ印刷します。
+:::
+
+## プロバイダーの選択 {#providers}
+
+ハードウェアに合ったプロバイダーを選択してください。
+
+<FeatureGrid>
+  <FeatureCard icon="print" title="Star CloudPRNT">
+    **CloudPRNT** ファームウェアを実行する Star サーマルプリンター向け。プリンターが WCPOS をポーリングしてジョブを取得します。レシートはプリンターのネイティブコマンドにレンダリングされます。サーマルテンプレートが必要です。
+  </FeatureCard>
+  <FeatureCard icon="print" title="Star Online">
+    **stario.online** アカウントに登録された Star プリンター向け。WCPOS は Star Document Markup を Star のホスト型サービスに送信し、プリンターは Star Online からそれを取得します。サーマルテンプレートが必要です。
+  </FeatureCard>
+  <FeatureCard icon="print" title="Epson Server Direct Print">
+    **Server Direct Print** に対応する Epson ePOS プリンター向け。プリンターが WCPOS をポーリングし、ePOS-Print XML としてジョブを取得します。サーマルテンプレートが必要です。
+  </FeatureCard>
+  <FeatureCard icon="desktop" title="PrintNode">
+    **PrintNode デスクトップクライアント**を介して、あらゆる OS で、コンピューターが印刷できる事実上すべてのプリンターで動作します。WCPOS は PDF を送信するため、フルページの HTML 請求書を含む任意のテンプレートを使用できます。
+  </FeatureCard>
+</FeatureGrid>
+
+| プロバイダー | ハードウェア | ジョブの流れ | テンプレート |
+|----------|----------|---------------|-----------|
+| **Star CloudPRNT** | CloudPRNT ファームウェアを搭載した Star サーマルプリンター | プリンターが WCPOS をポーリング | サーマルのみ |
+| **Star Online** | stario.online に登録された Star プリンター | WCPOS が Star Document Markup を Star Online に送信 | サーマルのみ |
+| **Epson Server Direct Print** | Server Direct Print 対応の Epson ePOS プリンター | プリンターが WCPOS をポーリング | サーマルのみ |
+| **PrintNode** | OS 接続された任意のプリンター + PrintNode クライアント | WCPOS が PDF を PrintNode に送信 | 任意のテンプレート |
+
+## クラウドプリンターのセットアップ {#setup}
+
+クラウドプリンターは WP Admin で一度設定すれば、すべてのデバイスで共有されます — デバイスごとに保存されるローカルプリンターとは異なります。
+
+**WP Admin > POS > Settings > Cloud Print** に移動し、**Add printer** をクリックします。**名前**を付けます（例：「Kitchen」や「Back office」）。WCPOS はプリンターから安定した**プリンター ID** を自動的に生成します — これは決して変わらないため、プリンターのファームウェア構成から参照しても安全です。
+
+プリンターが作成されたら、プロバイダー側を設定します。
+
+### Star または Epson（ポーリング型プリンター） {#setup-polling}
+
+<Steps>
+  <StepCard number="1" title="WCPOS にプリンターを追加">
+
+**WP Admin > POS > Settings > Cloud Print** で、プリンターを追加し、プロバイダーとして **Star CloudPRNT** または **Epson Server Direct Print** を選択します。WCPOS はそのプリンター用の**ポーリング URL** と**ワンタイムトークン**を生成します。
+
+  </StepCard>
+  <StepCard number="2" title="ポーリング URL とトークンをコピー">
+
+生成されたポーリング URL とトークンをコピーします。**トークンは一度しか表示されません** — 紛失した場合は、プリンターカードから新しいものを再生成し、新しい値でプリンターを更新してください。
+
+  </StepCard>
+  <StepCard number="3" title="プリンターの構成に入力" isLast>
+
+プリンターの構成ページ — Star の場合は **CloudPRNT** 設定、Epson の場合は **Server Direct Print** 設定 — を開き、ポーリング URL とトークンを貼り付けます。プリンターが要求する場合はポーリング間隔を設定します（数秒が一般的です）。必要に応じて保存してプリンターを再起動します。
+
+ポーリングサイクル内でプリンターがチェックインすると、WCPOS でのステータスが **Waiting** から **Connected** に変わります。
+
+  </StepCard>
+</Steps>
+
+### PrintNode {#setup-printnode}
+
+<Steps>
+  <StepCard number="1" title="PrintNode デスクトップクライアントをインストール">
+
+ターゲットプリンターに既に印刷できるコンピューターに、**PrintNode クライアント**をインストールしてサインインします。ジョブを印刷するには、クライアントが起動してオンラインのままである必要があります。
+
+  </StepCard>
+  <StepCard number="2" title="PrintNode API キーを取得">
+
+PrintNode アカウントで **API キー**を作成します。これにより、WCPOS が PrintNode アカウントにジョブを送信できるようになります。
+
+  </StepCard>
+  <StepCard number="3" title="WCPOS に API キーを入力">
+
+**WP Admin > POS > Settings > Cloud Print** でプリンターを追加し、プロバイダーとして **PrintNode** を選択し、API キーを貼り付けます。WCPOS はこれを使用して、PrintNode アカウントに登録されているプリンターのリストを取得します。
+
+  </StepCard>
+  <StepCard number="4" title="プリンターを選択" isLast>
+
+PrintNode クライアントが報告するプリンターのリストからターゲットプリンターを選択し、保存します。WCPOS はこのプリンター向けのジョブを PrintNode に送信し、クライアントがそれらを印刷します。
+
+  </StepCard>
+</Steps>
+
+### Star Online {#setup-star-online}
+
+Star プリンターが既に **stario.online** アカウントに登録されていて、Star のホスト型サービスに配信を処理させたい場合は、Star Online を使用します。
+
+<Steps>
+  <StepCard number="1" title="CloudPRNT URL を取得">
+
+stario.online で **Device Groups** を開き、グループの **CloudPRNT URL** をコピーします。`https://device.stario.online/cloudprnt/...` または `https://eu-device.stario.online/cloudprnt/...` のような形式になっているはずです。
+
+  </StepCard>
+  <StepCard number="2" title="権限付きの API キーを作成">
+
+stario.online で、WCPOS 用の API キーを作成します。キーには、デバイスを一覧表示して印刷する権限が必要です。少なくとも、以下を有効にしてください：
+
+- **EnumDevices** — WCPOS がデバイスリストを取得する際に必要
+- **ViewDevice** — デバイスステータスチェックに使用
+- **PrintToDevice** — 印刷ジョブの送信に必要
+- **ViewDeviceGroups** — グループ検索と診断のために推奨
+
+これらの権限が有効になっていない場合、API キーが存在していても失敗することがあります。
+
+  </StepCard>
+  <StepCard number="3" title="WCPOS に URL と API キーを入力">
+
+**WP Admin > POS > Settings > Cloud Print** でプリンターを追加し、プロバイダーとして **Star Online** を選択し、CloudPRNT URL と API キーを貼り付けます。**Fetch my devices** をクリックします。
+
+  </StepCard>
+  <StepCard number="4" title="Star デバイスを選択" isLast>
+
+デバイスリストからプリンターを選択して保存します。WCPOS は API キーをサーバー側に保存し、Star Online にジョブを送信する際に、選択したデバイスのアクセス識別子を使用します。
+
+  </StepCard>
+</Steps>
+
+## 自動印刷ルール {#auto-print}
+
+自動印刷ルールは、何をどこに印刷するかを自動的に決定します — 平易な文章として記述されます。ルールは **スコープ × プリンター × テンプレート** で、たとえば次のようになります：
+
+> **すべての注文**を **Kitchen** に **Kitchen Ticket** を使って印刷する。
+
+一致する注文が完了すると、WCPOS は選択した**テンプレート**をサーバー側でプリンターが必要とする形式にレンダリングしてキューに入れます — レジ担当者がすることは何もありません。
+
+:::note テンプレートの互換性が重要です
+Star および Epson プリンターは、ジョブをプリンターのネイティブコマンド言語（Star の場合は Star Document Markup または ESC/POS、Epson の場合は ePOS-Print）にレンダリングする必要があるため、**サーマル**テンプレートのみを使用できます。PrintNode はジョブが **PDF** にレンダリングされるため、**任意**のテンプレート — サーマルまたはフルページ HTML — を使用できます。あるプリンターでテンプレートがオプションとして表示されない場合、それはプリンターがその形式をレンダリングできないためです。サーマルレイアウトの作成については、[サーマルテンプレート](/receipts/thermal-templates)を参照してください。
+:::
+
+## 店舗別プリンター (Pro) {#per-store-printers}
+
+:::info Pro 機能
+店舗別の印刷ルーティングには、[WCPOS Pro](/getting-started/pro-license) と[マルチストア](/stores)の設定が必要です。
+:::
+
+デフォルトでは、自動印刷ルールはグローバルです — すべての店舗がそれらを共有します。Pro では、個々の店舗に**独自の**クラウド印刷ルールを設定し、その注文を独自のプリンターに印刷させることができます（ある店舗のキッチンチケットが別の店舗で印刷されるべきではありません）。
+
+**POS → Stores** で店舗を編集し、その **Cloud Printing** セクションを開いて、**Add rule** をクリックします。各ルールは次のとおりです：
+
+- **Printer ID** — 送信先のクラウドプリンターの安定した ID
+- **Scope** — **POS orders only**（デフォルト）、**Online orders only**、または **Every order**
+- **Format** — **StarPRNT**（デフォルト）、**ESC/POS**、**Epson ePOS-Print**、または **HTML**
+
+注文が独自のルールを持つ店舗に属している場合、WCPOS はそれをその店舗のプリンターにルーティングします。店舗に独自のルールが**ない**場合は、**グローバルな**自動印刷ルールに**フォールバック**します — そのため、異なる店舗だけを設定すればよいのです。
+
+## 手動印刷 {#manual}
+
+自動印刷ルールを待つ必要はありません。**チェックアウト／レシート画面**から、レジ担当者はオンデマンドでクラウドプリンターにレシートを送信できます — 再印刷や、一回限りのチケットを特定のプリンターにルーティングするのに便利です。
+
+レシートの生成方法はプリンターによって異なります：
+
+- **Star CloudPRNT** — レシートは**デバイス上**でレンダリングされ、CloudPRNT を通じてプリンターに渡されます。
+- **Star Online、Epson、PrintNode** — レシートは選択された注文とテンプレートから**サーバー上**でレンダリングされ、その後プリンターまたはホスト型リレーに配信されます。
+
+## テスト印刷と接続ステータス {#status}
+
+各プリンターカードには **Test print** ボタンがあり、短い診断を送信します。これにより、実際の注文で使用する前に、プリンターに到達可能で形式が正しいことを確認できます。
+
+カードにはライブステータスも表示されます：
+
+| プロバイダー | ステータス | 意味 |
+|----------|--------|---------|
+| **Star CloudPRNT / Epson** | **Waiting** | プリンターがまだチェックインしていません — WCPOS は最初のポーリングを待っています。 |
+| **Star CloudPRNT / Epson** | **Connected** | プリンターが最近 WCPOS をポーリングし、ジョブを取得しています。 |
+| **Star Online** | **Online** | Star Online が、選択されたデバイスが利用可能であると報告しています。 |
+| **Star Online** | **Offline** | Star Online が、選択されたデバイスが利用できないと報告しています。 |
+| **Star Online** | **Unknown** | WCPOS が Star Online からデバイスのステータスを確認できませんでした。 |
+| **PrintNode** | **Online** | PrintNode サービスが、クライアントとプリンターが利用可能であると報告しています。 |
+| **PrintNode** | **Offline** | PrintNode が、クライアントまたはプリンターが利用できないと報告しています。 |
+
+## トラブルシューティング {#troubleshooting}
+
+<Accordion>
+  <AccordionItem question="プリンターが Waiting のまま動かない">
+
+  **Waiting** から決して抜け出さないポーリング型プリンターは、WCPOS に正常に到達したことが一度もありません。以下を確認してください：
+
+  - プリンターのファームウェア内の**ポーリング URL とトークン**が、WCPOS が生成したものと正確に一致していること。1 文字でも間違っているとすべてのポーリングが拒否されます — 不明な場合は WCPOS でトークンを再生成して入力し直してください。
+  - プリンターが実際にインターネット経由で**サイトに到達**できること（正しい DNS、アウトバウンド HTTPS をブロックするファイアウォールがない、ストアの SSL 証明書が有効）。
+  - プリンターの CloudPRNT / Server Direct Print 構成で**ポーリングが有効**になっており、妥当な間隔が設定されていること。設定を変更した後はプリンターを再起動してください。
+
+  </AccordionItem>
+
+  <AccordionItem question="Star Online が API キーは権限がない、または禁止されていると表示する">
+
+  Star Online は**認証**と**権限**を分離しています：
+
+  - **401 / 認証失敗** は、API キー自体が受け入れられなかったことを意味します。キーが正しくコピーされていること、取り消されていないこと、そして期待される Star Online アカウント／リージョンに属していることを確認してください。
+  - **403 / 禁止** は、API キーは受け入れられたが、要求されたアクションに対して認可されていないことを意味します。stario.online でキーを編集し、必要な権限を有効にしてください。特に **Fetch my devices** には **EnumDevices**、印刷には **PrintToDevice** が必要です。
+
+  **Fetch my devices** が成功してもプリンターが表示されない場合は、stario.online の **Device Groups** ページを確認してください。グループには少なくとも 1 台の接続済みデバイスが含まれている必要があり、WCPOS の CloudPRNT URL は同じグループを指している必要があります。
+
+  </AccordionItem>
+
+  <AccordionItem question="PrintNode のジョブが印刷されない">
+
+  ジョブは PrintNode に到達しましたが、プリンターから出力されませんでした。以下を確認してください：
+
+  - プリンターに接続されたコンピューターで **PrintNode デスクトップクライアントが起動してオンライン**になっていること。コンピューターがスリープ状態であったり、クライアントが閉じられていたりすると、何も印刷されません。
+  - WCPOS で**正しいプリンター**を選択していること — 名前はクライアントが報告するプリンターと一致する必要があります。
+  - **API キーが有効**で、取り消されていないこと。PrintNode がプリンターを Offline と表示する場合は、入力し直してください。
+
+  </AccordionItem>
+
+  <AccordionItem question="Star または Epson プリンターでテンプレートが選択できない">
+
+  Star および Epson のクラウドプリンターでは、レシートを ESC/POS または ePOS-Print コマンドにレンダリングする必要があるため、**サーマル**テンプレートのみが動作します。HTML やフルページのテンプレートはこれらの形式で表現できないため、これらのプリンターでは非表示になります。
+
+  [サーマルテンプレート](/receipts/thermal-templates)を選択するか、**PrintNode** プリンターを使用してください — PrintNode は PDF にレンダリングするため、任意のテンプレートを印刷できます。
+
+  </AccordionItem>
+</Accordion>
+
+## 関連ドキュメント {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/printers" title="プリンター設定" description="同じデバイスまたはネットワーク上でプリンターを接続する" />
+  <LinkCard to="/receipts" title="テンプレート" description="レシートテンプレートシステム" />
+  <LinkCard to="/receipts/thermal-templates" title="サーマルテンプレート" description="Star および Epson プリンター向けの ESC/POS レイアウトを作成する" />
+</LinkCards>

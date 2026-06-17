@@ -1,0 +1,180 @@
+---
+title: HTML テンプレート
+sidebar_label: HTML テンプレート
+sidebar_position: 3
+description: "Mustache スタイルのプレースホルダーを使用して、ロジックレスな HTML レシートテンプレートを作成およびカスタマイズします。"
+---
+
+HTML テンプレートは、`{{variable}}` プレースホルダーを使ったロジックレスな Mustache スタイルの構文を使用します。これらは POS アプリ内でクライアント側でレンダリングされるため、**オフラインで動作します** — レシートを表示または印刷するのにサーバー接続は必要ありません。
+
+これはほとんどのユーザーに推奨されるエンジンです。
+
+## 構文 {#syntax}
+
+### 変数 {#variables}
+
+二重中括弧を使ってデータを挿入します：
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+書式設定済みの通貨値（例：`12.5` ではなく `$12.50`）には `_display` バリアントを使用します。利用可能なすべてのフィールドについては、[レシートデータリファレンス](/receipts/receipt-data)を参照してください。
+
+### セクション（ループと条件分岐） {#sections-loops-and-conditionals}
+
+`{{#section}}...{{/section}}` を使って配列をループしたり、条件付きでコンテンツを表示したりします：
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+### 反転セクション {#inverted-sections}
+
+`{{^section}}...{{/section}}` を使って、値が空または false のときにコンテンツを表示します：
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+### ローカライズされたラベル {#localised-labels}
+
+ストアの言語に適応する翻訳可能なラベルには `{{i18n.key}}` を使用します：
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+## 一般的なパターン {#common-patterns}
+
+### ストアヘッダー {#store-header}
+
+`store.address_lines` 配列はレシート用に書式設定済みです — 個々の住所フィールドをつなぎ合わせる代わりに、これをループしてください。
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+### 割引付きの明細項目 {#line-items-with-discounts}
+
+明細項目の `discounts` フィールドは、割引額を正の数で表したもの、または割引がない場合は `0` です。Mustache は `0` を falsy として扱うため、`{{#discounts}}...{{/discounts}}` が正しいガードになります。
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em; color: #6b7280;">
+        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+### 税サマリー {#tax-summary}
+
+```html
+{{#tax_summary}}
+<div class="tax-line">
+  <span>{{label}} ({{rate}}%)</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+### 支払い詳細 {#payment-details}
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+### バーコードと QR コード {#barcodes-and-qr-codes}
+
+`<barcode>` 要素を使用します — [サーマルテンプレート](/receipts/thermal-templates)と同じ構文です。値は要素の内側に入れ、シンボロジーは `type` 属性で設定します。レンダラーは各要素をインライン SVG に置き換えます。
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- QR code -->
+<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
+
+<!-- EAN-13 -->
+<barcode type="ean13">{{order.number}}</barcode>
+```
+
+`type` 属性はテンプレート内で**リテラルに**設定する必要があります — プレースホルダーから取得することはできません。`qr` または `qrcode` の `type` は、HTML テンプレートとサーマルテンプレートの両方で QR コードとしてレンダリングされます。
+
+選択したバーコードタイプが値をエンコードできない場合（たとえば数値でない、または長さが誤った EAN-13 データなど）、プレビューには元の値を含む `Barcode error` または `QR code error` ブロックが表示されるので、値を修正するか互換性のあるタイプに切り替えることができます。
+
+すべての [bwip-js シンボロジー](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types)がサポートされています — `code128`、`qrcode`、`ean13`、`ean8`、`upca`、`pdf417`、`datamatrix` など多数です。
+
+## スタイリング {#styling}
+
+ロジックレステンプレートは、レンダリング前に WordPress の `wp_kses_post` を通じてサニタイズされ、**`<style>`、`<head>`、ドキュメントレベルのタグが除去されます**。各要素に**インラインスタイル**を使用してください：
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+同じ制限が `<script>`、`<link>`、およびその他の非コンテンツタグにも適用されます — これらは除去されるため、外部 CSS や JavaScript に依存しないでください。
+
+:::tip 白黒向けに設計
+レシートは通常、白黒のサーマルプリンターまたはレーザープリンターで印刷されます。それを念頭に置いて設計してください — 階層を表現するには、色付きの塗りつぶしではなく、**フォントの太さ、余白、文字のコントラスト、水平線**を使用してください。色付きの背景やグレーの文字は、白黒の出力では消えてしまうか、汚れたハーフトーンとして印刷されます。
+:::
+
+:::tip サーマルプリンターなしでサーマル用紙の見た目が必要ですか？
+ギャラリーの **Narrow Receipt** カードで **Use Template** をクリックしてください — これは等幅・72mm 幅のレイアウトで、ブラウザ印刷、HTML 対応サーマルプリンター（Sunmi/Imin WebView デバイス）、および標準用紙にきれいに印刷されます。生の ESC/POS サーマルプリンター向けではありません — それらには **Simple Thermal Receipt** XML テンプレートを使用してください。
+:::
+
+## ベストプラクティス {#best-practices}
+
+- すべての通貨値に **`_display` フィールドを使用** — これらはロケールに応じた書式設定を自動的に処理します
+- テキストをハードコーディングする代わりに **`{{i18n.*}}` ラベルを使用** して、テンプレートが複数の言語で動作するようにします
+- **条件分岐にはセクションを使用** — オプションのフィールドを `{{#field}}...{{/field}}` で囲み、空のときに非表示になるようにします
+- ゼロから構築するのではなく、**ギャラリーテンプレートから始める**
+- アクティブ化する前に、テンプレートエディターで **プレビューでテスト** する

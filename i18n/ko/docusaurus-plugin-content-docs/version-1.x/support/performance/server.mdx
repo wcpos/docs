@@ -2,14 +2,64 @@
 title: 서버 성능
 sidebar_label: 서버 성능
 sidebar_position: 2
-description: WCPOS를 위한 WordPress 서버 성능 최적화, HPOS, 캐싱, 데이터베이스 최적화 및 호스팅 권장 사항.
+description: "WCPOS를 위한 WordPress 서버 성능 최적화, HPOS, 캐싱, 데이터베이스 최적화 및 호스팅 권장 사항."
 ---
 
 import Image from "@theme/IdealImage";
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
 
-서버 성능은 WCPOS 애플리케이션의 속도와 반응성에 직접적인 영향을 미칩니다. 이 가이드는 내장된 메트릭 및 문제 해결 기술을 사용하여 서버 성능을 모니터링, 진단 및 최적화하는 데 도움이 됩니다.
+서버 성능은 WCPOS 애플리케이션의 속도와 반응성에 직접적인 영향을 미칩니다. POS는 많은 REST API 호출을 수행하므로 **서버 응답 시간이 주요 병목 지점**이며, POS 속도는 호스팅 품질에 크게 좌우됩니다. 이 가이드는 내장된 메트릭과 문제 해결 기술을 사용하여 서버 성능을 모니터링, 진단 및 최적화하는 데 도움이 됩니다.
+
+## 최소 서버 요구 사항 {#minimum-server-requirements}
+
+프로덕션 환경에서 반응성이 좋은 POS를 위해 최소한 다음을 권장합니다:
+
+<RequirementsList>
+  <RequirementItem label="CPU">CPU 코어 4개 이상</RequirementItem>
+  <RequirementItem label="RAM">4GB 이상</RequirementItem>
+  <RequirementItem label="PHP">PHP 7.4 이상 (8.x 권장)</RequirementItem>
+  <RequirementItem label="Database">MySQL 8.0 이상 또는 MariaDB 11.x</RequirementItem>
+  <RequirementItem label="Storage">SSD 또는 NVMe</RequirementItem>
+  <RequirementItem label="SSL">HTTPS는 필수입니다 — WooCommerce REST API는 HTTPS 없이는 작동하지 않습니다</RequirementItem>
+</RequirementsList>
+
+:::warning 공유 호스팅은 종종 충분하지 않습니다
+공유 호스팅은 많은 동시 API 호출을 수행하는 POS 워크로드에 비해 PHP 워커가 너무 적고 메모리가 부족한 경우가 많습니다. 프로덕션 POS 사용에는 **VPS 또는 관리형 WordPress 호스트**를 강력히 권장합니다. `WordPress.com` 관리형 호스팅은 REST API 호환성 문제가 있는 것으로도 알려져 있으며(일부 사용자는 대용량 카탈로그에서 9~10개의 상품만 표시됨), 완전한 호환성을 위해서는 자체 호스팅 `WordPress.org`를 권장합니다.
+:::
+
+### 커뮤니티 검증 최적화 스택 {#community-validated-optimisation-stack}
+
+사용자들은 다음 조합에서 최고의 POS 성능을 보고합니다:
+
+- **MariaDB 11.4** (WooCommerce 워크로드에서 MySQL보다 빠름)
+- **HPOS 활성화** (아래 참조)
+- **LiteSpeed 또는 Redis** 객체 캐싱
+- **NVMe** 스토리지
+- **PHP OPcache** 활성화
+
+## 503 오류 {#503-errors}
+
+:::important 503 오류는 항상 서버 측 문제입니다
+`503 Service Unavailable`은 **POS 버그가 아닙니다** — 서버가 요청을 처리할 수 없음을 의미합니다. 다음을 확인하세요:
+
+1. 서버 부하 및 가용 리소스
+2. PHP 워커 (소진되었을 수 있음)
+3. PHP 메모리 제한 — **256MB 이상**으로 증가
+4. 웹 호스트의 서버 로그(호스트에 문의하세요. 애플리케이션이 볼 수 없는 것을 확인할 수 있습니다)
+:::
+
+## WooCommerce 버전 호환성 {#woocommerce-version-compatibility}
+
+WooCommerce 업데이트가 가끔 POS를 손상시킬 수 있습니다. 항상 [스테이징 사이트](/support/troubleshooting/plugin-conflicts#before-you-start-use-a-staging-site)에서 먼저 WooCommerce를 업데이트하고, 최신 호환성 수정 사항이 포함되도록 WCPOS를 최신 상태로 유지하세요.
+
+알려진 문제:
+
+- **WooCommerce 10.5.0** — POS에서 상품 로딩이 손상됨(증상: 약 10개 상품만 표시됨, 바코드 스캔 및 검색이 작동 중지) 및 **postmeta 부풀림**과 메모리 소진을 유발할 수 있는 실험적 상품 캐시를 도입함. **해결책:** WCPOS를 최신 버전으로 업데이트(수정 사항 및 정리 마이그레이션 포함)하거나 WooCommerce를 [10.4.3](https://downloads.wordpress.org/plugin/woocommerce.10.4.3.zip)으로 롤백하세요.
+
+WooCommerce 업데이트가 POS를 손상시키는 경우, WooCommerce를 이전 버전으로 롤백(플러그인의 WordPress.org 페이지에서 **Advanced** 탭을 통해)하고 보고하세요.
 
 ## 서버 메트릭 이해하기 {#understanding-server-metrics}
 
@@ -32,7 +82,7 @@ WCPOS는 각 데이터 가져오기 작업(제품, 주문, 고객 등)마다 서
 
 ## 서버 부하 설명 {#server-load-explained}
 
-서버 부하는 다수의 시간 동안의 평균 시스템 부하를 나타냅니다:
+서버 부하는 다양한 시간 동안의 평균 시스템 부하를 나타냅니다:
 
 - **첫 번째 값** - 1분 평균 (15.21)
 - **두 번째 값** - 5분 평균 (16.16)
@@ -43,7 +93,7 @@ WCPOS는 각 데이터 가져오기 작업(제품, 주문, 고객 등)마다 서
 서버 부하 값은 오해의 소지가 있으며 주의 깊게 해석해야 합니다:
 
 :::warning 부하 값은 오해의 소지가 있을 수 있음
-서버 부하 평균이 성능과 직접적으로 연관되지 않는 경우가 있습니다. 높은 부하 값(15+)을 가진 서버도 충분한 리소스가 있고 잘 최적화되어 있다면 매우 반응적일 수 있습니다. **부하 값이 아닌 실행 시간에 중점을 두세요.**
+서버 부하 평균이 성능과 직접적으로 연관되지 않는 경우가 있습니다. 높은 부하 값(15+)을 가진 서버도 충분한 리소스가 있고 잘 최적화되어 있다면 매우 반응적일 수 있습니다. **부하 값만 보지 말고 실행 시간에 중점을 두세요.**
 :::
 
 **일반 지침:**
@@ -126,7 +176,7 @@ WCPOS는 각 데이터 가져오기 작업(제품, 주문, 고객 등)마다 서
 ### 1. 불충분한 서버 리소스 {#1-insufficient-server-resources}
 
 **증상:**
-- 지속적으로 높은 서버 부하 (> 4.0 대부분의 서버에서)
+- 지속적으로 높은 서버 부하 (대부분의 서버에서 > 4.0)
 - 모든 작업에서 긴 실행 시간
 - 빈번한 타임아웃
 
@@ -184,7 +234,7 @@ WCPOS는 각 데이터 가져오기 작업(제품, 주문, 고객 등)마다 서
 ### WooCommerce 고성능 주문 저장소(HPOS) {#woocommerce-high-performance-order-storage-hpos}
 
 :::tip 가장 큰 성능 향상
-**HPOS는 WooCommerce를 위한 가장 중요한 성능 개선 중 하나입니다.** 주문을 WordPress 게시물 테이블이 아닌 사용자 지정 데이터베이스 테이블에 저장하여 다수의 주문을 가진 상점을 위한 성능을 극적으로 개선합니다.
+**HPOS는 WooCommerce를 위해 할 수 있는 가장 중요한 성능 개선 중 하나입니다.** 주문을 WordPress 게시물 테이블이 아닌 사용자 지정 데이터베이스 테이블에 저장하여 다수의 주문을 가진 상점의 성능을 극적으로 개선합니다.
 :::
 
 **이점:**
@@ -194,8 +244,8 @@ WCPOS는 각 데이터 가져오기 작업(제품, 주문, 고객 등)마다 서
 - **개선된 관리자 성능** - 빠른 주문 관리 화면
 
 **활성화 방법:**
-1. `WooCommerce > 설정 > 고급 > 기능`으로 이동
-2. "고성능 주문 저장" 활성화
+1. `WooCommerce > Settings > Advanced > Features`로 이동
+2. "High-performance order storage" 활성화
 3. 마이그레이션 프로세스를 따릅니다.
 
 **자세히 알아보기:**
@@ -214,7 +264,7 @@ WCPOS는 각 데이터 가져오기 작업(제품, 주문, 고객 등)마다 서
 
 다음 경고 신호를 모니터링합니다:
 - 실행 시간이 지속적으로 > 1000ms
-- 서버 부하가 > 5.0으로 계속된 경우
+- 서버 부하가 장기간 > 5.0인 경우
 - 로그에서 빈번한 타임아웃 오류
 
 ### 3. 용량 계획 {#3-capacity-planning}
@@ -260,19 +310,43 @@ define('WP_DEBUG_LOG', true);
 
 **서버 리소스:**
 - 적절한 RAM(최소 1GB, 가능하면 2GB 이상) 확보
-- SSD 스토리는 기존 드라이브보다 데이터베이스 성능을 훨씬 향상시킵니다.
+- SSD 스토리지는 기존 드라이브보다 데이터베이스 성능을 훨씬 향상시킵니다.
+
+## 호스팅별 참고 사항 {#hosting-specific-notes}
+
+일부 호스트와 CDN은 POS가 WooCommerce REST API에 도달할 수 있도록 구성이 필요합니다:
+
+| 호스트 / 서비스 | 문제 | 해결책 |
+| --- | --- | --- |
+| **GoDaddy** | 웹사이트 방화벽이 `/wp-json/` REST API 호출을 차단함(_"Received 'undefined'"_와 같은 오류) | `Website Security > Firewall > Settings > Access Control > Allow URL Paths` → `/wp-json/` 추가 |
+| **WP Engine** | REST API를 명시적으로 활성화해야 함 | REST API 활성화; 필요한 경우 방화벽에서 API 엔드포인트 허용 목록에 추가 |
+| **Cloudflare** | REST API 요청을 차단할 수 있으며 API 응답을 캐시할 수 있음 | 방화벽 규칙 확인; `/wp-json/*`에 대해 **캐시 우회** 페이지 규칙 추가 |
+| **WordPress.com** | REST API / 상품 로딩 호환성 문제(상품 9~10개만 표시됨) | 완전한 호환성을 위해 자체 호스팅 WordPress.org 사용 |
+| **공유 호스팅** | 동시 POS 호출에 비해 PHP 워커가 너무 적거나 메모리가 부족함 | VPS 또는 관리형 WordPress 호스트로 이전 |
+
+보안 플러그인(Wordfence 등)도 비슷한 방식으로 REST API를 차단할 수 있습니다. 전체 목록과 해결책은 [플러그인 충돌](/support/troubleshooting/plugin-conflicts)을 참조하세요.
+
+### HTTP 414 — URI Too Long {#http-414-uri-too-long}
+
+대용량 장바구니나 체크아웃 URL에 포함된 액세스 토큰이 서버의 URL 길이 제한을 초과할 수 있습니다(체크아웃 요청은 `GET`을 사용함). 이는 브라우저별로 다를 수 있으며 브라우저 캐시에 의해 악화될 수 있습니다.
+
+**해결 방법:** 먼저 브라우저 캐시를 지운 다음 서버의 URL 길이 제한을 늘리세요:
+
+- **Apache:** `httpd.conf`에 `LimitRequestLine 65536`
+- **Nginx:** `nginx.conf`에 `large_client_header_buffers 4 65536;`
+- 구성에 액세스할 수 없는 경우 호스팅 제공업체에 조정을 요청하세요.
 
 ## 도움을 요청해야 할 때 {#when-to-seek-help}
 
-호스팅 제공업체 또는 WordPress 개발자에게 문의하십시오:
+다음과 같은 경우 호스팅 제공업체 또는 WordPress 개발자에게 문의하십시오:
 
-- **서버 부하가 지속적으로 > 8.0** 최적화 노력에도 불구하고
-- **실행 시간이 > 5000ms** 심플한 작업에 대해
+- 최적화 노력에도 불구하고 **서버 부하가 지속적으로 > 8.0**
+- 간단한 작업에 대해 **실행 시간이 > 5000ms**
 - 로그에서 **메모리 오류**가 자주 발생하는 경우
-- **데이터베이스 쿼리가 > 2초** 이상 소요되는 경우
+- **데이터베이스 쿼리가 > 2초** 이상 지속적으로 소요되는 경우
 
 다음 정보를 제공하십시오:
-- 로그에서 서버 메트릭
+- 로그의 서버 메트릭
 - 활성 플러그인 목록
 - 서버 사양 (CPU, RAM, 스토리지 유형)
 - WordPress 및 WooCommerce 버전
