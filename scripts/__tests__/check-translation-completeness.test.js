@@ -193,6 +193,33 @@ Jedes Gateway kann für das POS aktiviert oder deaktiviert werden.
 `;
     expect(findLeftoverProse(source, translated)).toHaveLength(0);
   });
+
+  it('does not flag WooCommerce plugin/theme proper-noun list items', () => {
+    // Regression: settings/wp-admin/customer-tax-ids lists third-party plugin
+    // names verbatim; these must NOT count as untranslated English, or the
+    // sweep loops forever on a file it can never "complete".
+    const source = `Detected plugins include:
+
+- WooCommerce EU VAT Number
+- EU VAT for WooCommerce (WPFactory)
+- WooCommerce Germanized / Germanized Pro
+- Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil
+- NIF/CIF Spain
+
+Switch to Twenty Twenty-Four to rule out a theme conflict.
+`;
+    const translated = `Los plugins detectados incluyen:
+
+- WooCommerce EU VAT Number
+- EU VAT for WooCommerce (WPFactory)
+- WooCommerce Germanized / Germanized Pro
+- Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil
+- NIF/CIF Spain
+
+Cambia a Twenty Twenty-Four para descartar un conflicto de tema.
+`;
+    expect(findLeftoverProse(source, translated)).toHaveLength(0);
+  });
 });
 
 describe('findMissingSections (stale detection)', () => {

@@ -123,6 +123,21 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'WCPOS WP Multilang',
   'WCPOS StoreApps Smart Coupons',
   "Cannot read properties of undefined (reading 'data')",
+  // Third-party WooCommerce plugin/extension names — listed verbatim (e.g. on
+  // settings/wp-admin/customer-tax-ids) because they are the exact names a user
+  // searches for in the plugin directory; translating them would be wrong.
+  'WooCommerce EU VAT Number',
+  'EU VAT for WooCommerce (WPFactory)',
+  'WooCommerce Germanized / Germanized Pro',
+  'Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil',
+  'NIF/CIF Spain',
+  // WooCommerce REST API: a product/feature name, not prose.
+  'WooCommerce REST API',
+  // Default WordPress theme names, referenced in troubleshooting (switch to a
+  // stock theme to isolate plugin conflicts).
+  'Twenty Twenty-Four',
+  'Twenty Twenty-Five',
+  'Twenty Twenty-Three',
 ]);
 
 // Reduce a line to its human-readable prose, stripping markup that is meant to
