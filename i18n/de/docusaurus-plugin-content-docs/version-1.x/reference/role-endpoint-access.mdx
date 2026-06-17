@@ -1,0 +1,118 @@
+---
+title: Rollenzugriff auf Endpunkte
+sidebar_label: Rollenzugriff auf Endpunkte
+sidebar_position: 3
+description: Entwicklerreferenz dazu, welche WCPOS REST-Endpunkte für jede Standardrolle (administrator, shop_manager, cashier) zugänglich sind, sowie zum Verhalten beim Ablauf von Tokens und zu Diagnosehinweisen.
+---
+
+Diese Seite dokumentiert, welche WCPOS REST-Endpunkte für jede der drei Standardrollen zugänglich sind, die in POS-Workflows verwendet werden:
+
+- `administrator`
+- `shop_manager`
+- `cashier`
+
+Informationen zur benutzerseitigen Rollen- und Berechtigungskonfiguration finden Sie unter [Zugriff auf den POS](/settings/wp-admin/access).
+
+## Zusammenfassung {#summary}
+
+Das Standard-Zugriffsmodell ist:
+
+- **`administrator`** — voller POS- und Verwaltungszugriff.
+- **`shop_manager`** — voller POS- und Verwaltungszugriff, ausgenommen Plugin-Erweiterungsaktionen, die Berechtigungen zur Plugin-Installation erfordern.
+- **`cashier`** — Zugriff auf den normalen POS-Verkaufsablauf, aber kein Zugriff auf Verwaltung, Einstellungen, Protokolle oder Filialadministration.
+
+Die Endpoint-Matrix wird durch Integrationstests verifiziert, die denselben Authentifizierungspfad wie im POS verwenden (WCPOS-Bearer-Zugriffstokens, nicht nur `wp_set_current_user()`). Assertions für zulässige Endpoints bestätigen, dass eine Rolle weder `401` noch `403` erhält. Einige Endpoints können weiterhin normale Daten oder geschäftslogische Fehler wie `400` oder `404` zurückgeben, wenn der Test minimale Fixtures verwendet — diese Antworten belegen dennoch, dass der Benutzer die Authentifizierungs-/Berechtigungsebene passiert hat.
+
+## Endpoint-Zugriffsmatrix des kostenlosen Plugins {#free-plugin-endpoint-access-matrix}
+
+| Bereich | Endpunktbeispiele | Administrator | Shop-Manager | Kassierer | Hinweise |
+|---|---|---:|---:|---:|---|
+| Einstellungsindex | `GET /wcpos/v1/settings` | ✅ | ✅ | ✅ | Öffentlicher/lesbarer POS-Einstellungsindex |
+| Filialen | `GET /wcpos/v1/stores` | ✅ | ✅ | ✅ | POS-Startdaten |
+| Kassiererprofil | `GET /wcpos/v1/cashier/{id}` | ✅ | ✅ | ✅ | Eigene Kassiererdaten |
+| Filialen des Kassierers | `GET /wcpos/v1/cashier/{id}/stores` | ✅ | ✅ | ✅ | Filialzugriff für den aktuellen Kassierer |
+| Produkte | `GET /wcpos/v1/products` | ✅ | ✅ | ✅ | Katalogsuche |
+| Varianten | `GET /wcpos/v1/products/variations` | ✅ | ✅ | ✅ | Katalogsuche |
+| Kategorien | `GET /wcpos/v1/products/categories` | ✅ | ✅ | ✅ | Katalogfilter |
+| Schlagwörter | `GET /wcpos/v1/products/tags` | ✅ | ✅ | ✅ | Katalogfilter |
+| Marken | `GET /wcpos/v1/products/brands` | ✅ | ✅ | ✅ | Katalogfilter |
+| Gutscheine | `GET /wcpos/v1/coupons` | ✅ | ✅ | ✅ | POS-Gutscheinsuche |
+| Bestellungen lesen | `GET /wcpos/v1/orders` | ✅ | ✅ | ✅ | POS-Bestellverlauf |
+| Bestellungen erstellen | `POST /wcpos/v1/orders` | ✅ | ✅ | ✅ | Verkaufsablauf |
+| Bestellungen aktualisieren | `PATCH /wcpos/v1/orders/{id}` | ✅ | ✅ | ✅ | POS-Bestellungen abschließen/aktualisieren |
+| Checkout lesen/erstellen | `/wcpos/v1/orders/{id}/checkout` | ✅ | ✅ | ✅ | Zahlungsablauf |
+| Belege | `GET /wcpos/v1/receipts/{order_id}` | ✅ | ✅ | ✅ | Belegdarstellung |
+| Bestellstatus | `GET /wcpos/v1/data/order_statuses` | ✅ | ✅ | ✅ | POS-Statusdaten |
+| Kunden lesen | `GET /wcpos/v1/customers` | ✅ | ✅ | ✅ | Kundensuche/-liste |
+| Kunden erstellen | `POST /wcpos/v1/customers` | ✅ | ✅ | ✅ | Kunden im POS erstellen |
+| Kunden aktualisieren | `PATCH /wcpos/v1/customers/{id}` | ✅ | ✅ | ✅ | Kunden im POS bearbeiten |
+| Steuern | `GET /wcpos/v1/taxes` | ✅ | ✅ | ✅ | Checkout-/Steuerberechnungsdaten |
+| Steuerklassen | `GET /wcpos/v1/taxes/classes` | ✅ | ✅ | ✅ | Checkout-/Steuerberechnungsdaten |
+| Versandmethoden | `GET /wcpos/v1/shipping_methods` | ✅ | ✅ | ✅ | Checkout-/Versanddaten |
+| Zahlungsgateways | `GET /wcpos/v1/payment-gateways` | ✅ | ✅ | ✅ | Zahlungsoptionen |
+| Gateway-Initialisierung | `POST /wcpos/v1/payment-gateways/{id}/bootstrap` | ✅ | ✅ | ✅ | Zahlungseinrichtung |
+| Vorlagen | `GET /wcpos/v1/templates` | ✅ | ✅ | ✅ | Beleg-/Vorlagenabrufe |
+| Aktive Vorlage | `GET /wcpos/v1/templates/active` | ✅ | ✅ | ✅ | Beleg-/Vorlagenabrufe |
+| Vorlagengalerie | `GET /wcpos/v1/templates/gallery` | ✅ | ✅ | ✅ | Vorlagenabrufe |
+| Allgemeine Einstellungen | `GET /wcpos/v1/settings/general` | ✅ | ✅ | ❌ | Nur für Verwaltung |
+| Checkout-Einstellungen | `GET /wcpos/v1/settings/checkout` | ✅ | ✅ | ❌ | Nur für Verwaltung |
+| Steuer-ID-Einstellungen | `GET /wcpos/v1/settings/tax_ids` | ✅ | ✅ | ❌ | Nur für Verwaltung |
+| Zahlungsgateway-Einstellungen | `GET /wcpos/v1/settings/payment-gateways` | ✅ | ✅ | ❌ | Nur für Verwaltung |
+| Erweiterungskatalog/-verwaltung | `GET /wcpos/v1/extensions` | ✅ | ✅ | ❌ | Nur für Verwaltung |
+| Protokolle | `GET /wcpos/v1/logs` | ✅ | ✅ | ❌ | Nur Verwaltung |
+
+## Zugriffsmatrix für Pro-Plugin-Endpunkte {#pro-plugin-endpoint-access-matrix}
+
+| Bereich | Endpunktbeispiele | Administrator | Shop-Manager | Kassierer | Hinweise |
+|---|---|---:|---:|---:|---|
+| Bearbeitungsdaten der Filiale | `GET /wcpos/v1/stores/{id}/edit` | ✅ | ✅ | ❌ | Filialverwaltung |
+| Filiale erstellen | `POST /wcpos/v1/stores` | ✅ | ✅ | ❌ | Filialverwaltung |
+| Filiale aktualisieren | `PATCH /wcpos/v1/stores/{id}` | ✅ | ✅ | ❌ | Filialverwaltung |
+| Lizenzeinstellungen aktualisieren | `POST /wcpos/v1/settings/license` | ✅ | ✅ | ❌ | Pro-Verwaltung |
+| Erweiterungsaktionen | `POST /wcpos/v1/extensions/action` | ✅ | ❌ | ❌ | Erfordert die Berechtigung zum Installieren/Verwalten von Plugins |
+| Bestellrückerstattungen | `POST /wcpos/v1/orders/{id}/refunds` | ✅ | ✅ | ✅ | Wird als POS-Vorgang behandelt |
+
+## Abdeckung des Token-Ablaufs {#token-expiry-coverage}
+
+| Szenario | Administrator | Shop-Manager | Kassierer | Erwartetes Ergebnis |
+|---|---:|---:|---:|---|
+| Gültiges Zugriffstoken | ✅ getestet | ✅ getestet | ✅ getestet | Zulässige Endpunkte geben weder `401` noch `403` zurück |
+| Abgelaufenes Access-Token | ✅ getestet | ✅ getestet | ✅ getestet | Anfrage schlägt am WCPOS-Authentifizierungs-Gate mit Benutzer `0` fehl |
+| Gültiges Refresh-Token nach abgelaufenem Zugriff | ✅ getestet | ✅ getestet | ✅ getestet | Neues Access-Token wird ausgestellt und der Zugriff wiederhergestellt |
+| Abgelaufenes Refresh-Token | ✅ getestet | ✅ getestet | ✅ getestet | Es kann kein neues Access-Token erstellt werden |
+
+## Fehlerdiagnose {#diagnosing-failures}
+
+Wenn ein standardmäßiger `shop_manager` einen Fehler wie diesen sieht:
+
+> Anfrage nach Token-Aktualisierung weiterhin nicht autorisiert - bitte melden Sie sich erneut an
+
+Die Endpoint-Matrix zeigt, dass dies **nicht** daran liegt, dass der standardmäßigen Rolle `shop_manager` grundsätzlich der POS-Zugriff fehlt. Wahrscheinliche Ursachen, die untersucht werden sollten:
+
+1. Websitespezifische Beschädigung von Rollen oder Berechtigungen.
+2. Ein Endpoint, der nicht von der Matrix abgedeckt wird.
+3. Wiederholungsverhalten des Clients bei veraltetem oder abgelaufenem Access-Token.
+4. Beeinträchtigung durch Sicherheits- oder Authentifizierungs-Plugins von Drittanbietern.
+5. Pro- oder filialbezogene Zugriffsregeln oder eigener Code.
+
+### Berechtigungsfehler vs. Token-Fehler {#permission-failure-vs-token-failure}
+
+Das POS-Frontend kann in beiden Fällen denselben Token-Aktualisierungsfehler anzeigen, nachdem es eine `401` oder `403` erhält, eine Token-Aktualisierung versucht und der erneute Versuch weiterhin nicht autorisiert ist. Die beiden Fehlermodi sehen auf der Serverseite unterschiedlich aus:
+
+Ein **echter Rollen-/Berechtigungsfehler** sieht normalerweise so aus:
+
+```text
+status: 403
+current_user: <actual user id>
+access token expired: false
+```
+
+Ein **Token-/Auth-Fehler** sieht normalerweise so aus:
+
+```text
+status: 403
+current_user: 0
+access token expired: true or invalid
+```
+
+Verwenden Sie diese Unterscheidung bei der Triage von POS-Zugriffsproblemen: Ein von null abweichender `current_user` weist auf Berechtigungen hin, während `current_user: 0` auf die Auth-/Token-Ebene hinweist.
