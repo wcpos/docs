@@ -1,33 +1,109 @@
-# Website
+<div align="center">
+  <h1>WCPOS Documentation</h1>
+  <p>The user documentation for <a href="https://wcpos.com">WooCommerce POS</a> — live at <a href="https://docs.wcpos.com">docs.wcpos.com</a>.</p>
+  <p>
+    <a href="https://docs.wcpos.com">
+      <img src="https://img.shields.io/website?url=https%3A%2F%2Fdocs.wcpos.com&label=docs.wcpos.com" alt="Live site" />
+    </a>
+    <a href="https://github.com/wcpos/docs/actions/workflows/build.yml">
+      <img src="https://github.com/wcpos/docs/actions/workflows/build.yml/badge.svg" alt="Build" />
+    </a>
+    <a href="https://docusaurus.io/">
+      <img src="https://img.shields.io/badge/built%20with-Docusaurus-3ECC5F?logo=docusaurus&logoColor=white" alt="Built with Docusaurus" />
+    </a>
+    <a href="https://wcpos.com/discord">
+      <img src="https://img.shields.io/discord/711884517081612298?color=%237289DA&label=WCPOS&logo=discord&logoColor=white" alt="Discord Chat" />
+    </a>
+  </p>
+  <p>
+    <a href="#-about"><b>About</b></a>
+    &ensp;&mdash;&ensp;
+    <a href="#-development"><b>Development</b></a>
+    &ensp;&mdash;&ensp;
+    <a href="#-writing-docs"><b>Writing docs</b></a>
+    &ensp;&mdash;&ensp;
+    <a href="#-deployment"><b>Deployment</b></a>
+  </p>
+</div>
 
-This website is built using [Docusaurus 2](https://docusaurus.io/), a modern static website generator.
+## 💡 About
 
-## Installation
+This repository is the public documentation site for **WooCommerce POS (WCPOS)** — a free, open-source Point of Sale for WooCommerce. It's written primarily for store owners and operators: getting started, installation, using the POS, managing products / orders / customers, coupons, receipts, hardware setup, payment gateways, settings and reports — plus a large troubleshooting section and a small developer reference (REST API internals, custom gateways).
 
-```console
+The site is built with **[Docusaurus 3](https://docusaurus.io/)** and deployed on **Vercel** at [docs.wcpos.com](https://docs.wcpos.com).
+
+Notable features:
+
+- **Multilingual** — 12 locales, kept in sync by automated translation tooling.
+- **Search** — Algolia DocSearch.
+- **AI-friendly** — generated [`/llms.txt`](https://docs.wcpos.com/llms.txt) and [`/llms-full.txt`](https://docs.wcpos.com/llms-full.txt); append `.md` to any page URL for clean Markdown, and use the per-page "Copy page" / "Open in ChatGPT/Claude" buttons.
+
+## 🗂 Structure
+
+```
+versioned_docs/
+  version-1.x/        # ← the live documentation content (MDX), served at the site root
+  version-0.4.x/      # legacy docs
+versioned_sidebars/   # checked-in per-version sidebar config
+i18n/                 # translations for all 12 locales
+src/
+  components/         # reusable MDX components (<Steps>, <FeatureCard>, <ProBadge>, …)
+  theme/              # swizzled Docusaurus theme
+  pages/              # custom standalone pages
+static/               # images, svgs, robots.txt
+scripts/              # translation automation, frontmatter validation, Algolia audit
+docs/                 # internal notes only (ADRs) — NOT site content
+docusaurus.config.js  # site configuration
+```
+
+> Heads up: the live content is **not** in `docs/` (that folder holds internal ADRs). Because the config sets `lastVersion: '1.x'` and `includeCurrentVersion: false`, all current content is authored under `versioned_docs/version-1.x/` and served at the site root.
+
+## 👩‍💻 Development
+
+**Prerequisites**
+
+- [Node.js](https://nodejs.org) `>=22.13 <23`
+- [pnpm](https://pnpm.io) (pinned via `packageManager`)
+
+```bash
 pnpm install
+pnpm start      # local dev server with hot reload
 ```
 
-## Local Development
+**Common commands**
 
-```console
-pnpm start
-```
+| Command | Description |
+| --- | --- |
+| `pnpm start` | Start the local dev server |
+| `pnpm build` | Build the static site into `build/` (all locales) |
+| `pnpm serve` | Preview the production build locally |
+| `pnpm clear` | Clear the Docusaurus cache |
+| `pnpm test` | Run the script unit tests (Vitest) |
+| `pnpm translations:sync` / `:validate` | Manage and validate translations |
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+> **Lockfiles:** local development uses pnpm (`pnpm-lock.yaml`, gitignored), while Vercel installs with npm (`package-lock.json`, committed). The two override lists are kept in sync — update both if you change dependencies.
 
-## Build
+## ✍️ Writing docs
 
-```console
-pnpm build
-```
+1. Add or edit an `.mdx` file under `versioned_docs/version-1.x/<category>/`.
+2. Include the required frontmatter — `title`, `sidebar_label`, `sidebar_position`, and optionally `slug` and `description`. Frontmatter is validated at build time.
+3. Update `versioned_sidebars/version-1.x-sidebars.json` when adding or moving pages. The live `1.x` docs are served with `includeCurrentVersion: false`, so new MDX files under `versioned_docs/version-1.x/` are omitted from navigation until this checked-in sidebar JSON is updated or regenerated.
+4. Reuse the MDX components in `src/components/` (e.g. `<Steps>`, `<LinkCard>`, `<ProBadge>`) for consistent styling.
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+Translations are **not** edited by hand per page — source (English) content is authored here and the other locales in `i18n/` are produced by the automated translation workflows.
 
-## Deployment
+## 🚀 Deployment
 
-```console
-GIT_USER=<Your GitHub username> USE_SSH=true pnpm deploy
-```
+The site auto-deploys via **Vercel's Git integration**: pushes to `main` deploy to production, and pull requests get preview deployments. The [`build.yml`](./.github/workflows/build.yml) workflow runs a full production build (all locales) as a blocking PR gate.
 
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+## 🔗 Links
+
+- 📚 Live docs — [docs.wcpos.com](https://docs.wcpos.com)
+- 🌐 Website — [wcpos.com](https://wcpos.com)
+- 🔌 WordPress plugin — [wordpress.org/plugins/woocommerce-pos](https://wordpress.org/plugins/woocommerce-pos/)
+- 📦 Client monorepo — [github.com/wcpos/monorepo](https://github.com/wcpos/monorepo)
+- 💬 Discord — [wcpos.com/discord](https://wcpos.com/discord)
+
+---
+
+<sub>Want to help translate the docs? Open an issue with the <code>i18n</code> label or say hello on <a href="https://wcpos.com/discord">Discord</a>.</sub>
