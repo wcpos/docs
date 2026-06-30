@@ -25,4 +25,21 @@ describe('summarize', () => {
     expect(text).toContain('Platform: desktop');
     expect(text).not.toContain('Vendor:');
   });
+
+  it('includes cloud provider and failure path answers', () => {
+    const text = summarize({
+      currentId: 'support',
+      answers: {
+        where: 'cloud',
+        'cloud-provider': 'printnode',
+        'g-cloud-pn-status': 'no',
+        'g-cloud-pn-retry': 'no',
+      },
+    });
+    expect(text).toContain('Printer location: cloud');
+    expect(text).toContain('Cloud provider: printnode');
+    expect(text).toContain('PrintNode status: no');
+    expect(text).toContain('PrintNode retry: no');
+    expect(text).toContain('Stuck at: support');
+  });
 });
