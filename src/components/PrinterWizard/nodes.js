@@ -95,11 +95,12 @@ export function WizardFigure({ src, alt, summary }) {
 }
 WizardFigure.wizardKind = KIND.FIGURE;
 
-export function WizardTerminal({ id, kind, children }) {
+export function WizardTerminal({ id, kind, title, children }) {
   const { state, summarize } = useWizard();
   if (!useActive(id)) return null;
   return (
     <section className={`${styles.node} ${styles.terminal} ${kind === 'support' ? styles.support : styles.success}`}>
+      {title ? <h3 className={styles.prompt}>{title}</h3> : null}
       <div className={styles.body}>{children}</div>
       {kind === 'support' ? <SupportSummary summarize={summarize} state={state} /> : null}
     </section>
