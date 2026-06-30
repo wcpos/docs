@@ -18,16 +18,27 @@ Not sure how to connect your printer? Answer a few questions and we'll guide you
   </WizardQuestion>
 
   <WizardQuestion id="platform" title="Which app are you using WCPOS in?">
-    <WizardChoice value="desktop" label="Desktop app (Windows or Mac)" goTo="connection" />
-    <WizardChoice value="web" label="Web browser" goTo="connection" />
-    <WizardChoice value="ios" label="iPhone or iPad" goTo="connection" />
-    <WizardChoice value="android" label="Android" goTo="connection" />
+    <WizardChoice value="web" label="Web browser" goTo="conn-web" />
+    <WizardChoice value="desktop" label="Desktop app (Windows or Mac)" goTo="conn-full" />
+    <WizardChoice value="ios" label="iPhone or iPad" goTo="conn-ios" />
+    <WizardChoice value="android" label="Android" goTo="conn-full" />
   </WizardQuestion>
 
-  <WizardQuestion id="connection" title="How does the printer connect?">
+  <WizardQuestion id="conn-full" title="How does the printer connect?">
     <WizardChoice value="network" label="Network / Wi-Fi (it has an IP address)" goTo="vendor" />
-    <WizardChoice value="bluetooth" label="Bluetooth" goTo="bt-usb-not-covered" />
-    <WizardChoice value="usb" label="USB cable" goTo="bt-usb-not-covered" />
+    <WizardChoice value="bluetooth" label="Bluetooth" goTo="bt-setup" />
+    <WizardChoice value="usb" label="USB cable" goTo="usb-setup" />
+  </WizardQuestion>
+
+  <WizardQuestion id="conn-ios" title="How does the printer connect?">
+    <WizardChoice value="network" label="Network / Wi-Fi (it has an IP address)" goTo="vendor" />
+    <WizardChoice value="bluetooth" label="Bluetooth" goTo="bt-setup" />
+  </WizardQuestion>
+
+  <WizardQuestion id="conn-web" title="How does the printer connect?">
+    <WizardChoice value="network" label="Network / Wi-Fi (it has an IP address)" goTo="web-vendor" />
+    <WizardChoice value="bluetooth" label="Bluetooth" goTo="web-btusb" />
+    <WizardChoice value="usb" label="USB cable" goTo="web-btusb" />
   </WizardQuestion>
 
   <WizardQuestion id="vendor" title="What brand is the printer?">
@@ -47,10 +58,6 @@ To find the IP address, print the printer's network self-test:
 
 We strongly recommend giving the printer a **fixed address** (a DHCP reservation on your router) so it doesn't change and break printing later.
 
-:::note Using the web app?
-From a web browser, network printing only works with **Epson or Star** printers that have a built-in print server, and secure (HTTPS) sites add extra hurdles. If it won't connect, the **desktop app** is the most reliable option — see [Printer Setup](/hardware/printers).
-:::
-
 <WizardFigure src="/img/printer-wizard/star-selftest.png" alt="Printer network self-test printout with the IP address and open ports highlighted" summary="The self-test shows the printer's current IP address and which network ports are open." />
 
     <WizardGate id="g-testprint" question="Click Save — did the test print come out?">
@@ -58,12 +65,6 @@ From a web browser, network printing only works with **Epson or Star** printers 
       <WizardChoice value="no" label="No, nothing printed or it errored" goTo="fix-not-printing" />
     </WizardGate>
   </WizardStep>
-
-  <WizardInvalid id="bt-usb-not-covered" title="Bluetooth &amp; USB setup">
-
-This wizard currently covers **network (Wi-Fi / Ethernet)** printers. For **Bluetooth** or **USB** setup, follow the step-by-step guide on the [Printer Setup](/hardware/printers) page — it covers every connection type and platform.
-
-  </WizardInvalid>
 
   <WizardFix id="fix-not-printing" title="When the test print doesn't come out">
 
@@ -76,6 +77,112 @@ Then confirm the printer is reachable: open `http://<printer-ip>/` in a web brow
       <WizardChoice value="no" label="Still not printing" goTo="support" />
     </WizardGate>
   </WizardFix>
+
+  {/* ── Web network path ── */}
+
+  <WizardQuestion id="web-vendor" title="What brand is the printer?">
+    <WizardChoice value="star" label="Star" goTo="web-net-setup" />
+    <WizardChoice value="epson" label="Epson" goTo="web-net-setup" />
+    <WizardChoice value="generic" label="Generic / other ESC/POS" goTo="web-generic-invalid" />
+  </WizardQuestion>
+
+  <WizardInvalid id="web-generic-invalid" title="Generic printers need the desktop app">
+
+A web browser can't open a raw network connection, so it can only reach **Epson** and **Star** printers that have a built-in print server. For a generic ESC/POS network printer, use the **desktop app**, which connects directly over the network (port 9100) — download it from the [Printer Setup](/hardware/printers) page.
+
+  </WizardInvalid>
+
+  <WizardStep id="web-net-setup" title="Connect a network printer from the web app">
+
+Printing to a network printer **from a web browser** is the trickiest setup, because the browser can only talk to the printer's built-in web server over HTTP/HTTPS — and a secure (HTTPS) POS forces a secure connection to the printer too.
+
+First, confirm the printer is reachable: open `http://<printer-ip>/` in a new browser tab. If you see the printer's own configuration page, it's on the network; if not, fix the network/IP first.
+
+Then add the printer in **POS &gt; Settings &gt; Printing** with its IP address. If your POS runs over **HTTPS**, the connection to the printer is forced to HTTPS (Epson port 8043, Star 443) — which only works if the printer has a trusted **SSL certificate**.
+
+    <WizardGate id="g-web-net" question="Did the test print succeed?">
+      <WizardChoice value="yes" label="Yes, it printed" goTo="g-width" />
+      <WizardChoice value="no" label="No, it errored or said sent but nothing printed" goTo="web-net-fix" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="web-net-fix" title="When web network printing won't work">
+
+This is the most common dead-end, and it usually isn't fixable from the browser. Here's why and what to do:
+
+Print the printer's **self-test** and look at the SSL/TLS section. If it says the certificate does **not exist**, HTTPS printing can't work until you generate one — and the browser won't trust a self-signed certificate without you visiting `https://<printer-ip>` once and accepting it on every device.
+
+A "sent successfully" message that prints nothing means the browser silently blocked the request (the printer speaks HTTP but your POS is HTTPS — a "mixed content" block), or the HTTPS port (8043 for Epson, 443 for Star) was forced with no certificate.
+
+**The reliable fix is the desktop app**, which connects straight to the printer over the network (port 9100) with none of the browser's HTTPS restrictions. Download it from [Printer Setup](/hardware/printers) and add the same printer there.
+
+    <WizardGate id="g-web-net-retry" question="Did you get it working (on the web, or by switching to the desktop app)?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="Still not printing" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  {/* ── Bluetooth path ── */}
+
+  <WizardStep id="bt-setup" title="Connect over Bluetooth">
+
+Bluetooth receipt printing uses the printer maker's own software, so the printer must be an **Epson** or **Star** model — generic Bluetooth printers aren't supported over Bluetooth on any platform.
+
+First, **pair the printer in your device's system Bluetooth settings** — not in WCPOS. Bluetooth printers only remember one device at a time, so if it was paired to another till, "forget" it there first. On **iPhone/iPad**, also allow WCPOS both **Bluetooth** and **Local Network** permission when prompted. On **Android**, set WCPOS to **unrestricted** battery use so the system doesn't drop the connection.
+
+Then in **POS &gt; Settings &gt; Printing**, tap **Scan for printers** and pick yours — its name and brand fill in automatically.
+
+    <WizardGate id="g-bt" question="Did the test print succeed?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="No / it won't pair or connect" goTo="bt-fix" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="bt-fix" title="Bluetooth won't pair or keeps dropping">
+
+Pair the printer in the device's **system Bluetooth settings first**, then scan again in WCPOS. If it paired before and won't reconnect, "forget" it on the other device (and reset the printer's Bluetooth) so it isn't still bound there. Make sure it's powered on and in range. On iPhone/iPad, confirm WCPOS has both Bluetooth and Local Network permission; on Android, set the app to unrestricted battery use. Remember Bluetooth supports **Epson and Star only** — a generic Bluetooth printer won't connect.
+
+    <WizardGate id="g-bt-retry" question="Connected now?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="Still won't connect" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  {/* ── USB path ── */}
+
+  <WizardStep id="usb-setup" title="Connect over USB">
+
+Plug the printer in by USB. On **Android**, approve the USB permission prompt when it appears, then pick the printer in **POS &gt; Settings &gt; Printing**. On the **desktop app (Windows)**, a generic printer may need its driver installed **before** you plug it in.
+
+    <WizardGate id="g-usb" question="Did the test print succeed?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="No / it errored" goTo="usb-fix" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="usb-fix" title="USB won't connect">
+
+On **Android**, re-plug the cable and approve the USB permission prompt. On the **desktop app (Windows)**, a `LIBUSB_ERROR_NOT_SUPPORTED` error means Windows has locked the device to its own print driver — the simplest fix is to **connect the printer over the network (port 9100) instead**, which avoids USB drivers entirely. (Advanced users can replace the driver with a WinUSB tool, but that disables the normal Windows print queue for the device — only do this if you know what you're doing.)
+
+    <WizardGate id="g-usb-retry" question="Working now?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="Still not printing" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  {/* ── Web Bluetooth/USB path ── */}
+
+  <WizardStep id="web-btusb" title="Bluetooth &amp; USB from a web browser">
+
+Connecting a printer to the **web app** over Bluetooth or USB works only in **Google Chrome or Microsoft Edge** (Safari and Firefox can't do it), and the printer must be an **Epson** or **Star** model. Click **Connect** in **POS &gt; Settings &gt; Printing** and choose the printer in the browser's device chooser.
+
+If you're not on Chrome or Edge — or it won't connect — the **desktop app** is the most reliable option for Bluetooth and USB. Download it from [Printer Setup](/hardware/printers).
+
+    <WizardGate id="g-web-btusb" question="Did the test print succeed?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="No" goTo="support" />
+    </WizardGate>
+  </WizardStep>
 
   <WizardStep id="g-width" title="Check the width">
 
