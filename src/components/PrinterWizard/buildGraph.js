@@ -12,9 +12,12 @@ function flatten(children, out = []) {
 }
 
 function kindOf(el) {
-  return el && typeof el === 'object' && el.type && typeof el.type === 'object'
-    ? el.type.wizardKind
-    : undefined;
+  if (!el || typeof el !== 'object' || !el.type) return undefined;
+  // A real React element's `.type` is the component FUNCTION (which carries the
+  // static `wizardKind`); test fakes use a plain object; intrinsics ('p','div')
+  // are strings with no wizardKind. Read the tag off functions and objects alike.
+  const t = el.type;
+  return typeof t === 'function' || typeof t === 'object' ? t.wizardKind : undefined;
 }
 
 // Walk the tree: register navigable nodes by id, collect choice edges, descend through

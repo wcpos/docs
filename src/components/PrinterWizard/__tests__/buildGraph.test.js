@@ -2,11 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { buildGraph } from '../buildGraph';
 import { KIND } from '../kinds';
 
-// Helper: fake a node element the way React would shape it.
-const node = (kind, props = {}, children = []) => ({
-  type: { wizardKind: kind },
-  props: { ...props, children },
-});
+// Helper: fake a node element the way React ACTUALLY shapes it — `type` is the
+// component FUNCTION carrying a static `wizardKind` (NOT a plain object). Using a
+// function here is what catches the real-world bug where `typeof el.type` is
+// 'function', not 'object'.
+const node = (kind, props = {}, children = []) => {
+  const Comp = () => null;
+  Comp.wizardKind = kind;
+  return { type: Comp, props: { ...props, children } };
+};
 const choice = (value, goTo, label = value) => node(KIND.CHOICE, { value, goTo, label });
 
 describe('buildGraph', () => {
@@ -20,6 +24,18 @@ describe('buildGraph', () => {
     expect(g.idList).toEqual(['platform', 'conn']);
     expect(g.kindById).toEqual({ platform: KIND.QUESTION, conn: KIND.STEP });
     expect(g.errors).toEqual([]);
+  });
+
+  it('detects nodes whose type is a FUNCTION component (real React element shape)', () => {
+    // Regression: kindOf must read `wizardKind` off function-typed `el.type`.
+    // The previous `typeof el.type === 'object'` check returned undefined for
+    // every real element, so the live wizard registered zero nodes and rendered nothing.
+    function Question() { return null; }
+    Question.wizardKind = KIND.QUESTION;
+    const realElement = { type: Question, props: { id: 'where', children: [] } };
+    const g = buildGraph([realElement]);
+    expect(g.startId).toBe('where');
+    expect(g.kindById.where).toBe(KIND.QUESTION);
   });
 
   it('descends through opaque wrapper elements (themed <p>, fragments) to find nested nodes', () => {
