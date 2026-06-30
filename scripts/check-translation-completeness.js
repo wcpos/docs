@@ -138,6 +138,7 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   // them would be wrong. Kept English in every locale (see receipts/cloud-printing).
   'Star CloudPRNT',
   'Star Online',
+  'Star Document Markup',
   'Epson Server Direct Print',
   'PrintNode',
   // Default WordPress theme names, referenced in troubleshooting (switch to a
