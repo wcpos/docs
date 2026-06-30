@@ -2,6 +2,8 @@
 // Keep labels stable (support triage greps these).
 
 const LINES = [
+  ['Printer location', (a) => a.where],
+  ['Cloud provider', (a) => a['cloud-provider']],
   ['Platform', (a) => a.platform],
   ['Browser', (a) => a.browser],
   ['Version', (a) => a.version],
@@ -24,6 +26,8 @@ export function summarize(state) {
   if (a.selftestCert || a.selftest9100 || a.selftestDhcp) {
     out.push(`Self-test: cert=${a.selftestCert || '?'}, tcp9100=${a.selftest9100 || '?'}, dhcp=${a.selftestDhcp || '?'}`);
   }
+  const path = [...(state.history || []), state.currentId];
+  out.push(`Path: ${path.join(' → ')}`);
   out.push(`Stuck at: ${state.currentId}`);
   return out.join('\n');
 }

@@ -25,4 +25,18 @@ describe('summarize', () => {
     expect(text).toContain('Platform: desktop');
     expect(text).not.toContain('Vendor:');
   });
+
+  it('captures the cloud provider, location, and the failure path', () => {
+    const text = summarize({
+      currentId: 'support',
+      history: ['where', 'cloud-provider', 'cloud-printnode', 'fix-cloud-printnode'],
+      answers: { where: 'cloud', 'cloud-provider': 'printnode' },
+    });
+    expect(text).toContain('Printer location: cloud');
+    expect(text).toContain('Cloud provider: printnode');
+    expect(text).toContain('Path: where → cloud-provider → cloud-printnode → fix-cloud-printnode → support');
+    expect(text).toContain('Stuck at: support');
+    // local-only fields stay omitted for a cloud user
+    expect(text).not.toContain('Connection:');
+  });
 });
