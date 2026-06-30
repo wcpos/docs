@@ -5,8 +5,11 @@
 - **Author:** kilbot (with Claude)
 - **Repo:** wcpos/docs (Docusaurus docs site)
 - **Tracking:** new interactive wizard at `hardware/printer-setup-wizard.mdx`
+- **Companion:** [Ecosystem Knowledge Base](./2026-06-30-printer-wizard-ecosystem-kb.md) — 98-finding web sweep; source of the expanded FM catalogue (§7.4) and pre-emption priorities (§7.7).
 
 > **Rev. 2 note:** A 4-way adversarial review (translation, decision-graph, Docusaurus integration, real-world fidelity) hardened this spec. Key fixes folded in: `scheme` is now an explicitly collected answer (§7.0); the escalation model is a defined global troubleshooting budget, not per-gate (§6.4); the figure caption prop is `summary` everywhere (no `caption=`); the validity matrix is a precedence-ordered, deterministic function with the Generic-WebUSB exception (§6.5); the support summary captures self-test + endpoint evidence (§6.7); vitest needs a config change for `src/` (§10); and the new real-world failure modes require a parallel `printers.mdx` update so the wizard isn't the sole source of truth (§12.1).
+>
+> **Rev. 3 note:** Integrated a 98-finding ecosystem web sweep (Companion KB). Extended the FM catalogue to FM-9…FM-25 plus further gaps (§7.4), added a **pre-emption priorities** section (§7.7), early **receipt-vs-label / model+firmware / placement** gates (§7.0), and source-quality caveats (§11). The catalogue is now content (MDX nodes), not engine scope — v1 ships the high-frequency core; the long tail is added incrementally and translates automatically.
 
 ---
 
@@ -205,12 +208,15 @@ Route events through the **existing analytics module's consent-respecting captur
 
 Authoritative node list = Appendix A. Highlights and the real-world additions:
 
-### 7.0 Step 0 — platform, browser, version, scheme
+### 7.0 Step 0 — pre-gate, platform, browser, version, scheme, model, placement
 First questions establish the gating variables every downstream `showWhen` needs:
-- **Platform** (Web / Desktop / iOS / Android).
-- **Browser** (web only): Chrome/Edge vs Safari/Firefox — gates WebUSB/Web Bluetooth validity (§6.5 rule 2).
+- **Pre-gate — receipt printer, not a label printer.** A one-line gate up front: *"This wizard is for thermal **receipt** printers (Epson/Star/generic ESC/POS). Using a label printer (Zebra/ZPL, Brother QL, DYMO)?"* → those speak a different command language; route them out. (Ecosystem KB §6: a real onboarding mistake.)
+- **Platform** (Web / Desktop / iOS / Android). *This is the highest-leverage branch — the capability backbone (§7.7 #1).*
+- **Browser** (web only): Chrome/Edge vs Safari/Firefox — gates WebUSB/Web Bluetooth validity (§6.5 rule 2) and secure-context/LNA behavior (FM-21/FM-22).
 - **POS scheme** (web only): *"Look at your POS address bar — does it start with `https://` or `http://`?"* → `answers.scheme = https|http`. **This is the variable the entire §3a redirect keys on; it must be collected, not assumed.** (We can't read it client-side — the docs site is a different origin.)
 - **Version:** *"click the version number in the sidebar — are you on the latest?"* Many real issues were "fixed in a newer build." Feeds the summary; if clearly outdated → "update first" branch (Apple/TestFlight review delay for iOS; APK link for Android; in-app for desktop/web).
+- **Model + firmware** (or "print a self-test, §7.3"): gates ePOS/WebPRNT/SDP availability (only Intelligent/-NT models have a built-in web server — FM-19), emulation mode, cpl, iOS-BT support, single-session 9100 (FM-18). Ask once, branch everywhere.
+- **Placement** (where relevant): *"counter receipt, or a hot station (kitchen/grill)?"* — hot/steamy/greasy stations fade thermal paper; route to impact/dot-matrix (FM-25).
 
 ### 7.1 Local branch
 `platform → (browser + scheme, if web) → connection → vendor`, gated by the validity matrix. Setup spine (S1–S6 from `printers.mdx`): open Printer Settings → choose connection → identify printer (IP / scan / device chooser) → advanced (language, width, raster, vendor, vendor-bound port) → options (auto-cut, drawer, default) → **Save & Test** (test print first, save on success).
@@ -241,7 +247,11 @@ From `printers.mdx#troubleshooting` plus real-world additions (the latter **also
 - **FM-generic-usb-win (new):** desktop Windows Generic USB `LIBUSB_ERROR_NOT_SUPPORTED`. **Lead with "use network (port 9100) instead."** The WinUSB/Zadig driver-swap is gated behind an explicit *"advanced — at your own risk"* disclosure (Zadig can disrupt other USB devices).
 - **FM-usb-app-version (new):** USB prints in the browser (Chrome) but not in the app ⇒ keyed off the §7.0 version answer ⇒ update the app, or keep using the browser meanwhile.
 - **FM-crash-on-save (new):** iOS/Android network printer prints test but app crashes / not saved ⇒ known bug → update to latest.
-- **FM-wrong-ip (new):** can't reach the IP ⇒ confirm via self-test it's *this* printer's IP (multiple-printer mix-up).
+- **FM-wrong-ip (new):** can't reach the IP ⇒ confirm via self-test it's *this* printer's IP (multiple-printer mix-up); DHCP-changed IP ⇒ DHCP reservation.
+
+**Extended catalogue (ecosystem sweep — Companion KB §2 + §6).** The web sweep added **FM-9…FM-25** plus further high-frequency gaps, all of which become MDX troubleshooting nodes added incrementally (the engine doesn't care how many; v1 ships the high-frequency core):
+- **FM-9** wrong network port/protocol (LPR/WSD/IPP vs raw 9100); **FM-10** 2.4GHz-only printer can't join 5GHz/band-steered SSID; **FM-11** Wi-Fi instability mid-shift (→ prefer Ethernet); **FM-12** thermal paper loaded upside-down → blank (scratch test); **FM-13** faint printing (density/clean head); **FM-14** auto-cutter fails/cuts wrong place; **FM-15** per-job gibberish *after the first* (graphics/raster buffer overrun — distinct mechanism from FM-3); **FM-16** power-up/first-job serial baud/flow-control garbage; **FM-17** clone doesn't truly implement ESC/POS; **FM-18** Star single-session 9100 lock / ePOS `DEVICE_IN_USE` (2nd till); **FM-19** ePOS/WebPRNT disabled or non-Intelligent model (no web server); **FM-20** cloud-print misconfig (region URL, poll time, Epson URL-Encode, media type); **FM-21** Chrome Local Network Access prompt (Chrome 142+, deny = silent fail); **FM-22** secure-context (`navigator.usb` undefined on http://); **FM-23** WP/Woo plugin conflict aborting the print path; **FM-24** WebConfig admin lockout; **FM-25** wrong printer class for kitchen (thermal vs impact).
+- **Critique gaps to also cover:** power/PSU/blink-code basics; **idle-sleep "first print of the day fails, second works"** (NIC/BT wakes on the lost job — strong new-FM candidate); host firewall/AV blocking 9100 or the bridge port; double-NAT / captive portal / VLAN isolation (mDNS reflector); **generic** multi-till 9100 contention (not just Star); mobile **cert-trust** install (iOS separate "trust" toggle); self-signed **cert expiry**; a **per-shipped-locale → code-page/raster** table (Thai/Vietnamese/Greek/Hebrew/Arabic/Cyrillic).
 
 Pure-guidance diagnostic the wizard instructs: **"Open `http://<printer-ip>/` in your browser — do you see the printer's page?"** Yes → reachable, issue is WCPOS scheme/port. No → network/IP problem.
 
@@ -255,6 +265,27 @@ Provider fork → per-provider sub-tree + troubleshooting:
 - **Template selection:** raw thermal hardware ⇒ Thermal (ESC/POS) template; system dialog / PDF / PrintNode ⇒ HTML/any. Engine fixed at creation.
 - **Width:** prefer `width="*"`; for hard-coded columns, budget to the **selected Printer Text Width** (32 / 42 / 48), with **42 as the default when unknown** (not universally 42 — an 80mm-wide 48-col printer would waste 6 columns). The `G-width` gate reconciles the chosen width with the template's columns.
 - **Print routing:** per-job → settings → auto-match; mismatch warning ties to FM-dialog.
+
+### 7.7 Pre-emption priorities (surface early to head off problems)
+Ranked by frequency × how-stuck-users-get (Companion KB §3–4). These are the wizard's *framework* — not just troubleshooting after failure:
+1. **Platform/engine gate first** — only present connection methods that can actually work on that platform/browser; explain *why* an impossible one is hidden and name the runtime that supports it. The branching backbone.
+2. **DHCP reservation / static-IP guidance** at network setup — the single most recurring repeat-failure (FM-wrong-ip + FM-11). Read the current IP from the self-test; reserve it on the router (preferred over printer-side static).
+3. **Model + firmware identification** — gates web-server availability, emulation, cpl, iOS-BT, single-session 9100 (FM-18/19).
+4. **Paper width → cpl auto-set + a column-alignment test print** (FM-4), accounting for printable-area < paper-width (asymmetric margins).
+5. **Locale-aware raster default** for non-Latin/RTL stores (FM-3).
+6. **Network-quality nudges** — same SSID/subnet (not guest/isolated), 2.4GHz for the printer, prefer Ethernet for fixed POS; manual-IP path beside Scan.
+7. **HTTPS-cert pre-trust** for web + Epson/Star HTTPS (regenerate cert CN=static IP, import to device trust store once) — pre-empts "breaks every morning."
+8. **Chrome LNA "click Allow" coaching** on the Web tier (FM-21).
+9. **Mandatory "Test print" + "Test drawer"** that surface real ePOS/ASB status (not fire-and-forget) — catch FM-2/7/12/web-silent at setup, not the first live sale.
+10. **Paper-load scratch-test tip** at first test print (FM-12 — fixes ~half of "blank" cases in seconds).
+11. **Placement question** (counter vs hot station) → thermal-vs-impact (FM-25).
+12. **OS-permission prompts at the right step** (iOS Local Network + Bluetooth; Android battery-unrestricted) for FM-1/8.
+
+### 7.8 Framing principles (from competitor POS docs — Companion KB §3)
+- **Curated supported-printer list + per-model branches**, with a clearly-labelled separate **"Generic ESC/POS (advanced/unsupported)"** lane so expectations are set.
+- **Self-test page as the universal diagnostic** ("hold FEED at power-on") — the wizard's "show me your printer's status" step (§7.3).
+- **Set cloud-latency expectations** (5–10s poll is normal) and **verify reachability** rather than fire-and-forget.
+- **Destructive-action guardrails** — warn before factory reset / clearing when pending offline jobs exist.
 
 ## 8. Imagery (D8)
 - Per-node `<WizardFigure src alt summary>`; `alt` and `summary` (the caption) are translatable. **No `caption` attribute exists.**
@@ -285,6 +316,7 @@ Provider fork → per-provider sub-tree + troubleshooting:
 - **Links:** keep wizard link targets a small reviewed constant set; prefer page roots over deep anchors; the full build is the gate.
 - **Advanced leaves** (Zadig/WinUSB, self-signed certs) marked advanced/optional; the simple "use the desktop app" escape always leads.
 - **Versioning:** component shared, MDX wrapper versioned; node graph tracks current product.
+- **Verify medium-confidence ecosystem content before publishing** (Companion KB §5): cpl varies by font/DPI; cash-drawer kick pins/codes, clone `GS V` cutter variants, CloudPRNT media types, and Star Web-Serial compatibility are model-specific; Chrome LNA timing (Chrome 142, Sept 2025) is shifting. Lead with high-confidence guidance; mark per-model specifics as "try this," and validate against primary vendor manuals + WCPOS's own support log.
 
 ## 12. Build order
 1. **Engine + local branch** (Step-0 platform/browser/scheme/version, validity matrix, setup spine, gates incl. width + crisp + split-garble + self-test decode, real images, support summary). Covers the bulk of support pain.
@@ -295,6 +327,9 @@ Each phase is a mergeable increment; the engine is built once; translation happe
 
 ### 12.1 Documentation dependency (parallel `printers.mdx` update)
 The new real-world failure modes (FM-dialog, FM-web-silent, FM-web-https-cert, FM-generic-usb-win, FM-usb-app-version, FM-crash-on-save, FM-wrong-ip) currently have **no published reference anchor**. Before/with phase 1, add them to `printers.mdx#troubleshooting` (or a new section) so the wizard deep-links a stable anchor rather than being the sole source of truth. This MDX edit is itself translated by the pipeline — a bonus improvement to the reference page.
+
+### 12.2 Highest-value follow-up research (recommended before/with phase 1)
+The ecosystem sweep deliberately did **not** mine **WCPOS's own GitHub issues / WordPress.org forum / Discord support log** — the critique flags this as the single highest-value source. It would (a) validate the WCPOS-specific findings (FM-23 plugin conflict; the "blurry" merchant), (b) surface 2–3 more real FMs in users' own words, and (c) confirm which medium-confidence ecosystem items actually bite WCPOS users. Recommended targeted searches: `wcpos printer site:github.com OR site:wordpress.org`; `receipt printer "first print fails" / "first job of the day" idle/sleep`; `(Zebra|ZPL|DYMO|label printer) "won't print receipt" ESC/POS`. Pairs naturally with mining the existing Discord threads we already started from.
 
 ## 13. Open questions (genuinely deferred — cosmetic only)
 - Exact global troubleshooting budget (default 3 cycles) — tune after real use. *(The escalation **mechanism** is resolved in §6.4.)*
