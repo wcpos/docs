@@ -45,11 +45,15 @@ export default function PrinterWizard({ children, supportId = 'support', maxFixC
   }, []);
 
   // Write state back to the hash (replaceState — don't pollute history per click).
+  // Skip the pristine start state when there's no existing wiz hash, so we don't
+  // stamp the URL (or clobber an unrelated anchor) before the user starts.
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
+    const pristine = state.currentId === graph.startId && Object.keys(state.answers).length === 0;
+    if (pristine && !window.location.hash.startsWith(HASH_PREFIX)) return;
     const token = encodeState({ currentId: state.currentId, answers: state.answers });
     window.history.replaceState(null, '', `${HASH_PREFIX}${token}`);
-  }, [state]);
+  }, [state, graph.startId]);
 
   const ctx = React.useMemo(() => ({ state, dispatch, graph, summarize }), [state, graph]);
 

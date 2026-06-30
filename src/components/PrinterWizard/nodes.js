@@ -48,6 +48,8 @@ export function WizardStep({ id, title, children }) {
 }
 WizardStep.wizardKind = KIND.STEP;
 
+// Gates are NOT self-gated on currentId: they always render inside an already-active
+// WizardStep/WizardFix, so gating again would double-hide them. Author gates only inside steps/fixes.
 export function WizardGate({ id, question, children }) {
   // Gates render inside their parent Step (which is already active-gated).
   return (
