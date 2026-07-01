@@ -1,4 +1,5 @@
 import React from 'react';
+import Translate from '@docusaurus/Translate';
 import { KIND } from './kinds';
 import { WizardContext, ChoiceScope, useWizard } from './context';
 import styles from './styles.module.css';
@@ -120,7 +121,9 @@ function SupportSummary({ summarize, state }) {
     <div className={styles.summary}>
       <pre className={styles.summaryText}>{text}</pre>
       <button type="button" className={styles.copyBtn} onClick={copy}>
-        {copied ? 'Copied' : 'Copy support summary'}
+        {copied
+          ? <Translate id="printerWizard.copied" description="Wizard: support summary copied confirmation">Copied</Translate>
+          : <Translate id="printerWizard.copySummary" description="Wizard: copy the support summary to clipboard">Copy support summary</Translate>}
       </button>
     </div>
   );
