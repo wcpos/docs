@@ -1,4 +1,5 @@
 import React from 'react';
+import Translate from '@docusaurus/Translate';
 import { buildGraph } from './buildGraph';
 import { makeReducer, initialState } from './reducer';
 import { encodeState, decodeState } from './urlState';
@@ -62,8 +63,8 @@ export default function PrinterWizard({ children, supportId = 'support', maxFixC
       <div className={styles.wizard}>
         {children}
         <div className={styles.controls}>
-          <button type="button" onClick={() => dispatch({ type: 'BACK' })} disabled={state.history.length === 0}>Back</button>
-          <button type="button" onClick={() => dispatch({ type: 'RESTART' })}>Start over</button>
+          <button type="button" onClick={() => dispatch({ type: 'BACK' })} disabled={state.history.length === 0}><Translate id="printerWizard.back" description="Wizard control: go back one step">Back</Translate></button>
+          <button type="button" onClick={() => dispatch({ type: 'RESTART' })}><Translate id="printerWizard.restart" description="Wizard control: restart the wizard">Start over</Translate></button>
         </div>
       </div>
     </WizardContext.Provider>
