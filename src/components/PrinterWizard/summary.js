@@ -3,6 +3,7 @@
 
 const LINES = [
   ['Printer location', (a) => a.where],
+  ['Wants to print', (a) => a['what-print']],
   ['Cloud provider', (a) => a['cloud-provider']],
   ['Platform', (a) => a.platform],
   ['Browser', (a) => a.browser],
