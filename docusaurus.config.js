@@ -50,6 +50,28 @@ module.exports = {
           position: 'left',
           label: 'Docs',
         },
+        // Mirror the wcpos.com header so both sites read as one nav
+        {
+          href: 'https://wcpos.com/downloads',
+          position: 'left',
+          label: 'Downloads',
+        },
+        {
+          href: 'https://wcpos.com/pro',
+          position: 'left',
+          label: 'Pro',
+          className: 'navbar-link-pro',
+        },
+        {
+          href: 'https://wcpos.com/support',
+          position: 'left',
+          label: 'Support',
+        },
+        {
+          href: 'https://wcpos.com/roadmap',
+          position: 'left',
+          label: 'Roadmap',
+        },
         {
           type: 'localeDropdown',
           position: 'right',
@@ -79,15 +101,28 @@ module.exports = {
         },
       ],
     },
+    // Mirrors the wcpos.com footer (theme-aware; columns match the marketing site)
     footer: {
-      style: 'dark',
+      style: 'light',
       links: [
         {
-          title: 'Docs',
+          title: 'Product',
           items: [
             {
-              label: 'Get Started',
-              to: '/',
+              label: 'Downloads',
+              href: 'https://wcpos.com/downloads',
+            },
+            {
+              label: 'WCPOS Pro',
+              href: 'https://wcpos.com/pro',
+            },
+            {
+              label: 'Roadmap',
+              href: 'https://wcpos.com/roadmap',
+            },
+            {
+              label: 'Live Demo',
+              href: 'https://demo.wcpos.com/pos',
             },
           ],
         },
@@ -95,37 +130,96 @@ module.exports = {
           title: 'Community',
           items: [
             {
-              label: 'WordPress.org',
-              href: 'https://wordpress.org/plugins/woocommerce-pos/',
-            },
-            {
               label: 'Discord',
               href: 'https://wcpos.com/discord',
             },
-          ],
-        },
-        {
-          title: 'More',
-          items: [
             {
               label: 'GitHub',
               href: 'https://github.com/wcpos',
             },
             {
-              label: 'WCPOS',
-              href: 'https://wcpos.com',
+              label: 'WordPress.org',
+              href: 'https://wordpress.org/plugins/woocommerce-pos/',
+            },
+          ],
+        },
+        {
+          title: 'Support',
+          items: [
+            {
+              label: 'Get Started',
+              to: '/',
+            },
+            {
+              label: 'Support',
+              href: 'https://wcpos.com/support',
+            },
+            {
+              label: 'WordPress Forum',
+              href: 'https://wordpress.org/support/plugin/woocommerce-pos/',
+            },
+          ],
+        },
+        {
+          title: 'Company',
+          items: [
+            {
+              label: 'About',
+              href: 'https://wcpos.com/about-us',
+            },
+            {
+              label: 'Privacy',
+              href: 'https://wcpos.com/privacy',
+            },
+            {
+              label: 'Terms',
+              href: 'https://wcpos.com/terms',
+            },
+            {
+              label: 'Refunds',
+              href: 'https://wcpos.com/refunds',
+            },
+          ],
+        },
+        {
+          title: 'Download',
+          items: [
+            {
+              label: 'WordPress Plugin',
+              href: 'https://wordpress.org/plugins/woocommerce-pos/',
+            },
+            {
+              label: 'WCPOS for macOS',
+              href: 'https://updates.wcpos.com/v1/electron/download/darwin-arm64',
+            },
+            {
+              label: 'WCPOS for Windows',
+              href: 'https://updates.wcpos.com/v1/electron/download/win32-x64',
+            },
+            {
+              label: 'WCPOS for Linux',
+              href: 'https://updates.wcpos.com/v1/electron/download/linux-x64',
+            },
+            {
+              label: 'WCPOS for iOS & iPad',
+              href: 'https://testflight.apple.com/join/JGBdVRrW',
+            },
+            {
+              label: 'WCPOS for Android',
+              href: 'https://play.google.com/apps/testing/com.wcpos.main',
             },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} WCPOS.`,
+      copyright: `© ${new Date().getFullYear()} WCPOS`,
     },
     mermaid: {
       theme: {light: 'neutral', dark: 'dark'},
     },
     prism: {
       theme: themes.github,
-      darkTheme: themes.dracula,
+      // oneDark sits better on the near-black slate background than dracula's purple
+      darkTheme: themes.oneDark,
       additionalLanguages: ['php'],
     },
     algolia: {
