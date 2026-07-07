@@ -11,6 +11,8 @@
  *     origin also acts as ui_host for toolbar/dashboard links.
  *   - autocapture OFF and capture_pageview OFF: we send explicit, deterministic
  *     events ($pageview on route change, cta_click on key outbound links).
+ *   - session recording OFF: docs only needs event analytics, and the self-hosted
+ *     /s recording endpoint is not exposed for public browser ingest.
  *   - GDPR: nothing is captured until the visitor grants analytics consent.
  *
  * posthog-js is loaded lazily inside the browser only, so this module is
@@ -77,6 +79,7 @@ export async function startPostHog() {
       ui_host: UI_HOST,
       autocapture: false,
       capture_pageview: false,
+      disable_session_recording: true,
       persistence: 'localStorage+cookie',
     });
     posthog.register({
