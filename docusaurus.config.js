@@ -36,51 +36,59 @@ module.exports = {
         autoCollapseCategories: true,
       },
     },
+    // First visit follows the visitor's OS light/dark preference (and live-updates
+    // if they change it), unless they've picked a theme explicitly in the footer.
+    // The footer "System" button resets to this OS-following behaviour.
+    colorMode: {
+      defaultMode: 'light',
+      respectPrefersColorScheme: true,
+    },
     navbar: {
       title: 'WCPOS',
       logo: {
         alt: 'WCPOS Logo',
-        src: 'img/square-icon-512x512.png',
-        href: 'https://wcpos.com'
+        // The exact speech-bubble mark from the wcpos.com header (inline SVG there)
+        src: 'img/wcpos-logo.svg',
+        href: 'https://wcpos.com',
+        // Same-tab: the marketing site and docs read as one site (not external)
+        target: '_self',
       },
       items: [
-        {
-          type: 'doc',
-          docId: 'getting-started/index',
-          position: 'left',
-          label: 'Docs',
-        },
-        // Mirror the wcpos.com header so both sites read as one nav
+        // Mirror the wcpos.com header order exactly so both sites read as one
+        // nav: Downloads · Pro · Documentation · Support · Roadmap. target:_self
+        // keeps the marketing links in the same tab — they're primary nav, not
+        // external links. "Documentation" is the local docs (the marketing site
+        // links it out to docs.wcpos.com; here it's the current site).
         {
           href: 'https://wcpos.com/downloads',
+          target: '_self',
           position: 'left',
           label: 'Downloads',
         },
         {
           href: 'https://wcpos.com/pro',
+          target: '_self',
           position: 'left',
           label: 'Pro',
           className: 'navbar-link-pro',
         },
         {
+          type: 'doc',
+          docId: 'getting-started/index',
+          position: 'left',
+          label: 'Documentation',
+        },
+        {
           href: 'https://wcpos.com/support',
+          target: '_self',
           position: 'left',
           label: 'Support',
         },
         {
           href: 'https://wcpos.com/roadmap',
+          target: '_self',
           position: 'left',
           label: 'Roadmap',
-        },
-        {
-          type: 'localeDropdown',
-          position: 'right',
-          dropdownItemsAfter: [
-            {
-              to: 'https://github.com/wcpos/docs/issues/new?assignees=&labels=i18n&template=translation_request.yml&language=',
-              label: 'Help us translate',
-            },
-          ],
         },
         {
           type: 'docsVersionDropdown',
@@ -89,16 +97,11 @@ module.exports = {
           dropdownActiveClassDisabled: true,
         },
         {
-          href: 'https://github.com/wcpos/docs',
-          // label: 'GitHub',
-          position: 'right',
-          className: 'header-github-link',
-          'aria-label': 'GitHub repository',
-        },
-        {
           type: 'search',
           position: 'right',
         },
+        // The language switcher, theme toggle and GitHub link now live in the
+        // footer (see src/theme/Footer/Layout), mirroring wcpos.com.
       ],
     },
     // Mirrors the wcpos.com footer (theme-aware; columns match the marketing site)
@@ -108,17 +111,22 @@ module.exports = {
         {
           title: 'Product',
           items: [
+            // wcpos.com marketing pages stay in the same tab (target:_self);
+            // subdomains/app links (Live Demo etc.) remain new-tab.
             {
               label: 'Downloads',
               href: 'https://wcpos.com/downloads',
+              target: '_self',
             },
             {
               label: 'WCPOS Pro',
               href: 'https://wcpos.com/pro',
+              target: '_self',
             },
             {
               label: 'Roadmap',
               href: 'https://wcpos.com/roadmap',
+              target: '_self',
             },
             {
               label: 'Live Demo',
@@ -141,6 +149,10 @@ module.exports = {
               label: 'WordPress.org',
               href: 'https://wordpress.org/plugins/woocommerce-pos/',
             },
+            {
+              label: 'Help us translate',
+              href: 'https://github.com/wcpos/docs/issues/new?assignees=&labels=i18n&template=translation_request.yml&language=',
+            },
           ],
         },
         {
@@ -153,6 +165,7 @@ module.exports = {
             {
               label: 'Support',
               href: 'https://wcpos.com/support',
+              target: '_self',
             },
             {
               label: 'WordPress Forum',
@@ -166,18 +179,22 @@ module.exports = {
             {
               label: 'About',
               href: 'https://wcpos.com/about-us',
+              target: '_self',
             },
             {
               label: 'Privacy',
               href: 'https://wcpos.com/privacy',
+              target: '_self',
             },
             {
               label: 'Terms',
               href: 'https://wcpos.com/terms',
+              target: '_self',
             },
             {
               label: 'Refunds',
               href: 'https://wcpos.com/refunds',
+              target: '_self',
             },
           ],
         },
