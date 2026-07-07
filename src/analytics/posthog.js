@@ -7,8 +7,8 @@
  * own cross-subdomain cookie (set on .wcpos.com by default).
  *
  * Deliberate parity choices, copied from wcpos-com:
- *   - api_host is the self-hosted INGEST origin (analytics.wcpos.com), NOT the
- *     dashboard (ph.wcpos.com, used only as ui_host for the toolbar).
+ *   - api_host is the self-hosted PostHog origin (ph.wcpos.com). The same
+ *     origin also acts as ui_host for toolbar/dashboard links.
  *   - autocapture OFF and capture_pageview OFF: we send explicit, deterministic
  *     events ($pageview on route change, cta_click on key outbound links).
  *   - GDPR: nothing is captured until the visitor grants analytics consent.
@@ -19,7 +19,7 @@
 import { readAnalyticsConsent } from './consent';
 
 const PROJECT_API_KEY = 'phc_BhTJzZ7fXMqcD4MiaUJQsQqPkEpu94yoSAthXFBWemvd';
-const API_HOST = 'https://analytics.wcpos.com';
+const API_HOST = 'https://ph.wcpos.com';
 const UI_HOST = 'https://ph.wcpos.com';
 
 // Outbound destinations that represent the docs -> website/install funnel.
