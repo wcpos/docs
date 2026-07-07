@@ -13,6 +13,7 @@ import { translate } from '@docusaurus/Translate';
  */
 const ChevronRight = (
   <svg
+    className="wcpos-sidebar-chevron"
     width="18"
     height="18"
     viewBox="0 0 24 24"

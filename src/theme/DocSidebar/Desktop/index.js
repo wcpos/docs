@@ -20,6 +20,7 @@ import styles from './styles.module.css';
  */
 const ChevronLeft = (
   <svg
+    className="wcpos-sidebar-chevron"
     width="18"
     height="18"
     viewBox="0 0 24 24"
