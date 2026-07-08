@@ -36,31 +36,67 @@ export function parseAnalyticsConsent(value) {
   return value === 'granted' || value === 'denied' ? value : null;
 }
 
-function readDocumentCookie(name) {
-  if (typeof document === 'undefined') {
-    return null;
-  }
-
+/**
+ * Collect every value stored under `name` in a Cookie-header-formatted string
+ * ("a=1; b=2; a=3"). One name can appear more than once when same-name cookies
+ * exist at different scopes — e.g. a legacy host-scoped `wcpos-analytics-consent`
+ * alongside the shared `.wcpos.com` one this change introduces.
+ */
+function collectCookieValues(cookieString, name) {
   const prefix = `${name}=`;
-  const match = document.cookie
-    .split('; ')
-    .find((part) => part.startsWith(prefix));
+  const values = [];
 
-  if (!match) {
-    return null;
+  for (const part of cookieString.split('; ')) {
+    if (!part.startsWith(prefix)) {
+      continue;
+    }
+    try {
+      values.push(decodeURIComponent(part.slice(prefix.length)));
+    } catch {
+      // Malformed % sequences in user-controlled cookies must fail closed
+      // (skip this entry), not crash consent reads.
+    }
   }
 
-  try {
-    return decodeURIComponent(match.slice(prefix.length));
-  } catch {
-    // Malformed % sequences in user-controlled cookies must fail closed.
-    return null;
+  return values;
+}
+
+/**
+ * Reconcile possibly-conflicting consent values into one decision: denial wins
+ * over consent, which wins over "undecided".
+ *
+ * Deliberately fail-closed. During the migration to the shared `.wcpos.com`
+ * cookie an existing visitor can briefly carry both a stale host-scoped cookie
+ * and the new shared one; a browser exposes both under the same name with no
+ * way to tell which is newer. If they disagree we must never let a leftover
+ * `granted` override a later `denied` — analytics stays off unless every
+ * present value agrees it may run. Mirrors the website's consent.ts.
+ */
+export function mostRestrictiveConsent(values) {
+  let sawGranted = false;
+
+  for (const value of values) {
+    const parsed = parseAnalyticsConsent(value);
+    if (parsed === 'denied') {
+      return 'denied';
+    }
+    if (parsed === 'granted') {
+      sawGranted = true;
+    }
   }
+
+  return sawGranted ? 'granted' : null;
 }
 
 /** Client-side read of the consent decision. Returns null when undecided. */
 export function readAnalyticsConsent() {
-  return parseAnalyticsConsent(readDocumentCookie(ANALYTICS_CONSENT_COOKIE));
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return mostRestrictiveConsent(
+    collectCookieValues(document.cookie, ANALYTICS_CONSENT_COOKIE),
+  );
 }
 
 /**
@@ -79,4 +115,12 @@ export function writeAnalyticsConsent(status) {
   const domain = consentCookieDomain(window.location.hostname);
   const domainAttr = domain ? `; Domain=${domain}` : '';
   document.cookie = `${ANALYTICS_CONSENT_COOKIE}=${status}; Path=/; Max-Age=${CONSENT_MAX_AGE_SECONDS}; SameSite=Lax${secure}${domainAttr}`;
+
+  if (domain) {
+    // We just wrote the shared `.wcpos.com` cookie. Expire any legacy
+    // host-scoped cookie of the same name (deleting without a Domain attribute
+    // targets only the host-scoped entry, leaving the shared cookie intact) so
+    // a stale host `granted` can never outlive — and shadow — this decision.
+    document.cookie = `${ANALYTICS_CONSENT_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+  }
 }
