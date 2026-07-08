@@ -8,15 +8,29 @@
  *   - 'granted' -> analytics enabled
  *   - 'denied'  -> analytics disabled
  *
- * The cookie is intentionally host-scoped (no Domain attribute), exactly like
- * the website's, so behaviour is identical today. See the migration plan for
- * the optional follow-up to make consent itself carry across subdomains
- * (Domain=.wcpos.com on both properties).
+ * The cookie is scoped to `.wcpos.com` (see consentCookieDomain) so a decision
+ * made on either property carries across the whole family — accept/decline once
+ * on wcpos.com and docs.wcpos.com honours it without showing its own banner,
+ * and vice versa. The website's writer sets the same Domain, so both ends agree.
  */
 export const ANALYTICS_CONSENT_COOKIE = 'wcpos-analytics-consent';
 
 /** CNIL guidance caps consent validity at 13 months; we re-ask after ~6. */
 const CONSENT_MAX_AGE_SECONDS = 60 * 60 * 24 * 182;
+
+/**
+ * Cookie Domain that shares the consent decision across every *.wcpos.com
+ * property. Returns null for any other host — localhost dev, Vercel preview
+ * deploys, unit tests — because a browser silently rejects a `Domain=.wcpos.com`
+ * cookie set from a host that isn't under wcpos.com, which would break consent
+ * persistence there. Kept as a pure function of the hostname so it is testable
+ * without a DOM.
+ */
+export function consentCookieDomain(hostname) {
+  return hostname === 'wcpos.com' || hostname.endsWith('.wcpos.com')
+    ? '.wcpos.com'
+    : null;
+}
 
 export function parseAnalyticsConsent(value) {
   return value === 'granted' || value === 'denied' ? value : null;
@@ -62,5 +76,7 @@ export function writeAnalyticsConsent(status) {
   }
 
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${ANALYTICS_CONSENT_COOKIE}=${status}; Path=/; Max-Age=${CONSENT_MAX_AGE_SECONDS}; SameSite=Lax${secure}`;
+  const domain = consentCookieDomain(window.location.hostname);
+  const domainAttr = domain ? `; Domain=${domain}` : '';
+  document.cookie = `${ANALYTICS_CONSENT_COOKIE}=${status}; Path=/; Max-Age=${CONSENT_MAX_AGE_SECONDS}; SameSite=Lax${secure}${domainAttr}`;
 }
