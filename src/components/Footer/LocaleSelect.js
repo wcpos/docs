@@ -2,6 +2,7 @@ import React from 'react';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import { translate } from '@docusaurus/Translate';
 import { useLocaleDropdownUtils } from '@site/src/utils/localeDropdownUtils';
+import { rememberLocalePreference } from '@site/src/utils/localePreference';
 import styles from './styles.module.css';
 
 /**
@@ -22,6 +23,9 @@ export default function LocaleSelect() {
     if (locale === currentLocale) {
       return;
     }
+    // Explicit choice: overrides the edge middleware's Accept-Language
+    // detection on the site root (see middleware.js).
+    rememberLocalePreference(locale);
     window.location.href = utils.getHref(locale);
   };
 

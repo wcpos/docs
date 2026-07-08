@@ -8,15 +8,19 @@ import { translate } from '@docusaurus/Translate';
 import DropdownNavbarItem from '@theme/NavbarItem/DropdownNavbarItem';
 import IconLanguage from '@theme/Icon/Language';
 import { useLocaleDropdownUtils } from '@site/src/utils/localeDropdownUtils';
+import { rememberLocalePreference } from '@site/src/utils/localePreference';
 import styles from './styles.module.css';
 
 /**
  * Swizzled (ejected) copy of theme-classic's LocaleDropdownNavbarItem.
  *
- * The ONLY behavioural change vs. upstream is how the "same page in another
- * locale" URL is computed — see src/utils/localeDropdownUtils.js for the
- * trailingSlash-tolerant stripping and why it exists (facebook/docusaurus#9170,
- * #9514). That logic is shared with the footer locale <select>.
+ * Behavioural changes vs. upstream:
+ * - how the "same page in another locale" URL is computed — see
+ *   src/utils/localeDropdownUtils.js for the trailingSlash-tolerant stripping
+ *   and why it exists (facebook/docusaurus#9170, #9514). That logic is shared
+ *   with the footer locale <select>.
+ * - picking a locale stores it as an explicit preference cookie so the edge
+ *   middleware's Accept-Language detection respects it (middleware.js).
  *
  * Note: the navbar no longer configures a `localeDropdown` item (the language
  * switcher lives in the footer now, mirroring wcpos.com). This component is
@@ -47,6 +51,9 @@ export default function LocaleDropdownNavbarItem({
       target: '_self',
       autoAddBaseUrl: false,
       className,
+      // Explicit choice: overrides the edge middleware's Accept-Language
+      // detection on the site root (see middleware.js).
+      onClick: () => rememberLocalePreference(locale),
     };
   });
   const items = [...dropdownItemsBefore, ...localeItems, ...dropdownItemsAfter];
