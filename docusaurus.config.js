@@ -32,7 +32,7 @@ module.exports = {
      /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     docs: {
       sidebar: {
-        hideable: true,
+        hideable: false,
         autoCollapseCategories: true,
       },
     },
