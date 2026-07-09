@@ -168,6 +168,10 @@ module.exports = {
               target: '_self',
             },
             {
+              label: 'Status',
+              href: 'https://status.wcpos.com/',
+            },
+            {
               label: 'WordPress Forum',
               href: 'https://wordpress.org/support/plugin/woocommerce-pos/',
             },
