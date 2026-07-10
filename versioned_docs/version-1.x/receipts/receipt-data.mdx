@@ -2,7 +2,7 @@
 title: Receipt Data Reference
 sidebar_label: Receipt Data
 sidebar_position: 5
-description: Complete reference for the canonical data contract available in WCPOS receipt templates.
+description: "Complete reference for the canonical data contract available in WCPOS receipt templates."
 ---
 
 import Accordion from '@site/src/components/Accordion';
@@ -17,6 +17,8 @@ WCPOS logicless HTML templates and thermal XML templates render from the same ca
 ```
 
 The canonical contract is produced by the WCPOS receipt data builder on the server and mirrored by the offline receipt renderer in the app. Receipts open immediately from local data, then upgrade to the server response when it is available, so custom templates should use the fields below rather than PHP order methods.
+
+Receipt Data v1.1 adds recorded regular-price, pre-coupon selling-price, and savings fields for each product line. These fields are separate from WooCommerce coupon discounts, so a receipt can show both kinds of reduction without changing order totals or reports.
 
 ## Rendering rules {#rendering-rules}
 
@@ -39,6 +41,12 @@ Several fields have inclusive and exclusive variants plus a display-side conveni
 
 | Convenience field | Inclusive field | Exclusive field |
 |-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
 | `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
 | `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
 | `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
@@ -203,17 +211,73 @@ Loop with `{{#lines}}...{{/lines}}`.
 | `name` | string | Product or line display name |
 | `qty` | number | Quantity sold |
 | `qty_refunded` | number | Quantity refunded for this line |
-| `unit_subtotal` / `_incl` / `_excl` | number | Pre-discount unit price |
-| `unit_price` / `_incl` / `_excl` | number | Post-discount unit price |
-| `line_subtotal` / `_incl` / `_excl` | number | Pre-discount line subtotal |
-| `discounts` / `_incl` / `_excl` | number | Discount amount as a positive value |
+| `regular_price` / `_incl` / `_excl` | number/null | Recorded regular unit price |
+| `selling_price` / `_incl` / `_excl` | number/null | Recorded selling unit price before coupons |
+| `unit_savings` / `_incl` / `_excl` | number/null | `regular_price - selling_price`, clamped to zero |
+| `line_regular_total` / `_incl` / `_excl` | number/null | Recorded regular price multiplied by quantity |
+| `line_selling_total` / `_incl` / `_excl` | number/null | Pre-coupon selling price multiplied by quantity |
+| `line_savings` / `_incl` / `_excl` | number/null | Total regular-to-selling-price savings for this line |
+| `savings_in_discounts` | boolean | True when a legacy order already includes the same saving in `discounts` |
+| `unit_subtotal` / `_incl` / `_excl` | number | WooCommerce pre-discount unit value; do not use this as the regular price |
+| `unit_price` / `_incl` / `_excl` | number | Final unit value after WooCommerce discounts |
+| `line_subtotal` / `_incl` / `_excl` | number | WooCommerce pre-discount line subtotal |
+| `discounts` / `_incl` / `_excl` | number | Native WooCommerce line discount as a positive value; normally coupon-only on current orders |
 | `line_total` / `_incl` / `_excl` | number | Final line total |
 | `total_refunded` | number | Total refunded for this line as a positive value |
 | `taxes` | array | Per-rate tax rows for this line |
 | `meta` | array | Order item meta as `{key, value}` pairs |
 | `attributes` | array | Product/variation attributes as `{key, value}` pairs |
 
-Formatted variants include `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display`, and inclusive/exclusive `_display` variants.
+Every money field has a formatted `_display` companion, including `regular_price_display`, `selling_price_display`, `unit_savings_display`, `line_regular_total_display`, `line_selling_total_display`, and `line_savings_display`. Inclusive and exclusive fields also have `_display` variants.
+
+Savings fields are `null` when the order does not contain enough recorded POS price data. Templates should therefore wrap them in Mustache sections rather than assuming that every historical order has a regular price.
+
+### Displaying regular price and savings {#displaying-regular-price-and-savings}
+
+For a unit-price layout, show the recorded regular price, selling price, and saving like this:
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+Use the line-total fields when quantity matters:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` is the price before coupons. Use `unit_price` or `line_total` for the final amount after WooCommerce discounts.
+
+:::note Reprinting orders created before v1.9.0
+Older WCPOS orders may already include the regular-to-selling-price reduction in `discounts`. If your custom template prints both line savings and line discounts, use `savings_in_discounts` to avoid showing the same reduction twice:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+If the template does not print a line-level `discounts` row, keep showing `line_savings` even when `savings_in_discounts` is true. The bundled templates handle this distinction automatically.
+:::
 
   </AccordionItem>
 
