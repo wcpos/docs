@@ -18,7 +18,7 @@ WCPOS logicless HTML templates and thermal XML templates render from the same ca
 
 The canonical contract is produced by the WCPOS receipt data builder on the server and mirrored by the offline receipt renderer in the app. Receipts open immediately from local data, then upgrade to the server response when it is available, so custom templates should use the fields below rather than PHP order methods.
 
-Receipt Data v1.1 adds recorded regular-price, pre-coupon selling-price, and savings fields for each product line. These fields are separate from WooCommerce coupon discounts, so a receipt can show both kinds of reduction without changing order totals or reports.
+Receipt Data v1.1 adds recorded regular-price, pre-coupon selling-price, and savings fields for each product line. It also provides order-level savings totals, including a **Total saved** value that combines regular-price savings with WooCommerce discounts without changing order totals or reports.
 
 ## Rendering rules {#rendering-rules}
 
@@ -57,6 +57,8 @@ Several fields have inclusive and exclusive variants plus a display-side conveni
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.savings_total` | `totals.savings_total_incl` | `totals.savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
 ### Date objects {#date-objects}
@@ -324,6 +326,9 @@ Formatted variants: `total_display`, `total_incl_display`, and `total_excl_displ
 |-------|------|-------------|
 | `totals.subtotal` / `_incl` / `_excl` | number | Order subtotal before discounts |
 | `totals.discount_total` / `_incl` / `_excl` | number | Order discount total as a positive value |
+| `totals.savings_total` / `_incl` / `_excl` | number/null | Total recorded regular-to-selling-price savings across product lines, including catalogue sales and till price changes |
+| `totals.total_saved` / `_incl` / `_excl` | number/null | Combined WooCommerce discounts and regular-price savings, with legacy overlap removed |
+| `totals.total_saved_complete` | boolean | Whether the receipt has enough recorded price data to calculate the complete savings totals |
 | `totals.tax_total` | number | Total tax amount |
 | `totals.total` / `_incl` / `_excl` | number | Order grand total |
 | `totals.paid_total` | number | Amount paid/applied |
@@ -333,7 +338,21 @@ Formatted variants: `total_display`, `total_incl_display`, and `total_excl_displ
 | `totals.total_qty` | number | Sum of line item quantities |
 | `totals.line_count` | number | Count of product line rows |
 
-Formatted variants include `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display`, and `net_total_display`, plus inclusive/exclusive variants where applicable.
+Formatted variants include `subtotal_display`, `discount_total_display`, `savings_total_display`, `total_saved_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display`, and `net_total_display`, plus inclusive/exclusive variants where applicable.
+
+Use `total_saved` when you want one customer-facing figure for everything saved. Do not calculate it by adding `discount_total` and `savings_total` in the template: orders created before v1.9.0 may already include their POS price saving in WooCommerce's discount total. The canonical `total_saved` field detects and removes that overlap.
+
+Savings totals are `null` and `total_saved_complete` is false when any product line lacks enough recorded price data for a reliable aggregate. Guard the row with `total_saved_complete`, then use `total_saved` to hide a zero value:
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+The bundled price-bearing templates use these guards and display **Total saved** only when the complete value is greater than zero.
 
   </AccordionItem>
 
@@ -478,7 +497,7 @@ Use `i18n` labels instead of hardcoding text where possible:
 {{i18n.total}}: {{totals.total_display}}
 ```
 
-Common keys include `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, and the tax-ID label keys such as `store_tax_id_label_eu_vat` and `customer_tax_id_label_other`. Extra keys may be added by extensions.
+Common keys include `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, and the tax-ID label keys such as `store_tax_id_label_eu_vat` and `customer_tax_id_label_other`. Extra keys may be added by extensions.
 
   </AccordionItem>
 </Accordion>
