@@ -7,6 +7,7 @@ description: "Complete reference for the canonical data contract available in WC
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 WCPOS logicless HTML templates and thermal XML templates render from the same canonical receipt payload. Use Mustache dot paths such as `{{order.number}}`, `{{store.name}}`, and `{{totals.total_display}}`. Arrays are rendered with sections:
 
@@ -19,6 +20,146 @@ WCPOS logicless HTML templates and thermal XML templates render from the same ca
 The canonical contract is produced by the WCPOS receipt data builder on the server and mirrored by the offline receipt renderer in the app. Receipts open immediately from local data, then upgrade to the server response when it is available, so custom templates should use the fields below rather than PHP order methods.
 
 Receipt Data v1.1 adds recorded regular-price, pre-coupon selling-price, and savings fields for each product line. It also provides order-level savings totals, including a **Total saved** value that combines regular-price savings with WooCommerce discounts without changing order totals or reports.
+
+## The receipt, mapped {#receipt-map}
+
+Every part of a printed receipt comes from one section of the data contract. Hover either side to see the match; click to jump to that section's fields. All examples on this page use the same sample order.
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "VAT: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "Receipt #1042", right: "Jul 13, 2026" },
+        { left: "Cashier: Ada", right: "Customer: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Espresso Beans", right: "29.00" },
+        { left: "~34.00~ · Savings −5.00", sub: true },
+        { left: "1 × Ceramic Mug", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "Subtotal", right: "52.75" },
+        { left: "Coupon SUMMER10", right: "−5.28" },
+        { left: "Gift wrap", right: "2.50" },
+        { left: "Shipping", right: "10.00" },
+        { left: "TOTAL", right: "59.97", bold: true },
+        { left: "Total saved", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "Card", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "Thank you for your purchase!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      label: "Store header",
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      label: "Order & people",
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      label: "Line items",
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      label: "Totals block",
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      label: "Payments",
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      label: "Footer",
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## Common recipes {#common-recipes}
+
+Most template edits are one of these three. Each card shows the printed result first, then the exact markup — copy it into any logicless HTML or thermal XML template. The third card shows a pre-v1.9 legacy order rather than the sample order above.
+
+<Recipes>
+  <Recipe
+    title="Strike through the regular price"
+    why="The section guard hides everything on orders without recorded price history."
+    preview={[
+      { left: "2 × Espresso Beans", right: "29.00" },
+      { left: "~34.00~ · Savings −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="Add a Total saved row"
+    why="Two guards: the row disappears when price history is incomplete or nothing was saved."
+    preview={[
+      { left: "TOTAL", right: "59.97", bold: true },
+      { left: "Total saved", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+  <Recipe
+    title="Reprint a pre-v1.9 order safely"
+    why="Old orders carry the saving inside the discount — this stops it printing twice."
+    preview={[
+      { left: "1 × Espresso Beans", right: "14.50" },
+      { left: "~17.00~  Discount −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+</Recipes>
 
 ## Rendering rules {#rendering-rules}
 
@@ -98,6 +239,32 @@ Available date objects: `order.created`, `order.paid`, `order.completed`, `order
 | `presentation_hints` | object | Formatting and renderer hints |
 | `i18n` | object | Translated labels for bundled and custom templates |
 
+## How the prices relate {#price-model}
+
+One product line carries several prices, and the names make sense once you see them on the money itself. This is the espresso line from the sample order — a $17.00 product on sale for $14.50, with a 10% coupon on top:
+
+<PriceFlow
+  caption="Espresso Beans — one unit (the order has two)"
+  scaleLabel="regular price 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 paid" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "What the customer pays", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "Coupon discount (SUMMER10)", fields: 'lines[].discounts → 2.90 on this line' },
+    { kind: 'savings', title: "Savings vs regular price", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "All savings across the order", value: '`totals.savings_total` = 5.00' },
+    { label: "All coupon discounts across the order", value: '`totals.discount_total` = 5.28' },
+    { label: "Savings + discounts, legacy overlap removed", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Savings and coupon discounts are different things: savings compare the selling price with the recorded regular price, while `discounts` is WooCommerce's own coupon arithmetic. WooCommerce order totals and reports only ever contain the coupon part — which is why `total_saved` exists as the one customer-facing figure that combines both.
+
 ## Field reference {#field-reference}
 
 The full field reference is grouped by section below. Everything is collapsed by default — expand the group you need.
@@ -109,8 +276,8 @@ The full field reference is grouped by section below. Everything is collapsed by
 
 | Field | Type | Example / description |
 |-------|------|-----------------------|
-| `order.id` | number | `1234` |
-| `order.number` | string | Human-facing order number, e.g. `"10045"` |
+| `order.id` | number | `1042` |
+| `order.number` | string | Human-facing order number, e.g. `"1042"` |
 | `order.currency` | string | ISO currency code, e.g. `"USD"` |
 | `order.customer_note` | string | Customer/order note |
 | `order.wc_status` | string | Raw WooCommerce status slug, e.g. `"processing"` |
@@ -204,35 +371,88 @@ Common address keys include `first_name`, `last_name`, `company`, `address_1`, `
 
 ### lines {#lines}
 
-Loop with `{{#lines}}...{{/lines}}`.
+Loop with `{{#lines}}...{{/lines}}`. Sample values are the espresso line from [the sample order](#receipt-map).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `key` | string | Stable line key/order item ID |
-| `sku` | string | Product SKU |
-| `name` | string | Product or line display name |
-| `qty` | number | Quantity sold |
-| `qty_refunded` | number | Quantity refunded for this line |
-| `regular_price` / `_incl` / `_excl` | number/null | Recorded regular unit price |
-| `selling_price` / `_incl` / `_excl` | number/null | Pre-coupon selling unit price — the recorded POS price when available, otherwise derived from the stored line subtotal |
-| `unit_savings` / `_incl` / `_excl` | number/null | `regular_price - selling_price`, clamped to zero |
-| `line_regular_total` / `_incl` / `_excl` | number/null | Recorded regular price multiplied by quantity |
-| `line_selling_total` / `_incl` / `_excl` | number/null | Pre-coupon selling price multiplied by quantity |
-| `line_savings` / `_incl` / `_excl` | number/null | Total regular-to-selling-price savings for this line |
-| `savings_in_discounts` | boolean | True when a legacy order already includes the same saving in `discounts` |
-| `unit_subtotal` / `_incl` / `_excl` | number | WooCommerce pre-discount unit value; do not use this as the regular price |
-| `unit_price` / `_incl` / `_excl` | number | Final unit value after WooCommerce discounts |
-| `line_subtotal` / `_incl` / `_excl` | number | WooCommerce pre-discount line subtotal |
-| `discounts` / `_incl` / `_excl` | number | Native WooCommerce line discount as a positive value; normally coupon-only on current orders |
-| `line_total` / `_incl` / `_excl` | number | Final line total |
-| `total_refunded` | number | Total refunded for this line as a positive value |
-| `taxes` | array | Per-rate tax rows for this line |
-| `meta` | array | Order item meta as `{key, value}` pairs |
-| `attributes` | array | Product/variation attributes as `{key, value}` pairs |
-
-Every money field has a formatted `_display` companion, including `regular_price_display`, `selling_price_display`, `unit_savings_display`, `line_regular_total_display`, `line_selling_total_display`, and `line_savings_display`. Inclusive and exclusive fields also have `_display` variants. When a nullable savings field is `null`, its `_display` companion is omitted entirely.
-
-Savings fields are `null` when the order does not contain enough recorded POS price data. Templates should therefore wrap them in Mustache sections rather than assuming that every historical order has a regular price.
+<FieldIndex
+  note="Every money field comes as a pair: the number (use it in `{{#…}}` guards — zero and `null` hide the section, and a `null` field has no `_display` twin at all) and its `_display` string (use it to print). Fields marked incl/excl also ship `_incl` and `_excl` variants, each with its own `_display`."
+  placeholder="Filter fields… try “savings”"
+  emptyText="No fields match — clear the filter to see all of `lines[]`."
+  fields={[
+    { name: 'key', type: 'string', desc: "Stable line key / order item ID.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "Product SKU.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Product or line display name.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Quantity sold.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Quantity refunded for this line.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Recorded regular unit price. `null` on orders without POS price history — wrap it in a section.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Pre-coupon selling unit price — the recorded POS price when available, otherwise derived from the stored line subtotal.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Regular minus selling, clamped to zero. Zero is falsy, so guarded rows hide themselves.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Recorded regular price multiplied by quantity.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Pre-coupon selling price multiplied by quantity.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Total regular-to-selling-price savings for this line.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "True on pre-v1.9.0 orders whose saving is already inside `discounts` — the anti-double-count flag.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce pre-discount unit value. Do not use this as the regular price.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Final unit value after WooCommerce discounts.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce pre-discount line subtotal.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "Native WooCommerce line discount as a positive value — coupons only on current orders.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Final line total after coupons — what prints in the amount column.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Total refunded for this line as a positive value.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Per-rate tax rows for this line." },
+    { name: 'meta', type: 'array', desc: "Order item meta as `{key, value}` pairs." },
+    { name: 'attributes', type: 'array', desc: "Product/variation attributes as `{key, value}` pairs." },
+  ]}
+/>
 
 ### Displaying regular price and savings {#displaying-regular-price-and-savings}
 
@@ -321,23 +541,72 @@ Formatted variants: `total_display`, `total_incl_display`, and `total_excl_displ
 
 ### totals {#totals}
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | number | Order subtotal before discounts |
-| `totals.discount_total` / `_incl` / `_excl` | number | Order discount total as a positive value |
-| `totals.savings_total` / `_incl` / `_excl` | number/null | Total recorded regular-to-selling-price savings across product lines, including catalogue sales and till price changes |
-| `totals.total_saved` / `_incl` / `_excl` | number/null | Combined WooCommerce discounts and regular-price savings, with legacy overlap removed |
-| `totals.total_saved_complete` | boolean | Whether the receipt has enough recorded price data to calculate the complete savings totals |
-| `totals.tax_total` | number | Total tax amount |
-| `totals.total` / `_incl` / `_excl` | number | Order grand total |
-| `totals.paid_total` | number | Amount paid/applied |
-| `totals.change_total` | number | Change returned to the customer |
-| `totals.refund_total` | number | Total refunded as a positive value |
-| `totals.net_total` | number | `total - refund_total`, clamped to zero |
-| `totals.total_qty` | number | Sum of line item quantities |
-| `totals.line_count` | number | Count of product line rows |
+Sample values are from [the sample order](#receipt-map), which later received a $7.25 partial refund.
 
-Formatted variants include `subtotal_display`, `discount_total_display`, `savings_total_display`, `total_saved_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display`, and `net_total_display`, plus inclusive/exclusive variants where applicable.
+<FieldIndex
+  note="Money fields follow the same pairing as line items: a bare number for guards and a `_display` string for printing, with `_incl`/`_excl` variants where marked."
+  placeholder="Filter fields… try “saved”"
+  emptyText="No fields match — clear the filter to see all of `totals`."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Order subtotal before discounts.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Order discount total as a positive value — coupons only on current orders.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Total recorded regular-to-selling-price savings across product lines, including catalogue sales and till price changes.",
+      sample: [{ k: 'savings_total', v: '5' }, { k: 'savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Combined WooCommerce discounts and regular-price savings, with legacy overlap removed. The one customer-facing figure for everything saved.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Whether the receipt has enough recorded price data to calculate the complete savings totals.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Total tax amount.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Order grand total.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Amount paid / applied.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "Change returned to the customer.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Total refunded as a positive value.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Total minus refunds, clamped to zero.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Sum of line item quantities.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Count of product line rows.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
 
 Use `total_saved` when you want one customer-facing figure for everything saved. Do not calculate it by adding `discount_total` and `savings_total` in the template: orders created before v1.9.0 may already include their POS price saving in WooCommerce's discount total. The canonical `total_saved` field detects and removes that overlap.
 
