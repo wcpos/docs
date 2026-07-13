@@ -22,7 +22,7 @@ function rich(text) {
  * jumps to the section anchor.
  * ---------------------------------------------------------------------- */
 
-export function ReceiptAnatomy({ zones }) {
+export function ReceiptAnatomy({ zones, facsimile }) {
   const [hot, setHot] = useState(null);
 
   const zone = (id) => {
@@ -43,40 +43,27 @@ export function ReceiptAnatomy({ zones }) {
   return (
     <div className={styles.anatomy}>
       <div className={styles.receipt}>
-        <a {...zone('store')}>
-          <div className={clsx(styles.rCenter, styles.rBold, styles.rStore)}>COFFEE MONSTER</div>
-          <div className={clsx(styles.rCenter, styles.rSub)}>12 Roast Lane, Portland OR</div>
-          <div className={clsx(styles.rCenter, styles.rSub)}>VAT: US-998877</div>
-        </a>
-        <hr className={styles.rRule} />
-        <a {...zone('order')}>
-          <div className={styles.rRow}><span>Receipt #1042</span><span>Jul 13, 2026</span></div>
-          <div className={clsx(styles.rRow, styles.rSub)}><span>Cashier: Ada</span><span>Customer: Nia</span></div>
-        </a>
-        <hr className={styles.rRule} />
-        <a {...zone('lines')}>
-          <div className={styles.rRow}><span>2 × Espresso Beans</span><span>29.00</span></div>
-          <div className={clsx(styles.rRow, styles.rSub)}><span><s>34.00</s> · Savings −5.00</span><span /></div>
-          <div className={styles.rRow}><span>1 × Ceramic Mug</span><span>18.00</span></div>
-          <div className={styles.rRow}><span>1 × Croissant</span><span>5.75</span></div>
-        </a>
-        <hr className={styles.rRule} />
-        <a {...zone('totals')}>
-          <div className={styles.rRow}><span>Subtotal</span><span>52.75</span></div>
-          <div className={styles.rRow}><span>Coupon SUMMER10</span><span>−5.28</span></div>
-          <div className={styles.rRow}><span>Gift wrap</span><span>2.50</span></div>
-          <div className={styles.rRow}><span>Shipping</span><span>10.00</span></div>
-          <div className={clsx(styles.rRow, styles.rBold)}><span>TOTAL</span><span>59.97</span></div>
-          <div className={clsx(styles.rRow, styles.rSub)}><span>Total saved</span><span>10.28</span></div>
-        </a>
-        <hr className={styles.rRule} />
-        <a {...zone('payments')}>
-          <div className={styles.rRow}><span>Card</span><span>59.97</span></div>
-        </a>
-        <hr className={styles.rRule} />
-        <a {...zone('footer')}>
-          <div className={clsx(styles.rCenter, styles.rSub)}>Thank you for your purchase!</div>
-        </a>
+        {facsimile.map((section, sectionIndex) => (
+          <React.Fragment key={section.id}>
+            <a {...zone(section.id)}>
+              {section.rows.map((row, rowIndex) => (
+                <div
+                  key={rowIndex}
+                  className={clsx(
+                    row.center ? styles.rCenter : styles.rRow,
+                    row.bold && styles.rBold,
+                    row.store && styles.rStore,
+                    row.sub && styles.rSub
+                  )}
+                >
+                  <span>{rich(row.left)}</span>
+                  {row.right != null && <span>{rich(row.right)}</span>}
+                </div>
+              ))}
+            </a>
+            {sectionIndex < facsimile.length - 1 && <hr className={styles.rRule} />}
+          </React.Fragment>
+        ))}
       </div>
 
       <div className={styles.legend}>
