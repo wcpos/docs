@@ -105,6 +105,14 @@ Keep component names and **technical** props exactly: `name`, `img`, `src`, `to`
 
 Text **between** tags is visible content too and must be translated, e.g. `<p class="image-caption">translate this</p>`.
 
+### 3b. JSX expression props (`prop={[...]}` / `prop={`...`}`)
+
+Some components (e.g. `ReceiptAnatomy`, `PriceFlow`, `FieldIndex`, `Recipes`/`Recipe` on the Receipt Data page) receive **JavaScript arrays/objects or template literals** as props. Rules:
+
+- **Translate** the values of these keys inside expression props: `desc`, `note`, `emptyText`, `why`, `caption`, `title`, `label`, `scaleLabel`, and `placeholder`. Translatable values are written as **double-quoted** JS strings (`desc: "…"`) — keep them double-quoted, and because they are JS strings (not JSX attributes) a straight apostrophe inside is fine, but a `"` must be escaped as `\"`; prefer typographic quotes instead.
+- **Copy exactly, never translate**: `id`, `kind`, `anchor`, `fields`, `badges`, `type`, `str`, `bold`, `sub`, numeric values, `sample` arrays (field names and money strings like `"$17.00"`), `preview` line content (receipt facsimile text), and `snippet={`…`}` template literals — snippets are code, treat them like fenced code blocks even though they are not wrapped in triple backticks.
+- Never change single quotes to double quotes or vice versa around values you copy exactly; never reformat, reorder, or re-indent the expression.
+
 ⚠️ **Quoting inside attribute values** — JSX attribute values are delimited by `"`. Never put a straight double-quote `"` *inside* a translated value: it terminates the attribute and breaks the build. For a quotation inside `question="…"`, `title="…"`, etc., use the target language's typographic quotes (e.g. «…», „…“, “…”, 「…」) or single quotes `'…'` — mirroring how the English source uses `'single quotes'` there.
 
 ### 4. Code Blocks - ABSOLUTELY CRITICAL
