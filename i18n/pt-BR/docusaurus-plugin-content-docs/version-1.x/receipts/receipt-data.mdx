@@ -7,6 +7,7 @@ description: "Referência completa do contrato de dados canônico disponível no
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 Os modelos HTML sem lógica e os modelos XML térmicos do WCPOS são renderizados a partir da mesma carga útil canônica de recibo. Use caminhos com ponto do Mustache, como `{{order.number}}`, `{{store.name}}` e `{{totals.total_display}}`. Os arrays são renderizados com seções:
 
@@ -19,6 +20,142 @@ Os modelos HTML sem lógica e os modelos XML térmicos do WCPOS são renderizado
 O contrato canônico é produzido no servidor pelo construtor de dados de recibo do WCPOS e espelhado pelo renderizador de recibos offline no aplicativo. Os recibos são abertos imediatamente a partir dos dados locais e, quando disponível, são atualizados com a resposta do servidor; portanto, os modelos personalizados devem usar os campos abaixo em vez de métodos de pedido PHP.
 
 Os dados de recibo v1.1 adicionam campos registrados de preço normal, preço de venda antes do cupom e economia para cada linha de produto. Também fornecem totais de economia no nível do pedido, incluindo um valor de **Total economizado** que combina a economia do preço normal com os descontos do WooCommerce sem alterar os totais ou relatórios do pedido.
+
+## O recibo, por seções {#receipt-map}
+
+Cada parte de um recibo impresso vem de uma seção do contrato de dados. Passe o cursor sobre qualquer um dos lados para ver a correspondência e clique para ir aos campos dessa seção. Todos os exemplos desta página usam o mesmo pedido de exemplo.
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: 'COFFEE MONSTER', center: true, bold: true, store: true },
+        { left: "Rua da Torra 12, Portland OR", center: true, sub: true },
+        { left: "CNPJ: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "Recibo nº 1042", right: "13 jul 2026" },
+        { left: "Caixa: Ada", right: "Cliente: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Grãos de espresso", right: "29.00" },
+        { left: "~34.00~ · Economia −5.00", sub: true },
+        { left: "1 × Caneca de cerâmica", right: "18.00" },
+        { left: '1 × Croissant', right: '5.75' },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: 'Subtotal', right: '52.75' },
+        { left: "Cupom SUMMER10", right: "−5.28" },
+        { left: "Embalagem para presente", right: "2.50" },
+        { left: "Entrega", right: "10.00" },
+        { left: 'TOTAL', right: '59.97', bold: true },
+        { left: "Total economizado", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "Cartão", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "Agradecemos pela sua compra!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: "#store",
+      label: "Cabeçalho da loja",
+      fields: ["store.name", "store.address_lines", "store.tax_ids", "store.logo"],
+    },
+    {
+      id: 'order',
+      anchor: "#order",
+      label: "Pedido e pessoas",
+      fields: ["order.number", "order.created", "cashier.name", "customer.name"],
+    },
+    {
+      id: 'lines',
+      anchor: "#lines",
+      label: "Itens de linha",
+      fields: ["lines[]", "line_savings", "savings_in_discounts"],
+    },
+    {
+      id: 'totals',
+      anchor: "#totals",
+      label: "Bloco de totais",
+      fields: ["totals.*", "discounts[]", "fees[]", "shipping[]", "totals.total_saved"],
+    },
+    {
+      id: 'payments',
+      anchor: "#payments",
+      label: "Pagamentos",
+      fields: ["payments[]"],
+    },
+    {
+      id: 'footer',
+      anchor: "#store",
+      label: "Rodapé",
+      fields: ["store.personal_notes", "store.policies_and_conditions", "i18n.thank_you_purchase"],
+    },
+  ]}
+/>
+
+## Tarefas comuns nos modelos {#common-recipes}
+
+A maioria das alterações de modelo corresponde a uma destas três tarefas. Cada cartão mostra primeiro o resultado impresso e depois a marcação exata, pronta para ser copiada em qualquer modelo HTML sem lógica ou XML térmico. O terceiro cartão mostra um pedido anterior à v1.9 em vez do pedido de exemplo acima.
+
+<Recipes>
+  <Recipe
+    title="Riscar o preço normal"
+    why="A seção condicional oculta tudo em pedidos sem histórico de preços registrado."
+    preview={[
+      { left: '2 × Grãos de espresso', right: '29.00' },
+      { left: '~34.00~ · Economia −5.00', sub: true },
+    ]}
+    snippet={`{{# line_savings }}
+  <s>{{ line_regular_total_display }}</s>
+  {{ i18n.savings }}: -{{ line_savings_display }}
+{{/ line_savings }}`}
+  />
+  <Recipe
+    title="Adicionar uma linha de Total economizado"
+    why="Duas condições: a linha desaparece quando o histórico de preços está incompleto ou quando não houve economia."
+    preview={[
+      { left: 'TOTAL', right: '59.97', bold: true },
+      { left: 'Total economizado', right: '10.28', sub: true },
+    ]}
+    snippet={`{{# totals.total_saved_complete }}
+  {{# totals.total_saved }}
+    {{ i18n.total_saved }}:
+    {{ totals.total_saved_display }}
+  {{/ totals.total_saved }}
+{{/ totals.total_saved_complete }}`}
+  />
+  <Recipe
+    title="Reimprimir com segurança um pedido anterior à v1.9"
+    why="Pedidos antigos incluem a economia dentro do desconto; esta condição impede que ela seja impressa duas vezes."
+    preview={[
+      { left: '1 × Grãos de espresso', right: '14.50' },
+      { left: '~17.00~  Desconto −2.50', sub: true },
+    ]}
+    snippet={`{{# line_savings }}
+  {{^ savings_in_discounts }}
+    {{ i18n.savings }}: -{{ line_savings_display }}
+  {{/ savings_in_discounts }}
+{{/ line_savings }}`}
+  />
+</Recipes>
 
 ## Regras de renderização {#rendering-rules}
 
@@ -57,7 +194,7 @@ Diversos campos têm variantes com e sem impostos, além de um valor de conveni�
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
-| `totals.savings_total` | `totals.savings_total_incl` | `totals.savings_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
 | `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
@@ -97,6 +234,32 @@ Objetos de data disponíveis: `order.created`, `order.paid`, `order.completed`, 
 | `fiscal` | objeto | Campos de instantâneo fiscal preenchidos por integrações fiscais |
 | `presentation_hints` | objeto | Dicas de formatação e renderização |
 | `i18n` | objeto | Rótulos traduzidos para modelos incluídos e personalizados |
+
+## Relação entre os preços {#price-model}
+
+Uma linha de produto contém vários preços, e os nomes ficam mais claros quando aparecem sobre o próprio valor. Esta é a linha de espresso do pedido de exemplo: um produto com preço normal de US$ 17,00, em promoção por US$ 14,50, com mais 10% de desconto por cupom.
+
+<PriceFlow
+  caption="Grãos de espresso — uma unidade (o pedido contém duas)"
+  scaleLabel="preço normal 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 pago" },
+    { kind: 'coupon', amount: 1.45, label: "1.45 cupom" },
+    { kind: 'savings', amount: 2.5, label: "2.50 economia" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "O que o cliente paga", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "Desconto do cupom (SUMMER10)", fields: 'lines[].discounts → 2.90 nesta linha' },
+    { kind: 'savings', title: "Economia em relação ao preço normal", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "Toda a economia do pedido", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Todos os descontos de cupons do pedido", value: '`totals.discount_total` = 5.28' },
+    { label: "Economia e descontos sem sobreposição legada", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Economia e descontos de cupons são conceitos diferentes: a economia compara o preço de venda com o preço normal registrado, enquanto `discounts` representa o cálculo de cupons do WooCommerce. Os totais e relatórios de pedidos do WooCommerce contêm apenas a parte do cupom. Por isso, `total_saved` é o valor único voltado ao cliente que combina os dois montantes.
 
 ## Referência dos campos {#field-reference}
 
@@ -325,7 +488,7 @@ Variantes formatadas: `total_display`, `total_incl_display` e `total_excl_displa
 |-------|------|-------------|
 | `totals.subtotal` / `_incl` / `_excl` | número | Subtotal do pedido antes dos descontos |
 | `totals.discount_total` / `_incl` / `_excl` | número | Total de descontos do pedido como valor positivo |
-| `totals.savings_total` / `_incl` / `_excl` | número/nulo | Total das economias registradas entre o preço normal e o preço de venda nas linhas de produtos, incluindo vendas de catálogo e alterações de preço no caixa |
+| `totals.sale_savings_total` / `_incl` / `_excl` | número/nulo | Total das economias registradas entre o preço normal e o preço de venda nas linhas de produtos, incluindo vendas de catálogo e alterações de preço no caixa |
 | `totals.total_saved` / `_incl` / `_excl` | número/nulo | Descontos combinados do WooCommerce e economias no preço normal, com sobreposição legada removida |
 | `totals.total_saved_complete` | booleano | Indica se o recibo tem dados de preço registrados suficientes para calcular os totais completos de economia |
 | `totals.tax_total` | número | Valor total de impostos |
@@ -337,9 +500,9 @@ Variantes formatadas: `total_display`, `total_incl_display` e `total_excl_displa
 | `totals.total_qty` | número | Soma das quantidades dos itens de linha |
 | `totals.line_count` | número | Número de linhas de produtos |
 
-As variantes formatadas incluem `subtotal_display`, `discount_total_display`, `savings_total_display`, `total_saved_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` e `net_total_display`, além de variantes inclusivas/exclusivas quando aplicável.
+As variantes formatadas incluem `subtotal_display`, `discount_total_display`, `sale_savings_total_display`, `total_saved_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` e `net_total_display`, além de variantes inclusivas/exclusivas quando aplicável.
 
-Use `total_saved` quando quiser um único valor voltado ao cliente para tudo o que foi economizado. Não o calcule somando `discount_total` e `savings_total` no modelo: pedidos criados antes da v1.9.0 podem já incluir a economia de preço do POS no total de descontos do WooCommerce. O campo canônico `total_saved` detecta e remove essa sobreposição.
+Use `total_saved` quando quiser um único valor voltado ao cliente para tudo o que foi economizado. Não o calcule somando `discount_total` e `sale_savings_total` no modelo: pedidos criados antes da v1.9.0 podem já incluir a economia de preço do POS no total de descontos do WooCommerce. O campo canônico `total_saved` detecta e remove essa sobreposição.
 
 Os totais de economia são `null` e `total_saved_complete` é falso quando alguma linha de produto não tem dados de preço registrados suficientes para um agregado confiável. Proteja a linha com `total_saved_complete` e use `total_saved` para ocultar um valor zero:
 
