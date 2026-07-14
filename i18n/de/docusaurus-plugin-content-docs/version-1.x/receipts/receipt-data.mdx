@@ -7,6 +7,7 @@ description: "Vollständige Referenz zum kanonischen Datenvertrag, der in WCPOS-
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 Logikfreie HTML-Vorlagen von WCPOS und thermische XML-Vorlagen werden aus derselben kanonischen Belegdaten-Payload gerendert. Verwenden Sie Mustache-Punktpfade wie `{{order.number}}`, `{{store.name}}` und `{{totals.total_display}}`. Arrays werden mit Abschnitten gerendert:
 
@@ -19,6 +20,97 @@ Logikfreie HTML-Vorlagen von WCPOS und thermische XML-Vorlagen werden aus dersel
 Der kanonische Datenvertrag wird auf dem Server vom WCPOS-Belegdaten-Builder erstellt und vom Offline-Belegrenderer in der App gespiegelt. Belege werden sofort anhand lokaler Daten geöffnet und bei Verfügbarkeit mit der Serverantwort aktualisiert. Benutzerdefinierte Vorlagen sollten daher die unten aufgeführten Felder statt PHP-Bestellmethoden verwenden.
 
 Belegdaten v1.1 ergänzt für jede Produktzeile erfasste Felder für regulären Preis, Verkaufspreis vor Couponabzug und Einsparungen. Außerdem stellt es Einsparungssummen auf Bestellungsebene bereit, einschließlich eines Werts **Gesamt eingespart**, der Einsparungen gegenüber dem regulären Preis mit WooCommerce-Rabatten kombiniert, ohne Bestellsummen oder Berichte zu ändern.
+
+## Der Beleg im Überblick {#receipt-map}
+
+Jeder Teil eines gedruckten Belegs stammt aus einem Abschnitt des Datenvertrags. Bewegen Sie den Mauszeiger über eine Seite, um die Zuordnung zu sehen, und klicken Sie, um zu den Feldern dieses Abschnitts zu springen. Alle Beispiele auf dieser Seite verwenden dieselbe Beispielbestellung.
+
+<ReceiptAnatomy
+  zones={[
+    {
+      id: 'store',
+      anchor: "#store",
+      label: "Filialkopf",
+      fields: ["store.name", "store.address_lines", "store.tax_ids", "store.logo"],
+    },
+    {
+      id: 'order',
+      anchor: "#order",
+      label: "Bestellung und Personen",
+      fields: ["order.number", "order.created", "cashier.name", "customer.name"],
+    },
+    {
+      id: 'lines',
+      anchor: "#lines",
+      label: "Positionen",
+      fields: ["lines[]", "line_savings", "savings_in_discounts"],
+    },
+    {
+      id: 'totals',
+      anchor: "#totals",
+      label: "Summenblock",
+      fields: ["totals.*", "discounts[]", "fees[]", "shipping[]", "totals.total_saved"],
+    },
+    {
+      id: 'payments',
+      anchor: "#payments",
+      label: "Zahlungen",
+      fields: ["payments[]"],
+    },
+    {
+      id: 'footer',
+      anchor: "#store",
+      label: "Fußzeile",
+      fields: ["store.personal_notes", "store.policies_and_conditions", "i18n.thank_you_purchase"],
+    },
+  ]}
+/>
+
+## Häufige Vorlagenaufgaben {#common-recipes}
+
+Die meisten Vorlagenänderungen gehören zu einer dieser drei Aufgaben. Jede Karte zeigt zuerst das Druckergebnis und danach das genaue Markup, das Sie in jede logikfreie HTML- oder thermische XML-Vorlage kopieren können. Die dritte Karte zeigt statt der obigen Beispielbestellung eine ältere Bestellung vor v1.9.
+
+<Recipes>
+  <Recipe
+    title="Regulären Preis durchstreichen"
+    why="Die Abschnittsprüfung blendet alles bei Bestellungen ohne erfassten Preisverlauf aus."
+    preview={[
+      { left: '2 × Espressobohnen', right: '29.00' },
+      { left: '~34.00~ · Ersparnis −5.00', sub: true },
+    ]}
+    snippet={`{{# line_savings }}
+  <s>{{ line_regular_total_display }}</s>
+  {{ i18n.savings }}: -{{ line_savings_display }}
+{{/ line_savings }}`}
+  />
+  <Recipe
+    title="Zeile „Gesamt eingespart“ hinzufügen"
+    why="Zwei Prüfungen: Die Zeile verschwindet, wenn der Preisverlauf unvollständig ist oder nichts eingespart wurde."
+    preview={[
+      { left: 'GESAMT', right: '59.97', bold: true },
+      { left: 'Gesamt eingespart', right: '10.28', sub: true },
+    ]}
+    snippet={`{{# totals.total_saved_complete }}
+  {{# totals.total_saved }}
+    {{ i18n.total_saved }}:
+    {{ totals.total_saved_display }}
+  {{/ totals.total_saved }}
+{{/ totals.total_saved_complete }}`}
+  />
+  <Recipe
+    title="Bestellung vor v1.9 sicher erneut drucken"
+    why="Bei alten Bestellungen steckt die Ersparnis bereits im Rabatt. So wird sie nicht doppelt gedruckt."
+    preview={[
+      { left: '1 × Espressobohnen', right: '14.50' },
+      { left: '~17.00~  Rabatt −2.50', sub: true },
+    ]}
+    snippet={`{{# line_savings }}
+  {{^ savings_in_discounts }}
+    {{ i18n.savings }}: -{{ line_savings_display }}
+  {{/ savings_in_discounts }}
+{{/ line_savings }}`}
+  />
+</Recipes>
 
 ## Darstellungsregeln {#rendering-rules}
 
@@ -57,7 +149,7 @@ Mehrere Felder verfügen über Varianten inklusive und exklusive Steuern sowie �
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
-| `totals.savings_total` | `totals.savings_total_incl` | `totals.savings_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
 | `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
@@ -97,6 +189,32 @@ Verfügbare Datumsobjekte: `order.created`, `order.paid`, `order.completed`, `or
 | `fiscal` | Objekt | Felder der Fiskalübersicht, die von Fiskalintegrationen befüllt werden |
 | `presentation_hints` | Objekt | Hinweise zur Formatierung und zum Renderer |
 | `i18n` | Objekt | Übersetzte Beschriftungen für gebündelte und benutzerdefinierte Vorlagen |
+
+## Zusammenhang der Preise {#price-model}
+
+Eine Produktposition enthält mehrere Preise. Die Bezeichnungen werden verständlich, wenn sie direkt am Geldbetrag dargestellt werden. Dies ist die Espresso-Position aus der Beispielbestellung: ein Produkt zum regulären Preis von 17,00 $, im Angebot für 14,50 $, mit einem zusätzlichen Coupon über 10 %.
+
+<PriceFlow
+  caption="Espressobohnen — eine Einheit (die Bestellung enthält zwei)"
+  scaleLabel="regulärer Preis 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 bezahlt" },
+    { kind: 'coupon', amount: 1.45, label: "1.45 Coupon" },
+    { kind: 'savings', amount: 2.5, label: "2.50 Ersparnis" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "Vom Kunden bezahlt", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "Coupon-Rabatt (SUMMER10)", fields: 'lines[].discounts → 2.90 für diese Position' },
+    { kind: 'savings', title: "Ersparnis gegenüber dem regulären Preis", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "Alle Ersparnisse der Bestellung", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Alle Coupon-Rabatte der Bestellung", value: '`totals.discount_total` = 5.28' },
+    { label: "Ersparnisse und Rabatte ohne ältere Überschneidungen", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Ersparnisse und Coupon-Rabatte sind nicht dasselbe: Ersparnisse vergleichen den Verkaufspreis mit dem erfassten regulären Preis, während `discounts` die Coupon-Berechnung von WooCommerce bezeichnet. WooCommerce-Bestellsummen und -Berichte enthalten nur den Coupon-Anteil. Deshalb ist `total_saved` der kundenorientierte Gesamtwert, der beide Beträge kombiniert.
 
 ## Feldreferenz {#field-reference}
 
@@ -325,7 +443,7 @@ Formatierte Varianten: `total_display`, `total_incl_display` und `total_excl_dis
 |-------|------|-------------|
 | `totals.subtotal` / `_incl` / `_excl` | Zahl | Bestellzwischensumme vor Rabatten |
 | `totals.discount_total` / `_incl` / `_excl` | Zahl | Gesamtrabatt der Bestellung als positiver Wert |
-| `totals.savings_total` / `_incl` / `_excl` | Zahl/null | Gesamte erfasste Ersparnisse zwischen regulärem Preis und Verkaufspreis über alle Produktzeilen hinweg, einschließlich Katalogangeboten und Änderungen der Kassenpreise |
+| `totals.sale_savings_total` / `_incl` / `_excl` | Zahl/null | Gesamte erfasste Ersparnisse zwischen regulärem Preis und Verkaufspreis über alle Produktzeilen hinweg, einschließlich Katalogangeboten und Änderungen der Kassenpreise |
 | `totals.total_saved` / `_incl` / `_excl` | Zahl/null | Kombinierte WooCommerce-Rabatte und Ersparnisse gegenüber dem regulären Preis, ohne Überschneidungen aus älteren Versionen |
 | `totals.total_saved_complete` | Boolesch | Ob der Beleg genügend erfasste Preisdaten enthält, um die vollständigen Ersparnissummen zu berechnen |
 | `totals.tax_total` | Zahl | Gesamtsteuerbetrag |
@@ -337,9 +455,9 @@ Formatierte Varianten: `total_display`, `total_incl_display` und `total_excl_dis
 | `totals.total_qty` | Zahl | Summe der Artikelmengen |
 | `totals.line_count` | Zahl | Anzahl der Produktzeilen |
 
-Formatierte Varianten umfassen `subtotal_display`, `discount_total_display`, `savings_total_display`, `total_saved_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` und `net_total_display` sowie gegebenenfalls Varianten inklusive/exklusive Steuern.
+Formatierte Varianten umfassen `subtotal_display`, `discount_total_display`, `sale_savings_total_display`, `total_saved_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` und `net_total_display` sowie gegebenenfalls Varianten inklusive/exklusive Steuern.
 
-Verwenden Sie `total_saved`, wenn eine einzelne kundenorientierte Angabe für alle Ersparnisse benötigt wird. Berechnen Sie diesen Wert nicht durch Addition von `discount_total` und `savings_total` in der Vorlage: Bestellungen, die vor v1.9.0 erstellt wurden, enthalten ihre POS-Preisersparnis möglicherweise bereits in der Rabattsumme von WooCommerce. Das kanonische Feld `total_saved` erkennt und entfernt diese Überschneidung.
+Verwenden Sie `total_saved`, wenn eine einzelne kundenorientierte Angabe für alle Ersparnisse benötigt wird. Berechnen Sie diesen Wert nicht durch Addition von `discount_total` und `sale_savings_total` in der Vorlage: Bestellungen, die vor v1.9.0 erstellt wurden, enthalten ihre POS-Preisersparnis möglicherweise bereits in der Rabattsumme von WooCommerce. Das kanonische Feld `total_saved` erkennt und entfernt diese Überschneidung.
 
 Die Ersparnissummen sind `null` und `total_saved_complete` ist false, wenn für mindestens eine Produktzeile nicht genügend aufgezeichnete Preisdaten für eine zuverlässige Gesamtsumme vorhanden sind. Sichern Sie die Zeile mit `total_saved_complete` ab und verwenden Sie dann `total_saved`, um einen Nullwert auszublenden:
 
