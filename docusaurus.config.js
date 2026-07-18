@@ -9,6 +9,7 @@ module.exports = {
   clientModules: [
     require.resolve('./src/fontawesome.js'),
     require.resolve('./src/analytics/posthog.js'),
+    require.resolve('./src/navbar-spotlight.js'),
   ],
   tagline: '',
   url: 'https://docs.wcpos.com',
@@ -77,6 +78,12 @@ module.exports = {
           docId: 'getting-started/index',
           position: 'left',
           label: 'Documentation',
+          // Statically marked as the active cross-site nav section: every page
+          // on docs.wcpos.com is "Documentation" (search and 404 included), so
+          // the spotlight/accent don't depend on Docusaurus's sidebar-scoped
+          // navbar__link--active detection. Styled in custom.css; the
+          // spotlight (src/navbar-spotlight.js) rests here.
+          className: 'navbar-link-docs',
         },
         {
           href: 'https://wcpos.com/support',
