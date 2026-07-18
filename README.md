@@ -1,6 +1,6 @@
 <div align="center">
   <h1>WCPOS Documentation</h1>
-  <p>The user documentation for <a href="https://wcpos.com">WooCommerce POS</a> — live at <a href="https://docs.wcpos.com">docs.wcpos.com</a>.</p>
+  <p>The user documentation for <a href="https://wcpos.com">WCPOS</a> — live at <a href="https://docs.wcpos.com">docs.wcpos.com</a>.</p>
   <p>
     <a href="https://docs.wcpos.com">
       <img src="https://img.shields.io/website?url=https%3A%2F%2Fdocs.wcpos.com&label=docs.wcpos.com" alt="Live site" />
@@ -28,7 +28,7 @@
 
 ## 💡 About
 
-This repository is the public documentation site for **WooCommerce POS (WCPOS)** — a free, open-source Point of Sale for WooCommerce. It's written primarily for store owners and operators: getting started, installation, using the POS, managing products / orders / customers, coupons, receipts, hardware setup, payment gateways, settings and reports — plus a large troubleshooting section and a small developer reference (REST API internals, custom gateways).
+This repository is the public documentation site for **WCPOS** — a free, open-source Point of Sale for WooCommerce. It's written primarily for store owners and operators: getting started, installation, using the POS, managing products / orders / customers, coupons, receipts, hardware setup, payment gateways, settings and reports — plus a large troubleshooting section and a small developer reference (REST API internals, custom gateways).
 
 The site is built with **[Docusaurus 3](https://docusaurus.io/)** and deployed on **Vercel** at [docs.wcpos.com](https://docs.wcpos.com).
 

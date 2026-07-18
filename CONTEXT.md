@@ -1,6 +1,6 @@
 # WCPOS Documentation
 
-The documentation site for WooCommerce POS (docs.wcpos.com). This glossary fixes the
+The documentation site for WCPOS (docs.wcpos.com). This glossary fixes the
 vocabulary used to describe the docs' information architecture and its intended readers, so
 category names, audience assumptions, and structure decisions stay consistent.
 
