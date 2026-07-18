@@ -14,7 +14,12 @@ import ExecutionEnvironment from '@docusaurus/ExecutionEnvironment';
 
 const CONTAINER = '.navbar__items:not(.navbar__items--right)';
 
+// Pointer hover and keyboard focus are separate channels (matching
+// site-nav.tsx on wcpos.com): a blur must not clear pointer state — or the
+// spotlight snaps home while the pointer is still inside the nav — and vice
+// versa. Focus wins while both are set.
 let hoveredLink = null;
+let focusedLink = null;
 
 function position() {
   const container = document.querySelector(CONTAINER);
@@ -33,6 +38,9 @@ function position() {
   if (hoveredLink && !hoveredLink.isConnected) {
     hoveredLink = null;
   }
+  if (focusedLink && !focusedLink.isConnected) {
+    focusedLink = null;
+  }
   // The docs site statically marks Documentation as the active cross-site
   // section (.navbar-link-docs, see docusaurus.config.js); prefer a real
   // navbar__link--active if Docusaurus ever applies one.
@@ -42,8 +50,9 @@ function position() {
   if (activeLink) {
     activeLink.setAttribute('aria-current', 'page');
   }
-  const target = hoveredLink || activeLink;
-  spot.classList.toggle('wcpos-nav-spotlight--hover', Boolean(hoveredLink));
+  const interactedLink = focusedLink || hoveredLink;
+  const target = interactedLink || activeLink;
+  spot.classList.toggle('wcpos-nav-spotlight--hover', Boolean(interactedLink));
 
   if (!target) {
     spot.style.opacity = '0';
@@ -110,17 +119,18 @@ if (ExecutionEnvironment.canUseDOM) {
     }
   });
 
-  // Keyboard: the spotlight follows focus, like the wcpos.com header.
+  // Keyboard: the spotlight follows focus, like the wcpos.com header. Focus
+  // events only ever touch focusedLink, so a blur cannot clear pointer state.
   document.addEventListener('focusin', (event) => {
     const link = linkFrom(event.target);
     if (link) {
-      hoveredLink = link;
+      focusedLink = link;
       position();
     }
   });
   document.addEventListener('focusout', (event) => {
-    if (hoveredLink && linkFrom(event.target)) {
-      hoveredLink = null;
+    if (focusedLink && linkFrom(event.target)) {
+      focusedLink = null;
       position();
     }
   });
@@ -140,5 +150,6 @@ if (ExecutionEnvironment.canUseDOM) {
 
 export function onRouteDidUpdate() {
   hoveredLink = null;
+  focusedLink = null;
   requestAnimationFrame(position);
 }
