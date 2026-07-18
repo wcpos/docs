@@ -21,7 +21,17 @@ const CONTAINER = '.navbar__items:not(.navbar__items--right)';
 let hoveredLink = null;
 let focusedLink = null;
 
+// Client modules are imported before React hydrates; mutating the SSR navbar
+// (prepending the pill, setting aria-current) before hydration would make the
+// client tree mismatch the server HTML. onRouteDidUpdate runs in a post-
+// hydration layout effect (and fires on first render), so it flips this gate
+// and triggers the first measurement — until then position() is a no-op.
+let hydrated = false;
+
 function position() {
+  if (!hydrated) {
+    return;
+  }
   const container = document.querySelector(CONTAINER);
   if (!container) {
     return;
@@ -140,15 +150,12 @@ if (ExecutionEnvironment.canUseDOM) {
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => position());
   }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => position());
-  } else {
-    position();
-  }
 }
 
+// Fires post-hydration (first render included) — the earliest point where
+// mutating the navbar DOM is safe. Also re-settles after SPA navigations.
 export function onRouteDidUpdate() {
+  hydrated = true;
   hoveredLink = null;
   focusedLink = null;
   requestAnimationFrame(position);
