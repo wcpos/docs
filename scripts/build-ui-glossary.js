@@ -108,8 +108,12 @@ async function build() {
     const cells = docsTags.map((tag) => {
       const v = data[`${tag}|${term.bundle}`]?.[term.key];
       if (!v) missing.push(`${tag} ${term.bundle} ${term.key}`);
-      // a pipe in a value would break the table; none today, but don't emit broken markdown
-      return v ? String(v).replace(/\|/g, '\\|') : '—';
+      // None of today's values need escaping, but don't emit broken markdown if one
+      // ever does: backslash first (escaping it after the pipe would re-escape our
+      // own escape), then the pipe, then flatten newlines that would end the row.
+      return v
+        ? String(v).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ')
+        : '—';
     });
     rows.push(`| ${label} | ${cells.join(' | ')} |`);
   }
