@@ -7,17 +7,21 @@
 // - Broken markdown links (double parentheses, double brackets)
 //
 // Usage:
-//   node scripts/validate-frontmatter.js [--fix] [--quiet] [glob-pattern]
+//   node scripts/validate-frontmatter.js [--fix] [--check] [--changed] [--quiet] [glob-pattern]
+//
+// Read-only by default — writes are opt-in via --fix.
 //
 // Options:
-//   --fix     Auto-fix issues (default: true)
-//   --no-fix  Only validate, don't fix
-//   --quiet   Only output errors
+//   --fix      Auto-fix issues in place (the ONLY flag that writes files)
+//   --check    Read-only enforcement; report problems and exit 1 (this is the default)
+//   --changed  Scope to files changed vs BASE_REF (default origin/main) instead of the glob
+//   --quiet    Only output errors
 //
 // Examples:
-//   node scripts/validate-frontmatter.js                    # Validate and fix all
-//   node scripts/validate-frontmatter.js --no-fix           # Validate only
-//   node scripts/validate-frontmatter.js "i18n/es/**/*.mdx" # Specific locale
+//   node scripts/validate-frontmatter.js                    # Validate all (read-only), exit 1 on problems
+//   node scripts/validate-frontmatter.js --fix              # Validate and fix all in place
+//   node scripts/validate-frontmatter.js --check --changed  # CI gate: enforce on a PR's own files
+//   node scripts/validate-frontmatter.js "i18n/es/**/*.mdx" # Specific locale (read-only)
 
 const fs = require('fs');
 const path = require('path');
@@ -554,13 +558,18 @@ function gitChangedContentFiles(baseRef) {
 // CLI
 if (require.main === module) {
   const args = process.argv.slice(2);
-  // --check: enforcement mode for CI. Never writes; reports any file that is not
-  // already in canonical form (or is otherwise invalid) as an error → exit 1.
-  const check = args.includes('--check');
+  // Writes are OPT-IN: only --fix rewrites files. Without it the script is
+  // read-only. This is what stops a bare invocation — or the
+  // `translations:validate` npm alias — from silently rewriting hundreds of
+  // files just because someone ran something called "validate".
+  const fix = args.includes('--fix');
+  // Everything else is read-only enforcement (this is also what --check selects):
+  // report any file not already in canonical form (or otherwise invalid) as an
+  // error → exit 1. --check is kept as an explicit synonym for clarity in CI.
+  const check = !fix;
   // --changed: scope to files changed vs BASE_REF (default origin/main), so the
   // CI gate enforces the policy on a PR's own files, not the whole-corpus backlog.
   const changed = args.includes('--changed');
-  const fix = !check && !args.includes('--no-fix');
   const quiet = args.includes('--quiet');
 
   let files;
@@ -577,7 +586,7 @@ if (require.main === module) {
 
   if (!quiet) {
     console.log(`Validating MDX frontmatter: ${label}`);
-    console.log(`Mode: ${check ? 'check (no writes)' : `auto-fix ${fix ? 'enabled' : 'disabled'}`}\n`);
+    console.log(`Mode: ${fix ? 'fix (writes files)' : 'check (read-only)'}\n`);
   }
 
   const results = processFileList(files, { fix, quiet, check });
