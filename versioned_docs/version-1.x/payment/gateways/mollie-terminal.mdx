@@ -52,15 +52,16 @@ The terminal must be registered and active on the same Mollie account as the plu
 Install from `WP Admin > POS > Settings > Extensions`, or download the latest **plugin zip asset** (not the GitHub source-code zip or tarball) from the [GitHub releases page](https://github.com/wcpos/mollie-terminal-for-woocommerce/releases) and upload it via `Plugins > Add New > Upload Plugin`.
 
   </StepCard>
-  <StepCard number="2" title="Enter your Mollie API key">
+  <StepCard number="2" title="Configure your Mollie credentials">
 
 1. Go to `WP Admin > WooCommerce > Settings > Payments` and open **Mollie Terminal**
-2. Set **Mode** to `Live`
-3. Paste your Mollie **live API key** into **Mollie API Key**
-4. Save
+2. Set **Mode** to `Test` for a simulated test-terminal payment, or `Live` for a real terminal
+3. Set **API key source** to reuse the key from the official Mollie plugin or use the key entered on this screen
+4. If you enter the key here, paste the test or live API key that matches the selected mode into **Mollie API Key**
+5. Save
 
-:::warning Use your live API key
-Mollie terminals only exist on **live** accounts. The Mollie **test** API key cannot drive a terminal, so leave Mode on `Live` for real payments — see [Scope & Limitations](#scope-and-limitations).
+:::note Test before going live
+Mollie provides a simulated terminal for test `pointofsale` payments. Use `Live` mode only when you are ready to send payments to a physical or iOS/Android terminal. See [Scope & Limitations](#scope-and-limitations) for the current test workflow.
 :::
 
 :::note No Profile ID needed
@@ -70,8 +71,8 @@ Mollie terminals only exist on **live** accounts. The Mollie **test** API key ca
   </StepCard>
   <StepCard number="3" title="Choose your terminals">
 
-1. Pick a **Default terminal** from the dropdown. The list is fetched live from your Mollie account — inactive terminals are hidden, because Mollie cannot reactivate them.
-2. *(Optional)* Restrict **Enabled terminals** to the devices actually in use. Only those can be chosen at checkout; leave it empty to allow all active terminals.
+1. Pick a **Default terminal** from the dropdown. The list is fetched from the selected Mollie environment — inactive terminals are hidden, because Mollie cannot reactivate them.
+2. *(Optional)* Restrict **Enabled terminals** to the devices actually in use. The saved default remains available even if it is not selected here; leave the setting empty to allow all active terminals. To retire a terminal, also change or clear **Default terminal**.
 3. *(Optional)* Enable **Lock terminal selection** so cashiers cannot change the terminal at checkout — the default terminal is always used, and this is enforced on the server too.
 4. Save
 
@@ -95,11 +96,13 @@ The **Enable/Disable** checkbox on the WooCommerce settings screen controls the 
 |---|---|
 | **Enable/Disable** | Enables the gateway for the online store checkout (not required for POS) |
 | **Title** / **Description** | Label and text shown to the customer at checkout |
-| **Mode** | `Test` or `Live`. Terminal payments require **Live** — see below |
-| **Mollie API Key** | Your Mollie live API key. The only credential the plugin needs |
-| **Default terminal** | The terminal used by default at checkout, chosen from a live dropdown of your active terminals |
-| **Enabled terminals** | Restricts the checkout list to selected terminals. Empty = all active terminals |
+| **Mode** | `Test` uses Mollie's simulated test terminal; `Live` sends payments to a real terminal |
+| **API key source** | Uses the key entered below, or reuses the matching test/live key from the official Mollie Payments for WooCommerce plugin. If the shared key is unavailable, the plugin falls back to the key below |
+| **Mollie API Key** | The test or live API key for the selected mode. Used when **API key source** is set to the key entered here, and as the fallback for a missing shared key |
+| **Default terminal** | The terminal used by default at checkout, chosen from a dropdown of active terminals in the selected Mollie environment |
+| **Enabled terminals** | Restricts the checkout list to selected terminals. Empty = all active terminals. The saved default is always available, so change or clear it too when retiring a terminal |
 | **Lock terminal selection** | Forces the default terminal at checkout so cashiers cannot change it (requires a default terminal) |
+| **Checkout debug logs** | Shows the **Show logs**, **Copy**, and **Clear** tools on the checkout payment panel. Leave this off unless gathering logs for support; payment activity is always recorded under `WooCommerce > Status > Logs` |
 
 The webhook URL is applied automatically on every payment, so there is no webhook field to fill in and no Mollie dashboard configuration required.
 
@@ -136,14 +139,15 @@ A Mollie `pointofsale` payment can stay "open" on Mollie's side if a checkout is
 - the auto-poll times out (5 minutes by default) — the cancel is sent instead of leaving the payment behind
 - the order is completed with a **different** payment method (for example the customer pays cash instead), or the order is cancelled in WooCommerce
 - the checkout page is closed mid-payment — a best-effort cancel fires as the tab leaves
+- a WP-Cron sweep runs every 10 minutes and cancels or resolves payments left open past the stale threshold (10 minutes by default), including when the browser closes or the network drops before the other cleanup paths run
 
 If the payment already reached the terminal, Mollie reports it as not cancelable and the cashier cancels on the device itself — these cleanups are safe no-ops in that case.
 
 ## Requirements {#requirements}
 
 <RequirementsList>
-  <RequirementItem label="Mollie Account">Active Mollie account with a live API key</RequirementItem>
-  <RequirementItem label="Compatible Hardware">A Mollie Terminal device, active on that Mollie account</RequirementItem>
+  <RequirementItem label="Mollie Account">Active Mollie account with an API key for the selected mode</RequirementItem>
+  <RequirementItem label="Compatible Hardware">An active Mollie Terminal for live payments; Mollie's simulated test terminal for testing</RequirementItem>
   <RequirementItem label="Currency">EUR — POS terminal payments are limited to EUR for now</RequirementItem>
   <RequirementItem label="WCPOS">Pro version required for POS checkout</RequirementItem>
   <RequirementItem label="Stable Connection">Reliable internet connection for API communication</RequirementItem>
@@ -151,8 +155,10 @@ If the payment already reached the terminal, Mollie reports it as not cancelable
 
 ## Scope & Limitations {#scope-and-limitations}
 
-:::important Test mode limitation
-Mollie terminals only exist on **live** accounts. The Mollie **test** API key cannot drive a physical (or iOS/Android) terminal, so terminal payments cannot be exercised end-to-end in the test environment. This is a Mollie platform limitation, not a plugin restriction. The settings screen shows a warning when Test mode is selected.
+:::important Test mode
+Mollie supports test `pointofsale` payments without a physical terminal. Enable Point of Sale on a Mollie profile to create its test terminal, then set this gateway to `Test`, use the matching test API key, and select that terminal. Mollie returns a `changePaymentState` URL for choosing the simulated result.
+
+The plugin can create and poll the test payment, but its checkout panel does not currently display that URL. In your browser's developer tools, find the `mtfwc_start_payment` network response and open `_links.changePaymentState.href` to set the result, then let the POS poll and reconcile it. See [Mollie's point-of-sale testing guide](https://docs.mollie.com/docs/in-person-payments-testing). Use `Live` mode for a physical or iOS/Android terminal.
 :::
 
 :::note Currency
@@ -166,8 +172,9 @@ POS terminal payments are limited to **EUR** until broader Mollie Terminal curre
 <Accordion>
   <AccordionItem question="No terminals appear in the dropdown">
 
-  - Confirm **Mode** is set to `Live` and the **Mollie API Key** is your live key — terminals do not exist on test accounts
-  - Check the terminal is registered and **active** on your Mollie account; inactive terminals are hidden because Mollie cannot reactivate them
+  - Confirm **Mode** and the effective API key use the same Mollie environment
+  - In Test mode, enable Point of Sale on a Mollie profile so Mollie creates its simulated test terminal
+  - In Live mode, check the terminal is registered and **active** on your Mollie account; inactive terminals are hidden because Mollie cannot reactivate them
   - Make sure your site can reach Mollie — the list is fetched live over the API
 
   </AccordionItem>
@@ -182,8 +189,8 @@ POS terminal payments are limited to **EUR** until broader Mollie Terminal curre
 
   <AccordionItem question="The terminal timed out or the payment stayed open">
 
-  - The plugin cancels open payments automatically on timeout (5 minutes by default); no action is needed
-  - If the payment already reached the terminal, cancel it on the device itself — Mollie will not let the plugin cancel it at that point
+  - The plugin attempts to cancel open payments automatically on timeout (5 minutes by default)
+  - If the payment already reached the terminal and cannot be cancelled automatically, cancel it on the device itself
   - You can then start a fresh payment or take payment another way
 
   </AccordionItem>
