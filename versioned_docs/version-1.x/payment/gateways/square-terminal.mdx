@@ -22,11 +22,11 @@ The Square Terminal gateway lets you collect WooCommerce order payments on [Squa
   <FeatureCard icon="credit-card" title="Hardware Integration">
     Send payments to paired Square Terminal devices and collect card-present payments
   </FeatureCard>
-  <FeatureCard icon="link" title="Easy Pairing">
-    Pair terminals from WooCommerce using a short-lived Square Device Code
+  <FeatureCard icon="link" title="One-Click Connect">
+    Authorize with Square directly — no access token to create or paste
   </FeatureCard>
-  <FeatureCard icon="bolt" title="Webhook-Confirmed">
-    Verified Square webhooks confirm completion, with live status while you wait
+  <FeatureCard icon="bolt" title="Reliable Completion">
+    Payments are confirmed by polling and a background sweeper, with webhooks to speed it up
   </FeatureCard>
   <FeatureCard icon="shield" title="Secure Transactions">
     PCI-compliant, card-present processing handled on Square hardware
@@ -38,11 +38,13 @@ The Square Terminal gateway lets you collect WooCommerce order payments on [Squa
 
 ## How It Works {#how-it-works}
 
-Unlike browser-SDK gateways, Square Terminal uses Square's **server-side Terminal API**. When you start a payment, WooCommerce creates a Terminal Checkout for the order and Square pushes it to the paired device. The customer pays on the terminal, and Square notifies your site with a signed webhook. The webhook is the authoritative completion signal; the POS also polls so the status updates while you wait.
+Unlike browser-SDK gateways, Square Terminal uses Square's **server-side Terminal API**. When you start a payment, WooCommerce creates a Terminal Checkout for the order and Square pushes it to the paired device. The customer pays on the terminal, and the result is written back to the order.
 
-This means the Square Terminal device must be online and signed in to the same Square account and location, and your site must be publicly reachable over HTTPS so Square can deliver webhooks.
+**How a payment is confirmed.** The POS polls Square while the payment is in progress, and a background sweeper reconciles anything the poll misses — a closed browser tab, for example. Square webhooks are an *optional* addition that shortens the wait; they are not required, and a site without them never loses a payment.
 
-## Installation {#installation}
+The Square Terminal device must be online and signed in to the same Square account and location as the plugin.
+
+## Setup {#setup}
 
 <Steps>
   <StepCard number="1" title="Install Square Terminal for WooCommerce">
@@ -50,56 +52,108 @@ This means the Square Terminal device must be online and signed in to the same S
 Install from `WP Admin > POS > Settings > Extensions`, or download the latest **plugin zip asset** (not the GitHub source-code zip or tarball) from the [GitHub releases page](https://github.com/wcpos/square-terminal-for-woocommerce/releases) and upload it via `Plugins > Add New > Upload Plugin`.
 
   </StepCard>
-  <StepCard number="2" title="Configure Square Settings">
+  <StepCard number="2" title="Connect to Square">
 
-1. Navigate to `WP Admin > WooCommerce > Settings > Payments`
-2. Find **Square Terminal** in the payment methods list and click it to open the settings
-3. Choose the **Environment** (`Sandbox` for testing, `Production` for live payments)
-4. Enter your **Access Token** for the selected environment (Sandbox or Production), available from the [Square Developer Dashboard](https://developer.squareup.com/apps)
-5. Enter your **Location ID** — the Square location where Terminal payments are taken
-6. Enter your **Webhook Signature Key** and **Webhook Notification URL** (see the next step)
-7. Click **Validate Settings** to confirm the credentials work, then save
+1. Go to `WP Admin > WooCommerce > Settings > Payments` and open **Square Terminal**
+2. Under **Square account**, choose the **Environment** — `Sandbox` for testing, `Production` for live payments
+3. Click **Connect to Square** and approve the permissions Square shows you
+4. Choose the **Location ID** — the Square location the Terminal takes payments for
 
-:::note
-You do not need to enable the Square Terminal gateway in WooCommerce settings. It will be enabled specifically for the POS in a later step.
+Choose the environment **before** connecting. A connection covers one environment only; a sandbox connection can never authorize production payments.
+
+:::note Already using the official WooCommerce Square plugin?
+Environment and Location ID are pre-filled from its settings. Only those two values are read — no credentials are shared between the plugins, and you still need to connect or supply an access token here.
+:::
+
+:::note Prefer to use your own access token?
+Open **Advanced settings** and paste an access token for the selected environment instead of connecting. Everything else works identically.
 :::
 
   </StepCard>
-  <StepCard number="3" title="Set Up Webhooks in Square">
+  <StepCard number="3" title="Pair your Square Terminal">
 
-Square sends a signed webhook when a Terminal payment finishes, and this is what marks the order as paid.
+Under **Terminal**:
 
-1. In the [Square Developer Dashboard](https://developer.squareup.com/apps), open your application and go to the **Webhooks** section
-2. Add a subscription for the **`terminal.checkout.updated`** event
-3. Set the notification URL to the **Webhook Notification URL** shown in the plugin settings — it must match **exactly**
-4. Copy the **Webhook Signature Key** into the plugin settings so incoming events can be verified
+1. Click **Create Device Code** — a pairing code appears
+2. On the Square Terminal, sign in and enter the code on the device-pairing screen
+3. Click **Check for readers** to confirm it now appears under *Paired with this plugin*
 
-:::warning Important
-The Webhook Notification URL in Square must exactly match the value in the plugin settings, and the Webhook Signature Key must be correct. If they don't match, Square payments will complete on the device but the WooCommerce order will not update.
-:::
+Square cannot see a Terminal until it has been paired this way. A Terminal running Square POS is invisible to the API until then, so an empty list before pairing is expected, not a fault.
 
   </StepCard>
-  <StepCard number="4" title="Pair Your Square Terminal">
-
-1. On the same settings page, click **Create Device Code**
-2. A pairing code is generated and shown to you
-3. On your Square Terminal, sign in and enter the code on the device-pairing screen
-4. Once paired, the terminal is linked to your configured location. Note its **Device ID** — you'll enter this when taking a payment
-
-:::warning Important
-The terminal must be successfully paired and online before you can process payments. Make sure pairing is complete before proceeding.
-:::
-
-  </StepCard>
-  <StepCard number="5" title="Enable in WCPOS" isLast>
+  <StepCard number="4" title="Enable in WCPOS" isLast>
 
 1. Go to `WP Admin > POS > Settings > Checkout`
-2. Find the **Square Terminal** gateway in the list
-3. Enable the gateway for use in the POS
-4. Save your settings
+2. Find the **Square Terminal** gateway and enable it for the POS
+3. Save your settings
+
+:::note
+The **Enable/Disable** checkbox on the WooCommerce settings screen controls the *online store* checkout only. WCPOS uses this gateway automatically once it is configured, whether or not that box is ticked.
+:::
 
   </StepCard>
 </Steps>
+
+## Pairing a Terminal {#pairing}
+
+A Square Terminal has to be paired with **this plugin** before a cashier can select it. Pairing creates a Terminal API *Device Code*, and that is the only way the plugin can address the device.
+
+Under **Terminal** on the settings screen:
+
+- **Create Device Code** — generates a code to enter on the Terminal. It is short-lived; generate a fresh one if it expires.
+- **Check for readers** — lists what Square can see, in two groups:
+  - **Paired with this plugin** — selectable at checkout
+  - **Other devices Square can see at this location** — set up by another application, so not selectable here until paired with this plugin
+- **Validate Settings** — checks the credentials and location against Square
+
+:::note Why a Terminal you own might not be listed
+Device Codes belong to the application that created them. A Terminal paired through the Square Dashboard, the Square POS app, or another integration will not appear until you pair it here with **Create Device Code**.
+:::
+
+## Webhooks {#webhooks}
+
+Webhooks are **optional**. They shorten how long a payment takes to confirm. Polling and the background sweeper confirm every payment regardless, so a site without a webhook subscription still works correctly — just a little slower to settle.
+
+To add one:
+
+1. On the settings screen, under **Terminal → Webhooks**, click **Copy** to copy the webhook URL
+2. In the [Square Developer Dashboard](https://developer.squareup.com/apps), open your application and go to **Webhooks**
+3. Add a subscription for the **`terminal.checkout.updated`** event, pasting that URL as the notification URL
+4. Copy the **Webhook Signature Key** from Square into **Advanced settings** in the plugin
+
+The **Webhooks** row then reports whether a signature-verified webhook has arrived, and when.
+
+:::warning The URL must match exactly
+Square signs each webhook over the notification URL it was given. If the URL in Square differs from the plugin's by even a character, every delivery fails verification. Use the **Copy** button rather than typing it.
+:::
+
+:::note Why this step is manual
+Square's Webhook Subscriptions API is scoped to the *application*, not to individual sellers, and [cannot be called with a seller access token](https://developer.squareup.com/docs/webhooks/webhook-subscriptions-api). The plugin therefore cannot create the subscription for you.
+:::
+
+### If webhooks stop verifying {#webhook-troubleshooting}
+
+The **Webhooks** row shows *Not verified yet* when no webhook has arrived and verified under the **current** settings. If payments have already run, check in this order:
+
+1. The **Webhook Signature Key** in Advanced settings matches the one in Square
+2. The notification URL in Square matches the URL shown in the plugin, exactly
+3. The `terminal.checkout.updated` event is subscribed
+4. Your site is publicly reachable over HTTPS — check delivery attempts in the Square Dashboard
+
+Changing the environment, webhook URL, or signature key resets this row until the next webhook arrives. That is intended: a delivery verified under the old settings says nothing about the new ones.
+
+## Settings reference {#settings}
+
+The settings screen is ordered the way setup runs.
+
+| Section | Contains |
+|---|---|
+| **Square account** | Environment, **Connect to Square**, Location ID |
+| **Terminal** | Pairing controls, reader list, webhook status |
+| **Checkout behaviour** | Skip receipt screen, collect signature, debug logs |
+| **Advanced settings** | Access tokens, webhook signature key, webhook URL override |
+
+**Advanced settings** is collapsed by default. It holds the manual access tokens — needed only if you are not connecting — and the webhook signature key. The **Webhook URL override** should stay empty unless your public URL differs from the one the plugin derives, for example behind a proxy or custom domain.
 
 ## Usage {#usage}
 
@@ -107,23 +161,24 @@ The terminal must be successfully paired and online before you can process payme
 
 1. **Add Items**: Add products to your cart in the POS
 2. **Select Gateway**: Choose "Square Terminal" as the payment method
-3. **Choose Device**: Enter the **Terminal Device ID** of the paired terminal that should take the payment
+3. **Choose Device**: Pick the paired terminal from the **Terminal Device** list
 4. **Start Payment**: Click **Start Payment** — Square pushes the checkout to the device
 5. **Customer Payment**: The customer taps, inserts, or swipes their card on the Square Terminal
-6. **Automatic Completion**: When Square's verified webhook confirms the payment, the order is marked paid. The live status updates while you wait.
+6. **Completion**: The status updates live while you wait, and the order is marked paid once Square confirms the payment
+
+In **Sandbox**, the device list contains Square's documented test device IDs, so every outcome — success, timeout, offline — can be exercised without hardware.
 
 ### Payment Controls {#payment-controls}
 
-When using the Square Terminal gateway, you have the following options:
-
 - **Start Payment**: Send a new payment request to the selected terminal
-- **Cancel Payment**: Cancel a payment that is currently in progress on the terminal
-- **Payment Status**: A live status area shows the current state of the payment
-- **Payment Log**: A per-order log records each meaningful Square step and outcome
+- **Cancel Payment**: Cancel a payment currently in progress on the terminal
+- **Check Status**: Ask Square for the current state immediately
+- **Release Payment**: Detach an unresponsive terminal so the order can be paid another way; the abandoned checkout is still reconciled in the background
+- **Payment Log**: An optional per-order log recording each Square step and outcome
 
 ### Order Management {#order-management}
 
-- **Webhook-Authoritative Completion**: Orders are marked paid only when a verified Square webhook confirms the Terminal payment
+- **Verified completion**: Orders are marked paid only after the payment is verified against Square's Payment object — never on an unverified signal
 - **Payment Tracking**: Square identifiers and a payment log are stored on the order, and key steps are written to order notes
 - **Receipt Generation**: Standard POS receipts are generated after successful payments
 
@@ -131,16 +186,16 @@ When using the Square Terminal gateway, you have the following options:
 
 <RequirementsList>
   <RequirementItem label="Square Account">Active Square seller account</RequirementItem>
-  <RequirementItem label="API Credentials">Access Token, Location ID, and Webhook Signature Key from the Square Developer Dashboard</RequirementItem>
+  <RequirementItem label="Square Location">A Square location, and its Location ID</RequirementItem>
   <RequirementItem label="Compatible Hardware">A Square Terminal device, online and signed in to the same Square location</RequirementItem>
-  <RequirementItem label="Public HTTPS Site">Your site must be reachable over HTTPS so Square can deliver webhooks</RequirementItem>
+  <RequirementItem label="Public HTTPS Site">Required only if you want webhooks; payments confirm by polling without them</RequirementItem>
   <RequirementItem label="WCPOS">Pro version required for POS checkout</RequirementItem>
 </RequirementsList>
 
 ## Hardware Compatibility {#hardware-compatibility}
 
 :::important Connectivity Requirements
-Square Terminal uses Square's server-side Terminal API: the checkout is created by your site and delivered to the paired device by Square. The terminal must be online and signed in to the same Square account and location, and your site must receive Square webhooks over HTTPS for orders to update.
+Square Terminal uses Square's server-side Terminal API: the checkout is created by your site and delivered to the paired device by Square. The terminal must be online and signed in to the same Square account and location as the plugin.
 :::
 
 ### Supported Terminals {#supported-terminals}
@@ -149,9 +204,10 @@ Square Terminal uses Square's server-side Terminal API: the checkout is created 
 
 ## Scope & Limitations {#scope-and-limitations}
 
-:::note v0.1 scope
-- This early release is focused on **POS / order-pay** flows. Availability on the customer-facing storefront checkout is off by default and must be explicitly enabled.
-- It **collects payments only** — refunds are not yet supported. Square identifiers are stored on the order so refund support can be added later.
+:::note Current scope
+- Focused on **POS / order-pay** flows. Availability on the customer-facing storefront checkout is off by default and must be explicitly enabled.
+- **Collects payments only** — refunds are not yet supported. Square identifiers are stored on the order so refund support can be added later.
+- Webhook subscriptions must be added manually in Square; see [Webhooks](#webhooks).
 :::
 
 ## Troubleshooting {#troubleshooting}
@@ -159,36 +215,50 @@ Square Terminal uses Square's server-side Terminal API: the checkout is created 
 ### Common Issues {#common-issues}
 
 <Accordion>
+  <AccordionItem question="The Terminal Device list is empty">
+
+  - The Terminal has to be paired **with this plugin** first — use **Create Device Code** and enter the code on the device
+  - A Terminal paired through the Square Dashboard or the Square POS app will not appear until it is paired here
+  - Click **Check for readers**: if it appears under *Other devices Square can see*, it exists but is not paired with this plugin
+  - Confirm the **Location ID** matches the location the Terminal is signed in to
+
+  </AccordionItem>
+
   <AccordionItem question="Device won't pair">
 
-  - Make sure you entered the Device Code before it expired — generate a fresh one with **Create Device Code** if needed
+  - Make sure you entered the Device Code before it expired — generate a fresh one with **Create Device Code**
   - Confirm the terminal is online and signed in to the same Square account and **Location ID** as the plugin
-  - Check that the **Environment** (Sandbox/Production) and **Access Token** match the account the terminal is signed in to
+  - Check the **Environment** matches the account the terminal is signed in to
 
   </AccordionItem>
 
   <AccordionItem question="Validate Settings fails">
 
-  - Verify the **Access Token** matches the selected **Environment** (a Sandbox token won't work in Production, and vice versa)
+  - If connected, check the **Square account** row still shows *Connected to Square*; if it asks you to reconnect, the authorization lapsed
+  - If using an access token, verify it matches the selected **Environment** — a Sandbox token will not work in Production, and vice versa
   - Confirm the **Location ID** belongs to that account
-  - Re-copy the token from the Square Developer Dashboard in case of stray characters
 
   </AccordionItem>
 
-  <AccordionItem question="Payment completes on the terminal but the order doesn't update">
+  <AccordionItem question="Payment completes on the terminal but the order is slow to update">
 
-  - The **Webhook Notification URL** in Square must match the plugin setting **exactly**
-  - Make sure the **`terminal.checkout.updated`** event is subscribed in the Square Developer Dashboard
-  - Confirm the **Webhook Signature Key** in the plugin matches the one in Square
-  - Ensure your site is publicly reachable over HTTPS; check webhook delivery attempts in the Square Dashboard
+  - This is what webhooks fix. Without one, the order updates when polling or the background sweeper next reconciles it
+  - Check the **Webhooks** row — if it says *Not verified yet* after payments have run, follow [If webhooks stop verifying](#webhook-troubleshooting)
+  - The order is never lost: the sweeper reconciles any payment the poll misses
 
   </AccordionItem>
 
   <AccordionItem question="Payment won't start">
 
-  - Confirm a valid **Terminal Device ID** is entered and the device is paired and online
+  - Confirm a terminal is selected and the device is paired and online
   - Check that the device is signed in to the configured **Location ID**
-  - Review the **Payment Log** and WordPress error logs for Square API messages
+  - Review the **Payment Log** and `WooCommerce > Status > Logs` for Square API messages
+
+  </AccordionItem>
+
+  <AccordionItem question="It says reconnection to Square is required">
+
+  Square authorizations are renewed automatically. If a renewal cannot complete, the plugin ends the authorization rather than leaving it in an unusable state, and the settings screen asks you to reconnect. Click **Reconnect to Square** — nothing else needs changing.
 
   </AccordionItem>
 </Accordion>
@@ -200,9 +270,11 @@ For technical support:
 - Check the [Square Terminal API documentation](https://developer.squareup.com/docs/terminal-api/overview) for hardware and API guidance
 - Contact Square support for account and hardware issues
 
+Logs are written to `WooCommerce > Status > Logs` under the `sqtwc` handle, and record each device lookup and webhook outcome.
+
 ## Screenshots {#screenshots}
 
 Screenshots will be added in a future update to show:
-- Square credentials, webhook, and device-pairing configuration
+- The Square account, Terminal, and Advanced settings sections
 - Gateway enablement in WCPOS settings
 - Payment processing workflow in the POS checkout
