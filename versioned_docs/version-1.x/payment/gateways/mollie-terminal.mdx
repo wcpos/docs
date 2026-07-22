@@ -1,0 +1,212 @@
+---
+title: Mollie Terminal Gateway
+description: "Take in-person payments on Mollie Terminal devices in WCPOS"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# Mollie Terminal Gateway
+
+The Mollie Terminal gateway lets you take in-person payments on [Mollie Terminal](https://www.mollie.com/products/point-of-sale) hardware directly from WCPOS. A payment is started from WooCommerce and completed on the terminal, and Mollie's confirmation is written back to the order.
+
+## Features {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="credit-card" title="Hardware Integration">
+    Send payments to Mollie terminals registered on your Mollie account and collect card-present payments
+  </FeatureCard>
+  <FeatureCard icon="link" title="No Manual Pairing">
+    Terminals are fetched live from your Mollie account — pick one from a dropdown, no device ID to paste
+  </FeatureCard>
+  <FeatureCard icon="bolt" title="Reliable Completion">
+    Payments are confirmed by polling Mollie, and the POS redirects to the receipt automatically once the terminal confirms
+  </FeatureCard>
+  <FeatureCard icon="shield" title="Secure Transactions">
+    PCI-compliant, card-present processing handled on Mollie hardware
+  </FeatureCard>
+  <FeatureCard icon="arrow-rotate-right" title="Refunds Supported">
+    Refund from the WooCommerce order screen, reconciled against Mollie so refunds are never duplicated
+  </FeatureCard>
+</FeatureGrid>
+
+## How It Works {#how-it-works}
+
+Mollie Terminal uses Mollie's **server-side `pointofsale` payments**. When you start a payment, WooCommerce creates a Mollie payment for the order and Mollie pushes it to the selected terminal. The customer pays on the device, and **Mollie is the source of truth** for payment and refund state — the local WooCommerce order meta is only a cache.
+
+**How a payment is confirmed.** While the payment is in progress the POS polls Mollie (every 2 seconds by default) and, when the terminal confirms, redirects straight to the thank-you page. Mollie webhooks are also used to speed this up — and the webhook URL is set automatically on every payment, so there is **nothing to configure in the Mollie dashboard**.
+
+The terminal must be registered and active on the same Mollie account as the plugin.
+
+## Setup {#setup}
+
+<Steps>
+  <StepCard number="1" title="Install Mollie Terminal for WooCommerce">
+
+Install from `WP Admin > POS > Settings > Extensions`, or download the latest **plugin zip asset** (not the GitHub source-code zip or tarball) from the [GitHub releases page](https://github.com/wcpos/mollie-terminal-for-woocommerce/releases) and upload it via `Plugins > Add New > Upload Plugin`.
+
+  </StepCard>
+  <StepCard number="2" title="Enter your Mollie API key">
+
+1. Go to `WP Admin > WooCommerce > Settings > Payments` and open **Mollie Terminal**
+2. Set **Mode** to `Live`
+3. Paste your Mollie **live API key** into **Mollie API Key**
+4. Save
+
+:::warning Use your live API key
+Mollie terminals only exist on **live** accounts. The Mollie **test** API key cannot drive a terminal, so leave Mode on `Live` for real payments — see [Scope & Limitations](#scope-and-limitations).
+:::
+
+:::note No Profile ID needed
+`pointofsale` payments do not require a Mollie **Profile ID**, and terminals are listed across the whole account, so there is nothing else to paste.
+:::
+
+  </StepCard>
+  <StepCard number="3" title="Choose your terminals">
+
+1. Pick a **Default terminal** from the dropdown. The list is fetched live from your Mollie account — inactive terminals are hidden, because Mollie cannot reactivate them.
+2. *(Optional)* Restrict **Enabled terminals** to the devices actually in use. Only those can be chosen at checkout; leave it empty to allow all active terminals.
+3. *(Optional)* Enable **Lock terminal selection** so cashiers cannot change the terminal at checkout — the default terminal is always used, and this is enforced on the server too.
+4. Save
+
+  </StepCard>
+  <StepCard number="4" title="Enable in WCPOS" isLast>
+
+1. Go to `WP Admin > POS > Settings > Checkout`
+2. Find the **Mollie Terminal** gateway and enable it for the POS
+3. Save your settings
+
+:::note
+The **Enable/Disable** checkbox on the WooCommerce settings screen controls the *online store* checkout only. WCPOS uses this gateway once it is configured, whether or not that box is ticked.
+:::
+
+  </StepCard>
+</Steps>
+
+## Settings reference {#settings}
+
+| Setting | What it does |
+|---|---|
+| **Enable/Disable** | Enables the gateway for the online store checkout (not required for POS) |
+| **Title** / **Description** | Label and text shown to the customer at checkout |
+| **Mode** | `Test` or `Live`. Terminal payments require **Live** — see below |
+| **Mollie API Key** | Your Mollie live API key. The only credential the plugin needs |
+| **Default terminal** | The terminal used by default at checkout, chosen from a live dropdown of your active terminals |
+| **Enabled terminals** | Restricts the checkout list to selected terminals. Empty = all active terminals |
+| **Lock terminal selection** | Forces the default terminal at checkout so cashiers cannot change it (requires a default terminal) |
+
+The webhook URL is applied automatically on every payment, so there is no webhook field to fill in and no Mollie dashboard configuration required.
+
+## Usage {#usage}
+
+### Processing Payments {#processing-payments}
+
+1. **Add Items**: Add products to your cart in the POS
+2. **Select Gateway**: Choose "Mollie Terminal" as the payment method
+3. **Choose Terminal**: Pick a terminal from the dropdown (defaults to the configured one; hidden if terminal selection is locked)
+4. **Start Payment**: Click **Start Terminal Payment** — Mollie pushes the payment to the device
+5. **Customer Payment**: The customer taps, inserts, or swipes their card on the terminal. The status updates live — `Sending to terminal…` → `Waiting for terminal…`
+6. **Automatic Completion**: When the terminal confirms, the order is marked paid and the POS redirects to the receipt automatically
+
+### Payment Controls {#payment-controls}
+
+- **Start Terminal Payment**: Send a new payment request to the selected terminal
+- **Cancel Payment**: Cancel a payment that is still open. Once the payment has reached the terminal Mollie reports it as no longer cancelable, and the cashier cancels on the device itself
+
+### Order Management {#order-management}
+
+- **Verified completion**: Every webhook, poll, cancel, and retry fetches authoritative Mollie state before changing an order, so orders are marked paid only on confirmed Mollie state
+- **Payment Tracking**: Payment attempts are recorded as append-only history on the order
+- **Receipt Generation**: Standard POS receipts are generated after successful payments
+
+## Refunds {#refunds}
+
+Refunds are supported. Refund an order from the normal WooCommerce order screen and the refund is sent to Mollie. Because Mollie is the source of truth, refund retries reconcile against Mollie's refund IDs and metadata **before** creating another refund, so a refund is never accidentally issued twice.
+
+## Stale payment cleanup {#stale-payment-cleanup}
+
+A Mollie `pointofsale` payment can stay "open" on Mollie's side if a checkout is abandoned. The plugin cancels these open payments automatically when:
+
+- the auto-poll times out (5 minutes by default) — the cancel is sent instead of leaving the payment behind
+- the order is completed with a **different** payment method (for example the customer pays cash instead), or the order is cancelled in WooCommerce
+- the checkout page is closed mid-payment — a best-effort cancel fires as the tab leaves
+
+If the payment already reached the terminal, Mollie reports it as not cancelable and the cashier cancels on the device itself — these cleanups are safe no-ops in that case.
+
+## Requirements {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Mollie Account">Active Mollie account with a live API key</RequirementItem>
+  <RequirementItem label="Compatible Hardware">A Mollie Terminal device, active on that Mollie account</RequirementItem>
+  <RequirementItem label="Currency">EUR — POS terminal payments are limited to EUR for now</RequirementItem>
+  <RequirementItem label="WCPOS">Pro version required for POS checkout</RequirementItem>
+  <RequirementItem label="Stable Connection">Reliable internet connection for API communication</RequirementItem>
+</RequirementsList>
+
+## Scope & Limitations {#scope-and-limitations}
+
+:::important Test mode limitation
+Mollie terminals only exist on **live** accounts. The Mollie **test** API key cannot drive a physical (or iOS/Android) terminal, so terminal payments cannot be exercised end-to-end in the test environment. This is a Mollie platform limitation, not a plugin restriction. The settings screen shows a warning when Test mode is selected.
+:::
+
+:::note Currency
+POS terminal payments are limited to **EUR** until broader Mollie Terminal currency support is confirmed.
+:::
+
+## Troubleshooting {#troubleshooting}
+
+### Common Issues {#common-issues}
+
+<Accordion>
+  <AccordionItem question="No terminals appear in the dropdown">
+
+  - Confirm **Mode** is set to `Live` and the **Mollie API Key** is your live key — terminals do not exist on test accounts
+  - Check the terminal is registered and **active** on your Mollie account; inactive terminals are hidden because Mollie cannot reactivate them
+  - Make sure your site can reach Mollie — the list is fetched live over the API
+
+  </AccordionItem>
+
+  <AccordionItem question="Payment won't start">
+
+  - Confirm a terminal is selected (or a **Default terminal** is set when selection is locked)
+  - Check the terminal is powered on, online, and active on the same Mollie account
+  - Verify the order currency is **EUR**
+
+  </AccordionItem>
+
+  <AccordionItem question="The terminal timed out or the payment stayed open">
+
+  - The plugin cancels open payments automatically on timeout (5 minutes by default); no action is needed
+  - If the payment already reached the terminal, cancel it on the device itself — Mollie will not let the plugin cancel it at that point
+  - You can then start a fresh payment or take payment another way
+
+  </AccordionItem>
+
+  <AccordionItem question="Order completed on the terminal but is slow to update">
+
+  - The POS polls Mollie every 2 seconds and redirects when the payment confirms; a webhook usually confirms it first
+  - Because Mollie is the source of truth, the order is reconciled against authoritative Mollie state — it is not lost
+  - Check `WooCommerce > Status > Logs` for any Mollie API messages
+
+  </AccordionItem>
+</Accordion>
+
+### Getting Help {#getting-help}
+
+For technical support:
+- Visit the [GitHub repository](https://github.com/wcpos/mollie-terminal-for-woocommerce) to report issues
+- Check the [Mollie Terminal setup guide](https://docs.mollie.com/docs/setting-up-terminal) and the [Mollie Create Payment API](https://docs.mollie.com/reference/create-payment) for API-related questions
+- Contact Mollie support for account and hardware issues
+
+## Screenshots {#screenshots}
+
+Screenshots will be added in a future update to show:
+- The Mollie Terminal settings screen — API key, default terminal, and enabled terminals
+- Gateway enablement in WCPOS settings
+- Payment processing workflow in the POS checkout
