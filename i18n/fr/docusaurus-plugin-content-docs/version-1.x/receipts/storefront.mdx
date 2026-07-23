@@ -1,0 +1,109 @@
+---
+title: Reçus dans votre boutique en ligne
+sidebar_label: Reçus de la boutique en ligne
+sidebar_position: 8
+description: "Permettez aux clients en ligne de télécharger des reçus et des factures depuis Mon compte, générés avec votre modèle WCPOS personnalisé."
+---
+
+Les modèles de reçus WCPOS ne se limitent pas à la caisse. Les clients de votre boutique en ligne peuvent consulter et télécharger le reçu ou la facture de leur commande depuis Mon compte ou la page de confirmation de commande, générés avec un modèle personnalisé depuis **WP Admin → POS → Modèles**.
+
+:::info Nécessite WCPOS 1.9.11
+L’accès aux reçus de la boutique en ligne est inclus dans WCPOS 1.9.11. Les versions antérieures n’affichent les reçus que dans le POS.
+:::
+
+:::note Cette page concerne le téléchargement par les clients de leurs propres reçus
+Les caissiers et le personnel n’ont besoin de rien de tout cela : l’écran **Commandes** du POS répertorie déjà toutes les commandes WooCommerce, y compris les commandes en ligne, et permet de [consulter, imprimer ou envoyer leur reçu par e-mail](/orders#receipt-reprinting) depuis le menu à trois points. Cette page couvre l’autre sens : permettre aux **clients** de télécharger eux-mêmes le reçu depuis votre site web.
+:::
+
+## Bouton de téléchargement dans Mon compte {#my-account}
+
+Dès qu’un modèle de reçu est **Actif**, les clients connectés voient un bouton **Reçu** à côté des commandes éligibles dans **Mon compte → Commandes**. Un clic télécharge un PDF (`receipt-1234.pdf`) généré avec le modèle de reçu par défaut de la boutique en ligne.
+
+Par défaut, le bouton s’affiche pour les commandes **En cours**, **Terminée** et **Remboursée** — les statuts indiquant que la commande a été payée. Les commandes en attente de paiement, annulées et échouées ne l’affichent pas.
+
+Aucune configuration n’est nécessaire : activez un modèle et le bouton est disponible. Pour ne pas l’afficher, un développeur peut [le désactiver avec un filtre](#developers).
+
+## Le shortcode `[wcpos_receipt]` {#shortcode}
+
+Pour ajouter un lien vers le reçu à la page de confirmation de commande ("merci") ou à la page **Mon compte → voir la commande**, utilisez :
+
+```text
+[wcpos_receipt]
+```
+
+Sans attribut, le shortcode détecte automatiquement la commande en cours sur l’une ou l’autre page et affiche un lien *Télécharger le reçu (PDF)*. Sur les autres pages, il n’affiche rien. Un `order_id` explicite ne fonctionne que pour un client connecté propriétaire de cette commande.
+
+### Attributs {#shortcode-attributes}
+
+| Attribut | Valeur par défaut | Description |
+|---|---|---|
+| `order_id` | *(détecté automatiquement)* | Lien vers une commande spécifique. Fonctionne uniquement pour les clients connectés propriétaires de la commande. |
+| `link_text` | `Download receipt (PDF)` | Le texte du lien. |
+| `format` | `pdf` | `pdf` télécharge un PDF ; `html` ouvre à la place la vue imprimable du reçu. |
+| `template` | *(valeur par défaut de la vitrine)* | Affiche un modèle avec un ID spécifique au lieu de la valeur par défaut de la vitrine. |
+| `class` | `wcpos-receipt-link` | Classe CSS du lien. |
+| `id` | *(aucun)* | Attribut `id` HTML du lien. |
+
+### Exemples {#shortcode-examples}
+
+Un lien de téléchargement sur la page de confirmation de commande :
+
+```text
+[wcpos_receipt link_text="Download your invoice"]
+```
+
+Un lien vers le reçu affiché à l’écran (imprimable) plutôt que vers un PDF :
+
+```text
+[wcpos_receipt format="html" link_text="View your receipt"]
+```
+
+Effectuer le rendu avec un modèle spécifique — par exemple, un modèle de facture A4 au lieu de votre reçu de caisse de 80mm :
+
+```text
+[wcpos_receipt template="123" link_text="Download invoice (PDF)"]
+```
+
+L’ID du modèle est le numéro indiqué dans l’URL de l’écran de modification du modèle (`post=123`) dans **WP Admin → POS → Modèles**.
+
+## Quel modèle les clients reçoivent-ils ? {#template-choice}
+
+Les téléchargements depuis la vitrine utilisent le modèle de reçu configuré ou, si aucun n’est configuré, le premier modèle actif. Cette valeur par défaut de la vitrine est indépendante du modèle qu’un caissier sélectionne dans le menu déroulant de la caisse. Si la valeur par défaut de la vitrine est un reçu étroit de type thermique, le PDF sera lui aussi étroit.
+
+Pour les commandes en ligne, un document pleine page peut être préférable. Deux options :
+
+- Utilisez un modèle pleine page comme modèle par défaut de la vitrine (le modèle **Facture** de la galerie est conçu pour les formats A4/Letter), ou
+- Conservez vos modèles de caisse actifs et utilisez un autre modèle pour la vitrine via l’attribut `template` du code court, ou à l’échelle du site grâce au [filtre pour développeurs](#developers) ci-dessous.
+
+Les modèles sont générés à partir de la même [charge utile de données de reçu](/receipts/receipt-data) que le POS, de sorte que votre logo, l’identité de votre boutique, vos réglages de taxe et vos personnalisations sont tous conservés.
+
+## Sécurité {#security}
+
+Les liens de reçus contiennent la clé unique de la commande — le même mécanisme que WooCommerce utilise pour ses pages de confirmation de commande — afin que les invités ayant validé leur commande sans compte puissent toujours utiliser le lien de la page de confirmation. Toute personne ne disposant pas du lien doit être connectée en tant que client de la commande. Les shortcodes `order_id` explicites ne s’affichent que pour le propriétaire connecté de cette commande.
+
+:::note Permaliens personnalisés requis
+Comme toutes les pages de paiement WCPOS, l’URL du reçu utilise les règles de réécriture de WordPress. Les sites utilisant des permaliens **Simples** (Réglages → Permaliens) doivent passer à toute autre structure de permaliens.
+:::
+
+## Pour les développeurs {#developers}
+
+Trois filtres contrôlent les interfaces de la vitrine :
+
+```php
+// Hide the My Account Receipt button.
+add_filter( 'woocommerce_pos_storefront_receipt_my_account_button', '__return_false' );
+
+// Change which order statuses show the button (default: processing, completed, refunded).
+add_filter( 'woocommerce_pos_storefront_receipt_order_statuses', function ( $statuses, $order ) {
+	$statuses[] = 'on-hold';
+	return $statuses;
+}, 10, 2 );
+
+// Use a different template for storefront PDF downloads only.
+// Receives and returns the full template array (null when none is configured).
+add_filter( 'woocommerce_pos_storefront_receipt_template', function ( $template, $order ) {
+	return \WCPOS\WooCommercePOS\Templates::get_template( 123 );
+}, 10, 2 );
+```
+
+La route PDF elle-même est `/wcpos-checkout/wcpos-receipt/{order_id}?key={order_key}&format=pdf` — le même point de terminaison protégé par clé de commande que le POS utilise pour les reçus, `format=pdf` renvoyant le PDF généré au lieu de l’affichage à l’écran.
