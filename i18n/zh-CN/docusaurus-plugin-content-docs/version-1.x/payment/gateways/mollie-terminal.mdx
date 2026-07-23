@@ -1,0 +1,219 @@
+---
+title: Mollie Terminal 支付网关
+description: "在 WCPOS 中通过 Mollie Terminal 设备接受线下付款"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# Mollie Terminal 支付网关 {#mollie-terminal-gateway}
+
+Mollie Terminal 支付网关可让您直接在 WCPOS 中通过 [Mollie Terminal](https://www.mollie.com/products/point-of-sale) 硬件接受线下付款。付款从 WooCommerce 发起，并在终端上完成，Mollie 的确认结果会写回订单。
+
+## 功能 {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="credit-card" title="硬件集成">
+    将付款发送至已注册到 Mollie 账户的 Mollie 终端，并接受刷卡付款
+  </FeatureCard>
+  <FeatureCard icon="link" title="无需手动配对">
+    实时从 Mollie 账户获取终端，只需从下拉列表中选择，无需粘贴设备 ID
+  </FeatureCard>
+  <FeatureCard icon="bolt" title="可靠完成">
+    系统会轮询 Mollie 以确认付款，终端确认后，POS 会自动跳转到收据
+  </FeatureCard>
+  <FeatureCard icon="shield" title="安全交易">
+    由 Mollie 硬件处理的符合 PCI 标准的现场刷卡支付
+  </FeatureCard>
+  <FeatureCard icon="arrow-rotate-right" title="支持退款">
+    可从 WooCommerce 订单页面退款，并与 Mollie 对账，确保退款不会重复
+  </FeatureCard>
+</FeatureGrid>
+
+## 工作原理 {#how-it-works}
+
+Mollie Terminal 使用 Mollie 的**服务端 `pointofsale` 支付**。开始支付时，WooCommerce 会为该订单创建一笔 Mollie 支付，Mollie 会将其推送至所选终端。客户在设备上完成支付，且**Mollie 是支付和退款状态的唯一事实来源**——本地 WooCommerce 订单元数据仅作为缓存。
+
+**支付确认方式。** 支付进行期间，POS 会轮询 Mollie（默认每 2 秒一次），终端确认后会直接跳转至感谢页面。Mollie webhook 也会用于加快此流程——每笔支付都会自动设置 webhook URL，因此**无需在 Mollie 控制面板中进行任何配置**。
+
+终端必须已在与该插件相同的 Mollie 账户中注册并处于活动状态。
+
+## 设置 {#setup}
+
+<Steps>
+  <StepCard number="1" title="安装适用于 WooCommerce 的 Mollie Terminal">
+
+可通过 `WP Admin > POS > 设置 > 扩展` 安装，或从 [GitHub 发布页面](https://github.com/wcpos/mollie-terminal-for-woocommerce/releases) 下载最新的**插件 zip 资源**（不是 GitHub 源代码 zip 或 tarball），然后通过 `插件 > 新增 > 上传插件` 上传。
+
+  </StepCard>
+  <StepCard number="2" title="配置 Mollie 凭据">
+
+1. 前往 `WP Admin > WooCommerce > 设置 > 支付`，然后打开 **Mollie Terminal**
+2. 将 **模式** 设置为 `Test` 以模拟测试终端付款，或设置为 `Live` 以使用真实终端
+3. 将 **API 密钥来源** 设置为复用官方 Mollie 插件中的密钥，或使用此页面输入的密钥
+4. 如果在此输入密钥，请将与所选模式匹配的测试或正式 API 密钥粘贴到 **Mollie API 密钥** 中
+5. 保存
+
+:::note 上线前先测试
+Mollie 为测试 `pointofsale` 付款提供模拟终端。只有在准备好将付款发送至实体终端或 iOS/Android 终端时，才使用 `Live` 模式。有关当前测试流程，请参阅[范围与限制](#scope-and-limitations)。
+:::
+
+:::note 无需 Profile ID
+`pointofsale` 付款不需要 Mollie **Profile ID**，并且终端会在整个账户中列出，因此无需再粘贴其他内容。
+:::
+
+  </StepCard>
+  <StepCard number="3" title="选择终端">
+
+1. 从下拉列表中选择一个 **默认终端**。列表会从所选的 Mollie 环境中获取——非活动终端会被隐藏，因为 Mollie 无法重新激活它们。
+2. *（可选）*将**已启用的终端**限制为实际使用的设备。即使未在此处选择，已保存的默认终端仍可使用；将此设置留空可允许所有活动终端。要停用终端，还需更改或清除**默认终端**。
+3. *（可选）*启用**锁定终端选择**，以防止收银员在结账时更改终端——系统将始终使用默认终端，并且此设置也会在服务器端强制执行。
+4. 保存
+
+  </StepCard>
+  <StepCard number="4" title="在 WCPOS 中启用" isLast>
+
+1. 前往 `WP Admin > POS > 设置 > 结账`
+2. 找到 **Mollie Terminal** 支付网关，并为 POS 启用它
+3. 保存设置
+
+:::note
+WooCommerce 设置界面上的**启用/禁用**复选框仅控制*在线商店*结账。无论是否勾选该复选框，WCPOS 都会在此支付网关配置完成后使用它。
+:::
+
+  </StepCard>
+</Steps>
+
+## 设置参考 {#settings}
+
+| 设置 | 功能说明 |
+|---|---|
+| **启用/禁用** | 为在线商店结账启用该网关（POS 无需启用） |
+| **标题** / **描述** | 结账时向客户显示的标签和文本 |
+| **模式** | `Test` 使用 Mollie 的模拟测试终端；`Live` 将付款发送至真实终端 |
+| **API 密钥来源** | 使用下方输入的密钥，或复用官方 Mollie Payments for WooCommerce 插件中对应的测试/正式环境密钥。如果共享密钥不可用，插件会回退为使用下方的密钥 |
+| **Mollie API 密钥** | 所选模式的测试或正式环境 API 密钥。当 **API 密钥来源** 设置为此处输入的密钥时使用；在缺少共享密钥时也会作为备用密钥 |
+| **默认终端** | 结账时默认使用的终端，从所选 Mollie 环境中已启用终端的下拉列表中选择 |
+| **已启用的终端** | 将结账列表限制为所选终端。留空 = 所有已启用的终端。保存的默认终端始终可用，因此停用终端时也应更改或清除默认终端 |
+| **锁定终端选择** | 在结账时强制使用默认终端，使收银员无法更改终端（需要设置默认终端） |
+| **结账调试日志** | 在结账付款面板中显示 **显示日志**、**复制** 和 **清除** 工具。除非需要收集日志以供支持人员排查，否则请保持关闭；付款活动始终记录在 `WooCommerce > Status > 日志` 中 |
+
+Webhook URL 会在每笔付款时自动应用，因此无需填写 Webhook 字段，也无需在 Mollie 控制面板中进行配置。
+
+## 使用 {#usage}
+
+### 处理付款 {#processing-payments}
+
+1. **添加商品**：将商品添加到 POS 中的购物车
+2. **选择支付网关**：选择“ Mollie Terminal ”作为支付方式
+3. **选择终端**：从下拉列表中选择一个终端（默认为已配置的终端；如果终端选择已锁定，则会隐藏）
+4. **开始支付**：点击 **开始终端支付** — Mollie 会将支付请求发送到设备
+5. **客户付款**：客户可在终端上轻触、插入或刷卡。状态会实时更新 — `Sending to terminal…` → `Waiting for terminal…`
+6. **自动完成**：终端确认后，订单会标记为已付款，POS 将自动跳转到收据
+
+### 支付控制 {#payment-controls}
+
+- **开始终端支付**：向所选终端发送新的支付请求
+- **取消支付**：取消仍处于待处理状态的支付。支付请求到达终端后，Mollie 会将其报告为无法再取消，收银员需要在设备上自行取消
+
+### 订单管理 {#order-management}
+
+- **已验证的完成状态**：每次 webhook、轮询、取消和重试都会在更改订单前获取 Mollie 的权威状态，因此只有在 Mollie 确认后，订单才会标记为已付款
+- **支付跟踪**：支付尝试会作为仅追加的历史记录保存在订单中
+- **收据生成**：成功付款后会生成标准 POS 收据
+
+## 退款 {#refunds}
+
+支持退款。在常规 WooCommerce 订单页面中退款后，退款会发送至 Mollie。由于 Mollie 是唯一事实来源，退款重试会在创建另一笔退款**之前**，根据 Mollie 的退款 ID 和元数据进行核对，因此不会意外重复退款。
+
+## 过期付款清理 {#stale-payment-cleanup}
+
+如果结账流程被放弃，Mollie `pointofsale` 付款可能会在 Mollie 端保持为“open”状态。插件会在以下情况下自动取消这些未完成付款：
+
+- 自动轮询超时（默认 5 分钟）时：会发送取消请求，不会遗留该笔付款
+- 订单使用**其他**付款方式完成（例如客户改为现金付款），或订单在 WooCommerce 中被取消
+- 付款过程中关闭结账页面：标签页关闭时会尽力发送取消请求
+- WP-Cron 每 10 分钟执行一次扫描，取消或处理超过过期阈值（默认 10 分钟）仍处于未完成状态的付款，包括浏览器关闭或网络中断，导致其他清理路径尚未来得及运行的情况
+
+如果付款已发送至终端，Mollie 会将其报告为无法取消，收银员需在设备上自行取消；在这种情况下，这些清理操作可安全地不执行任何操作。
+
+## 要求 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Mollie 账户">具有所选模式 API 密钥的有效 Mollie 账户</RequirementItem>
+  <RequirementItem label="兼容硬件">用于实际付款的有效 Mollie Terminal；用于测试的 Mollie 模拟测试终端</RequirementItem>
+  <RequirementItem label="货币">EUR — POS 终端付款目前仅限 EUR</RequirementItem>
+  <RequirementItem label="WCPOS">POS 结账需要 Pro 版本</RequirementItem>
+  <RequirementItem label="稳定连接">用于 API 通信的可靠互联网连接</RequirementItem>
+</RequirementsList>
+
+## 适用范围和限制 {#scope-and-limitations}
+
+:::important 测试模式
+Mollie 支持无需实体终端的测试 `pointofsale` 付款。在 Mollie 配置文件中启用销售点功能以创建其测试终端，然后将此支付网关设为 `Test`, 使用相应的测试 API 密钥，并选择该终端。Mollie 会返回一个用于选择模拟结果的 `changePaymentState` URL。
+
+该插件可以创建并轮询测试付款，但其结账面板目前不会显示该 URL。在浏览器开发者工具中，找到 `mtfwc_start_payment` 网络响应，并打开 `_links.changePaymentState.href` 以设置结果，然后让 POS 轮询并对账。请参阅 [Mollie 的销售点测试指南](https://docs.mollie.com/docs/in-person-payments-testing)。实体终端或 iOS/Android 终端请使用 `Live` 模式。
+:::
+
+:::note 货币
+在确认 Mollie Terminal 支持更多货币之前，POS 终端付款仅限使用 **EUR**。
+:::
+
+## 故障排除 {#troubleshooting}
+
+### 常见问题 {#common-issues}
+
+<Accordion>
+  <AccordionItem question="下拉列表中未显示终端">
+
+  - 确认 **模式** 与实际使用的 API 密钥属于同一 Mollie 环境
+  - 在测试模式下，请在 Mollie 个人资料中启用销售点，以便 Mollie 创建模拟测试终端
+  - 在实时模式下，确认终端已注册到 Mollie 帐户且处于**活跃**状态；非活跃终端会被隐藏，因为 Mollie 无法重新激活它们
+  - 确保站点可以连接到 Mollie：该列表通过 API 实时获取
+
+  </AccordionItem>
+
+  <AccordionItem question="付款无法开始">
+
+  - 确认已选择终端（或者在锁定选择时已设置 **默认终端**）
+  - 确认终端已开机、在线，并且在同一个 Mollie 账户中处于活动状态
+  - 确认订单币种为 **EUR**
+
+  </AccordionItem>
+
+  <AccordionItem question="终端超时，或付款一直处于未完成状态">
+
+  - 插件会在超时时尝试自动取消未完成的付款（默认 5 分钟）
+  - 如果付款已发送到终端且无法自动取消，请在设备上取消
+  - 然后可以发起一笔新的付款，或使用其他方式收款
+
+  </AccordionItem>
+
+  <AccordionItem question="终端上已完成订单，但更新较慢">
+
+  - POS 每 2 秒轮询一次 Mollie，并在付款确认后跳转；webhook 通常会先确认付款
+  - 由于 Mollie 是唯一可信来源，订单会根据 Mollie 的权威状态进行对账，并未丢失
+  - 检查 `WooCommerce > Status > 日志` 中是否有任何 Mollie API 消息
+
+  </AccordionItem>
+</Accordion>
+
+### 获取帮助 {#getting-help}
+
+如需技术支持：
+- 访问 [GitHub 仓库](https://github.com/wcpos/mollie-terminal-for-woocommerce)报告问题
+- 有关 API 的问题，请参阅 [Mollie Terminal 设置指南](https://docs.mollie.com/docs/setting-up-terminal)和 [Mollie 创建付款 API](https://docs.mollie.com/reference/create-payment)
+- 如遇账户和硬件问题，请联系 Mollie 支持团队
+
+## 屏幕截图 {#screenshots}
+
+将在未来更新中添加屏幕截图，以展示：
+- Mollie Terminal 设置界面——API 密钥、默认终端和已启用的终端
+- 在 WCPOS 设置中启用支付网关
+- POS 结账中的付款处理流程
