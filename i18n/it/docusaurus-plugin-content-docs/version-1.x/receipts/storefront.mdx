@@ -1,0 +1,109 @@
+---
+title: Ricevute nel negozio online
+sidebar_label: Ricevute del negozio online
+sidebar_position: 8
+description: "Consenti ai clienti online di scaricare ricevute e fatture da Il mio account, generate con il tuo modello WCPOS personalizzato."
+---
+
+I modelli di ricevuta WCPOS non sono limitati alla cassa. I clienti del negozio online possono visualizzare e scaricare la ricevuta o la fattura dell'ordine da Il mio account o dalla pagina di conferma dell'ordine, generata con un modello personalizzato da **WP Admin → POS → Modelli**.
+
+:::info Richiede WCPOS 1.9.11
+L'accesso alle ricevute dal negozio online è incluso in WCPOS 1.9.11. Le versioni precedenti generano le ricevute solo all'interno del POS.
+:::
+
+:::note Questa pagina riguarda il download delle proprie ricevute da parte dei clienti
+Cassieri e personale non ne hanno bisogno: la schermata **Ordini** del POS elenca già tutti gli ordini WooCommerce, compresi quelli online, e consente di [visualizzare, stampare o inviare tramite email la relativa ricevuta](/orders#receipt-reprinting) dal menu con tre puntini. Questa pagina tratta l'altra direzione: consentire ai **clienti** di scaricare autonomamente la ricevuta dal sito web.
+:::
+
+## Pulsante di download in Il mio account {#my-account}
+
+Non appena un modello di ricevuta è **Attivo**, i clienti autenticati vedono un pulsante **Ricevuta** accanto agli ordini idonei in **Il mio account → Ordini**. Facendo clic, viene scaricato un PDF (`receipt-1234.pdf`) generato con il modello di ricevuta predefinito del negozio online.
+
+Per impostazione predefinita, il pulsante viene visualizzato per gli ordini **In lavorazione**, **Completato** e **Rimborsato** — stati per i quali l'ordine è stato pagato. Gli ordini con stato In attesa di pagamento, Annullato o Fallito non lo mostrano.
+
+Non c'è nulla da configurare: attivare un modello rende subito disponibile il pulsante. Se non si desidera visualizzarlo, uno sviluppatore può [disattivarlo con un filtro](#developers).
+
+## Lo shortcode `[wcpos_receipt]` {#shortcode}
+
+Per aggiungere un link alla ricevuta alla pagina di conferma dell'ordine ("grazie") o alla pagina **Il mio account → visualizza ordine**, utilizzare:
+
+```text
+[wcpos_receipt]
+```
+
+Senza attributi, lo shortcode rileva automaticamente l'ordine corrente in entrambe le pagine e visualizza un link *Scarica ricevuta (PDF)*. Nelle altre pagine non restituisce alcun output. Un `order_id` esplicito funziona solo per un cliente autenticato proprietario dell'ordine.
+
+### Attributi {#shortcode-attributes}
+
+| Attributo | Predefinito | Descrizione |
+|---|---|---|
+| `order_id` | *(rilevato automaticamente)* | Link a un ordine specifico. Funziona solo per i clienti autenticati proprietari dell'ordine. |
+| `link_text` | `Download receipt (PDF)` | Il testo del link. |
+| `format` | `pdf` | `pdf` scarica un PDF; `html` apre invece la vista stampabile della ricevuta. |
+| `template` | *(predefinito della vetrina)* | Esegue il rendering con un ID modello specifico anziché con quello predefinito della vetrina. |
+| `class` | `wcpos-receipt-link` | Classe CSS del link. |
+| `id` | *(nessuno)* | `id` HTML per il link. |
+
+### Esempi {#shortcode-examples}
+
+Un link per il download nella pagina di conferma dell'ordine:
+
+```text
+[wcpos_receipt link_text="Download your invoice"]
+```
+
+Un link alla ricevuta visualizzata sullo schermo (stampabile) anziché a un PDF:
+
+```text
+[wcpos_receipt format="html" link_text="View your receipt"]
+```
+
+Esegui il rendering con un modello specifico, ad esempio un modello di fattura A4 anziché la ricevuta del registratore di cassa da 80mm:
+
+```text
+[wcpos_receipt template="123" link_text="Download invoice (PDF)"]
+```
+
+L'ID del modello è il numero nell'URL della schermata di modifica del modello (`post=123`) in **WP Admin → POS → Modelli**.
+
+## Quale modello ricevono i clienti? {#template-choice}
+
+I download della vetrina utilizzano il modello di ricevuta configurato oppure il primo modello attivo quando non ne è configurato alcuno. Questa impostazione predefinita della vetrina è indipendente dal modello selezionato da un cassiere nel menu a discesa del registratore di cassa. Se l'impostazione predefinita della vetrina è una ricevuta stretta in stile termico, anche il PDF sarà stretto.
+
+Per gli ordini online potrebbe essere preferibile un documento a pagina intera. Due opzioni:
+
+- Utilizzare un modello a pagina intera come impostazione predefinita della vetrina (il modello **Fattura** della galleria è progettato per A4/Letter), oppure
+- Mantenere attivi i modelli del registratore di cassa e indirizzare la vetrina a un modello diverso usando l'attributo `template` dello shortcode oppure, a livello dell'intero sito, con il [filtro per sviluppatori](#developers) riportato di seguito.
+
+I modelli vengono renderizzati utilizzando gli stessi [dati della ricevuta](/receipts/receipt-data) del POS, quindi il logo, l'identità del negozio, le impostazioni fiscali e le personalizzazioni vengono mantenuti.
+
+## Sicurezza {#security}
+
+I link alle ricevute contengono la chiave univoca dell'ordine — lo stesso meccanismo che WooCommerce utilizza per le pagine di conferma dell'ordine — quindi gli ospiti che hanno effettuato il checkout senza un account possono comunque usare il link della pagina di conferma. Chi non dispone del link deve aver effettuato l'accesso come cliente dell'ordine. Gli shortcode espliciti `order_id` vengono visualizzati solo per il proprietario dell'ordine che ha effettuato l'accesso.
+
+:::note Sono richiesti permalink strutturati
+Come tutte le pagine di checkout di WCPOS, l'URL della ricevuta utilizza le regole di riscrittura di WordPress. I siti che usano permalink **Semplici** (Impostazioni → Permalink) devono passare a qualsiasi altra struttura di permalink.
+:::
+
+## Per sviluppatori {#developers}
+
+Tre filtri controllano le superfici del negozio:
+
+```php
+// Hide the My Account Receipt button.
+add_filter( 'woocommerce_pos_storefront_receipt_my_account_button', '__return_false' );
+
+// Change which order statuses show the button (default: processing, completed, refunded).
+add_filter( 'woocommerce_pos_storefront_receipt_order_statuses', function ( $statuses, $order ) {
+	$statuses[] = 'on-hold';
+	return $statuses;
+}, 10, 2 );
+
+// Use a different template for storefront PDF downloads only.
+// Receives and returns the full template array (null when none is configured).
+add_filter( 'woocommerce_pos_storefront_receipt_template', function ( $template, $order ) {
+	return \WCPOS\WooCommercePOS\Templates::get_template( 123 );
+}, 10, 2 );
+```
+
+La route PDF è `/wcpos-checkout/wcpos-receipt/{order_id}?key={order_key}&format=pdf` — lo stesso endpoint protetto dalla chiave dell'ordine che il POS utilizza per le ricevute, con `format=pdf` che restituisce il PDF renderizzato anziché la visualizzazione sullo schermo.

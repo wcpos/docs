@@ -1,0 +1,109 @@
+---
+title: オンラインストアの領収書
+sidebar_label: オンラインストアの領収書
+sidebar_position: 8
+description: "オンラインのお客様が、カスタム WCPOS テンプレートで作成された領収書と請求書をマイアカウントからダウンロードできるようにします。"
+---
+
+WCPOS の領収書テンプレートはレジだけに限られません。オンラインストアのお客様は、**WP Admin → POS → テンプレート** で作成したカスタムテンプレートを使用して、マイアカウントまたは注文確認ページから注文の領収書や請求書を表示・ダウンロードできます。
+
+:::info WCPOS 1.9.11 が必要
+ストアフロントでの領収書アクセスは WCPOS 1.9.11 で提供されます。以前のバージョンでは、領収書は POS 内でのみ表示されます。
+:::
+
+:::note このページはお客様自身による領収書のダウンロードについて説明します
+レジ担当者やスタッフには、これらの設定は必要ありません。POS の **注文** 画面にはオンライン注文を含むすべての WooCommerce 注文がすでに一覧表示され、三点メニューから[領収書を表示、印刷、またはメール送信](/orders#receipt-reprinting)できます。このページでは逆に、**お客様**がウェブサイトから自分で領収書をダウンロードできるようにする方法を説明します。
+:::
+
+## マイアカウントのダウンロードボタン {#my-account}
+
+領収書テンプレートを **有効** にすると、ログイン済みのお客様には、対象となる注文の横に **マイアカウント → 注文** の **領収書** ボタンが表示されます。クリックすると、ストアフロントのデフォルト領収書テンプレートで作成された PDF (`receipt-1234.pdf`) がダウンロードされます。
+
+デフォルトでは、このボタンは支払い済みの注文ステータスである **処理中**、**完了**、**返金済み** の注文に表示されます。保留中、キャンセル、失敗の注文には表示されません。
+
+設定は不要です。テンプレートを有効化すると、ボタンがすぐに表示されます。表示したくない場合は、開発者が[フィルターで無効にできます](#developers)。
+
+## `[wcpos_receipt]` ショートコード {#shortcode}
+
+注文確認（"ありがとうございます"）ページまたは **マイアカウント → 注文を表示** ページに領収書リンクを追加するには、次を使用します。
+
+```text
+[wcpos_receipt]
+```
+
+属性を指定しない場合、ショートコードはどちらのページでも現在の注文を自動検出し、*領収書をダウンロード (PDF)* リンクを表示します。他のページでは何も出力されません。明示的な `order_id` は、その注文を所有するログイン済みの顧客にのみ機能します。
+
+### 属性 {#shortcode-attributes}
+
+| 属性 | デフォルト | 説明 |
+|---|---|---|
+| `order_id` | *(自動検出)* | 特定の注文へのリンク。注文を所有するログイン済みの顧客にのみ機能します。 |
+| `link_text` | `Download receipt (PDF)` | リンクテキスト。 |
+| `format` | `pdf` | `pdf` は PDF をダウンロードします。`html` は代わりに印刷用の領収書表示を開きます。 |
+| `template` | *(ストアフロントのデフォルト)* | ストアフロントのデフォルトではなく、指定したテンプレート ID で表示します。 |
+| `class` | `wcpos-receipt-link` | リンクの CSS クラス。 |
+| `id` | *(なし)* | リンク用の HTML `id`。 |
+
+### 例 {#shortcode-examples}
+
+注文確認ページのダウンロードリンク:
+
+```text
+[wcpos_receipt link_text="Download your invoice"]
+```
+
+PDF ではなく、画面上の（印刷可能な）レシートへのリンク:
+
+```text
+[wcpos_receipt format="html" link_text="View your receipt"]
+```
+
+特定のテンプレートでレンダリングします。たとえば、80mm のレジ用レシートではなく A4 請求書テンプレートを使用する場合:
+
+```text
+[wcpos_receipt template="123" link_text="Download invoice (PDF)"]
+```
+
+テンプレート ID は、**WP Admin → POS → テンプレート** のテンプレート編集画面 URL (`post=123`) にある番号です。
+
+## 顧客に提供されるテンプレートはどれですか？ {#template-choice}
+
+ストアフロントでのダウンロードには、設定済みのレシートテンプレートが使用されます。設定されていない場合は、最初の有効なテンプレートが使用されます。このストアフロントのデフォルトは、レジのドロップダウンでレジ担当者が選択するテンプレートとは独立しています。ストアフロントのデフォルトが幅の狭い感熱紙形式のレシートの場合、PDF も狭い幅になります。
+
+オンライン注文では、フルページの文書が適している場合があります。選択肢は 2 つあります:
+
+- フルページのテンプレートをストアフロントのデフォルトとして使用します（ギャラリーの **請求書** テンプレートは A4/Letter 向けに設計されています）。または
+- レジ用テンプレートを有効なままにして、ショートコードの `template` 属性を使用してストアフロントに別のテンプレートを指定するか、以下の[開発者向けフィルター](#developers)を使用してサイト全体に適用します。
+
+テンプレートは POS と同じ[レシートデータペイロード](/receipts/receipt-data)からレンダリングされるため、ロゴ、店舗情報、税設定、カスタマイズがすべて引き継がれます。
+
+## セキュリティ {#security}
+
+レシートリンクには注文固有のキーが含まれています。これは WooCommerce の注文確認ページで使用される仕組みと同じであるため、アカウントを作成せずにチェックアウトしたゲストも確認ページのリンクを使用できます。リンクを持たないユーザーは、注文の顧客としてログインする必要があります。`order_id` を明示したショートコードは、その注文の所有者がログインしている場合にのみ表示されます。
+
+:::note パーマリンク設定が必要です
+すべての WCPOS チェックアウトページと同様に、レシート URL は WordPress のリライトルールを使用します。**基本** パーマリンク（設定 → パーマリンク）を使用しているサイトでは、別のパーマリンク構造に変更する必要があります。
+:::
+
+## 開発者向け {#developers}
+
+ストアフロントの表示は、次の 3 つのフィルターで制御できます。
+
+```php
+// Hide the My Account Receipt button.
+add_filter( 'woocommerce_pos_storefront_receipt_my_account_button', '__return_false' );
+
+// Change which order statuses show the button (default: processing, completed, refunded).
+add_filter( 'woocommerce_pos_storefront_receipt_order_statuses', function ( $statuses, $order ) {
+	$statuses[] = 'on-hold';
+	return $statuses;
+}, 10, 2 );
+
+// Use a different template for storefront PDF downloads only.
+// Receives and returns the full template array (null when none is configured).
+add_filter( 'woocommerce_pos_storefront_receipt_template', function ( $template, $order ) {
+	return \WCPOS\WooCommercePOS\Templates::get_template( 123 );
+}, 10, 2 );
+```
+
+PDF ルートは `/wcpos-checkout/wcpos-receipt/{order_id}?key={order_key}&format=pdf` です。これは POS がレシートに使用する、同じ注文キーで保護されたエンドポイントです。`format=pdf` を指定すると、画面表示ではなく生成された PDF が返されます。

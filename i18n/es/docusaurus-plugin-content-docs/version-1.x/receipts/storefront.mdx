@@ -1,0 +1,109 @@
+---
+title: Recibos en su tienda online
+sidebar_label: Recibos de la tienda online
+sidebar_position: 8
+description: "Permita que los clientes online descarguen recibos y facturas desde Mi cuenta, generados con su plantilla personalizada de WCPOS."
+---
+
+Sus plantillas de recibos de WCPOS no se limitan a la caja. Los clientes de la tienda online pueden ver y descargar el recibo o la factura de su pedido desde Mi cuenta o la página de confirmación del pedido, generados con una plantilla personalizada de **WP Admin → POS → Plantillas**.
+
+:::info Requiere WCPOS 1.9.11
+El acceso a los recibos desde la tienda online está disponible en WCPOS 1.9.11. Las versiones anteriores solo generan recibos dentro del POS.
+:::
+
+:::note Esta página trata sobre la descarga de sus propios recibos por parte de los clientes
+Los cajeros y demás personal no necesitan nada de esto: la pantalla **Pedidos** del POS ya muestra todos los pedidos de WooCommerce, incluidos los pedidos online, y permite [ver, imprimir o enviar por correo electrónico su recibo](/orders#receipt-reprinting) desde el menú de tres puntos. Esta página trata de la situación inversa: permitir que los **clientes** descarguen el recibo desde su sitio web.
+:::
+
+## Botón de descarga en Mi cuenta {#my-account}
+
+En cuanto una plantilla de recibo está **Activa**, los clientes que han iniciado sesión ven un botón **Recibo** junto a los pedidos aptos en **Mi cuenta → Pedidos**. Al seleccionarlo, se descarga un PDF (`receipt-1234.pdf`) generado con la plantilla de recibo predeterminada de la tienda online.
+
+De forma predeterminada, el botón aparece para los pedidos **Procesando**, **Completado** y **Reembolsado** — estados en los que el pedido se ha pagado. Los pedidos Pendiente de pago, Cancelado y Fallido no lo muestran.
+
+No hay nada que configurar: al activar una plantilla, el botón queda disponible. Si se prefiere no mostrarlo, un desarrollador puede [desactivarlo con un filtro](#developers).
+
+## El shortcode `[wcpos_receipt]` {#shortcode}
+
+Para añadir un enlace al recibo en la página de confirmación del pedido («gracias») o en la página **Mi cuenta → ver pedido**, utilice:
+
+```text
+[wcpos_receipt]
+```
+
+Sin atributos, el shortcode detecta automáticamente el pedido actual en cualquiera de las dos páginas y muestra un enlace *Descargar recibo (PDF)*. En otras páginas no muestra nada. Un `order_id` explícito solo funciona para un cliente que haya iniciado sesión y sea propietario de ese pedido.
+
+### Atributos {#shortcode-attributes}
+
+| Atributo | Predeterminado | Función |
+|---|---|---|
+| `order_id` | *(detectado automáticamente)* | Enlaza a un pedido específico. Solo funciona para clientes que hayan iniciado sesión y sean propietarios del pedido. |
+| `link_text` | `Download receipt (PDF)` | El texto del enlace. |
+| `format` | `pdf` | `pdf` descarga un PDF; `html` abre en su lugar la vista de recibo imprimible. |
+| `template` | *(valor predeterminado de la tienda)* | Genera la salida con un ID de plantilla específico en lugar del predeterminado de la tienda. |
+| `class` | `wcpos-receipt-link` | Clase CSS para el enlace. |
+| `id` | *(ninguno)* | `id` de HTML para el enlace. |
+
+### Ejemplos {#shortcode-examples}
+
+Un enlace de descarga en la página de confirmación del pedido:
+
+```text
+[wcpos_receipt link_text="Download your invoice"]
+```
+
+Un enlace al recibo en pantalla (imprimible) en lugar de a un PDF:
+
+```text
+[wcpos_receipt format="html" link_text="View your receipt"]
+```
+
+Renderizado con una plantilla específica; por ejemplo, una plantilla de factura A4 en lugar del recibo de caja de 80mm:
+
+```text
+[wcpos_receipt template="123" link_text="Download invoice (PDF)"]
+```
+
+El ID de la plantilla es el número de la URL de la pantalla de edición de la plantilla (`post=123`) en **WP Admin → POS → Plantillas**.
+
+## ¿Qué plantilla reciben los clientes? {#template-choice}
+
+Las descargas de la tienda usan la plantilla de recibo configurada o la primera plantilla activa si no hay ninguna configurada. Este valor predeterminado de la tienda es independiente de la plantilla que el cajero seleccione en el menú desplegable de la caja. Si el valor predeterminado de la tienda es un recibo estrecho de estilo térmico, el PDF también será estrecho.
+
+Para los pedidos en línea, puede ser preferible un documento de página completa. Hay dos opciones:
+
+- Usar una plantilla de página completa como valor predeterminado de la tienda (la plantilla **Factura** de la galería está diseñada para A4/Letter), o
+- Mantener activas las plantillas de caja y dirigir la tienda a otra plantilla mediante el atributo `template` del shortcode, o para todo el sitio con el [filtro para desarrolladores](#developers) que se muestra a continuación.
+
+Las plantillas se renderizan a partir de la misma [carga de datos del recibo](/receipts/receipt-data) que el POS, por lo que se conservan el logotipo, la identidad de la tienda, la configuración de impuestos y las personalizaciones.
+
+## Seguridad {#security}
+
+Los enlaces de recibos contienen la clave única del pedido — el mismo mecanismo que WooCommerce utiliza para sus páginas de confirmación de pedido — por lo que los invitados que finalizaron la compra sin una cuenta aún pueden usar el enlace de la página de confirmación. Cualquier persona que no tenga el enlace debe haber iniciado sesión como cliente del pedido. Los shortcodes explícitos `order_id` solo se muestran al propietario que haya iniciado sesión de ese pedido.
+
+:::note Se requieren enlaces permanentes bonitos
+Como todas las páginas de pago de WCPOS, la URL del recibo utiliza las reglas de reescritura de WordPress. Los sitios que utilizan enlaces permanentes **simples** (Ajustes → Enlaces permanentes) deben cambiar a cualquier otra estructura de enlaces permanentes.
+:::
+
+## Para desarrolladores {#developers}
+
+Tres filtros controlan los elementos de la tienda:
+
+```php
+// Hide the My Account Receipt button.
+add_filter( 'woocommerce_pos_storefront_receipt_my_account_button', '__return_false' );
+
+// Change which order statuses show the button (default: processing, completed, refunded).
+add_filter( 'woocommerce_pos_storefront_receipt_order_statuses', function ( $statuses, $order ) {
+	$statuses[] = 'on-hold';
+	return $statuses;
+}, 10, 2 );
+
+// Use a different template for storefront PDF downloads only.
+// Receives and returns the full template array (null when none is configured).
+add_filter( 'woocommerce_pos_storefront_receipt_template', function ( $template, $order ) {
+	return \WCPOS\WooCommercePOS\Templates::get_template( 123 );
+}, 10, 2 );
+```
+
+La propia ruta PDF es `/wcpos-checkout/wcpos-receipt/{order_id}?key={order_key}&format=pdf` — el mismo endpoint protegido por la clave del pedido que el POS utiliza para los recibos, y `format=pdf` devuelve el PDF renderizado en lugar de la vista en pantalla.

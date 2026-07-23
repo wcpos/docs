@@ -1,0 +1,109 @@
+---
+title: Recibos na sua loja virtual
+sidebar_label: Recibos da loja virtual
+sidebar_position: 8
+description: "Permita que clientes da loja virtual baixem recibos e faturas em Minha conta, renderizados com seu modelo personalizado do WCPOS."
+---
+
+Seus modelos de recibo do WCPOS não se limitam ao caixa. Clientes da loja virtual podem visualizar e baixar o recibo ou a fatura do pedido em Minha conta ou na página de confirmação do pedido, renderizados com um modelo personalizado em **WP Admin → POS → Modelos**.
+
+:::info Requer WCPOS 1.9.11
+O acesso a recibos na loja virtual está disponível no WCPOS 1.9.11. Versões anteriores renderizam recibos apenas no POS.
+:::
+
+:::note Esta página trata de clientes baixando seus próprios recibos
+Caixas e equipe não precisam de nada disso — a tela **Pedidos** do POS já lista todos os pedidos do WooCommerce, incluindo pedidos online, e permite [visualizar, imprimir ou enviar o recibo por e-mail](/orders#receipt-reprinting) pelo menu de três pontos. Esta página aborda o inverso: permitir que os **clientes** baixem o recibo por conta própria no seu site.
+:::
+
+## Botão de download em Minha conta {#my-account}
+
+Assim que um modelo de recibo estiver **Ativo**, clientes conectados verão um botão **Recibo** ao lado dos pedidos elegíveis em **Minha conta → Pedidos**. Ao clicar nele, será baixado um PDF (`receipt-1234.pdf`) renderizado com o modelo de recibo padrão da loja virtual.
+
+Por padrão, o botão aparece para pedidos **Processando**, **Concluído** e **Reembolsado** — status em que o pedido foi pago. Pedidos Aguardando pagamento, Cancelado e Malsucedido não o exibem.
+
+Não há nada a configurar: ative um modelo e o botão estará disponível. Se preferir não exibi-lo, um desenvolvedor pode [desativá-lo com um filtro](#developers).
+
+## O shortcode `[wcpos_receipt]` {#shortcode}
+
+Para adicionar um link de recibo à página de confirmação do pedido ("obrigado") ou à página **Minha conta → ver pedido**, use:
+
+```text
+[wcpos_receipt]
+```
+
+Sem atributos, o shortcode detecta automaticamente o pedido atual em qualquer uma das páginas e exibe um link *Baixar recibo (PDF)*. Em outras páginas, não exibe nada. Um `order_id` explícito funciona apenas para um cliente autenticado que seja proprietário desse pedido.
+
+### Atributos {#shortcode-attributes}
+
+| Atributo | Padrão | O que faz |
+|---|---|---|
+| `order_id` | *(detectado automaticamente)* | Link para um pedido específico. Funciona apenas para clientes autenticados que sejam proprietários do pedido. |
+| `link_text` | `Download receipt (PDF)` | O texto do link. |
+| `format` | `pdf` | `pdf` faz o download de um PDF; `html` abre a visualização de recibo imprimível. |
+| `template` | *(padrão da loja virtual)* | Renderiza com um ID de modelo específico em vez do padrão da loja virtual. |
+| `class` | `wcpos-receipt-link` | Classe CSS para o link. |
+| `id` | *(nenhum)* | `id` HTML para o link. |
+
+### Exemplos {#shortcode-examples}
+
+Um link para download na página de confirmação do pedido:
+
+```text
+[wcpos_receipt link_text="Download your invoice"]
+```
+
+Um link para o recibo exibido na tela (imprimível), em vez de um PDF:
+
+```text
+[wcpos_receipt format="html" link_text="View your receipt"]
+```
+
+Renderize com um modelo específico — por exemplo, um modelo de fatura A4 em vez do seu recibo de caixa de 80mm:
+
+```text
+[wcpos_receipt template="123" link_text="Download invoice (PDF)"]
+```
+
+O ID do modelo é o número na URL da tela de edição do modelo (`post=123`) em **WP Admin → POS → Modelos**.
+
+## Qual modelo os clientes recebem? {#template-choice}
+
+Os downloads da loja virtual usam o modelo de recibo configurado ou o primeiro modelo ativo quando nenhum está configurado. Esse padrão da loja virtual é independente do modelo que um operador de caixa seleciona no menu suspenso do caixa. Se o padrão da loja virtual for um recibo estreito no estilo térmico, o PDF também será estreito.
+
+Para pedidos online, talvez seja preferível um documento de página inteira. Duas opções:
+
+- Use um modelo de página inteira como padrão da loja virtual (o modelo **Fatura** da galeria foi projetado para A4/Letter) ou
+- Mantenha seus modelos de caixa ativos e aponte a loja virtual para um modelo diferente usando o atributo `template` do shortcode ou, para todo o site, com o [filtro para desenvolvedores](#developers) abaixo.
+
+Os modelos são renderizados a partir dos mesmos [dados do recibo](/receipts/receipt-data) do POS, portanto seu logotipo, a identidade da loja, as configurações de impostos e as personalizações são mantidos.
+
+## Segurança {#security}
+
+Os links de recibo contêm a chave exclusiva do pedido — o mesmo mecanismo que o WooCommerce usa nas páginas de confirmação de pedido — para que clientes que finalizaram a compra sem uma conta ainda possam usar o link da página de confirmação. Qualquer pessoa sem o link precisa estar conectada como cliente do pedido. Shortcodes explícitos de `order_id` são renderizados apenas para o proprietário conectado desse pedido.
+
+:::note Links permanentes amigáveis obrigatórios
+Como todas as páginas de finalização de compra do WCPOS, a URL do recibo usa regras de reescrita do WordPress. Sites que usam links permanentes **Simples** (Configurações → Links permanentes) precisam mudar para qualquer outra estrutura de links permanentes.
+:::
+
+## Para desenvolvedores {#developers}
+
+Três filtros controlam as superfícies da loja virtual:
+
+```php
+// Hide the My Account Receipt button.
+add_filter( 'woocommerce_pos_storefront_receipt_my_account_button', '__return_false' );
+
+// Change which order statuses show the button (default: processing, completed, refunded).
+add_filter( 'woocommerce_pos_storefront_receipt_order_statuses', function ( $statuses, $order ) {
+	$statuses[] = 'on-hold';
+	return $statuses;
+}, 10, 2 );
+
+// Use a different template for storefront PDF downloads only.
+// Receives and returns the full template array (null when none is configured).
+add_filter( 'woocommerce_pos_storefront_receipt_template', function ( $template, $order ) {
+	return \WCPOS\WooCommercePOS\Templates::get_template( 123 );
+}, 10, 2 );
+```
+
+A própria rota do PDF é `/wcpos-checkout/wcpos-receipt/{order_id}?key={order_key}&format=pdf` — o mesmo endpoint protegido pela chave do pedido que o POS usa para recibos, com `format=pdf` retornando o PDF renderizado em vez da visualização na tela.

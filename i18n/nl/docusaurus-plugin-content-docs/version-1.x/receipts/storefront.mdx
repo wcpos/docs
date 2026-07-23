@@ -1,0 +1,109 @@
+---
+title: Bonnen in je webwinkel
+sidebar_label: Bonnen voor de webwinkel
+sidebar_position: 8
+description: "Laat online klanten bonnen en facturen downloaden vanuit Mijn account, weergegeven met je aangepaste WCPOS-sjabloon."
+---
+
+Je WCPOS-bonnensjablonen zijn niet beperkt tot de kassa. Klanten van de webwinkel kunnen hun orderbon of factuur bekijken en downloaden vanuit Mijn account of de orderbevestigingspagina, weergegeven met een aangepast sjabloon uit **WP Admin → POS → Sjablonen**.
+
+:::info Vereist WCPOS 1.9.11
+Toegang tot bonnen in de webwinkel is beschikbaar vanaf WCPOS 1.9.11. Eerdere versies geven bonnen alleen weer binnen de POS.
+:::
+
+:::note Deze pagina gaat over klanten die hun eigen bonnen downloaden
+Kassamedewerkers en personeel hebben dit niet nodig — het POS-scherm **Bestellingen** bevat al elke WooCommerce-bestelling, inclusief online bestellingen, en kan de bon ervan [bekijken, afdrukken of e-mailen](/orders#receipt-reprinting) via het menu met drie puntjes. Deze pagina behandelt de andere richting: **klanten** de bon zelf laten downloaden vanaf je website.
+:::
+
+## Downloadknop in Mijn account {#my-account}
+
+Zodra een bonnensjabloon **Actief** is, zien ingelogde klanten een knop **Bon** naast geschikte bestellingen in **Mijn account → Bestellingen**. Door erop te klikken wordt een PDF (`receipt-1234.pdf`) gedownload die is weergegeven met het standaardbonnensjabloon van de webwinkel.
+
+Standaard verschijnt de knop voor bestellingen met de status **In behandeling**, **Voltooid** en **Terugbetaald** — statussen waarvoor de bestelling is betaald. Bij bestellingen met de status in afwachting, geannuleerd en mislukt wordt deze niet weergegeven.
+
+Er hoeft niets te worden geconfigureerd: activeer een sjabloon en de knop is meteen actief. Als de knop niet moet worden weergegeven, kan een ontwikkelaar deze [met een filter uitschakelen](#developers).
+
+## De shortcode `[wcpos_receipt]` {#shortcode}
+
+Gebruik het volgende om een ontvangstbewijslink toe te voegen aan de bestelbevestigingspagina ("bedankt") of de pagina **Mijn account → bestelling bekijken**:
+
+```text
+[wcpos_receipt]
+```
+
+Zonder attributen detecteert de shortcode op beide pagina's automatisch de huidige bestelling en geeft deze een link *Ontvangstbewijs downloaden (PDF)* weer. Op andere pagina's wordt niets uitgevoerd. Een expliciete `order_id` werkt alleen voor een ingelogde klant die eigenaar is van die bestelling.
+
+### Attributen {#shortcode-attributes}
+
+| Attribuut | Standaard | Functie |
+|---|---|---|
+| `order_id` | *(automatisch gedetecteerd)* | Link naar een specifieke bestelling. Werkt alleen voor ingelogde klanten die eigenaar zijn van de bestelling. |
+| `link_text` | `Download receipt (PDF)` | De linktekst. |
+| `format` | `pdf` | `pdf` downloadt een PDF; `html` opent in plaats daarvan de afdrukbare ontvangstbewijsweergave. |
+| `template` | *(standaard voor de storefront)* | Weergeven met een specifieke sjabloon-ID in plaats van de standaardinstelling voor de storefront. |
+| `class` | `wcpos-receipt-link` | CSS-klasse voor de link. |
+| `id` | *(geen)* | HTML `id` voor de link. |
+
+### Voorbeelden {#shortcode-examples}
+
+Een downloadlink op de orderbevestigingspagina:
+
+```text
+[wcpos_receipt link_text="Download your invoice"]
+```
+
+Een link naar de op het scherm weergegeven (afdrukbare) kassabon in plaats van een PDF:
+
+```text
+[wcpos_receipt format="html" link_text="View your receipt"]
+```
+
+Weergeven met een specifiek sjabloon — bijvoorbeeld een factuursjabloon op A4 in plaats van uw kassabon van 80mm:
+
+```text
+[wcpos_receipt template="123" link_text="Download invoice (PDF)"]
+```
+
+De sjabloon-ID is het nummer in de URL van het bewerkingsscherm van het sjabloon (`post=123`) in **WP Admin → POS → Sjablonen**.
+
+## Welk sjabloon ontvangen klanten? {#template-choice}
+
+Downloads in de webwinkel gebruiken het ingestelde kassabonsjabloon, of het eerste actieve sjabloon als er geen is ingesteld. Deze standaard voor de webwinkel staat los van het sjabloon dat een kassamedewerker in de vervolgkeuzelijst van de kassa selecteert. Als de standaard voor de webwinkel een smalle kassabon in thermische stijl is, is de PDF ook smal.
+
+Voor online bestellingen kan een document op volledig paginaformaat de voorkeur hebben. Twee opties:
+
+- Gebruik een sjabloon op volledig paginaformaat als standaard voor de webwinkel (het **Factuur**-sjabloon in de galerie is ontworpen voor A4/Letter), of
+- Behoud uw kassasjablonen actief en wijs de webwinkel met het `template`-attribuut van de shortcode een ander sjabloon toe, of voor de hele site met het onderstaande [ontwikkelaarsfilter](#developers).
+
+Sjablonen worden opgebouwd op basis van dezelfde [gegevenspayload voor kassabonnen](/receipts/receipt-data) als de POS, zodat uw logo, winkelidentiteit, belastinginstellingen en aanpassingen worden overgenomen.
+
+## Beveiliging {#security}
+
+Links naar kassabonnen bevatten de unieke sleutel van de bestelling — hetzelfde mechanisme dat WooCommerce gebruikt voor zijn bestelbevestigingspagina's — zodat gasten die zonder account hebben afgerekend de link vanaf de bevestigingspagina nog steeds kunnen gebruiken. Iedereen zonder de link moet zijn ingelogd als de klant van de bestelling. Shortcodes met een expliciete `order_id` worden alleen weergegeven voor de ingelogde eigenaar van die bestelling.
+
+:::note Mooie permalinks vereist
+Net als alle WCPOS-afrekenpagina's gebruikt de URL van de kassabon de herschrijfregels van WordPress. Sites die **Standaard**-permalinks gebruiken (Instellingen → Permalinks), moeten overschakelen naar een andere permalinkstructuur.
+:::
+
+## Voor ontwikkelaars {#developers}
+
+Drie filters bepalen de onderdelen van de winkelomgeving:
+
+```php
+// Hide the My Account Receipt button.
+add_filter( 'woocommerce_pos_storefront_receipt_my_account_button', '__return_false' );
+
+// Change which order statuses show the button (default: processing, completed, refunded).
+add_filter( 'woocommerce_pos_storefront_receipt_order_statuses', function ( $statuses, $order ) {
+	$statuses[] = 'on-hold';
+	return $statuses;
+}, 10, 2 );
+
+// Use a different template for storefront PDF downloads only.
+// Receives and returns the full template array (null when none is configured).
+add_filter( 'woocommerce_pos_storefront_receipt_template', function ( $template, $order ) {
+	return \WCPOS\WooCommercePOS\Templates::get_template( 123 );
+}, 10, 2 );
+```
+
+De PDF-route zelf is `/wcpos-checkout/wcpos-receipt/{order_id}?key={order_key}&format=pdf` — hetzelfde eindpunt met beperkingen op basis van de bestelsleutel dat de POS voor kassabonnen gebruikt, waarbij `format=pdf` de gerenderde PDF retourneert in plaats van de weergave op het scherm.

@@ -1,0 +1,109 @@
+---
+title: 在线商店收据
+sidebar_label: 在线商店收据
+sidebar_position: 8
+description: "让在线客户从“我的账户”下载使用自定义 WCPOS 模板渲染的收据和发票。"
+---
+
+WCPOS 收据模板不仅限于收银台。在线店铺客户可从“我的账户”或订单确认页面查看和下载订单收据或发票，并使用 **WP Admin → POS → 模板** 中的自定义模板进行渲染。
+
+:::info 需要 WCPOS 1.9.11
+WCPOS 1.9.11 提供店面收据访问功能。较早版本仅在 POS 中渲染收据。
+:::
+
+:::note 本页介绍客户下载自己的收据
+收银员和员工无需进行任何设置：POS 的 **订单** 屏幕已列出所有 WooCommerce 订单（包括在线订单），并可从三点菜单中[查看、打印或通过电子邮件发送其收据](/orders#receipt-reprinting)。本页介绍的是另一种方式：让**客户**自行从网站下载收据。
+:::
+
+## “我的账户”下载按钮 {#my-account}
+
+收据模板设为**已启用**后，已登录客户会在 **我的账户 → 订单** 中符合条件的订单旁看到**收据**按钮。点击该按钮会下载使用店面默认收据模板渲染的 PDF (`receipt-1234.pdf`)。
+
+默认情况下，该按钮会显示在 **处理中**、**已完成** 和 **已退款** 订单中——这些状态表示订单已付款。待付款、已取消和失败的订单不会显示该按钮。
+
+无需进行任何配置：激活模板后，按钮即可使用。如果不想显示该按钮，开发人员可以[通过筛选器将其关闭](#developers)。
+
+## `[wcpos_receipt]` 短代码 {#shortcode}
+
+若要在订单确认（“感谢您”）页面或 **我的账户 → 查看订单** 页面中添加收据链接，请使用：
+
+```text
+[wcpos_receipt]
+```
+
+不含属性时，短代码会在这两个页面中自动检测当前订单，并呈现 *下载收据（PDF）* 链接。在其他页面中不会输出任何内容。显式指定的 `order_id` 仅适用于拥有该订单的已登录客户。
+
+### 属性 {#shortcode-attributes}
+
+| 属性 | 默认值 | 作用 |
+|---|---|---|
+| `order_id` | *（自动检测）* | 链接到特定订单。仅适用于拥有该订单的已登录客户。 |
+| `link_text` | `Download receipt (PDF)` | 链接文本。 |
+| `format` | `pdf` | `pdf` 会下载 PDF；`html` 则会打开可打印的收据视图。 |
+| `template` | *（店铺默认值）* | 使用指定的模板 ID 呈现，而非店铺默认模板。 |
+| `class` | `wcpos-receipt-link` | 链接的 CSS 类。 |
+| `id` | *（无）* | 链接的 HTML `id`。 |
+
+### 示例 {#shortcode-examples}
+
+订单确认页面上的下载链接：
+
+```text
+[wcpos_receipt link_text="Download your invoice"]
+```
+
+指向屏幕上可打印收据的链接，而不是 PDF：
+
+```text
+[wcpos_receipt format="html" link_text="View your receipt"]
+```
+
+使用特定模板渲染——例如，使用 A4 发票模板而非您的 80mm 收银小票：
+
+```text
+[wcpos_receipt template="123" link_text="Download invoice (PDF)"]
+```
+
+模板 ID 是 **WP Admin → POS → 模板** 中模板编辑页面 URL 里的数字 (`post=123`)。
+
+## 客户会获得哪个模板？ {#template-choice}
+
+商城前台下载使用已配置的收据模板；如果未配置，则使用第一个启用的模板。此前台默认模板独立于收银员在收银机下拉菜单中选择的模板。如果前台默认模板是窄幅热敏小票样式，PDF 也会是窄幅的。
+
+对于在线订单，可能更适合使用整页文档。有两种选择：
+
+- 将整页模板设为商城前台默认模板（图库中的 **发票** 模板专为 A4/Letter 设计），或者
+- 保持收银机模板启用，并通过短代码的 `template` 属性将商城前台指向其他模板，或者使用下方的[开发者筛选器](#developers)在全站范围内设置。
+
+模板使用与 POS 相同的[收据数据载荷](/receipts/receipt-data)进行渲染，因此您的徽标、店铺标识、税务设置和自定义设置都会一并保留。
+
+## 安全性 {#security}
+
+收据链接携带订单的唯一密钥——这是 WooCommerce 用于订单确认页面的同一机制——因此，未创建账户即完成结账的访客仍可使用确认页面中的链接。未持有该链接的用户必须以该订单的客户身份登录。仅含明确 `order_id` 的短代码仅会为该订单的已登录所有者呈现。
+
+:::note 需要美化固定链接
+与所有 WCPOS 结账页面一样，收据 URL 使用 WordPress 重写规则。使用 **朴素** 固定链接（设置 → 固定链接）的网站需要切换到其他任意固定链接结构。
+:::
+
+## 开发者 {#developers}
+
+以下三个筛选器控制店面界面：
+
+```php
+// Hide the My Account Receipt button.
+add_filter( 'woocommerce_pos_storefront_receipt_my_account_button', '__return_false' );
+
+// Change which order statuses show the button (default: processing, completed, refunded).
+add_filter( 'woocommerce_pos_storefront_receipt_order_statuses', function ( $statuses, $order ) {
+	$statuses[] = 'on-hold';
+	return $statuses;
+}, 10, 2 );
+
+// Use a different template for storefront PDF downloads only.
+// Receives and returns the full template array (null when none is configured).
+add_filter( 'woocommerce_pos_storefront_receipt_template', function ( $template, $order ) {
+	return \WCPOS\WooCommercePOS\Templates::get_template( 123 );
+}, 10, 2 );
+```
+
+PDF 路由本身为 `/wcpos-checkout/wcpos-receipt/{order_id}?key={order_key}&format=pdf`——这是 POS 用于收据的、同样受订单密钥限制的端点；当 `format=pdf` 时，返回渲染后的 PDF，而非屏幕视图。
