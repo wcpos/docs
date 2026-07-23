@@ -2,7 +2,7 @@
 title: Cloud Printing
 sidebar_label: Cloud Printing
 sidebar_position: 2
-description: Print WCPOS receipts to printers that aren't attached to the till — Star Online, Star CloudPRNT, Epson Server Direct Print, and PrintNode.
+description: "Print WCPOS receipts to printers that aren't attached to the till — Star Online, Star CloudPRNT, Epson Server Direct Print, and PrintNode."
 ---
 
 import Steps from '@site/src/components/Steps';
@@ -55,6 +55,29 @@ Pick the provider that matches your hardware.
 | **Epson Server Direct Print** | Epson ePOS printer with Server Direct Print | Printer polls WCPOS | Thermal only |
 | **PrintNode** | Any OS-connected printer + PrintNode client | WCPOS submits a PDF to PrintNode | Any template |
 
+## WCPOS Cloud Print — the relay {#relay}
+
+When you set up a **polling** printer (Star CloudPRNT or Epson Server Direct Print), the poll URL WCPOS gives you points at **cloudprint.wcpos.com**, not at your own site. That's **WCPOS Cloud Print** — a free relay run by WCPOS that sits between your printer and your store.
+
+**Why it exists.** Receipt printers run small, rarely-updated firmware. Many can't complete a secure connection to a store on modern hosting: newer TLS versions, newer certificate authorities, or a CDN/firewall in front of the site (Cloudflare is a common culprit) will refuse the printer — or be refused by it. The symptom is a printer stuck on **Waiting** forever even though every setting is correct. The relay presents printers with a connection that older firmware can always negotiate, and passes their traffic through to your store.
+
+**How it works:**
+
+- Your site connects to the relay **automatically** the first time you open the Cloud Print settings — there's nothing to enable or configure.
+- The printer polls `cloudprint.wcpos.com`; the relay forwards the request to your store and returns your store's answer. Print jobs pass **through** the relay — they are never stored on it.
+- The relay absorbs most idle polling, so an idle printer costs your site about one request per minute instead of one every few seconds.
+- If your site can't connect to the relay (for example, a local development site the relay can't reach), WCPOS automatically falls back to direct-to-site URLs.
+
+:::note Prefer a direct connection?
+Every printer's setup screen has an **Advanced** disclosure showing the direct-to-site URL. Use it if you know your hosting is printer-friendly, or if you'd rather not route jobs through the relay. Developers can switch the relay off site-wide with one line:
+
+```php
+add_filter( 'woocommerce_pos_cloud_print_relay_enabled', '__return_false' );
+```
+:::
+
+**What the relay can see.** Connecting shares your site URL with wcpos.com, and print jobs — receipt contents, which include order details — transit the relay on their way to the printer. Nothing is retained. Full details are in the [privacy policy](https://wcpos.com/privacy).
+
 ## Setting up a cloud printer {#setup}
 
 Cloud printers are configured once in WP Admin and shared across every device — unlike local printers, which are stored per device.
@@ -73,7 +96,7 @@ In **WP Admin > POS > Settings > Cloud Print**, add a printer and choose **Star 
   </StepCard>
   <StepCard number="2" title="Copy the poll URL and token">
 
-Copy the generated poll URL and token. The **token is shown only once** — if you lose it, regenerate a new one from the printer card and update the printer with the new value.
+Copy the generated poll URL and token. The URL normally points at **cloudprint.wcpos.com** — that's the [WCPOS Cloud Print relay](#relay), and it's what you want; the direct-to-site URL sits behind the **Advanced** disclosure. The **token is shown only once** — if you lose it, regenerate a new one from the printer card and update the printer with the new value.
 
   </StepCard>
   <StepCard number="3" title="Enter them in the printer's configuration" isLast>
@@ -181,6 +204,16 @@ How the receipt is produced depends on the printer:
 - **Star CloudPRNT** — the receipt is rendered **on the device** and handed to the printer through CloudPRNT.
 - **Star Online, Epson, and PrintNode** — the receipt is rendered **on the server** from the selected order and template, then delivered to the printer or hosted relay.
 
+## The print queue {#print-queue}
+
+Every job for a cloud printer sits in a queue on your site until the printer collects it (polling printers) or the provider confirms delivery. **WP Admin > POS > Settings > Cloud Print** shows the queue below your printers:
+
+- **Filter** by printer or by status — **Waiting**, **Printing**, **Printed**, **Failed**, **Cancelled** — with live counts.
+- Each row shows how long the receipt has been **waiting** and links to the WooCommerce **order** it prints.
+- **Cancel** waiting jobs one at a time, in bulk, or for a whole printer at once. **Retry** re-queues a failed job.
+
+If a printer has waiting jobs but hasn't collected anything for more than a few minutes, a **warning banner** names the printer, shows how many receipts are backed up and for how long, and offers **Cancel all** — a backlog can never build up silently while a printer is unplugged.
+
 ## Test print & connection status {#status}
 
 Each printer card has a **Test print** button that sends a short diagnostic so you can confirm the printer is reachable and the format is right before relying on it for real orders.
@@ -207,6 +240,19 @@ The card also shows a live status:
   - The **poll URL and token** in the printer's firmware exactly match what WCPOS generated. A single wrong character means every poll is rejected — regenerate the token in WCPOS and re-enter it if you're unsure.
   - The printer can actually **reach your site** over the internet (correct DNS, no firewall blocking outbound HTTPS, valid SSL certificate on your store).
   - **Polling is enabled** in the printer's CloudPRNT / Server Direct Print configuration, with a sensible interval. Reboot the printer after changing its settings.
+  - If you entered the **direct-to-site URL** (from the Advanced disclosure) and the printer still won't connect, switch to the standard **cloudprint.wcpos.com** URL — many printers can't negotiate a secure connection with modern hosting, which is [exactly what the relay fixes](#relay).
+
+  </AccordionItem>
+
+  <AccordionItem question="Why does my printer URL point to cloudprint.wcpos.com?">
+
+  That's [WCPOS Cloud Print](#relay), the free relay that gives printers a connection their firmware can always negotiate and passes their print jobs through to your store. It's on automatically, jobs are never stored on it, and the direct-to-site URL is always available under the printer's **Advanced** disclosure if you prefer.
+
+  </AccordionItem>
+
+  <AccordionItem question="I set my printer up before the relay existed — do I need to change anything?">
+
+  No — URLs already saved in a printer's configuration keep working. If that printer is **stuck on Waiting**, though, its firmware is likely one that can't connect to your hosting directly: open **Setup &amp; token** on the printer card, regenerate the token, and enter the new **cloudprint.wcpos.com** URL and token in the printer's configuration.
 
   </AccordionItem>
 
