@@ -7,8 +7,8 @@ description: "Let online customers download receipts and invoices from My Accoun
 
 Your WCPOS receipt templates aren't limited to the till. Online-store customers can view and download their order receipt or invoice from My Account or the order confirmation page, rendered with a custom template from **WP Admin → POS → Templates**.
 
-:::info Requires WCPOS 1.9.11
-Storefront receipt access ships with WCPOS 1.9.11. Earlier versions only render receipts inside the POS.
+:::info Version notes
+Storefront receipt access — the **My Account** button and the `[wcpos_receipt]` shortcode — ships with WCPOS **1.9.11**. The **Let customers download receipts** setting and the **Receipt template for customers** picker described below were added in **1.9.12**; on 1.9.11 the button is on by default with no setting to control it. Earlier versions only render receipts inside the POS.
 :::
 
 :::note This page is about customers downloading their own receipts
@@ -17,11 +17,15 @@ Cashiers and staff don't need any of this — the POS **Orders** screen already 
 
 ## My Account download button {#my-account}
 
-As soon as a receipt template is **Active**, logged-in customers see a **Receipt** button next to eligible orders in **My Account → Orders**. Clicking it downloads a PDF (`receipt-1234.pdf`) rendered with the storefront's default receipt template.
+The **Receipt** button is **off by default**. Turn it on under **POS > Settings > General**, in the **Customers** section: enable **Let customers download receipts**. Once enabled, logged-in customers see a **Receipt** button next to eligible orders in **My Account → Orders**, and clicking it downloads a PDF (`receipt-1234.pdf`) rendered with your receipt template.
 
-By default the button appears for **Processing**, **Completed**, and **Refunded** orders — statuses where the order has been paid. Pending, cancelled, and failed orders don't show it.
+The button appears for **Processing**, **Completed**, and **Refunded** orders — statuses where the order has been paid. Pending, cancelled, and failed orders don't show it. (A developer can [change which statuses show it](#developers).)
 
-There's nothing to configure: activate a template and the button is live. If you'd rather not show it, a developer can [turn it off with a filter](#developers).
+You also need an **Active** receipt template — if no template is active there's nothing to render, so the button stays hidden even when the setting is on.
+
+:::note The shortcode is separate
+The [`[wcpos_receipt]` shortcode](#shortcode) below works whether or not this setting is on — the toggle only controls the automatic **My Account** button.
+:::
 
 ## The `[wcpos_receipt]` shortcode {#shortcode}
 
@@ -68,12 +72,13 @@ The template ID is the number in the template's edit-screen URL (`post=123`) in 
 
 ## Which template do customers get? {#template-choice}
 
-Storefront downloads use the configured receipt template, or the first active template when none is configured. This storefront default is independent of the template a cashier selects from the till dropdown. If the storefront default is a narrow thermal-style receipt, the PDF will be narrow too.
+Right below the toggle, **Receipt template for customers** chooses which template the download uses. It defaults to **Use active receipt template**, so customers get the same template your POS uses — change the active template and their receipts follow automatically.
 
-For online orders you may prefer a full-page document. Two options:
+To give online orders a different look, pick a specific template from the dropdown instead. The customer download then always uses that one, independent of the template a cashier selects from the till dropdown. If the customer template is a narrow thermal-style receipt, the PDF will be narrow too — for online orders you may prefer a full-page document, and the gallery's **Invoice** template is designed for A4/Letter.
 
-- Use a full-page template as the storefront default (the gallery's **Invoice** template is designed for A4/Letter), or
-- Keep your till templates active and point the storefront at a different template using the shortcode's `template` attribute, or site-wide with the [developer filter](#developers) below.
+:::tip Per-page overrides
+The setting controls the **My Account** button. For a one-off link on a specific page you can still override the template with the shortcode's [`template` attribute](#shortcode-attributes), or change it site-wide (including for the button) with the [developer filter](#developers) below.
+:::
 
 Templates render from the same [receipt data payload](/receipts/receipt-data) as the POS, so your logo, store identity, tax settings, and customisations all carry over.
 
@@ -87,11 +92,13 @@ Like all WCPOS checkout pages, the receipt URL uses WordPress rewrite rules. Sit
 
 ## For developers {#developers}
 
-Three filters control the storefront surfaces:
+Three filters control the storefront surfaces. They layer on top of the settings above — useful for conditional logic the settings can't express (per-order, per-customer, and so on):
 
 ```php
-// Hide the My Account Receipt button.
-add_filter( 'woocommerce_pos_storefront_receipt_my_account_button', '__return_false' );
+// Force the My Account Receipt button on or off, overriding the setting.
+// The filter's default value is the "Let customers download receipts" setting,
+// so you only need this to override it — e.g. show the button for one user role.
+add_filter( 'woocommerce_pos_storefront_receipt_my_account_button', '__return_true' );
 
 // Change which order statuses show the button (default: processing, completed, refunded).
 add_filter( 'woocommerce_pos_storefront_receipt_order_statuses', function ( $statuses, $order ) {
@@ -99,8 +106,9 @@ add_filter( 'woocommerce_pos_storefront_receipt_order_statuses', function ( $sta
 	return $statuses;
 }, 10, 2 );
 
-// Use a different template for storefront PDF downloads only.
-// Receives and returns the full template array (null when none is configured).
+// Use a different template for storefront PDF downloads, overriding the
+// "Receipt template for customers" setting. Receives and returns the full
+// template array (null when none is configured).
 add_filter( 'woocommerce_pos_storefront_receipt_template', function ( $template, $order ) {
 	return \WCPOS\WooCommercePOS\Templates::get_template( 123 );
 }, 10, 2 );
