@@ -54,13 +54,18 @@ const STALE_FAIL_THRESHOLD = 1;
 // Sweep queue shaping (--audit-json only; see buildTranslationAudit). Env-
 // overridable so a one-off run can widen scope, e.g. AUDIT_EXCLUDE='(?!)' to
 // translate everything including the deprecated version.
+//
+// Deprioritization is legacy-scheme error pages ONLY (API/DB/PY/SY + digits):
+// those ~60 boilerplate pages still queue behind hand-written guides. New-scheme
+// registry pages (SYNC101, AUTH201, …) ride the normal queue because the app
+// deep-links to them (wcpos/monorepo#1152, ruling A1.3).
 const AUDIT_EXCLUDE_DEFAULT = 'version-0\\.4\\.x'; // matches both the docs path and the version-0.4.x.json sidebar file
 // Docs sidebar/category label source files, e.g.
 // i18n/en/docusaurus-plugin-content-docs/version-1.x.json. These carry the
 // collapsible category labels (Receipts, Hardware, …) and get key-level
 // completeness checking against a freshly regenerated English baseline.
 const SIDEBAR_JSON_RE = /docusaurus-plugin-content-docs\/version-[^/]+\.json$/;
-const AUDIT_DEPRIORITIZE_DEFAULT = '/error-codes/';
+const AUDIT_DEPRIORITIZE_DEFAULT = '/error-codes/(API|DB|PY|SY)\\d';
 
 // ---------------------------------------------------------------------------
 // Path mapping
@@ -698,6 +703,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
 }
 
 module.exports = {
+  AUDIT_DEPRIORITIZE_DEFAULT,
   LOCALES,
   TEXT_PROPS,
   UNTRANSLATED_PROP_ALLOWLIST,
