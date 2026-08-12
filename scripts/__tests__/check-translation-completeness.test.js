@@ -2,6 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
+  AUDIT_DEPRIORITIZE_DEFAULT,
   getSourcePath,
   sourceToTranslatedPath,
   localeOf,
@@ -623,6 +624,15 @@ describe('buildTranslationAudit', () => {
       excludeSource: (s) => /version-0\.4\.x\//.test(s),
     });
     expect(audit.map((e) => e.source)).toEqual([keep]);
+  });
+
+  it('deprioritizes legacy-scheme error pages but not new-scheme registry pages', () => {
+    const deprioritizeRe = new RegExp(AUDIT_DEPRIORITIZE_DEFAULT);
+    expect(deprioritizeRe.test('versioned_docs/version-1.x/error-codes/API01001.mdx')).toBe(true);
+    expect(deprioritizeRe.test('versioned_docs/version-1.x/error-codes/DB02004.mdx')).toBe(true);
+    expect(deprioritizeRe.test('versioned_docs/version-1.x/error-codes/SYNC101.mdx')).toBe(false);
+    expect(deprioritizeRe.test('versioned_docs/version-1.x/error-codes/index.mdx')).toBe(false);
+    expect(deprioritizeRe.test('versioned_docs/version-1.x/coupons/index.mdx')).toBe(false);
   });
 
   it('orders deprioritized sources after content while keeping each group alphabetical', () => {

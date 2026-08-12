@@ -13,6 +13,13 @@ describe('shouldIgnoreVercelBuild', () => {
     expect(shouldIgnoreVercelBuild({ VERCEL_GIT_COMMIT_REF: 'feature/docs-update' })).toBe(false);
   });
 
+  it('skips Vercel preview builds for the registry error-pages sync branch', () => {
+    expect(
+      shouldIgnoreVercelBuild({ VERCEL_GIT_COMMIT_REF: 'registry/error-code-pages' })
+    ).toBe(true);
+    expect(shouldIgnoreVercelBuild({ VERCEL_GIT_COMMIT_REF: 'registry/other' })).toBe(false);
+  });
+
   it('allows Vercel builds when Vercel does not provide a branch name', () => {
     expect(shouldIgnoreVercelBuild({})).toBe(false);
   });
