@@ -1,0 +1,90 @@
+---
+title: Store Health
+sidebar_label: Store Health
+sidebar_position: 2
+description: "The Store health area in WCPOS: sync performance presets and measured server load, per-collection download coverage, recovering refused changes, and the activity log."
+---
+
+:::info New in v1.10.0
+Store health is introduced in **WCPOS v1.10.0**. It replaces the standalone Logs screen and adds live visibility into syncing, local data coverage, and server load.
+:::
+
+**Store health** is the POS's dashboard for everything happening between your device and your WooCommerce store. Open it from the navigation drawer (the heartbeat icon). It has three tabs: **Performance**, **Database**, and **Logs**.
+
+## Performance {#performance}
+
+The Performance tab answers "what is the POS costing my server, and is syncing healthy?"
+
+- **Status line** — `✓ Normal` or `⚠ Needs attention`, based on the engine's current state (a blip that already recovered won't scold you for a day).
+- **Measured actuals** — requests made, data transferred, and typical response time over the last 24 hours. These are measurements from this till, not estimates.
+- **Uptime strip** — one cell per hour for the last 24 hours. Green means requests completed without errors that hour; amber means at least one request failed (even one — there's no threshold); empty means the app wasn't running.
+- **Next check countdown** — when the next change check is due. On an idle till this can legitimately read longer than the configured interval, because checks are jittered and slow down after 10 idle minutes. A longer countdown on a quiet till is normal, not a stalled sync.
+
+### Sync presets {#sync-presets}
+
+Three preset cards set how eagerly this device syncs, over two dials — how often the POS checks for changes, and how many records it requests at a time:
+
+| Preset | Check interval | Records per request |
+| --- | --- | --- |
+| **Eco** | 5 min | 25 |
+| **Balanced** (default) | 60 s | 50 |
+| **Realtime** | 10 s | 75 |
+
+Choose **Eco** for shared or budget hosting, **Realtime** when several tills need to see each other's changes quickly and the server can afford it. The **Custom** sliders open the full range (5 seconds–5 minutes, 10–100 records).
+
+Two things to know:
+
+- **Settings are per device.** Tuning one till leaves every other device unchanged — repeat the change on each till you want to adjust.
+- The *~N requests per day* figure shown beside the dial is a worst-case ceiling, not a prediction — quiet registers cost less, often several times less, because no-change checks are answered with a single tiny `304` response.
+
+Changes apply immediately; no restart needed. For the engineering behind these numbers, see [Sync Performance](/reference/sync-performance).
+
+## Database {#database}
+
+The Database tab answers "what's on this device, and did everything reach my server?"
+
+At the top, four tiles: the **Ready to sell** milestone, records on this device, storage used, and changes waiting to send.
+
+:::tip Ready to sell is a milestone, not a full-download gate
+It flips as soon as the first product is on the device. Being offline doesn't block it — a till with products on the device is ready to sell offline. That's the point of a local-first POS.
+:::
+
+### Coverage table {#coverage}
+
+Each synced collection gets a row: **on device**, **on server**, and a coverage bar. The numbers follow a strict honesty rule — the *on server* total is a real server-reported figure, never a guess:
+
+- ***checking…*** — the POS doesn't have a fresh server total yet. If a row stays like this for more than about 15 minutes, that collection's REST route may be failing; check [Logs](#logs).
+- **A partial bar is often normal.** Customers download gradually in idle time, categories and coupons download when first opened, and the **orders** bar measures against your entire order history while the till deliberately keeps only open and recent orders — so orders read as partial on a perfectly healthy till.
+- **After a "Clear & re-download", an empty or low count is the designed outcome, not a stalled sync** — collections that download on demand refill as they're used, and each row's copy says how that collection refills.
+
+### Changes that never reached your server {#refused-changes}
+
+If your server permanently refuses a change (for example, a sale created while the site rejected the request as invalid), the POS does **not** silently retry it forever, and it does not hide it. The change is parked and listed here with the server's own reason, when it happened, and two actions:
+
+- **Send again** — rebuilds the request from the record as it stands *now* and queues it again. If the same field is refused again, the attempt count rises visibly rather than pretending success.
+- **Discard** — drops the change. The confirmation dialog tells you exactly what discarding means for that record (including when the record only ever existed on this device, where discarding deletes it).
+
+Recovery is always a deliberate, visible action — nothing here is automatic.
+
+### Clear & re-download {#clear-and-redownload}
+
+Each collection row offers **Clear & re-download**, which removes that collection's local copy and re-fetches it. The confirmation names how many records and roughly how much storage will be removed, and what stays safely on the server. Prefer this over clearing all local data — it's targeted and doesn't log you out. [Clear All Local Data](/support/troubleshooting/clear-local-data) remains the full reset.
+
+## Logs {#logs}
+
+The Logs tab is a ledger of sync activity on this device: **time, level, event, duration, status** per row, kept for 30 days.
+
+- **Preset filters** — All / Actions / Errors / Sync, plus a **Verbose diagnostics** toggle that captures extra detail for 24 hours and then switches itself off.
+- **Row details** — errors and warnings expand to a plain-language reason, a data-safety line, a suggested next step, and a help link for the [error code](/error-codes). Each detail view carries a copyable event code — quote it when contacting support.
+- Log entries are translated when displayed, so a row written months ago reads in whatever language the till runs today; the event code is the stable identifier.
+
+:::note Two tabs, two counts
+The Logs tab derives its stuck-record count from log entries alone; the Database tab also includes parked refused changes. When they differ, **Database is the authority** on what hasn't reached your server.
+:::
+
+## Related pages {#related}
+
+- [How the Sync Engine Works](/reference/sync-engine) — developer-level detail on lanes, change detection, and the write queue
+- [Sync Performance](/reference/sync-performance) — the request ceilings and back-off rules protecting your server
+- [Server Performance](/support/performance/server) — tuning WordPress/WooCommerce hosting
+- [Clear All Local Data](/support/troubleshooting/clear-local-data) — the full local reset

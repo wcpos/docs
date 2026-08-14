@@ -1,0 +1,88 @@
+---
+title: Sync Performance and Server Politeness
+sidebar_label: Sync Performance
+sidebar_position: 4
+description: "How the WCPOS sync engine protects your server: bounded request ceilings, back-off under pressure, responsiveness guarantees, and the measured numbers behind them."
+---
+
+:::info New in v1.10.0
+This page describes the sync engine introduced in **WCPOS v1.10.0**. For how the engine works mechanically, start with [How the Sync Engine Works](/reference/sync-engine).
+:::
+
+Most WCPOS stores run on shared PHP hosting: a handful of PHP workers, a full WordPress bootstrap on every REST request, security plugins that rate-limit bursts. Requests the client treats as free degrade the storefront, trip rate limiters, and compete with the cashier's own traffic — multiplied by every till and browser tab you run.
+
+The v1.10.0 sync engine treats that as a design constraint, not an afterthought: **protecting the merchant's hosting is part of the sync engine's job.** This page explains the rules the engine follows and the measurements behind them.
+
+## The four standing rules {#the-four-rules}
+
+Every scheduled sync behaviour in the engine is governed by four invariants:
+
+1. **Cost scales with what changed, never with catalogue size.** A cheap digest or short-circuit check always precedes any bulk fetch. A 50,000-product store that hasn't changed costs roughly the same to keep in sync as a 500-product store that hasn't changed.
+2. **No unbounded fan-out.** Every background lane declares a per-run request ceiling, enforced by automated tests. Larger jobs run as bounded batches with resumable cursors — a sweep spreads across its schedule instead of bursting.
+3. **Maintenance never gets in the cashier's way.** The requests that make a till ready to sell run first; integrity audits and background primes run afterwards, in idle time.
+4. **Under pressure, maintenance backs off first.** When your server signals distress, the engine slows its own background work before anything cashier-facing is touched.
+
+## What syncing costs your server {#request-budgets}
+
+The steady-state cost is set by the **sync preset**, chosen per device in **Store health → Performance**:
+
+| Preset | Check interval | Records per request | Checks per day |
+| --- | --- | --- | --- |
+| Eco | 5 min | 25 | 288 |
+| Balanced (default) | 60 s | 50 | 1,440 |
+| Realtime | 10 s | 75 | 8,640 |
+
+Both dials matter, and page weight is usually what actually costs a shared host — a heavy records page takes real server time, and the interval only multiplies it. No preset ships the maximum 100-record page; that's reachable only through the Custom sliders (5 s–5 min interval, 10–100 records).
+
+On top of the preset:
+
+- **An idle check is nearly free.** The engine sends conditional requests, so a no-change check is answered by a single bodyless `304 Not Modified` — no payload, minimal server work.
+- **Checks are jittered ±20%**, so a fleet of registers spreads its requests instead of synchronizing into bursts.
+- **Idle tills decay** to a slower cadence after 10 minutes without interaction and snap back instantly on any activity, including barcode scans.
+- **Background maintenance is capped.** A drift-free integrity check costs at most a few cheap aggregate pages and **zero** detail fetches — buckets that provably match the server are skipped outright. When drift is found, drill-downs are capped at **two per run**, resuming via a persisted cursor rather than bursting. The full deletion audit is bounded at **11 requests per run**, and the digest prime at 5 chunks per run. These ceilings are declared in code and enforced by CI.
+
+:::note The in-app "requests per day" figure is a ceiling
+Store health shows a *~N requests per day* estimate derived from the raw check interval. It's a worst-case ceiling, not a forecast — it ignores idle decay and conditional responses, so it overstates what a quiet register actually costs, often several-fold.
+:::
+
+## Backing off when your server struggles {#server-pressure}
+
+Every response the engine receives feeds a per-store pressure monitor. It reacts to:
+
+- an HTTP `429` (immediately),
+- repeated `5xx` errors or transport failures (three within a rolling minute),
+- sustained slowness (median response time above 2 seconds),
+- a `Retry-After` header, which becomes a hard floor on the next check.
+
+When any of these trip, the engine **doubles its change-check interval** one step at a time, and the maintenance lanes skip their runs entirely. Cashier-driven requests — searches, barcode lookups, checkout — are never throttled; the point is to shed the deferrable load, not to slow the sale.
+
+Recovery is deliberately asymmetric: back-off is instant, but the interval only steps back down after **ten consecutive healthy responses**, so an unstable server isn't bounced between fast and slow cadences. Pressure state also survives the merchant picking a faster preset — the protection runs beneath whatever tier is configured, and there's no way to configure it off.
+
+## Staying responsive on the device {#device-responsiveness}
+
+The other half of performance is the till itself — background sync must never make the UI stutter.
+
+- **Audits yield to the event loop.** The integrity audit chunks its work and yields between chunks, keeping its longest uninterrupted block around **30 ms** — under the ~100 ms threshold where humans perceive lag. Measured at 10,000 local products, a full audit pass costs roughly **68 ms** of compute spread across 17+ yields; at 50,000 products, under 300 ms.
+- **First result stays fast under load.** Time-to-first-result contracts are pinned in CI even while a bulk apply or a full audit runs concurrently — single-digit milliseconds at typical catalogue sizes in the benchmark environment.
+- **Only the visible page crosses to the app.** Query work (filter, sort, pagination) executes inside the storage layer, so a screen update moves ten rows, not ten thousand.
+
+These figures come from the engine's pinned performance-contract suite, which runs isolated in CI with budgets set roughly an order of magnitude above measured steady state — designed to catch order-of-magnitude regressions, not to fail on a slow runner.
+
+## Verified against a live store {#live-verification}
+
+The politeness rules aren't only unit-tested. A live end-to-end check against a real WordPress store verifies the invariants that matter most on real hosting:
+
+- **Zero** maintenance requests (integrity or digest traffic) before the product catalogue renders at store open.
+- After the post-open hold, at most a handful of cheap aggregate pages and no more than two detail drill-downs.
+
+This scenario was built from a real regression: an earlier development build of the audit issued ~41 requests (1.2 MB) at every store open, per device. The digest-gated design that replaced it reduces a drift-free audit to its aggregate pages and nothing else — the class of bug is now guarded by declared ceilings in CI, not by review vigilance.
+
+## What we don't claim {#honest-limits}
+
+A few things this page deliberately does not say, because we don't have defensible numbers for them (yet):
+
+- **No end-to-end "initial sync takes X minutes" figure.** Initial download time depends overwhelmingly on your server's response times and catalogue size. The device-side cost of applying records is small (bulk-applying 10,000 products measures under 10 ms of compute); the wire and the server dominate.
+- **No "X% faster than v1.9" claim.** The architectures differ enough that a single comparative number would mislead more than it informs. The structural differences are laid out in [What changed in v1.10.0](/reference/sync-engine#what-changed-in-v1100).
+- The benchmark figures above are from the engine's test environment (in-memory storage, isolated runner). Real devices and real stores vary; that's precisely why **Store health → Performance** shows your till's *measured* request counts, data volume, and typical response time for the last 24 hours rather than projections.
+
+For server-side tuning — hosting requirements, HPOS, caching, and diagnosing slow responses — see [Server Performance](/support/performance/server).
