@@ -26,7 +26,7 @@ Every scheduled sync behaviour in the engine is governed by four invariants:
 
 The steady-state cost is set by the **sync preset**, chosen per device in **Store health → Performance**:
 
-| Preset | Check interval | Records per request | Checks per day |
+| Preset | Check interval | Records per request | Nominal checks per day |
 | --- | --- | --- | --- |
 | Eco | 5 min | 25 | 288 |
 | Balanced (default) | 60 s | 50 | 1,440 |
@@ -36,13 +36,13 @@ Both dials matter, and page weight is usually what actually costs a shared host 
 
 On top of the preset:
 
-- **An idle check is nearly free.** The engine sends conditional requests, so a no-change check is answered by a single bodyless `304 Not Modified` — no payload, minimal server work.
+- **An idle check is low-cost.** The engine sends conditional requests, so a no-change check is answered by a single bodyless `304 Not Modified` — still one request, but with no payload and minimal server work.
 - **Checks are jittered ±20%**, so a fleet of registers spreads its requests instead of synchronizing into bursts.
 - **Idle tills decay** to a slower cadence after 10 minutes without interaction and snap back instantly on any activity, including barcode scans.
 - **Background maintenance is capped.** A drift-free integrity check costs at most a few cheap aggregate pages and **zero** detail fetches — buckets that provably match the server are skipped outright. When drift is found, drill-downs are capped at **two per run**, resuming via a persisted cursor rather than bursting. The full deletion audit is bounded at **11 requests per run**, and the digest prime at 5 chunks per run. These ceilings are declared in code and enforced by CI.
 
-:::note The in-app "requests per day" figure is a ceiling
-Store health shows a *~N requests per day* estimate derived from the raw check interval. It's a worst-case ceiling, not a forecast — it ignores idle decay and conditional responses, so it overstates what a quiet register actually costs, often several-fold.
+:::note The in-app "requests per day" figure is nominal
+Store health derives its *~N requests per day* estimate from the configured interval. Treat it as a nominal check rate, not a ceiling or forecast: ±20% jitter moves the actual count in either direction, and a `304` still counts as a request. Idle decay reduces the count only for presets faster than its 60-second floor; it does not slow the default Balanced preset further.
 :::
 
 ## Backing off when your server struggles {#server-pressure}
@@ -83,6 +83,6 @@ A few things this page deliberately does not say, because we don't have defensib
 
 - **No end-to-end "initial sync takes X minutes" figure.** Initial download time depends overwhelmingly on your server's response times and catalogue size. The device-side cost of applying records is small (bulk-applying 10,000 products measures under 10 ms of compute); the wire and the server dominate.
 - **No "X% faster than v1.9" claim.** The architectures differ enough that a single comparative number would mislead more than it informs. The structural differences are laid out in [What changed in v1.10.0](/reference/sync-engine#what-changed-in-v1100).
-- The benchmark figures above are from the engine's test environment (in-memory storage, isolated runner). Real devices and real stores vary; that's precisely why **Store health → Performance** shows your till's *measured* request counts, data volume, and typical response time for the last 24 hours rather than projections.
+- The benchmark figures above are from the engine's test environment (in-memory storage, isolated runner). Real devices and real stores vary; that's precisely why **Store health → Performance** shows your till's measured request counts and typical response time for the last 24 hours rather than projections. Its data-volume figure is a lower bound because responses without a declared size contribute zero.
 
 For server-side tuning — hosting requirements, HPOS, caching, and diagnosing slow responses — see [Server Performance](/support/performance/server).
