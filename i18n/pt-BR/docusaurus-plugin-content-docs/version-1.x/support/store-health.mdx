@@ -1,0 +1,90 @@
+---
+title: Saúde da loja
+sidebar_label: Saúde da loja
+sidebar_position: 2
+description: "A área Saúde da loja no WCPOS: predefinições de desempenho da sincronização e carga medida do servidor, cobertura de download por coleção, recuperação de alterações recusadas e o log de atividades."
+---
+
+:::info Novidade na v1.10.0
+A Saúde da loja é introduzida no **WCPOS v1.10.0**. Ela substitui a tela de Logs independente e acrescenta visibilidade ao vivo sobre a sincronização, a cobertura dos dados locais e a carga do servidor.
+:::
+
+A **Saúde da loja** é o painel do POS para tudo o que acontece entre o seu dispositivo e a sua loja WooCommerce. Abra-a pelo menu de navegação (o ícone de batimento cardíaco). Ela tem três abas: **Desempenho**, **Banco de dados** e **Logs**.
+
+## Desempenho {#performance}
+
+A aba Desempenho responde: "o que o POS está custando ao meu servidor, e a sincronização está saudável?"
+
+- **Linha de status** — `✓ Normal` ou `⚠ Needs attention`, com base no estado atual do motor (uma oscilação que já se recuperou não vai ficar reclamando por um dia inteiro).
+- **Atividade medida** — as requisições feitas e o tempo típico de resposta nas últimas 24 horas são medições deste caixa, não estimativas. Os dados transferidos são um limite inferior, porque respostas sem tamanho declarado contribuem com zero.
+- **Faixa de disponibilidade** — uma célula por hora nas últimas 24 horas. Verde significa que as requisições daquela hora foram concluídas sem erros; âmbar significa que ao menos uma requisição falhou (mesmo que apenas uma — não há limiar); vazio significa que o aplicativo não estava em execução.
+- **Contagem regressiva da próxima verificação** — quando a próxima verificação de alterações está prevista. Em um caixa ocioso, isso pode legitimamente indicar um tempo maior que o intervalo configurado, porque as verificações têm variação e ficam mais lentas após 10 minutos de ociosidade. Uma contagem regressiva mais longa em um caixa tranquilo é normal, não uma sincronização travada.
+
+### Predefinições de sincronização {#sync-presets}
+
+Três cartões de predefinição determinam com que avidez este dispositivo sincroniza, por meio de dois controles — com que frequência o POS verifica se há alterações e quantos registros ele solicita por vez:
+
+| Predefinição | Intervalo de verificação | Registros por requisição |
+| --- | --- | --- |
+| **Eco** | 5 min | 25 |
+| **Equilibrado** (padrão) | 60 s | 50 |
+| **Tempo real** | 10 s | 75 |
+
+Escolha **Eco** para hospedagem compartilhada ou econômica, e **Tempo real** quando vários caixas precisarem ver rapidamente as alterações uns dos outros e o servidor puder arcar com isso. Os controles deslizantes **Personalizado** abrem a faixa completa (5 segundos a 5 minutos, 10 a 100 registros).
+
+Duas coisas a saber:
+
+- **As configurações são por dispositivo.** Ajustar um caixa deixa todos os outros dispositivos inalterados — repita a alteração em cada caixa que você quiser ajustar.
+- O número *~N requisições por dia* exibido ao lado do controle é uma taxa nominal de verificação derivada do intervalo configurado, não um teto nem uma previsão. A variação pode mover a contagem real em qualquer direção; um `304` sem alterações é de baixo custo, mas ainda conta como requisição. O decaimento por ociosidade reduz a contagem apenas nas predefinições mais rápidas que seu piso de 60 segundos, portanto não desacelera ainda mais a Equilibrado.
+
+As alterações se aplicam imediatamente; não é preciso reiniciar. Para a engenharia por trás desses números, veja [Desempenho da sincronização](/reference/sync-performance).
+
+## Banco de dados {#database}
+
+A aba Banco de dados responde: "o que há neste dispositivo, e tudo chegou ao meu servidor?"
+
+No topo, quatro blocos: o marco **Pronto para vender**, os registros neste dispositivo, o armazenamento usado e as alterações aguardando envio.
+
+:::tip Pronto para vender é um marco, não uma exigência de download completo
+Ele é atingido assim que o primeiro produto está no dispositivo. Estar offline não impede isso — um caixa com produtos no dispositivo está pronto para vender offline. É justamente esse o objetivo de um POS local-first.
+:::
+
+### Tabela de cobertura {#coverage}
+
+Cada coleção sincronizada ganha uma linha: **no dispositivo**, **no servidor** e uma barra de cobertura. Os números seguem uma regra rígida de honestidade — o total *no servidor* é um número realmente informado pelo servidor, nunca um palpite:
+
+- ***verificando…*** — o POS ainda não tem um total atualizado do servidor. Se uma linha permanecer assim por mais de cerca de 15 minutos, a rota REST daquela coleção pode estar falhando; verifique os [Logs](#logs).
+- **Uma barra parcial é frequentemente normal.** Os clientes são baixados gradualmente em tempo ocioso, as categorias e os cupons são baixados na primeira abertura, e a barra de **pedidos** mede em relação a todo o seu histórico de pedidos, enquanto o caixa deliberadamente mantém apenas os pedidos abertos e recentes — então os pedidos aparecem como parciais mesmo em um caixa perfeitamente saudável.
+- **Depois de um "Limpar e baixar novamente", uma contagem vazia ou baixa é o resultado esperado, não uma sincronização travada** — as coleções que são baixadas sob demanda voltam a ser preenchidas conforme o uso, e o texto de cada linha explica como aquela coleção é reabastecida.
+
+### Alterações que nunca chegaram ao seu servidor {#refused-changes}
+
+Se o seu servidor recusar em definitivo uma alteração (por exemplo, uma venda criada enquanto o site rejeitava a requisição como inválida), o POS **não** a repete silenciosamente para sempre, nem a esconde. A alteração é estacionada e listada aqui com o motivo dado pelo próprio servidor, quando aconteceu, e duas ações:
+
+- **Enviar novamente** — reconstrói a requisição a partir do registro como ele está *agora* e a coloca de novo na fila. Se o mesmo campo for recusado outra vez, a contagem de tentativas aumenta de forma visível, em vez de fingir sucesso.
+- **Descartar** — abandona a alteração. A caixa de confirmação informa exatamente o que descartar significa para aquele registro (inclusive quando o registro só existiu neste dispositivo, caso em que descartar o exclui).
+
+A recuperação é sempre uma ação deliberada e visível — nada aqui é automático.
+
+### Limpar e baixar novamente {#clear-and-redownload}
+
+Cada linha de coleção oferece **Limpar e baixar novamente**, que remove a cópia local daquela coleção e a busca de novo. A confirmação indica quantos registros e aproximadamente quanto armazenamento serão removidos, e o que permanece em segurança no servidor. Prefira essa opção a limpar todos os dados locais — ela é direcionada e não desconecta você. [Limpar Todos os Dados Locais](/support/troubleshooting/clear-local-data) continua sendo a redefinição completa.
+
+## Logs {#logs}
+
+A aba Logs é um registro da atividade de sincronização neste dispositivo: **hora, nível, evento, duração, status** por linha, mantidos por 30 dias.
+
+- **Filtros predefinidos** — Todos / Ações / Erros / Sincronização, além de uma opção **Diagnósticos detalhados**, que captura informações extras por 24 horas e depois se desativa sozinha.
+- **Detalhes da linha** — erros e avisos se expandem para mostrar um motivo em linguagem simples, uma linha sobre a segurança dos dados, um próximo passo sugerido e um link de ajuda para o [código de erro](/error-codes). Cada visão de detalhe traz um código de evento copiável — cite-o ao entrar em contato com o suporte.
+- As entradas de log são traduzidas na exibição, então uma linha escrita meses atrás é lida no idioma em que o caixa roda hoje; o código de evento é o identificador estável.
+
+:::note Duas abas, duas contagens
+A aba Logs deriva sua contagem de registros travados apenas das entradas de log; a aba Banco de dados também inclui as alterações recusadas estacionadas. Quando elas divergirem, **o Banco de dados é a autoridade** sobre o que não chegou ao seu servidor.
+:::
+
+## Páginas relacionadas {#related}
+
+- [Como funciona o motor de sincronização](/reference/sync-engine) — detalhes em nível de desenvolvedor sobre faixas, detecção de alterações e a fila de gravações
+- [Desempenho da sincronização](/reference/sync-performance) — os tetos de requisições e as regras de recuo que protegem o seu servidor
+- [Desempenho do servidor](/support/performance/server) — ajuste da hospedagem WordPress/WooCommerce
+- [Limpar Todos os Dados Locais](/support/troubleshooting/clear-local-data) — a redefinição local completa

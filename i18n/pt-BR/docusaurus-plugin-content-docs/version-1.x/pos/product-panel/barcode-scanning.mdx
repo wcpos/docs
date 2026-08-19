@@ -2,7 +2,7 @@
 title: Leitura de código de barras
 sidebar_label: Leitura de código de barras
 sidebar_position: 3
-description: Configure a leitura de código de barras no WCPOS usando leitores USB, leitura por câmera ou campos de código de barras personalizados.
+description: "Configure a leitura de código de barras no WCPOS usando leitores USB, leitura por câmera ou campos de código de barras personalizados."
 ---
 
 import Image from "@theme/IdealImage";
@@ -12,6 +12,7 @@ import AccordionItem from '@site/src/components/AccordionItem';
 A maioria dos leitores de código de barras se comporta como um teclado conectado ao seu dispositivo.
 Quando um código de barras é lido, o WCPOS detecta que os caracteres foram inseridos mais rápido do que na digitação normal.
 Ele usa essas "teclas pressionadas rapidamente" para identificar a entrada como uma leitura de código de barras.
+Isso funciona de imediato com quase todos os leitores — mas os leitores também oferecem outros [modos de conexão](#connection-modes) aos quais o WCPOS pode se conectar diretamente.
 
 ## Configuração da leitura de código de barras {#configuring-barcode-scanning}
 
@@ -33,6 +34,29 @@ Nas configurações do POS, há opções para ajustar como a detecção de códi
 | **Comprimento mínimo** | O tamanho que a sequência contínua de caracteres deve ter para ser tratada como código de barras | Corresponda ao código de barras mais curto que você usa (por exemplo, 8 para EAN-8) |
 | **Remoção de prefixo/sufixo** | Remove os caracteres extras que seu leitor adiciona (um prefixo ou sufixo), para que apenas o código de barras principal permaneça | Deixe em branco, a menos que seu leitor esteja configurado para adicioná-los |
 
+## Modos de conexão {#connection-modes}
+
+Para um caminho guiado pela configuração ou pela solução de problemas, use o [Assistente de configuração de leitores](/hardware/scanner-setup-wizard).
+
+Todo leitor de código de barras sai de fábrica em um de poucos modos, e o modo determina como o WCPOS pode receber suas leituras:
+
+| Modo | Como a leitura chega | Configuração |
+|---|---|---|
+| **Teclado (HID)** — o padrão de fábrica em quase todos os leitores | O leitor "digita" o código de barras; o WCPOS reconhece as teclas rápidas | Nenhuma — pareie ou conecte e leia |
+| **Serial (SPP / USB-COM)** | Uma conexão direta entre o leitor e o WCPOS | Altere o modo do leitor e depois conecte-o nas configurações de Código de barras |
+| **HID-POS** | Uma conexão direta (leitores USB) | Altere o modo do leitor e depois conecte-o nas configurações de Código de barras |
+
+O modo teclado não exige configuração e é o adequado para a maioria das lojas. Uma conexão direta vale a pena se as leituras às vezes chegam embaralhadas (trocas de maiúsculas/símbolos causadas por diferenças de layout de teclado) ou caem no lugar errado quando o campo de busca não está em foco — um leitor conectado diretamente entrega cada leitura direto ao WCPOS, independentemente da velocidade de digitação, do layout do teclado ou do foco.
+
+:::info Um leitor em modo teclado não pode ser conectado diretamente
+Seu dispositivo trata um leitor em modo teclado exatamente como um teclado, e nenhum aplicativo tem permissão para assumir o controle de um teclado.
+Se você tocar em **Conectar leitor serial** ou **Conectar leitor HID** nas configurações de Código de barras e o seu leitor não aparecer na lista, é quase certo que ele ainda está em modo teclado.
+:::
+
+**Para alternar de modo**, encontre o código de barras de configuração no manual do seu leitor (procure por *"modo SPP"*, *"modo serial"* ou *"modo HID-POS"*) e leia-o — o leitor se reconfigura sozinho. Em leitores Bluetooth, remova o pareamento antigo nas configurações de Bluetooth do dispositivo e pareie novamente após a troca. Ler o código de barras *"HID"* ou *"teclado"* do manual reverte a configuração a qualquer momento.
+
+No momento, as conexões diretas são compatíveis com o aplicativo de desktop e com navegadores baseados no Chrome. No iOS e no Android, o modo teclado e a leitura por câmera são as opções compatíveis.
+
 ## O que acontece quando um código de barras é detectado? {#what-happens-when-a-barcode-is-detected}
 
 Quando o POS detecta um código de barras, ele procura no banco de dados local um produto ou variação de produto correspondente.
@@ -40,12 +64,12 @@ Há três resultados possíveis:
 
 ```mermaid
 flowchart TD
-    Scan([Barcode Scanned]) --> Lookup[Search local database]
-    Lookup --> Check{How many\nmatches?}
-    Check -->|One| Cart[Add to cart\nautomatically]
-    Check -->|Multiple| Search[Show in search bar\nfor manual selection]
-    Check -->|None| Online[Search WooCommerce\nstore online]
-    Online --> Download[Download product\nto local database]
+    Scan([Código de barras lido]) --> Lookup[Pesquisar no banco de dados local]
+    Lookup --> Check{Quantas\ncorrespondências?}
+    Check -->|Uma| Cart[Adicionar ao carrinho\nautomaticamente]
+    Check -->|Várias| Search[Exibir na barra de busca\npara seleção manual]
+    Check -->|Nenhuma| Online[Pesquisar na loja\nWooCommerce online]
+    Online --> Download[Baixar o produto\npara o banco de dados local]
 ```
 
 :::tip Várias correspondências geralmente indicam um problema nos dados
@@ -54,34 +78,19 @@ Se mais de um produto compartilhar o mesmo código de barras, o POS não consegu
 
 ## Como entender a sincronização de produtos {#understanding-product-synchronisation}
 
-### Download progressivo de produtos {#progressive-product-downloading}
-
-O WCPOS não carrega todos os seus produtos de uma só vez.
-Em vez disso, ele os baixa em pequenos lotes.
-Essa abordagem evita lentidão e garante que sua loja funcione sem problemas.
-Com o tempo, conforme o POS é usado e pesquisas são realizadas, mais produtos ficam armazenados localmente no dispositivo.
-
-Consulte [Sincronização de produtos](/products/sync) para obter mais detalhes.
+O POS baixa seu catálogo em pequenos lotes em segundo plano, então nem todo produto está no dispositivo desde o primeiro minuto — veja [Sincronização de produtos](/products/sync) para entender como isso funciona.
 
 ### Por que isso é importante para a leitura de códigos de barras {#why-it-matters-for-barcode-scanning}
 
-Quando um código de barras que ainda não está armazenado localmente é lido, o POS ficará "online" para encontrá-lo na sua loja WooCommerce.
-Como parte desse processo, ele baixará esse produto (e outros em pequenos lotes) e os salvará.
-Isso significa que, com o tempo, o POS fica mais rápido e eficiente à medida que mais produtos são armazenados localmente.
-
-### Como acelerar o processo {#how-to-speed-up-the-process}
-
-Basta pesquisar produtos no POS para ajudar a baixar mais itens do seu inventário.
-Quanto mais a pesquisa é usada — e quanto mais códigos são lidos — mais completo se torna o banco de dados local.
+Quando você lê um código de barras que ainda não está armazenado localmente, o POS vai até a sua loja WooCommerce online, encontra aquele produto e o baixa — de modo que a mesma leitura seja instantânea da próxima vez. Você não precisa fazer nada para acelerar isso: a carga inicial do catálogo em segundo plano preenche o restante do seu inventário sozinha, e você pode acompanhar o progresso em **Saúde da loja → Banco de dados**.
 
 ## Perguntas frequentes {#faq}
 
 <Accordion>
   <AccordionItem question="Por que vejo '0 produtos encontrados localmente' ao escanear um código de barras?">
 
-Nem todos os produtos ficam disponíveis localmente logo no início.
-O POS baixa gradualmente os produtos da sua loja online e os armazena no seu dispositivo.
-Se o produto que acabou de ser escaneado ainda não estiver armazenado, a busca faz com que o POS o procure online e depois o baixe, para que fique disponível no futuro.
+Nem todos os produtos ficam no dispositivo logo no início — o POS faz a carga inicial do seu catálogo em segundo plano ao longo dos primeiros minutos de uso.
+Se o produto que acabou de ser lido ainda não estiver armazenado, a leitura faz com que o POS o procure online e o baixe, para que seja instantâneo da próxima vez.
 
   </AccordionItem>
 

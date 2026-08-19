@@ -2,7 +2,7 @@
 title: Arquitectura
 sidebar_label: Arquitectura
 sidebar_position: 2
-description: Arquitectura técnica de WCPOS que explica cómo el cliente POS se comunica con la API REST de WooCommerce.
+description: "Arquitectura técnica de WCPOS que explica cómo el cliente POS se comunica con la API REST de WooCommerce."
 ---
 
 import LocalizedSVG from '@site/src/components/LocalizedSVG';
@@ -13,40 +13,31 @@ Esta página explica la arquitectura técnica de WCPOS para desarrolladores y us
 
 WCPOS está diseñado como un sistema de dos partes:
 
-1. **Plugin PHP:** Alojado en tu servidor, este es un plugin relativamente pequeño que extiende la [API REST de WooCommerce](/reference/wc-rest-api).
+1. **Plugin PHP:** alojado en su servidor, es un plugin relativamente pequeño que amplía la [API REST de WooCommerce](/reference/wc-rest-api) con puntos de acceso específicos del POS.
 
-2. **Cliente JavaScript:** Este se ejecuta localmente en tu navegador o en la aplicación de escritorio, y más adelante en las aplicaciones de iOS y Android.
+2. **Cliente JavaScript:** se ejecuta localmente en su navegador, en la aplicación de escritorio o en las aplicaciones de iOS y Android.
 
-Puedes pensar en ello como dos mundos separados:
+Puede pensar en ello como dos mundos separados:
 
 - El _mundo PHP_ es donde ocurre la gestión de datos usando WordPress y WooCommerce.
-- El _mundo JavaScript_ replica tu tienda WooCommerce localmente, optimizada para búsquedas rápidas y uso sin conexión.
+- El _mundo JavaScript_ mantiene una copia local, apta para el uso sin conexión, de los datos de la tienda que necesitan sus cajas, optimizada para búsquedas rápidas y respuesta instantánea.
 
 <LocalizedSVG svgName="pos-client-woo-server" />
 
 ## Sincronización de Datos {#data-synchronization}
 
-Los datos se obtienen de WooCommerce utilizando la [API REST de WooCommerce](https://woocommerce.github.io/woocommerce-rest-api-docs/). Esto significa que el POS tiene que descargar cada producto, variación, categoría de producto, cliente, tasa de impuesto, y más para almacenarlos localmente.
+:::info Cambios en la v1.10.0
+La v1.10.0 sustituye la anterior capa de replicación por un **motor de sincronización** propio. El resumen siguiente es la versión corta; la explicación completa está en [Cómo funciona el motor de sincronización](/reference/sync-engine).
+:::
 
-Aunque esto puede llevar tiempo inicialmente, una vez descargados, están disponibles instantáneamente sin la necesidad de obtenerlos continuamente del servidor.
+El cliente es local-first: cada pantalla lee y escribe en la base de datos local del dispositivo, y un motor de sincronización en segundo plano mantiene convergentes esa base de datos y WooCommerce. El motor **no** replica ciegamente toda su tienda: trabaja a partir de lo que sus pantallas necesitan realmente:
 
-### ¿Qué Se Sincroniza? {#what-gets-synced}
+- **Detección de cambios:** el POS consulta un registro de cambios ligero mediante solicitudes condicionales; una tienda sin actividad responde con un único `304` sin cuerpo.
+- **Demanda declarada:** una pantalla declara qué está mostrando y el motor decide si eso requiere una solicitud o si ya está resuelto localmente.
+- **Siembras y carriles:** una siembra acotada del catálogo, una ventana de pedidos recientes y carriles de mantenimiento en los ratos de inactividad rellenan y verifican los datos locales con calendarios que puede ajustar por dispositivo.
+- **Escrituras duraderas:** las ventas y las ediciones se ponen en cola localmente y se envían a WooCommerce, con una recuperación visible para todo lo que el servidor rechace.
 
-- Productos y variaciones
-- Categorías y etiquetas de productos
-- Clientes
-- Tasas de impuestos y clases de impuestos
-- Pasarelas de pago (para el proceso de pago)
-- Pedidos (para el historial de pedidos en Pro)
-
-### Estrategia de Sincronización {#sync-strategy}
-
-WCPOS utiliza una estrategia de sincronización incremental:
-
-1. **Sincronización inicial:** Descarga todos los datos en la primera carga
-2. **Actualizaciones incrementales:** Solo obtiene los cambios desde la última sincronización
-3. **Sincronización en segundo plano:** Verifica periódicamente si hay actualizaciones
-4. **Sincronización manual:** El usuario puede activar una sincronización en cualquier momento
+Qué se sincroniza: productos y variaciones, categorías/etiquetas/marcas, clientes, tasas de impuestos, cupones (Pro) y pedidos. Las pasarelas de pago se obtienen en el momento del pago.
 
 ## Pros y Contras de la Arquitectura {#architecture-pros-and-cons}
 
@@ -58,11 +49,13 @@ WCPOS utiliza una estrategia de sincronización incremental:
 
 ## Base de Datos Local {#local-database}
 
-El cliente JavaScript almacena datos en IndexedDB, una base de datos basada en el navegador. Esto proporciona:
+El cliente almacena los datos en una base de datos local en cada dispositivo: las aplicaciones web y de escritorio utilizan **almacenamiento OPFS (Origin Private File System) ejecutado en un worker**, y las aplicaciones móviles usan el mismo formato en disco a través de un motor de sistema de archivos. Todas las plataformas comparten un único formato de almacenamiento y las mismas herramientas de recuperación. Esto proporciona:
 
-- **Persistencia:** Los datos sobreviven a los reinicios del navegador
-- **Rendimiento:** Consultas rápidas sin latencia de red
-- **Navegación sin conexión:** Los datos en caché permanecen accesibles sin internet
+- **Persistencia:** los datos sobreviven a los reinicios del navegador y del dispositivo
+- **Rendimiento:** consultas rápidas sin latencia de red; el filtrado, la ordenación y la paginación se ejecutan dentro de la capa de almacenamiento, de modo que a la interfaz solo llega la página de filas visible
+- **Navegación sin conexión:** los datos en caché permanecen accesibles sin internet
+
+Cada combinación de sitio + tienda + cajero tiene su propia base de datos local, así que los cajeros y las tiendas nunca comparten datos locales en un mismo dispositivo. Las actualizaciones nunca migran una base de datos local in situ: la aplicación vuelve a descargar desde el servidor, que es siempre la copia autorizada.
 
 ## Arquitectura de Checkout {#checkout-architecture}
 
@@ -74,6 +67,4 @@ El proceso de pago utiliza un iframe/webview que carga la página de Order Pay d
 
 ## Extensiones de API {#api-extensions}
 
-El plugin PHP extiende la API REST de WooCommerce con puntos de acceso adicionales para funcionalidad específica de POS. Consulta la [API REST de WooCommerce](/reference/wc-rest-api) para más detalles.
-
----
+El plugin PHP amplía la API REST de WooCommerce con puntos de acceso adicionales para la funcionalidad específica del POS, registrados en los espacios de nombres propios `wcpos/v1` y `wcpos/v2`. `wcpos/v2` contiene la superficie de sincronización de la v1.10.0, y por eso las versiones de la aplicación y del plugin se publican de forma sincronizada. Consulte [API REST de WooCommerce](/reference/wc-rest-api) para una introducción.

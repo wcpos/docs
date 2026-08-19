@@ -55,6 +55,29 @@ Wählen Sie den Anbieter, der zu Ihrer Hardware passt.
 | **Epson Server Direct Print** | Epson-ePOS-Drucker mit Server Direct Print | Drucker fragt WCPOS ab | Nur Thermo |
 | **PrintNode** | Jeder über das Betriebssystem verbundene Drucker + PrintNode-Client | WCPOS übermittelt ein PDF an PrintNode | Jede Vorlage |
 
+## WCPOS Cloud Print — das Relay {#relay}
+
+Wenn Sie einen **abfragenden** Drucker einrichten (Star CloudPRNT oder Epson Server Direct Print), verweist die Abfrage-URL, die WCPOS Ihnen gibt, auf **cloudprint.wcpos.com** und nicht auf Ihre eigene Website. Das ist **WCPOS Cloud Print** — ein kostenloses, von WCPOS betriebenes Relay, das zwischen Ihrem Drucker und Ihrem Shop sitzt.
+
+**Warum es existiert.** Bondrucker laufen mit kleiner, selten aktualisierter Firmware. Viele können keine sichere Verbindung zu einem Shop auf modernem Hosting aufbauen: neuere TLS-Versionen, neuere Zertifizierungsstellen oder ein CDN bzw. eine Firewall vor der Website (Cloudflare ist ein häufiger Verursacher) weisen den Drucker ab — oder werden von ihm abgewiesen. Das Symptom ist ein Drucker, der dauerhaft auf **Wartend** stehen bleibt, obwohl jede Einstellung stimmt. Das Relay bietet Druckern eine Verbindung, die auch ältere Firmware immer aushandeln kann, und leitet ihren Datenverkehr an Ihren Shop weiter.
+
+**So funktioniert es:**
+
+- Ihre Website verbindet sich **automatisch** mit dem Relay, sobald Sie die Cloud-Druck-Einstellungen zum ersten Mal öffnen — es gibt nichts zu aktivieren oder zu konfigurieren.
+- Der Drucker fragt `cloudprint.wcpos.com` ab; das Relay leitet die Anfrage an Ihren Shop weiter und gibt dessen Antwort zurück. Druckaufträge laufen **durch** das Relay hindurch — sie werden dort niemals gespeichert.
+- Das Relay fängt den größten Teil der Leerlaufabfragen ab, sodass ein untätiger Drucker Ihre Website etwa eine Anfrage pro Minute kostet statt einer alle paar Sekunden.
+- Wenn Ihre Website sich nicht mit dem Relay verbinden kann (zum Beispiel bei einer lokalen Entwicklungswebsite, die das Relay nicht erreicht), greift WCPOS automatisch auf direkte URLs zur Website zurück.
+
+:::note Lieber eine Direktverbindung?
+Der Einrichtungsbildschirm jedes Druckers verfügt über den Aufklappbereich **Erweitert**, der die direkte URL zur Website anzeigt. Verwenden Sie sie, wenn Sie wissen, dass Ihr Hosting druckerfreundlich ist, oder wenn Sie Aufträge lieber nicht über das Relay leiten möchten. Entwickler können das Relay mit einer Zeile für die gesamte Website abschalten:
+
+```php
+add_filter( 'woocommerce_pos_cloud_print_relay_enabled', '__return_false' );
+```
+:::
+
+**Was das Relay sehen kann.** Beim Verbinden wird Ihre Website-URL an wcpos.com übermittelt, und Druckaufträge — Beleginhalte, die Bestelldetails enthalten — passieren auf ihrem Weg zum Drucker das Relay. Nichts davon wird aufbewahrt. Alle Einzelheiten finden Sie in der [Datenschutzerklärung](https://wcpos.com/privacy).
+
 ## Einen Cloud-Drucker einrichten {#setup}
 
 Cloud-Drucker werden einmal in WP Admin konfiguriert und über alle Geräte hinweg gemeinsam genutzt — anders als lokale Drucker, die pro Gerät gespeichert werden.
@@ -73,7 +96,7 @@ Fügen Sie unter **WP Admin > POS > Einstellungen > Cloud-Druck** einen Drucker 
   </StepCard>
   <StepCard number="2" title="Die Abfrage-URL und den Token kopieren">
 
-Kopieren Sie die generierte Abfrage-URL und den Token. Der **Token wird nur einmal angezeigt** — wenn Sie ihn verlieren, generieren Sie über die Druckerkarte einen neuen und aktualisieren Sie den Drucker mit dem neuen Wert.
+Kopieren Sie die generierte Abfrage-URL und den Token. Die URL verweist normalerweise auf **cloudprint.wcpos.com** — das ist das [WCPOS-Cloud-Print-Relay](#relay), und genau das ist gewollt; die direkte URL zur Website liegt hinter dem Aufklappbereich **Erweitert**. Der **Token wird nur einmal angezeigt** — wenn Sie ihn verlieren, generieren Sie über die Druckerkarte einen neuen und aktualisieren Sie den Drucker mit dem neuen Wert.
 
   </StepCard>
   <StepCard number="3" title="Sie in die Konfiguration des Druckers eintragen" isLast>
@@ -181,6 +204,16 @@ Wie der Beleg erzeugt wird, hängt vom Drucker ab:
 - **Star CloudPRNT** — der Beleg wird **auf dem Gerät** gerendert und über CloudPRNT an den Drucker übergeben.
 - **Star Online, Epson und PrintNode** — der Beleg wird **auf dem Server** aus der ausgewählten Bestellung und Vorlage gerendert und dann an den Drucker oder das gehostete Relay zugestellt.
 
+## Die Druckwarteschlange {#print-queue}
+
+Jeder Auftrag für einen Cloud-Drucker liegt in einer Warteschlange auf Ihrer Website, bis der Drucker ihn abholt (abfragende Drucker) oder der Anbieter die Zustellung bestätigt. **WP Admin > POS > Einstellungen > Cloud-Druck** zeigt die Warteschlange unterhalb Ihrer Drucker:
+
+- **Filtern** Sie nach Drucker oder nach Status — **Wartend**, **Wird gedruckt**, **Gedruckt**, **Fehlgeschlagen**, **Abgebrochen** — mit Live-Zählern.
+- Jede Zeile zeigt, wie lange der Beleg bereits **wartet**, und verlinkt auf die WooCommerce-**Bestellung**, die er druckt.
+- **Brechen Sie** wartende Aufträge einzeln, gesammelt oder für einen ganzen Drucker auf einmal **ab**. **Wiederholen** stellt einen fehlgeschlagenen Auftrag erneut in die Warteschlange.
+
+Wenn ein Drucker wartende Aufträge hat, aber seit mehr als einigen Minuten nichts mehr abgeholt hat, nennt ein **Warnbanner** den Drucker, zeigt, wie viele Belege sich aufgestaut haben und seit wann, und bietet **Alle abbrechen** an — ein Rückstau kann sich niemals unbemerkt aufbauen, während ein Drucker nicht angeschlossen ist.
+
 ## Testdruck & Verbindungsstatus {#status}
 
 Jede Druckerkarte hat eine Schaltfläche **Testdruck**, die eine kurze Diagnose sendet, damit Sie bestätigen können, dass der Drucker erreichbar ist und das Format stimmt, bevor Sie sich für echte Bestellungen darauf verlassen.
@@ -207,6 +240,19 @@ Die Karte zeigt außerdem einen Live-Status:
   - Die **Abfrage-URL und der Token** in der Firmware des Druckers stimmen genau mit dem überein, was WCPOS generiert hat. Ein einziges falsches Zeichen führt dazu, dass jede Abfrage abgelehnt wird — generieren Sie den Token in WCPOS neu und geben Sie ihn erneut ein, wenn Sie unsicher sind.
   - Der Drucker kann Ihre Website tatsächlich über das Internet **erreichen** (korrektes DNS, keine Firewall, die ausgehendes HTTPS blockiert, gültiges SSL-Zertifikat auf Ihrem Shop).
   - **Das Abfragen ist aktiviert** in der CloudPRNT-/Server-Direct-Print-Konfiguration des Druckers, mit einem sinnvollen Intervall. Starten Sie den Drucker nach dem Ändern seiner Einstellungen neu.
+  - Wenn Sie die **direkte URL zur Website** (aus dem Aufklappbereich Erweitert) eingetragen haben und der Drucker sich weiterhin nicht verbindet, wechseln Sie zur Standard-URL **cloudprint.wcpos.com** — viele Drucker können mit modernem Hosting keine sichere Verbindung aushandeln, und [genau das behebt das Relay](#relay).
+
+  </AccordionItem>
+
+  <AccordionItem question="Warum verweist meine Drucker-URL auf cloudprint.wcpos.com?">
+
+  Das ist [WCPOS Cloud Print](#relay), das kostenlose Relay, das Druckern eine Verbindung bietet, die ihre Firmware immer aushandeln kann, und ihre Druckaufträge an Ihren Shop weiterleitet. Es ist automatisch aktiv, Aufträge werden dort niemals gespeichert, und die direkte URL zur Website steht jederzeit im Aufklappbereich **Erweitert** des Druckers zur Verfügung, falls Sie sie bevorzugen.
+
+  </AccordionItem>
+
+  <AccordionItem question="Ich habe meinen Drucker eingerichtet, bevor es das Relay gab — muss ich etwas ändern?">
+
+  Nein — bereits in der Konfiguration eines Druckers gespeicherte URLs funktionieren weiter. Bleibt dieser Drucker jedoch **auf Wartend hängen**, gehört seine Firmware wahrscheinlich zu denen, die sich nicht direkt mit Ihrem Hosting verbinden können: Öffnen Sie **Einrichtung &amp; Token** auf der Druckerkarte, generieren Sie den Token neu und tragen Sie die neue **cloudprint.wcpos.com**-URL samt Token in die Konfiguration des Druckers ein.
 
   </AccordionItem>
 

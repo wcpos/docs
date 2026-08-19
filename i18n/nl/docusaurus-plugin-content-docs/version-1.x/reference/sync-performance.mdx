@@ -1,0 +1,88 @@
+---
+title: Synchronisatieprestaties en zorgvuldig omgaan met je server
+sidebar_label: Synchronisatieprestaties
+sidebar_position: 4
+description: "Hoe de WCPOS-synchronisatie-engine je server beschermt: begrensde maxima voor verzoeken, terugschakelen bij druk, garanties voor responsiviteit en de gemeten cijfers erachter."
+---
+
+:::info Nieuw in v1.10.0
+Deze pagina beschrijft de synchronisatie-engine die is geïntroduceerd in **WCPOS v1.10.0**. Voor de werking van de engine begin je bij [Hoe de synchronisatie-engine werkt](/reference/sync-engine).
+:::
+
+De meeste WCPOS-winkels draaien op gedeelde PHP-hosting: een handvol PHP-workers, een volledige WordPress-bootstrap bij elk REST-verzoek, beveiligingsplug-ins die pieken afknijpen. Verzoeken die de client als gratis behandelt, maken de webwinkel trager, laten rate limiters afgaan en concurreren met het verkeer van de kassamedewerker zelf — vermenigvuldigd met elke kassa en elk browsertabblad dat je draait.
+
+De synchronisatie-engine van v1.10.0 behandelt dat als een ontwerpbeperking, niet als bijzaak: **de hosting van de verkoper beschermen hoort bij het werk van de synchronisatie-engine.** Deze pagina legt uit welke regels de engine volgt en welke metingen daaraan ten grondslag liggen.
+
+## De vier vaste regels {#the-four-rules}
+
+Elk gepland synchronisatiegedrag in de engine wordt beheerst door vier invarianten:
+
+1. **De kosten schalen mee met wat er is gewijzigd, nooit met de omvang van de catalogus.** Aan elke bulkophaalactie gaat altijd een goedkope samenvatting of kortsluitcontrole vooraf. Een winkel met 50.000 producten waarin niets is gewijzigd, kost ongeveer evenveel om gesynchroniseerd te houden als een winkel met 500 producten waarin niets is gewijzigd.
+2. **Geen onbegrensde uitwaaiering.** Elke achtergrondbaan declareert een maximum aantal verzoeken per run, afgedwongen door geautomatiseerde tests. Grotere taken draaien als begrensde batches met hervatbare cursors — een veegactie wordt over zijn schema uitgesmeerd in plaats van in één piek uitgevoerd.
+3. **Onderhoud zit de kassamedewerker nooit in de weg.** De verzoeken die een kassa klaarmaken om te verkopen gaan voor; integriteitsaudits en achtergrondvoorbereiding volgen daarna, in inactieve tijd.
+4. **Onder druk schakelt onderhoud als eerste terug.** Zodra je server tekenen van nood geeft, vertraagt de engine eerst zijn eigen achtergrondwerk voordat er iets wordt aangeraakt dat de kassamedewerker merkt.
+
+## Wat synchroniseren je server kost {#request-budgets}
+
+De kosten in stabiele toestand worden bepaald door de **synchronisatievoorinstelling**, die per apparaat wordt gekozen in **Winkelstatus → Prestaties**:
+
+| Voorinstelling | Controle-interval | Records per verzoek | Nominale controles per dag |
+| --- | --- | --- | --- |
+| Eco | 5 min | 25 | 288 |
+| Gebalanceerd (standaard) | 60 s | 50 | 1.440 |
+| Realtime | 10 s | 75 | 8.640 |
+
+Beide schuifregelaars doen ertoe, en het is meestal het paginagewicht dat een gedeelde host echt geld kost — een zware recordpagina vraagt echte servertijd, en het interval vermenigvuldigt dat alleen maar. Geen enkele voorinstelling gebruikt de maximale pagina van 100 records; die is alleen bereikbaar via de schuifregelaars van Aangepast (interval van 5 s–5 min, 10–100 records).
+
+Bovenop de voorinstelling:
+
+- **Een controle bij inactiviteit is goedkoop.** De engine stuurt voorwaardelijke verzoeken, dus een controle zonder wijzigingen wordt beantwoord met één enkele `304 Not Modified` zonder body — nog steeds één verzoek, maar zonder payload en met minimaal serverwerk.
+- **Controles krijgen ±20% jitter**, zodat een vloot kassa's zijn verzoeken spreidt in plaats van in pieken samen te vallen.
+- **Inactieve kassa's vervallen** na 10 minuten zonder interactie naar een trager ritme en schakelen bij elke activiteit direct terug, ook bij barcodescans.
+- **Achtergrondonderhoud is begrensd.** Een integriteitscontrole zonder afwijkingen kost hooguit een paar goedkope aggregatiepagina's en **nul** detailophaalacties — buckets die aantoonbaar overeenkomen met de server worden helemaal overgeslagen. Wordt er afwijking gevonden, dan zijn de verdiepende ophaalacties begrensd op **twee per run**, waarbij wordt hervat via een opgeslagen cursor in plaats van in één piek. De volledige verwijderingsaudit is begrensd op **11 verzoeken per run**, en de samenvattingsvoorbereiding op 5 blokken per run. Deze maxima zijn in code gedeclareerd en worden door CI afgedwongen.
+
+:::note Het cijfer „verzoeken per dag” in de app is nominaal
+Winkelstatus leidt de schatting *~N verzoeken per dag* af uit het geconfigureerde interval. Behandel het als een nominaal controleritme, niet als een maximum of een prognose: ±20% jitter beweegt het werkelijke aantal in beide richtingen, en een `304` telt nog steeds als een verzoek. Verval bij inactiviteit verlaagt het aantal alleen bij voorinstellingen die sneller zijn dan de ondergrens van 60 seconden; de standaardvoorinstelling Gebalanceerd wordt er niet verder door vertraagd.
+:::
+
+## Terugschakelen als je server het zwaar heeft {#server-pressure}
+
+Elk antwoord dat de engine ontvangt, voedt een drukmonitor per winkel. Die reageert op:
+
+- een HTTP `429` (onmiddellijk),
+- herhaalde `5xx`-fouten of transportfouten (drie binnen een voortschrijdende minuut),
+- aanhoudende traagheid (mediane responstijd boven 2 seconden),
+- een `Retry-After`-header, die een harde ondergrens wordt voor de volgende controle.
+
+Zodra een van deze afgaat, **verdubbelt de engine zijn interval voor de wijzigingscontrole**, stap voor stap, en slaan de onderhoudsbanen hun runs volledig over. Verzoeken die door de kassamedewerker worden gestuurd — zoekopdrachten, barcodescans, afrekenen — worden nooit afgeknepen; het doel is de uitstelbare belasting afwerpen, niet de verkoop vertragen.
+
+Het herstel is bewust asymmetrisch: terugschakelen gebeurt direct, maar het interval gaat pas weer omlaag na **tien opeenvolgende gezonde antwoorden**, zodat een instabiele server niet heen en weer stuitert tussen snelle en trage ritmes. De drukstatus blijft ook gelden als de verkoper een snellere voorinstelling kiest — de bescherming draait onder elk ingesteld niveau, en er is geen manier om die uit te zetten.
+
+## Responsief blijven op het apparaat {#device-responsiveness}
+
+De andere helft van prestaties is de kassa zelf — achtergrondsynchronisatie mag de interface nooit laten haperen.
+
+- **Audits geven de event loop voorrang.** De integriteitsaudit hakt zijn werk in blokken en geeft tussen de blokken door de controle terug, waardoor het langste ononderbroken blok rond de **30 ms** blijft — onder de drempel van ~100 ms waarop mensen vertraging opmerken. Gemeten bij 10.000 lokale producten kost een volledige auditronde ongeveer **68 ms** rekentijd, verspreid over 17+ momenten waarop de controle wordt teruggegeven; bij 50.000 producten minder dan 300 ms.
+- **Het eerste resultaat blijft snel onder belasting.** De contracten voor tijd-tot-eerste-resultaat liggen vast in CI, zelfs terwijl er tegelijkertijd een bulkverwerking of een volledige audit draait — enkele milliseconden bij gebruikelijke catalogusomvang in de benchmarkomgeving.
+- **Alleen de zichtbare pagina gaat naar de app.** Querywerk (filteren, sorteren, pagineren) wordt binnen de opslaglaag uitgevoerd, dus een schermupdate verplaatst tien rijen, niet tienduizend.
+
+Deze cijfers komen uit de vastgelegde prestatiecontractsuite van de engine, die geïsoleerd in CI draait met budgetten die ongeveer een orde van grootte boven de gemeten stabiele toestand liggen — bedoeld om regressies van een orde van grootte te vangen, niet om te falen op een trage runner.
+
+## Geverifieerd tegen een live winkel {#live-verification}
+
+De regels voor zorgvuldig omgaan met de server zijn niet alleen in unittests getest. Een live end-to-endcontrole tegen een echte WordPress-winkel verifieert de invarianten die op echte hosting het meest tellen:
+
+- **Nul** onderhoudsverzoeken (integriteits- of samenvattingsverkeer) voordat de productcatalogus wordt weergegeven bij het openen van de winkel.
+- Na de wachttijd volgend op het openen: hooguit een handvol goedkope aggregatiepagina's en niet meer dan twee verdiepende detailophaalacties.
+
+Dit scenario is voortgekomen uit een echte regressie: een eerdere ontwikkelversie van de audit deed bij elke winkelopening ~41 verzoeken (1,2 MB), per apparaat. Het samenvattingsgestuurde ontwerp dat het verving, brengt een audit zonder afwijkingen terug tot zijn aggregatiepagina's en verder niets — dit soort bug wordt nu bewaakt door gedeclareerde maxima in CI, niet door oplettendheid bij reviews.
+
+## Wat we niet beweren {#honest-limits}
+
+Een paar dingen die deze pagina bewust niet zegt, omdat we er (nog) geen verdedigbare cijfers voor hebben:
+
+- **Geen end-to-endcijfer als „de eerste synchronisatie duurt X minuten”.** De duur van de eerste download hangt overweldigend af van de responstijden van je server en de omvang van je catalogus. De kosten aan de apparaatkant van het toepassen van records zijn klein (het in bulk toepassen van 10.000 producten meet minder dan 10 ms rekentijd); de verbinding en de server domineren.
+- **Geen bewering als „X% sneller dan v1.9”.** De architecturen verschillen zo sterk dat één vergelijkend getal meer zou misleiden dan verduidelijken. De structurele verschillen staan in [Wat er is veranderd in v1.10.0](/reference/sync-engine#what-changed-in-v1100).
+- De bovenstaande benchmarkcijfers komen uit de testomgeving van de engine (opslag in het geheugen, geïsoleerde runner). Echte apparaten en echte winkels verschillen; precies daarom toont **Winkelstatus → Prestaties** de gemeten aantallen verzoeken en de gebruikelijke responstijd van jouw kassa over de laatste 24 uur, in plaats van prognoses. Het cijfer voor gegevensvolume is een ondergrens, omdat antwoorden zonder opgegeven grootte als nul meetellen.
+
+Voor afstemming aan de serverkant — hostingvereisten, HPOS, caching en het diagnosticeren van trage antwoorden — zie [Serverprestaties](/support/performance/server).

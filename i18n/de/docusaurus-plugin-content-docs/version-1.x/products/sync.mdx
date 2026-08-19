@@ -2,60 +2,79 @@
 title: Produktsynchronisation
 sidebar_label: "Herunterladen & Synchronisieren"
 sidebar_position: 1
-description: "Wie WCPOS Produkte aus WooCommerce herunterlädt und synchronisiert, einschließlich inkrementeller Synchronisation und lokaler Speicherung."
+description: "Wie WCPOS Produkte aus WooCommerce herunterlädt und synchronisiert, einschließlich Sync-Voreinstellungen, Abdeckung und der Aktualität des Katalogs."
 ---
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
 
-Einer der wesentlichen Aspekte des WCPOS-Systems (Point of Sale) ist der Ansatz zur Datenverwaltung. Es bietet eine effiziente Möglichkeit, große Mengen an Produktdaten zu verarbeiten. Diese Anleitung erläutert, wie Produkte in WCPOS heruntergeladen und synchronisiert werden.
+WCPOS hält auf jedem Gerät eine lokale Kopie Ihrer Produkte vor, damit sich der Katalog sofort durchblättern und durchsuchen lässt und auch offline nutzbar bleibt. Diese Anleitung erläutert, wie Produkte auf das Gerät gelangen und wie sie aktuell bleiben.
 
-## Lokale Speicherung von Produkten {#local-storage-of-products}
+:::info Geändert in v1.10.0
+Mit v1.10.0 wird eine neue Sync-Engine eingeführt. Wenn Ihr POS älter als v1.10.0 ist, lesen Sie unten [Was sich in v1.10.0 geändert hat](#what-changed-in-v1100).
+:::
 
-WCPOS ruft Produkte aus dem WooCommerce-Shop ab und speichert sie lokal auf dem Gerät. Dadurch muss ein einmal heruntergeladenes Produkt nicht erneut abgerufen werden. Bei fortlaufender Nutzung des POS werden nach und nach alle Produkte aus dem WooCommerce-Shop heruntergeladen und eine lokale Produktdatenbank erstellt.
+## Wie Produkte auf das Gerät gelangen {#how-products-arrive}
 
-## Stapelweiser Download von Produkten {#batch-downloading-of-products}
+- **Eine Katalog-Grundbefüllung läuft im Hintergrund.** Ab dem ersten Start lädt das POS Ihren Katalog nach einem Zeitplan in kleinen Stapeln herunter, ohne dass Sie etwas tun müssen. Sie können verkaufen, sobald die ersten Produkte angekommen sind — der Checkout wartet nicht auf einen vollständigen Download.
+- **Was Sie gerade ansehen, wird bei Bedarf heruntergeladen.** Beim Suchen, beim Filtern nach Kategorie oder beim Scannen eines Barcodes werden die passenden Produkte direkt geholt, falls sie noch nicht lokal vorliegen. Eine Suche zieht keine unbeteiligten Produkte mehr mit — sie holt genau das, wonach Sie gefragt haben.
+- **Aktualisierungen kommen über Änderungsprüfungen.** Sobald ein Produkt lokal vorliegt, lädt das POS es nicht erneut herunter, um zu sehen, ob es sich geändert hat. Es fragt ein schlankes Änderungsprotokoll ab (bei der Standard-Voreinstellung alle 60 Sekunden) und holt nur das, was sich tatsächlich geändert hat — ein Shop ohne Aktivität antwortet mit einer einzigen, nahezu kostenlosen Antwort „nichts geändert“.
 
-Bei den meisten Shops kann der Versuch, mehr als etwa 50 Produkte gleichzeitig herunterzuladen, zu hoher Serverlast, langsameren Antwortzeiten oder sogar Serverabstürzen führen. Um dies zu vermeiden, lädt WCPOS Produkte in kleinen Stapeln herunter, in der Regel etwa 50 Produkte auf einmal. Dieser Vorgang wird fortgesetzt, bis das gesamte Sortiment lokal gespeichert ist, sodass große Datenmengen verarbeitet werden können, ohne den Server übermäßig zu belasten.
+## Wie groß sind die Stapel? {#batch-size}
 
-## Verwendung der Produktsuche {#using-the-product-search}
+Standardmäßig fordert das POS **50 Produkte auf einmal** an. Das ist keine feste Konstante mehr — es ist einer von zwei Reglern, die über Ihre Sync-Voreinstellung unter **Shop-Zustand → Leistung** gesetzt werden:
 
-Eine effektive Methode, den stapelweisen Download von Produkten anzustoßen, ist die Verwendung der Produktsuchfunktion. Bei jeder Produktsuche ruft das POS-System einen weiteren Stapel von Produkten ab und speichert ihn. Diese Strategie hilft nicht nur dabei, nach und nach neue Produkte herunterzuladen, sondern verbessert auch die Geschwindigkeit und Effizienz der Suchfunktion, je mehr Produkte lokal gespeichert sind.
+| Voreinstellung | Prüfintervall | Datensätze pro Anfrage |
+| --- | --- | --- |
+| Eco | 5 min | 25 |
+| Ausgewogen (Standard) | 60 s | 50 |
+| Echtzeit | 10 s | 75 |
 
-## Zusammenfassung {#conclusion}
+Kleine Stapel gibt es zum Schutz Ihres Servers: Große Seiten kosten den Server echte Rechenzeit, und auf Shared Hosting können sie den Onlineshop verlangsamen oder Rate-Limits auslösen. Wählen Sie Eco für bescheidenes Hosting und Echtzeit für Geschäfte mit mehreren Kassen auf leistungsfähigem Hosting. Einzelheiten finden Sie unter [Shop-Zustand](/support/store-health#sync-presets).
 
-Es ist wichtig zu verstehen, dass nicht alle Produkte sofort im POS-System erscheinen – das ist völlig normal. Im Laufe der Zeit werden durch die Nutzung der Produktsuche und anderer POS-Funktionen alle Produkte heruntergeladen. Weitere Informationen zur Funktionsweise von WCPOS finden Sie unter [Architektur](/reference/architecture).
+## Den Download-Fortschritt prüfen {#checking-progress}
 
-WCPOS ist darauf ausgelegt, die Serverlast und die betriebliche Effizienz zu optimieren. Die schrittweise Produktdownload-Funktion sorgt für ein reibungsloses, effizientes und benutzerfreundliches Erlebnis bei der Verwaltung des Einzelhandels.
+Öffnen Sie **Shop-Zustand → Datenbank**, um pro Sammlung zu sehen, wie viele Datensätze auf diesem Gerät gegenüber Ihrem Server vorliegen — samt Abdeckungsbalken. Die Zahl *auf dem Server* ist ein echter, vom Server gemeldeter Wert; solange das POS ihn noch bestätigt, zeigt die Zeile *wird geprüft …* statt einer Schätzung.
+
+Ein teilweise gefüllter Produktbalken bedeutet lediglich, dass die Grundbefüllung noch nicht abgeschlossen ist; sie läuft im Hintergrund weiter. Wenn ein bestimmtes Produkt zu fehlen scheint, suchen Sie danach — dadurch wird es direkt geholt.
 
 :::tip
-Wenn anhaltende Synchronisierungsprobleme auftreten, die eine normale Synchronisierung nicht beheben kann, können Sie [alle lokalen Daten löschen](/support/troubleshooting/clear-local-data), um einen vollständigen Neudownload Ihres gesamten Shops zu erzwingen.
+Wenn eine Sammlung festzustecken scheint, verwenden Sie **Löschen & neu herunterladen** in ihrer Zeile unter Shop-Zustand → Datenbank, bevor Sie zum vollständigen Reset [alle lokalen Daten zurücksetzen](/support/troubleshooting/clear-local-data) greifen.
 :::
+
+## Was sich in v1.10.0 geändert hat {#what-changed-in-v1100}
+
+Frühere Versionen luden den Katalog *nach und nach durch die Nutzung* herunter: Jede Suche und jedes Scrollen zog einen weiteren Stapel Produkte, und alle 5 Minuten lief eine vollständige Abfrage. Dieses Modell ist abgelöst. In v1.10.0 gilt:
+
+- Der Katalog füllt sich über eine geplante Grundbefüllung im Hintergrund — Sie müssen weder suchen noch scrollen, damit Produkte heruntergeladen werden.
+- Eine Suche holt die dazu passenden Produkte, nicht einen beliebigen nächsten Stapel.
+- Änderungsprüfungen laufen im Intervall Ihrer gewählten Voreinstellung (standardmäßig 60 Sekunden) und nutzen bedingte Anfragen statt einer festen vollständigen Abfrage alle 5 Minuten.
+- Der Download-Fortschritt ist pro Sammlung unter **Shop-Zustand → Datenbank** sichtbar.
+
+Entwickler finden die vollständige Mechanik unter [So funktioniert die Sync-Engine](/reference/sync-engine).
 
 ## F.A.Q. {#faq}
 
 <Accordion>
-  <AccordionItem question="Wie bekomme ich mehr Produkte zum Laden?">
+  <AccordionItem question="Muss ich etwas tun, damit meine Produkte heruntergeladen werden?">
 
-  Die Produktsynchronisation im POS kann auf verschiedene Weise ausgelöst werden:
-
-  - Beim ersten Laden des POS.
-  - Bei jeder Produktsuche.
-  - Beim Anwenden eines Filters, zum Beispiel nach Kategorie oder Schlagwort.
-  - Beim Scrollen ans Ende der Produktliste.
-  - Durch manuelles Drücken der Synchronisierungsschaltfläche (kurzes Drücken zum Synchronisieren, **langes Drücken** für die Option „Löschen und aktualisieren“).
-  - Darüber hinaus synchronisiert das POS automatisch alle 5 Minuten.
-
-  Sobald alle Produkte heruntergeladen wurden, werden zukünftige Synchronisierungen nur die Produkte abrufen, die seit der letzten Synchronisierung aktualisiert wurden.
+  Nein. Die Katalog-Grundbefüllung lädt Ihre Produkte automatisch im Hintergrund herunter. Suchen oder Filtern holt bestimmte Produkte sofort, falls sie noch nicht lokal vorliegen, aber nicht das normale Durchblättern schließt den Download ab — das tut die Grundbefüllung im Hintergrund.
 
   </AccordionItem>
 
-  <AccordionItem question="Ich bin ans Ende gescrollt und es werden immer noch nicht alle Produkte angezeigt">
+  <AccordionItem question="Wie schnell erreichen Produktänderungen das POS?">
 
-  Es kann verschiedene Gründe geben, warum nicht alle Produkte angezeigt werden:
+  Bei der Standard-Voreinstellung Ausgewogen prüft das POS alle 60 Sekunden auf Änderungen (die Prüfungen sind leicht zufällig gestreut, damit mehrere Kassen den Server nicht gleichzeitig treffen). Es werden nur geänderte Produkte geholt. Wenn mehrere Kassen die Änderungen der anderen schneller sehen müssen, verwenden Sie die Voreinstellung Echtzeit.
 
-  - Das POS blendet nicht vorrätige Artikel standardmäßig aus. Diese Einstellung kann in den Produktanzeigeeinstellungen geändert werden, wenn nicht vorrätige Artikel angezeigt werden sollen.
-  - Die WooCommerce REST API ist nur mit den Standard-WooCommerce-Produkttypen kompatibel: Einfach, Variabel, Gruppiert und Extern. Bei Verwendung eines benutzerdefinierten Produkttyps werden diese möglicherweise nicht im POS angezeigt.
+  </AccordionItem>
+
+  <AccordionItem question="Ich sehe nicht alle meine Produkte im POS">
+
+  Dafür gibt es mehrere Möglichkeiten:
+
+  - Die Grundbefüllung im Hintergrund ist möglicherweise schlicht noch nicht abgeschlossen — prüfen Sie die Produktzeile unter **Shop-Zustand → Datenbank**.
+  - Das POS blendet nicht vorrätige Artikel standardmäßig aus. Diese Einstellung kann in den Produktanzeigeeinstellungen geändert werden.
+  - Die WooCommerce REST API unterstützt nur die Standard-Produkttypen (einfach, variabel, gruppiert, extern). Benutzerdefinierte Produkttypen werden möglicherweise nicht im POS angezeigt.
 
   </AccordionItem>
 </Accordion>

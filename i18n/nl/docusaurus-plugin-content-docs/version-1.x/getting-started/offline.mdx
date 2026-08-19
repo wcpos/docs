@@ -2,25 +2,26 @@
 title: Offline functionaliteit
 sidebar_label: Offline modus
 sidebar_position: 5
-description: Wat offline werkt in WCPOS, hoe de lokale database met WooCommerce synchroniseert en wat er gebeurt wanneer de verbinding wegvalt.
+description: "Wat offline werkt in WCPOS, hoe de lokale database met WooCommerce synchroniseert en wat er gebeurt wanneer de verbinding wegvalt."
 ---
 
 import Icon from '@site/src/components/Icon';
 
-WCPOS slaat je product- en klantgegevens lokaal op elk apparaat op met een database in de browser (IndexedDB). Dit betekent dat delen van de POS zonder internetverbinding werken, terwijl andere delen een verbinding nodig hebben.
+WCPOS slaat je product- en klantgegevens op in een lokale database op elk apparaat. Dit betekent dat delen van de POS zonder internetverbinding werken, terwijl andere delen een verbinding nodig hebben.
 
 ## Wat offline werkt {#what-works-offline}
 
-- **Producten bekijken** — zoeken, filteren en productgegevens bekijken vanuit gegevens in de cache
+- **Producten bekijken** — zoeken, filteren en productgegevens bekijken vanuit lokale gegevens
 - **Klanten bekijken** — klantnamen, e-mailadressen en adressen opzoeken
 - **Een winkelwagen samenstellen** — artikelen toevoegen, aantallen wijzigen, prijzen bewerken en POS-kortingen toepassen
+- **Kortingsbonnen toepassen** (Pro) — codes worden lokaal gevalideerd op basis van gesynchroniseerde kortingsbongegevens; de server valideert opnieuw zodra de bestelling uit de wachtrij aankomt
+- **Een verkoop afronden met een betaalmethode die offline werkt** — contante verkopen en extern verwerkte kaartverkopen worden lokaal opgeslagen en in de wachtrij gezet voor WooCommerce
 - **Barcodes scannen** — barcodes scannen om producten in de lokale database te vinden
 - **Rapporten bekijken** — het standaard (offline) rapporttype genereert rapporten op basis van lokaal opgeslagen bestellingen
 
 ## Waarvoor een verbinding nodig is {#what-requires-a-connection}
 
-- **Afrekenen voltooien** — het verwerken van de betaling en het aanmaken van de bestelling in WooCommerce vereist communicatie met de server
-- **Couponcodes toepassen** — couponvalidatie gebeurt op de server
+- **Afrekenhandelingen die van de server afhangen** — Web Checkout, geïntegreerde online- of terminalgateways en **Opslaan op server** hebben hun eigen diensten nodig
 - **Gegevens synchroniseren** — nieuwe producten, bijgewerkte prijzen of nieuwe klanten ophalen uit WooCommerce
 - **Inloggen** — eerste authenticatie vereist een verbinding met je WordPress-site
 - **Licentieactivering** — Pro-licentiecontroles moeten de WCPOS-licentieserver kunnen bereiken
@@ -28,15 +29,21 @@ WCPOS slaat je product- en klantgegevens lokaal op elk apparaat op met een datab
 
 ## Hoe de lokale database werkt {#how-the-local-database-works}
 
-Wanneer je WCPOS voor het eerst opent, begint het op de achtergrond je WooCommerce-producten en klanten te downloaden. Dit proces verloopt stapsgewijs — hoe meer je de POS gebruikt, hoe completer je lokale gegevens worden.
+Wanneer je WCPOS voor het eerst opent, wordt je productcatalogus op de achtergrond aangevuld en worden andere gegevens opgehaald terwijl je de POS gebruikt — je kunt beginnen met verkopen zodra de eerste producten op het apparaat staan. Vanaf dat moment haalt een wijzigingscontrole op de achtergrond (standaard elke 60 seconden, aan te passen in [Winkelstatus](/support/store-health)) alleen op wat er op de server is gewijzigd.
 
 De lokale database:
 
 - **Blijft behouden tussen sessies** — gegevens blijven bewaard na het herstarten van de browser en het opnieuw opstarten van het apparaat
-- **Is per apparaat** — elk apparaat beheert zijn eigen lokale kopie
-- **Blijft gesynchroniseerd** — WCPOS controleert periodiek op wijzigingen op de server en haalt updates op
+- **Is per apparaat (en per kassamedewerker)** — elk apparaat beheert zijn eigen lokale kopie; kassamedewerkers delen geen lokale gegevens
+- **Blijft gesynchroniseerd** — wijzigingscontroles op de achtergrond halen updates op; jouw wijzigingen komen lokaal in de wachtrij en worden naar de server verzonden
 
-Zie de referentie [Architectuur](/reference/architecture) voor meer technische details.
+In **Winkelstatus → Database** zie je precies wat er op het apparaat staat — en wat er nog verzonden moet worden. Zie [Hoe de synchronisatie-engine werkt](/reference/sync-engine) voor meer technische details.
+
+## Wijzigingen die je offline maakt, komen in de wachtrij {#offline-writes}
+
+Elke wijziging die je in de POS maakt — een verkoop, een productbewerking, een klantupdate — wordt eerst op het apparaat opgeslagen en in de wachtrij gezet om te verzenden. Terwijl je offline bent, wacht de wachtrij gewoon; er gaat niets verloren doordat de verbinding midden in een dienst wegvalt.
+
+Zodra de verbinding terug is, wordt de wachtrij automatisch geleegd. Als je server een wijziging ronduit weigert (zeldzaam — bijvoorbeeld een record dat de server als ongeldig beschouwt), blijft de POS die niet eindeloos stilzwijgend opnieuw proberen: de wijziging wordt geparkeerd in **Winkelstatus → Database** onder *"wijzigingen die je server nooit hebben bereikt"*, met de reden van de server en expliciete acties **Opnieuw verzenden** / **Verwerpen**. Zie [Winkelstatus](/support/store-health#refused-changes).
 
 ## Verbindingsindicator {#connectivity-indicator}
 
@@ -44,15 +51,15 @@ De POS-header toont een gekleurde stip die de verbindingsstatus aangeeft:
 
 - **Groen** — verbonden met de server, alle functies beschikbaar
 - **Geel** — onderbroken verbinding, sommige bewerkingen kunnen traag zijn
-- **Rood** — offline, beperkt tot het bekijken van gecachete gegevens
+- **Rood** — offline, beperkt tot lokale gegevens
 
 ## Wat gebeurt er bij verbindingsverlies {#what-happens-during-connectivity-loss}
 
 Als de internetverbinding wegvalt tijdens het gebruik van de POS:
 
-1. **Producten en klanten blijven doorzoekbaar** vanuit gecachete gegevens.
-2. **Winkelwagens kunnen verder worden samengesteld** en items kunnen worden bewerkt.
-3. **Afrekenen mislukt** als dit wordt geprobeerd — de POS moet je WooCommerce-server kunnen bereiken om de bestelling te verwerken.
+1. **Producten en klanten blijven doorzoekbaar** vanuit lokale gegevens.
+2. **Winkelwagens kunnen verder worden samengesteld** en artikelen kunnen worden bewerkt — elke wijziging komt lokaal in de wachtrij.
+3. **Je kunt afrekenen met een betaalmethode die offline werkt** — de verkoop wordt aan de uitgaande wachtrij toegevoegd. Betalingsgateways die van de server afhangen, blijven onbeschikbaar totdat hun diensten bereikbaar zijn.
 4. **Open bestellingen blijven bewaard** in de lokale database totdat de verbinding is hersteld.
 
 ## Wanneer de verbinding wordt hersteld {#when-connection-restores}
@@ -60,12 +67,12 @@ Als de internetverbinding wegvalt tijdens het gebruik van de POS:
 Zodra de verbinding is hersteld:
 
 - De verbindingsindicator wordt groen.
-- Je kunt doorgaan naar afrekenen en alle geparkeerde bestellingen voltooien.
+- **Wijzigingen in de wachtrij worden automatisch naar je server verzonden** — verkopen en bewerkingen die je offline hebt gedaan, worden zonder handmatige actie doorgestuurd.
+- Betalingsgateways die van de server afhangen en **Opslaan op server** worden weer beschikbaar.
 - Synchronisatie op de achtergrond wordt hervat en haalt alle product- of klantwijzigingen op die zijn gebeurd terwijl je offline was.
-- Er is geen handmatige actie nodig — WCPOS herstelt de verbinding automatisch.
 
 ## Tips voor onbetrouwbare verbindingen {#tips-for-unreliable-connections}
 
 - **Gebruik "Opslaan op server" voor belangrijke bestellingen** — hiermee wordt de bestelling direct naar WooCommerce verzonden, zodat deze niet verloren gaat als de lokale database van het apparaat wordt gewist.
-- **Synchroniseer regelmatig** — als je weet dat de verbinding wisselend is, synchroniseer dan je productcatalogus terwijl je een goede verbinding hebt, zodat lokale gegevens actueel zijn.
-- **Overweeg de native apps** — de desktop- en mobiele apps (indien beschikbaar) kunnen offline betrouwbaarder zijn dan de browserversie.
+- **Controleer de Winkelstatus na een storing** — de tegel *wijzigingen die nog verzonden moeten worden* in **Winkelstatus → Database** bevestigt wanneer alles je server heeft bereikt.
+- **Synchroniseer zolang je bereik hebt** — als je weet dat de verbinding wisselend zal zijn, laat de catalogus dan volledig aanvullen terwijl je een goede verbinding hebt.

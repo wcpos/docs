@@ -1,0 +1,90 @@
+---
+title: Shop-Zustand
+sidebar_label: Shop-Zustand
+sidebar_position: 2
+description: "Der Bereich Shop-Zustand in WCPOS: Sync-Voreinstellungen für die Leistung und gemessene Serverlast, Download-Abdeckung pro Sammlung, Wiederherstellung abgelehnter Änderungen und das Aktivitätsprotokoll."
+---
+
+:::info Neu in v1.10.0
+Der Shop-Zustand wird mit **WCPOS v1.10.0** eingeführt. Er ersetzt den eigenständigen Protokollbildschirm und ergänzt ihn um Live-Einblicke in die Synchronisierung, die Abdeckung der lokalen Daten und die Serverlast.
+:::
+
+Der **Shop-Zustand** ist das Dashboard des POS für alles, was zwischen Ihrem Gerät und Ihrem WooCommerce-Shop passiert. Öffnen Sie ihn über das Navigationsmenü (das Herzschlagsymbol). Er hat drei Tabs: **Leistung**, **Datenbank** und **Protokolle**.
+
+## Leistung {#performance}
+
+Der Tab Leistung beantwortet die Frage „Was kostet das POS meinen Server, und läuft die Synchronisierung gesund?“
+
+- **Statuszeile** — `✓ Normal` oder `⚠ Aufmerksamkeit erforderlich`, basierend auf dem aktuellen Zustand der Engine (ein Aussetzer, von dem sie sich bereits erholt hat, mahnt Sie nicht einen ganzen Tag lang).
+- **Gemessene Aktivität** — gestellte Anfragen und typische Antwortzeit der letzten 24 Stunden sind Messwerte dieser Kasse, keine Schätzungen. Das übertragene Datenvolumen ist eine Untergrenze, weil Antworten ohne angegebene Größe mit null einfließen.
+- **Verfügbarkeitsleiste** — eine Zelle pro Stunde für die letzten 24 Stunden. Grün bedeutet, dass in dieser Stunde alle Anfragen fehlerfrei abgeschlossen wurden; Gelb bedeutet, dass mindestens eine Anfrage fehlgeschlagen ist (schon eine einzige — es gibt keinen Schwellenwert); leer bedeutet, dass die App nicht lief.
+- **Countdown bis zur nächsten Prüfung** — wann die nächste Änderungsprüfung ansteht. Auf einer untätigen Kasse kann er berechtigterweise länger sein als das eingestellte Intervall, denn Prüfungen werden gestreut und verlangsamen sich nach 10 Minuten Leerlauf. Ein längerer Countdown auf einer ruhigen Kasse ist normal und keine stehen gebliebene Synchronisierung.
+
+### Sync-Voreinstellungen {#sync-presets}
+
+Drei Voreinstellungskarten legen über zwei Regler fest, wie eifrig dieses Gerät synchronisiert — wie oft das POS auf Änderungen prüft und wie viele Datensätze es pro Anfrage anfordert:
+
+| Voreinstellung | Prüfintervall | Datensätze pro Anfrage |
+| --- | --- | --- |
+| **Eco** | 5 min | 25 |
+| **Ausgewogen** (Standard) | 60 s | 50 |
+| **Echtzeit** | 10 s | 75 |
+
+Wählen Sie **Eco** für Shared Hosting oder günstige Tarife und **Echtzeit**, wenn mehrere Kassen die Änderungen der anderen schnell sehen müssen und der Server das verkraftet. Die Regler unter **Benutzerdefiniert** öffnen den vollen Bereich (5 Sekunden–5 Minuten, 10–100 Datensätze).
+
+Zwei Dinge sollten Sie wissen:
+
+- **Die Einstellungen gelten pro Gerät.** Eine Kasse anzupassen lässt alle anderen Geräte unverändert — wiederholen Sie die Änderung an jeder Kasse, die Sie anpassen möchten.
+- Der Wert *~N Anfragen pro Tag* neben dem Regler ist eine nominelle Prüfrate, die aus dem eingestellten Intervall abgeleitet wird, keine Obergrenze und keine Vorhersage. Die Streuung kann den tatsächlichen Wert in beide Richtungen verschieben; ein `304` ohne Änderungen ist günstig, zählt aber trotzdem als Anfrage. Die Verlangsamung im Leerlauf senkt den Wert nur bei Voreinstellungen, die schneller als ihre 60-Sekunden-Untergrenze sind, und verlangsamt Ausgewogen daher nicht weiter.
+
+Änderungen greifen sofort; ein Neustart ist nicht nötig. Die Technik hinter diesen Zahlen finden Sie unter [Sync-Leistung](/reference/sync-performance).
+
+## Datenbank {#database}
+
+Der Tab Datenbank beantwortet die Frage „Was liegt auf diesem Gerät, und ist alles bei meinem Server angekommen?“
+
+Ganz oben stehen vier Kacheln: der Meilenstein **Verkaufsbereit**, Datensätze auf diesem Gerät, belegter Speicher und Änderungen, die auf den Versand warten.
+
+:::tip Verkaufsbereit ist ein Meilenstein, keine Vollständigkeitsschwelle
+Er springt um, sobald das erste Produkt auf dem Gerät liegt. Offline zu sein blockiert ihn nicht — eine Kasse mit Produkten auf dem Gerät ist offline verkaufsbereit. Genau darum geht es bei einem Local-First-POS.
+:::
+
+### Abdeckungstabelle {#coverage}
+
+Jede synchronisierte Sammlung erhält eine Zeile: **auf dem Gerät**, **auf dem Server** und einen Abdeckungsbalken. Die Zahlen folgen einer strengen Ehrlichkeitsregel — die Gesamtzahl *auf dem Server* ist ein echter, vom Server gemeldeter Wert und niemals geraten:
+
+- ***wird geprüft …*** — dem POS liegt noch keine frische Server-Gesamtzahl vor. Bleibt eine Zeile länger als etwa 15 Minuten so, schlägt möglicherweise die REST-Route dieser Sammlung fehl; prüfen Sie die [Protokolle](#logs).
+- **Ein teilweise gefüllter Balken ist oft normal.** Kunden werden nach und nach im Leerlauf heruntergeladen, Kategorien und Gutscheine beim ersten Öffnen, und der Balken für **Bestellungen** misst gegen Ihre gesamte Bestellhistorie, während die Kasse bewusst nur offene und aktuelle Bestellungen vorhält — Bestellungen werden auf einer völlig gesunden Kasse also als teilweise abgedeckt angezeigt.
+- **Nach einem „Löschen & neu herunterladen“ ist eine leere oder niedrige Zahl das beabsichtigte Ergebnis und keine stehen gebliebene Synchronisierung** — Sammlungen, die bei Bedarf heruntergeladen werden, füllen sich bei der Nutzung wieder auf, und der Text jeder Zeile erklärt, wie sich die jeweilige Sammlung wieder füllt.
+
+### Änderungen, die Ihren Server nie erreicht haben {#refused-changes}
+
+Wenn Ihr Server eine Änderung dauerhaft ablehnt (zum Beispiel einen Verkauf, der angelegt wurde, während die Website die Anfrage als ungültig zurückwies), wiederholt das POS sie **nicht** stillschweigend endlos — und es verbirgt sie auch nicht. Die Änderung wird geparkt und hier mit der Begründung des Servers, dem Zeitpunkt und zwei Aktionen aufgeführt:
+
+- **Erneut senden** — baut die Anfrage aus dem Datensatz in seinem *jetzigen* Zustand neu auf und stellt sie erneut in die Warteschlange. Wird dasselbe Feld erneut abgelehnt, steigt die Zahl der Versuche sichtbar an, statt Erfolg vorzutäuschen.
+- **Verwerfen** — verwirft die Änderung. Der Bestätigungsdialog erklärt Ihnen genau, was das Verwerfen für diesen Datensatz bedeutet (auch dann, wenn der Datensatz immer nur auf diesem Gerät existiert hat und das Verwerfen ihn löscht).
+
+Die Wiederherstellung ist immer eine bewusste, sichtbare Handlung — hier geschieht nichts automatisch.
+
+### Löschen & neu herunterladen {#clear-and-redownload}
+
+Jede Sammlungszeile bietet **Löschen & neu herunterladen** an: Damit wird die lokale Kopie dieser Sammlung entfernt und erneut geholt. Die Bestätigung nennt, wie viele Datensätze und wie viel Speicher ungefähr entfernt werden und was sicher auf dem Server bleibt. Ziehen Sie das dem Löschen aller lokalen Daten vor — es ist gezielt und meldet Sie nicht ab. [Alle lokalen Daten zurücksetzen](/support/troubleshooting/clear-local-data) bleibt der vollständige Reset.
+
+## Protokolle {#logs}
+
+Der Tab Protokolle ist ein Verzeichnis der Sync-Aktivität auf diesem Gerät: **Zeit, Ebene, Ereignis, Dauer, Status** pro Zeile, 30 Tage lang aufbewahrt.
+
+- **Vordefinierte Filter** — Alle / Aktionen / Fehler / Sync, dazu ein Schalter **Ausführliche Diagnose**, der 24 Stunden lang zusätzliche Details erfasst und sich danach selbst abschaltet.
+- **Zeilendetails** — Fehler und Warnungen lassen sich aufklappen und zeigen dann eine Begründung in verständlicher Sprache, eine Zeile zur Datensicherheit, einen Vorschlag für den nächsten Schritt und einen Hilfelink zum [Fehlercode](/error-codes). Jede Detailansicht enthält einen kopierbaren Ereigniscode — nennen Sie ihn, wenn Sie sich an den Support wenden.
+- Protokolleinträge werden bei der Anzeige übersetzt, sodass eine vor Monaten geschriebene Zeile in der Sprache erscheint, in der die Kasse heute läuft; der Ereigniscode ist die stabile Kennung.
+
+:::note Zwei Tabs, zwei Zählungen
+Der Tab Protokolle leitet seine Zahl feststeckender Datensätze allein aus den Protokolleinträgen ab; der Tab Datenbank berücksichtigt zusätzlich geparkte, abgelehnte Änderungen. Wenn beide voneinander abweichen, ist **die Datenbank maßgeblich** dafür, was Ihren Server nicht erreicht hat.
+:::
+
+## Verwandte Seiten {#related}
+
+- [So funktioniert die Sync-Engine](/reference/sync-engine) — Details auf Entwicklerebene zu Spuren, Änderungserkennung und der Schreib-Warteschlange
+- [Sync-Leistung](/reference/sync-performance) — die Anfrageobergrenzen und Zurückschaltregeln, die Ihren Server schützen
+- [Server-Performance](/support/performance/server) — WordPress-/WooCommerce-Hosting optimieren
+- [Alle lokalen Daten zurücksetzen](/support/troubleshooting/clear-local-data) — der vollständige lokale Reset

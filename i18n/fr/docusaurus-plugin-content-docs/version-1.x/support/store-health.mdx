@@ -1,0 +1,90 @@
+---
+title: État de la boutique
+sidebar_label: État de la boutique
+sidebar_position: 2
+description: "La section État de la boutique dans WCPOS : préréglages de performance de synchronisation et charge serveur mesurée, couverture de téléchargement par collection, récupération des modifications refusées et journal d’activité."
+---
+
+:::info Nouveauté de la v1.10.0
+État de la boutique est introduit dans **WCPOS v1.10.0**. Il remplace l’écran Journaux autonome et ajoute une visibilité en direct sur la synchronisation, la couverture des données locales et la charge du serveur.
+:::
+
+**État de la boutique** est le tableau de bord du POS pour tout ce qui se passe entre votre appareil et votre boutique WooCommerce. Ouvrez-le depuis le tiroir de navigation (l’icône en forme de cœur avec pouls). Il comporte trois onglets : **Performance**, **Base de données** et **Journaux**.
+
+## Performance {#performance}
+
+L’onglet Performance répond à la question « qu’est-ce que le POS coûte à mon serveur, et la synchronisation est-elle saine ? »
+
+- **Ligne d’état** — `✓ Normal` ou `⚠ Attention requise`, selon l’état actuel du moteur (un incident déjà résolu ne vous sermonnera pas pendant une journée entière).
+- **Activité mesurée** — le nombre de requêtes effectuées et le temps de réponse typique sur les dernières 24 heures sont des mesures issues de cette caisse, pas des estimations. Le volume de données transférées est une borne inférieure, car les réponses sans taille déclarée comptent pour zéro.
+- **Bandeau de disponibilité** — une case par heure sur les dernières 24 heures. Le vert signifie que les requêtes ont abouti sans erreur pendant cette heure ; l’orange signifie qu’au moins une requête a échoué (ne serait-ce qu’une seule — il n’y a pas de seuil) ; une case vide signifie que l’application ne fonctionnait pas.
+- **Compte à rebours du prochain contrôle** — l’échéance du prochain contrôle des changements. Sur une caisse inactive, il peut légitimement afficher une durée plus longue que l’intervalle configuré, car les contrôles sont décalés et ralentissent après 10 minutes d’inactivité. Un compte à rebours plus long sur une caisse calme est normal, ce n’est pas une synchronisation bloquée.
+
+### Préréglages de synchronisation {#sync-presets}
+
+Trois cartes de préréglage déterminent l’empressement de cet appareil à se synchroniser, via deux curseurs — la fréquence à laquelle le POS vérifie les changements, et le nombre d’enregistrements qu’il demande à la fois :
+
+| Préréglage | Intervalle de contrôle | Enregistrements par requête |
+| --- | --- | --- |
+| **Éco** | 5 min | 25 |
+| **Équilibré** (par défaut) | 60 s | 50 |
+| **Temps réel** | 10 s | 75 |
+
+Choisissez **Éco** pour un hébergement mutualisé ou économique, **Temps réel** lorsque plusieurs caisses doivent voir rapidement les modifications des autres et que le serveur peut se le permettre. Les curseurs **Personnalisé** ouvrent la plage complète (de 5 secondes à 5 minutes, de 10 à 100 enregistrements).
+
+Deux choses à savoir :
+
+- **Les réglages sont propres à chaque appareil.** Régler une caisse ne change rien sur les autres appareils — répétez la modification sur chaque caisse que vous voulez ajuster.
+- Le chiffre *~N requêtes par jour* affiché à côté du curseur est une fréquence de contrôle nominale déduite de l’intervalle configuré, ni un plafond ni une prévision. Le décalage aléatoire peut faire varier le décompte réel dans un sens comme dans l’autre ; un `304` sans changement coûte peu, mais compte quand même comme une requête. La décroissance en cas d’inactivité ne réduit le décompte que pour les préréglages plus rapides que son plancher de 60 secondes, elle ne ralentit donc pas davantage le préréglage Équilibré.
+
+Les modifications prennent effet immédiatement ; aucun redémarrage n’est nécessaire. Pour l’ingénierie derrière ces chiffres, voir [Performances de synchronisation](/reference/sync-performance).
+
+## Base de données {#database}
+
+L’onglet Base de données répond à la question « qu’y a-t-il sur cet appareil, et tout est-il bien arrivé sur mon serveur ? »
+
+En haut, quatre tuiles : le jalon **Prêt à vendre**, les enregistrements présents sur cet appareil, le stockage utilisé et les modifications en attente d’envoi.
+
+:::tip Prêt à vendre est un jalon, pas une condition de téléchargement complet
+Il bascule dès que le premier produit est présent sur l’appareil. Être hors ligne ne l’empêche pas — une caisse qui a des produits sur l’appareil est prête à vendre hors ligne. C’est tout l’intérêt d’un POS local d’abord.
+:::
+
+### Tableau de couverture {#coverage}
+
+Chaque collection synchronisée dispose d’une ligne : **sur l’appareil**, **sur le serveur** et une barre de couverture. Les chiffres obéissent à une règle d’honnêteté stricte — le total *sur le serveur* est un chiffre réellement communiqué par le serveur, jamais une estimation :
+
+- ***vérification…*** — le POS ne dispose pas encore d’un total serveur à jour. Si une ligne reste ainsi plus d’une quinzaine de minutes, la route REST de cette collection est peut-être en échec ; consultez les [Journaux](#logs).
+- **Une barre partielle est souvent normale.** Les clients se téléchargent progressivement pendant les périodes d’inactivité, les catégories et les codes promo se téléchargent à leur première ouverture, et la barre **commandes** se mesure par rapport à l’intégralité de votre historique de commandes alors que la caisse ne conserve délibérément que les commandes ouvertes et récentes — les commandes apparaissent donc comme partielles sur une caisse parfaitement saine.
+- **Après un « Effacer et retélécharger », un décompte vide ou faible est le résultat prévu, pas une synchronisation bloquée** — les collections qui se téléchargent à la demande se remplissent à l’usage, et le texte de chaque ligne indique comment cette collection se remplit.
+
+### Modifications qui n’ont jamais atteint votre serveur {#refused-changes}
+
+Si votre serveur refuse définitivement une modification (par exemple une vente créée alors que le site rejetait la requête comme invalide), le POS ne la réessaie **pas** indéfiniment en silence, et il ne la masque pas non plus. La modification est mise de côté et listée ici avec le motif fourni par le serveur, le moment où cela s’est produit et deux actions :
+
+- **Renvoyer** — reconstruit la requête à partir de l’enregistrement dans son état *actuel* et la remet en file. Si le même champ est de nouveau refusé, le nombre de tentatives augmente de façon visible plutôt que de faire croire à une réussite.
+- **Abandonner** — supprime la modification. La boîte de dialogue de confirmation vous indique exactement ce que l’abandon signifie pour cet enregistrement (y compris lorsque l’enregistrement n’a jamais existé ailleurs que sur cet appareil, auquel cas l’abandonner le supprime).
+
+La récupération est toujours une action délibérée et visible — rien ici n’est automatique.
+
+### Effacer et retélécharger {#clear-and-redownload}
+
+Chaque ligne de collection propose **Effacer et retélécharger**, qui supprime la copie locale de cette collection et la récupère à nouveau. La confirmation indique combien d’enregistrements et approximativement quel volume de stockage seront supprimés, ainsi que ce qui reste en sécurité sur le serveur. Préférez cette option à l’effacement de toutes les données locales — elle est ciblée et ne vous déconnecte pas. [Effacer toutes les données locales](/support/troubleshooting/clear-local-data) reste la réinitialisation complète.
+
+## Journaux {#logs}
+
+L’onglet Journaux est un registre de l’activité de synchronisation sur cet appareil : **heure, niveau, événement, durée, statut** par ligne, conservé 30 jours.
+
+- **Filtres prédéfinis** — Tout / Actions / Erreurs / Synchronisation, ainsi qu’un commutateur **Diagnostics détaillés** qui capture des informations supplémentaires pendant 24 heures puis se désactive de lui-même.
+- **Détails d’une ligne** — les erreurs et avertissements se déplient pour afficher un motif en langage clair, une ligne sur la sécurité des données, une suggestion d’action et un lien d’aide vers le [code d’erreur](/error-codes). Chaque vue détaillée comporte un code d’événement copiable — citez-le lorsque vous contactez l’assistance.
+- Les entrées de journal sont traduites au moment de l’affichage : une ligne écrite il y a des mois se lit donc dans la langue utilisée aujourd’hui par la caisse ; le code d’événement est l’identifiant stable.
+
+:::note Deux onglets, deux décomptes
+L’onglet Journaux déduit son décompte d’enregistrements bloqués des seules entrées de journal ; l’onglet Base de données inclut également les modifications refusées mises de côté. En cas de divergence, **c’est Base de données qui fait autorité** sur ce qui n’a pas atteint votre serveur.
+:::
+
+## Pages associées {#related}
+
+- [Fonctionnement du moteur de synchronisation](/reference/sync-engine) — détail au niveau développeur sur les voies, la détection des changements et la file d’écriture
+- [Performances de synchronisation](/reference/sync-performance) — les plafonds de requêtes et les règles de ralentissement qui protègent votre serveur
+- [Performances du serveur](/support/performance/server) — optimiser l’hébergement WordPress/WooCommerce
+- [Effacer toutes les données locales](/support/troubleshooting/clear-local-data) — la réinitialisation locale complète

@@ -55,6 +55,29 @@ Elige el proveedor que coincida con tu hardware.
 | **Epson Server Direct Print** | Impresora Epson ePOS con Server Direct Print | La impresora sondea a WCPOS | Solo térmica |
 | **PrintNode** | Cualquier impresora conectada al sistema operativo + cliente PrintNode | WCPOS envía un PDF a PrintNode | Cualquier plantilla |
 
+## WCPOS Cloud Print — el servicio de retransmisión {#relay}
+
+Cuando configuras una impresora **por sondeo** (Star CloudPRNT o Epson Server Direct Print), la URL de sondeo que te da WCPOS apunta a **cloudprint.wcpos.com**, no a tu propio sitio. Eso es **WCPOS Cloud Print**: un servicio de retransmisión gratuito operado por WCPOS que se sitúa entre tu impresora y tu tienda.
+
+**Por qué existe.** Las impresoras de recibos ejecutan un firmware pequeño y que se actualiza poco. Muchas no pueden completar una conexión segura con una tienda alojada en infraestructura moderna: las versiones más nuevas de TLS, las autoridades de certificación recientes o un CDN/cortafuegos delante del sitio (Cloudflare es un culpable habitual) rechazarán a la impresora, o serán rechazados por ella. El síntoma es una impresora que se queda en **En espera** para siempre aunque todos los ajustes sean correctos. El servicio de retransmisión ofrece a las impresoras una conexión que el firmware antiguo siempre puede negociar y hace llegar su tráfico a tu tienda.
+
+**Cómo funciona:**
+
+- Tu sitio se conecta al servicio de retransmisión **automáticamente** la primera vez que abres los ajustes de Cloud Print: no hay nada que activar ni configurar.
+- La impresora sondea `cloudprint.wcpos.com`; el servicio reenvía la solicitud a tu tienda y devuelve la respuesta de tu tienda. Los trabajos de impresión pasan **a través** del servicio: nunca se almacenan en él.
+- El servicio absorbe la mayor parte del sondeo en reposo, de modo que una impresora inactiva le cuesta a tu sitio aproximadamente una solicitud por minuto en lugar de una cada pocos segundos.
+- Si tu sitio no puede conectarse al servicio (por ejemplo, un sitio de desarrollo local al que el servicio no puede llegar), WCPOS recurre automáticamente a las URL directas al sitio.
+
+:::note ¿Prefieres una conexión directa?
+La pantalla de configuración de cada impresora tiene un apartado **Avanzado** que muestra la URL directa al sitio. Úsala si sabes que tu alojamiento es compatible con impresoras, o si prefieres no enrutar los trabajos a través del servicio de retransmisión. Los desarrolladores pueden desactivar el servicio en todo el sitio con una sola línea:
+
+```php
+add_filter( 'woocommerce_pos_cloud_print_relay_enabled', '__return_false' );
+```
+:::
+
+**Qué puede ver el servicio de retransmisión.** Al conectar se comparte la URL de tu sitio con wcpos.com, y los trabajos de impresión —el contenido de los recibos, que incluye detalles del pedido— transitan por el servicio de camino a la impresora. No se conserva nada. Los detalles completos están en la [política de privacidad](https://wcpos.com/privacy).
+
 ## Configurar una impresora en la nube {#setup}
 
 Las impresoras en la nube se configuran una vez en WP Admin y se comparten entre todos los dispositivos, a diferencia de las impresoras locales, que se almacenan por dispositivo.
@@ -181,6 +204,16 @@ Cómo se produce el recibo depende de la impresora:
 - **Star CloudPRNT** — el recibo se renderiza **en el dispositivo** y se entrega a la impresora a través de CloudPRNT.
 - **Star Online, Epson y PrintNode** — el recibo se renderiza **en el servidor** a partir del pedido y la plantilla seleccionados, luego se entrega a la impresora o al servicio de retransmisión alojado.
 
+## La cola de impresión {#print-queue}
+
+Cada trabajo destinado a una impresora en la nube permanece en una cola en tu sitio hasta que la impresora lo recoge (impresoras por sondeo) o el proveedor confirma la entrega. **WP Admin > POS > Settings > Cloud Print** muestra la cola debajo de tus impresoras:
+
+- **Filtra** por impresora o por estado — **En espera**, **Imprimiendo**, **Impreso**, **Fallido**, **Cancelado** — con recuentos en vivo.
+- Cada fila muestra cuánto tiempo lleva el recibo **en espera** y enlaza con el **pedido** de WooCommerce que imprime.
+- **Cancela** trabajos en espera de uno en uno, en bloque o los de toda una impresora a la vez. **Reintentar** vuelve a poner en cola un trabajo fallido.
+
+Si una impresora tiene trabajos en espera pero no ha recogido nada durante más de unos minutos, un **banner de advertencia** nombra la impresora, indica cuántos recibos se han acumulado y desde hace cuánto, y ofrece **Cancelar todo**: nunca puede acumularse un atasco en silencio mientras una impresora está desenchufada.
+
 ## Impresión de prueba y estado de conexión {#status}
 
 Cada tarjeta de impresora tiene un botón de **Impresión de prueba** que envía un breve diagnóstico para que puedas confirmar que la impresora es alcanzable y que el formato es correcto antes de depender de ella para pedidos reales.
@@ -207,6 +240,19 @@ La tarjeta también muestra un estado en vivo:
   - La **URL de sondeo y el token** en el firmware de la impresora coinciden exactamente con lo que WCPOS generó. Un solo carácter incorrecto significa que cada sondeo es rechazado — regenera el token en WCPOS y vuelve a ingresarlo si no estás seguro.
   - La impresora puede realmente **alcanzar tu sitio** por internet (DNS correcto, sin firewall que bloquee HTTPS saliente, certificado SSL válido en tu tienda).
   - El **sondeo está habilitado** en la configuración de CloudPRNT / Server Direct Print de la impresora, con un intervalo razonable. Reinicia la impresora después de cambiar sus ajustes.
+  - Si introdujiste la **URL directa al sitio** (del apartado Avanzado) y la impresora sigue sin conectarse, cambia a la URL estándar de **cloudprint.wcpos.com**: muchas impresoras no pueden negociar una conexión segura con el alojamiento moderno, que es [exactamente lo que resuelve el servicio de retransmisión](#relay).
+
+  </AccordionItem>
+
+  <AccordionItem question="¿Por qué la URL de mi impresora apunta a cloudprint.wcpos.com?">
+
+  Es [WCPOS Cloud Print](#relay), el servicio de retransmisión gratuito que ofrece a las impresoras una conexión que su firmware siempre puede negociar y hace llegar sus trabajos de impresión a tu tienda. Está activo automáticamente, los trabajos nunca se almacenan en él y la URL directa al sitio siempre está disponible en el apartado **Avanzado** de la impresora, si lo prefieres.
+
+  </AccordionItem>
+
+  <AccordionItem question="Configuré mi impresora antes de que existiera el servicio de retransmisión, ¿tengo que cambiar algo?">
+
+  No: las URL ya guardadas en la configuración de una impresora siguen funcionando. Ahora bien, si esa impresora está **atascada en En espera**, es probable que su firmware sea de los que no pueden conectarse directamente a tu alojamiento: abre **Setup &amp; token** en la tarjeta de la impresora, regenera el token e introduce la nueva URL de **cloudprint.wcpos.com** y el token en la configuración de la impresora.
 
   </AccordionItem>
 

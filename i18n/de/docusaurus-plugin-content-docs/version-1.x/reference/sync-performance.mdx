@@ -1,0 +1,88 @@
+---
+title: Sync-Leistung und Rücksicht auf den Server
+sidebar_label: Sync-Leistung
+sidebar_position: 4
+description: "Wie die WCPOS-Sync-Engine Ihren Server schützt: feste Anfrageobergrenzen, Zurückschalten bei Last, Zusagen zur Reaktionsschnelligkeit und die gemessenen Zahlen dahinter."
+---
+
+:::info Neu in v1.10.0
+Diese Seite beschreibt die Sync-Engine, die mit **WCPOS v1.10.0** eingeführt wurde. Wie die Engine technisch funktioniert, erfahren Sie zunächst unter [So funktioniert die Sync-Engine](/reference/sync-engine).
+:::
+
+Die meisten WCPOS-Shops laufen auf Shared Hosting mit PHP: eine Handvoll PHP-Worker, ein vollständiger WordPress-Start bei jeder REST-Anfrage, Sicherheits-Plugins, die Anfrageschübe drosseln. Anfragen, die der Client als kostenlos behandelt, beeinträchtigen den Onlineshop, lösen Rate-Limits aus und konkurrieren mit dem Verkehr des Kassierers selbst — multipliziert mit jeder Kasse und jedem Browser-Tab, den Sie betreiben.
+
+Die Sync-Engine aus v1.10.0 behandelt das als Design-Vorgabe und nicht als Nachgedanken: **Das Hosting des Händlers zu schützen, gehört zur Aufgabe der Sync-Engine.** Diese Seite erklärt die Regeln, denen die Engine folgt, und die Messungen dahinter.
+
+## Die vier festen Regeln {#the-four-rules}
+
+Jedes planmäßige Sync-Verhalten der Engine unterliegt vier Invarianten:
+
+1. **Die Kosten skalieren mit dem, was sich geändert hat, nie mit der Kataloggröße.** Vor jedem Massenabruf steht immer eine günstige Kurzfassung oder eine abkürzende Prüfung. Ein Shop mit 50.000 Produkten, an dem sich nichts geändert hat, kostet ungefähr genauso viel Synchronisierungsaufwand wie ein Shop mit 500 Produkten, an dem sich nichts geändert hat.
+2. **Keine unbegrenzte Auffächerung.** Jede Hintergrundspur deklariert eine Obergrenze an Anfragen pro Durchlauf, die durch automatisierte Tests durchgesetzt wird. Größere Aufgaben laufen als begrenzte Stapel mit fortsetzbaren Cursorn — ein Durchgang verteilt sich über seinen Zeitplan, statt in einem Schub loszubrechen.
+3. **Wartung kommt dem Kassierer nie in die Quere.** Die Anfragen, die eine Kasse verkaufsbereit machen, laufen zuerst; Integritätsprüfungen und Hintergrund-Vorbefüllungen laufen danach, in der Leerlaufzeit.
+4. **Unter Last schaltet zuerst die Wartung zurück.** Wenn Ihr Server Not signalisiert, verlangsamt die Engine ihre eigene Hintergrundarbeit, bevor irgendetwas angetastet wird, das den Kassierer betrifft.
+
+## Was die Synchronisierung Ihren Server kostet {#request-budgets}
+
+Die Kosten im Dauerbetrieb bestimmt die **Sync-Voreinstellung**, die pro Gerät unter **Shop-Zustand → Leistung** gewählt wird:
+
+| Voreinstellung | Prüfintervall | Datensätze pro Anfrage | Nominelle Prüfungen pro Tag |
+| --- | --- | --- | --- |
+| Eco | 5 min | 25 | 288 |
+| Ausgewogen (Standard) | 60 s | 50 | 1.440 |
+| Echtzeit | 10 s | 75 | 8.640 |
+
+Beide Regler sind wichtig, und was einen Shared Host tatsächlich kostet, ist meist das Seitengewicht — eine schwere Datensatzseite braucht echte Serverzeit, und das Intervall vervielfacht sie lediglich. Keine Voreinstellung liefert die maximale Seite mit 100 Datensätzen aus; die ist nur über die benutzerdefinierten Regler erreichbar (Intervall 5 s–5 min, 10–100 Datensätze).
+
+Zusätzlich zur Voreinstellung gilt:
+
+- **Eine Prüfung im Leerlauf ist günstig.** Die Engine sendet bedingte Anfragen, sodass eine Prüfung ohne Änderungen mit einem einzigen `304 Not Modified` ohne Inhalt beantwortet wird — weiterhin eine Anfrage, aber ohne Nutzlast und mit minimaler Serverarbeit.
+- **Prüfungen werden um ±20 % gestreut**, sodass eine Flotte von Kassen ihre Anfragen verteilt, statt sich zu Schüben zu synchronisieren.
+- **Untätige Kassen verlangsamen sich** nach 10 Minuten ohne Interaktion auf einen langsameren Takt und schnellen bei jeder Aktivität sofort zurück, auch bei Barcode-Scans.
+- **Die Hintergrundwartung ist gedeckelt.** Eine Integritätsprüfung ohne Abweichung kostet höchstens ein paar günstige Aggregatseiten und **null** Detailabrufe — Blöcke, die nachweislich mit dem Server übereinstimmen, werden vollständig übersprungen. Wird eine Abweichung gefunden, sind Detailanalysen auf **zwei pro Durchlauf** gedeckelt und werden über einen gespeicherten Cursor fortgesetzt, statt in einem Schub zu laufen. Die vollständige Löschprüfung ist auf **11 Anfragen pro Durchlauf** begrenzt und die Kurzfassungs-Vorbefüllung auf 5 Blöcke pro Durchlauf. Diese Obergrenzen sind im Code deklariert und werden in der CI durchgesetzt.
+
+:::note Der Wert „Anfragen pro Tag“ in der App ist nominell
+Der Shop-Zustand leitet seine Schätzung *~N Anfragen pro Tag* aus dem eingestellten Intervall ab. Behandeln Sie sie als nominelle Prüfrate, nicht als Obergrenze oder Prognose: Die Streuung von ±20 % verschiebt den tatsächlichen Wert in beide Richtungen, und auch ein `304` zählt als Anfrage. Die Verlangsamung im Leerlauf senkt den Wert nur bei Voreinstellungen, die schneller als ihre 60-Sekunden-Untergrenze sind; die Standardvoreinstellung Ausgewogen verlangsamt sie nicht weiter.
+:::
+
+## Zurückschalten, wenn Ihr Server ins Straucheln gerät {#server-pressure}
+
+Jede Antwort, die die Engine erhält, fließt in eine Lastüberwachung pro Shop ein. Sie reagiert auf:
+
+- ein HTTP-`429` (sofort),
+- wiederholte `5xx`-Fehler oder Übertragungsfehler (drei innerhalb einer laufenden Minute),
+- anhaltende Langsamkeit (mittlere Antwortzeit über 2 Sekunden),
+- einen `Retry-After`-Header, der zur harten Untergrenze für die nächste Prüfung wird.
+
+Löst eines davon aus, **verdoppelt die Engine ihr Prüfintervall** in Einzelschritten, und die Wartungsspuren lassen ihre Durchläufe komplett ausfallen. Vom Kassierer ausgelöste Anfragen — Suchen, Barcode-Abfragen, Kassiervorgang — werden nie gedrosselt; es geht darum, die aufschiebbare Last abzuwerfen, nicht darum, den Verkauf zu bremsen.
+
+Die Erholung ist bewusst asymmetrisch: Das Zurückschalten erfolgt sofort, aber das Intervall geht erst nach **zehn aufeinanderfolgenden fehlerfreien Antworten** wieder eine Stufe herunter, damit ein instabiler Server nicht zwischen schnellem und langsamem Takt hin- und herspringt. Der Lastzustand überdauert auch, wenn der Händler eine schnellere Voreinstellung wählt — der Schutz läuft unterhalb der konfigurierten Stufe, und es gibt keine Möglichkeit, ihn abzuschalten.
+
+## Reaktionsschnell auf dem Gerät bleiben {#device-responsiveness}
+
+Die andere Hälfte der Leistung ist die Kasse selbst — die Hintergrundsynchronisierung darf die Oberfläche nie ins Stocken bringen.
+
+- **Prüfungen geben die Ereignisschleife frei.** Die Integritätsprüfung zerlegt ihre Arbeit in Blöcke und gibt zwischen den Blöcken ab, sodass ihr längster ununterbrochener Block bei etwa **30 ms** bleibt — unter der Schwelle von ~100 ms, ab der Menschen eine Verzögerung wahrnehmen. Gemessen bei 10.000 lokalen Produkten kostet ein vollständiger Prüfdurchlauf rund **68 ms** Rechenzeit, verteilt auf mehr als 17 Abgaben; bei 50.000 Produkten unter 300 ms.
+- **Das erste Ergebnis bleibt auch unter Last schnell.** Die Zusagen zur Zeit bis zum ersten Ergebnis sind in der CI festgeschrieben, selbst während parallel eine Massenanwendung oder eine vollständige Prüfung läuft — einstellige Millisekunden bei typischen Kataloggrößen in der Benchmark-Umgebung.
+- **Nur die sichtbare Seite gelangt in die App.** Die Abfragearbeit (Filtern, Sortieren, Blättern) läuft innerhalb der Speicherschicht, sodass eine Bildschirmaktualisierung zehn Zeilen bewegt und nicht zehntausend.
+
+Diese Zahlen stammen aus der festgeschriebenen Leistungs-Testsuite der Engine, die isoliert in der CI läuft, mit Budgets, die rund eine Größenordnung über dem gemessenen Dauerbetrieb liegen — sie soll Regressionen um Größenordnungen erkennen und nicht auf einem langsamen Testläufer fehlschlagen.
+
+## Gegen einen Live-Shop verifiziert {#live-verification}
+
+Die Regeln zur Serverschonung sind nicht nur per Unit-Test abgesichert. Eine Ende-zu-Ende-Prüfung gegen einen echten WordPress-Shop verifiziert die Invarianten, die auf echtem Hosting am meisten zählen:
+
+- **Null** Wartungsanfragen (Integritäts- oder Kurzfassungsverkehr), bevor der Produktkatalog beim Shop-Start dargestellt wird.
+- Nach der Wartezeit nach dem Start höchstens eine Handvoll günstiger Aggregatseiten und nicht mehr als zwei Detailanalysen.
+
+Dieses Szenario entstand aus einer echten Regression: Ein früherer Entwicklungsstand der Prüfung setzte bei jedem Shop-Start ~41 Anfragen (1,2 MB) pro Gerät ab. Das kurzfassungsgesteuerte Design, das ihn ersetzt hat, reduziert eine abweichungsfreie Prüfung auf ihre Aggregatseiten und sonst nichts — diese Fehlerklasse wird nun durch deklarierte Obergrenzen in der CI abgesichert und nicht durch Wachsamkeit im Review.
+
+## Was wir nicht behaupten {#honest-limits}
+
+Ein paar Dinge, die diese Seite bewusst nicht sagt, weil wir (noch) keine belastbaren Zahlen dafür haben:
+
+- **Keine Ende-zu-Ende-Angabe „Die erste Synchronisierung dauert X Minuten“.** Die Dauer des ersten Downloads hängt überwiegend von den Antwortzeiten Ihres Servers und der Kataloggröße ab. Die Kosten auf Geräteseite für das Anwenden der Datensätze sind gering (das Massenanwenden von 10.000 Produkten misst sich in unter 10 ms Rechenzeit); die Leitung und der Server dominieren.
+- **Keine Angabe „X % schneller als v1.9“.** Die Architekturen unterscheiden sich so stark, dass eine einzelne Vergleichszahl mehr in die Irre führen als erklären würde. Die strukturellen Unterschiede sind unter [Was sich in v1.10.0 geändert hat](/reference/sync-engine#what-changed-in-v1100) dargestellt.
+- Die obigen Benchmark-Zahlen stammen aus der Testumgebung der Engine (Speicher im Arbeitsspeicher, isolierter Testläufer). Echte Geräte und echte Shops schwanken; genau deshalb zeigt **Shop-Zustand → Leistung** die gemessenen Anfragezahlen und die typische Antwortzeit Ihrer Kasse für die letzten 24 Stunden statt Hochrechnungen. Der dortige Wert zum Datenvolumen ist eine Untergrenze, weil Antworten ohne angegebene Größe mit null einfließen.
+
+Zur serverseitigen Feinjustierung — Hosting-Anforderungen, HPOS, Caching und die Diagnose langsamer Antworten — siehe [Server-Performance](/support/performance/server).

@@ -1,0 +1,216 @@
+---
+title: Mollieターミナルゲートウェイ
+description: "WCPOSでMollie Terminalデバイスを使って対面での支払いを受け付ける"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# Mollieターミナルゲートウェイ
+
+Mollieターミナルゲートウェイを使うと、[Mollie Terminal](https://www.mollie.com/products/point-of-sale)のハードウェアでの対面決済を、WCPOSから直接受け付けられます。支払いはWooCommerceから開始し、ターミナル上で完了します。Mollieからの確認結果は注文に書き戻されます。
+
+## 機能 {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="credit-card" title="ハードウェア統合">
+    Mollieアカウントに登録されたMollieターミナルへ支払いを送信し、カード提示による決済を受け付けます
+  </FeatureCard>
+  <FeatureCard icon="link" title="手動ペアリング不要">
+    ターミナルはMollieアカウントからリアルタイムで取得されます。ドロップダウンから選ぶだけで、デバイスIDを貼り付ける必要はありません
+  </FeatureCard>
+  <FeatureCard icon="bolt" title="確実な完了">
+    支払いはMollieへのポーリングで確認され、ターミナルが確定するとPOSは自動的に領収書へ遷移します
+  </FeatureCard>
+  <FeatureCard icon="shield" title="安全な取引">
+    PCIに準拠したカード提示決済を、Mollieのハードウェア上で処理します
+  </FeatureCard>
+  <FeatureCard icon="arrow-rotate-right" title="返金に対応">
+    WooCommerceの注文画面から返金でき、Mollieと突き合わせるため返金が重複することはありません
+  </FeatureCard>
+</FeatureGrid>
+
+## 仕組み {#how-it-works}
+
+Mollieターミナルは、Mollieの**サーバーサイド `pointofsale` 決済**を使用します。支払いを開始すると、WooCommerceがその注文に対するMollieの決済を作成し、Mollieがそれを選択されたターミナルへ送ります。お客様はデバイス上で支払い、決済と返金の状態については **Mollieが正**となります。ローカルのWooCommerce注文メタは、あくまでキャッシュです。
+
+**支払いが確定する仕組み。** 支払いの進行中、POSはMollieにポーリングし（既定では2秒ごと）、ターミナルが確定した時点で「ありがとう」ページへ直接遷移します。これを速めるためにMollieのWebhookも利用されます。WebhookのURLは支払いのたびに自動的に設定されるため、**Mollieのダッシュボードで設定するものはありません**。
+
+ターミナルは、プラグインと同じMollieアカウントに登録され、有効になっている必要があります。
+
+## セットアップ {#setup}
+
+<Steps>
+  <StepCard number="1" title="Mollie Terminal for WooCommerceをインストールする">
+
+`WP管理 > POS > 設定 > 拡張機能`からインストールするか、[GitHubのリリースページ](https://github.com/wcpos/mollie-terminal-for-woocommerce/releases)から最新の**プラグインzipアセット**（GitHubのソースコードzipやtarballではありません）をダウンロードし、`プラグイン > 新規追加 > プラグインのアップロード`からアップロードします。
+
+  </StepCard>
+  <StepCard number="2" title="Mollieの認証情報を設定する">
+
+1. `WP管理 > WooCommerce > 設定 > 支払い`に移動し、**Mollieターミナル**を開きます
+2. **モード**を `Live` に設定します。ターミナル決済にはライブアカウントが必要です（[対応範囲と制限](#scope-and-limitations)を参照）
+3. **APIキーのソース**を、公式のMollie Payments for WooCommerceプラグインのキーを再利用するか、この画面で入力したキーを使うかに設定します
+4. ここでキーを入力する場合は、Mollieの**ライブAPIキー**を **Mollie APIキー**に貼り付けます
+5. 保存します
+
+:::warning ライブモードを使用してください
+Mollieのターミナルは**ライブ**アカウントにのみ存在するため、テストAPIキーでターミナルを動かすことはできません。テストモードが選択されていると、設定画面に警告が表示されます。支払いを受け付けるには、ライブAPIキーとともに `Live` に切り替えてください。[対応範囲と制限](#scope-and-limitations)をご覧ください。
+:::
+
+:::note プロファイルIDは不要です
+`pointofsale` 決済にMollieの**プロファイルID**は必要なく、ターミナルはアカウント全体から一覧表示されるため、ほかに貼り付けるものはありません。
+:::
+
+  </StepCard>
+  <StepCard number="3" title="ターミナルを選択する">
+
+1. ドロップダウンから**既定のターミナル**を選びます。一覧は選択したMollie環境から取得されます。Mollieでは再有効化ができないため、無効なターミナルは表示されません。
+2. *(任意)* **有効なターミナル**を、実際に使用しているデバイスだけに制限します。保存済みの既定のターミナルは、ここで選択されていなくても引き続き利用できます。すべての有効なターミナルを許可する場合は、この設定を空のままにします。ターミナルを使わなくする場合は、**既定のターミナル**も変更するか空にしてください。
+3. *(任意)* **ターミナル選択をロック**を有効にすると、キャッシャーはチェックアウト時にターミナルを変更できなくなります。常に既定のターミナルが使用され、これはサーバー側でも強制されます。
+4. 保存します
+
+  </StepCard>
+  <StepCard number="4" title="WCPOSで有効にする" isLast>
+
+1. `WP管理 > POS > 設定 > チェックアウト`に移動します
+2. **Mollieターミナル**ゲートウェイを見つけ、POSで有効にします
+3. 設定を保存します
+
+:::note
+WooCommerceの設定画面にある**有効化／無効化**のチェックボックスは、*オンラインストア*のチェックアウトのみを制御します。WCPOSは、このチェックボックスの状態にかかわらず、設定が済んでいればこのゲートウェイを使用します。
+:::
+
+  </StepCard>
+</Steps>
+
+## 設定リファレンス {#settings}
+
+| 設定 | 内容 |
+|---|---|
+| **有効化／無効化** | オンラインストアのチェックアウトでゲートウェイを有効にします（POSには不要です） |
+| **タイトル** / **説明** | チェックアウト時にお客様に表示されるラベルとテキスト |
+| **モード** | `Test` または `Live`。ターミナル決済には **Live** が必要です。テストAPIキーでターミナルを動かすことはできません |
+| **APIキーのソース** | 下で入力したキーを使うか、公式のMollie Payments for WooCommerceプラグインの対応するテスト／ライブキーを再利用します。共有キーが利用できない場合は、下のキーにフォールバックします |
+| **Mollie APIキー** | 選択したモードのテストまたはライブAPIキー。**APIキーのソース**がここで入力したキーに設定されている場合に使用され、共有キーがない場合のフォールバックにもなります |
+| **既定のターミナル** | チェックアウト時に既定で使用されるターミナル。選択したMollie環境の有効なターミナルのドロップダウンから選びます |
+| **有効なターミナル** | チェックアウトの一覧を、選択したターミナルに制限します。空＝すべての有効なターミナル。保存済みの既定のターミナルは常に利用できるため、ターミナルを使わなくする際はそちらも変更するか空にしてください |
+| **ターミナル選択をロック** | チェックアウト時に既定のターミナルを強制し、キャッシャーが変更できないようにします（既定のターミナルの設定が必要です） |
+| **チェックアウトのデバッグログ** | チェックアウトの支払いパネルに、**ログを表示**、**コピー**、**消去**のツールを表示します。サポート向けにログを収集する場合を除き、オフのままにしてください。支払いの動作は常に `WooCommerce > ステータス > ログ` に記録されます |
+
+WebhookのURLは支払いのたびに自動的に適用されるため、入力するWebhookの項目はなく、Mollieのダッシュボードでの設定も不要です。
+
+## 使用方法 {#usage}
+
+### 支払いの処理 {#processing-payments}
+
+1. **アイテムを追加**: POSでカートに商品を追加します
+2. **ゲートウェイを選択**: 支払い方法として「Mollieターミナル」を選択します
+3. **ターミナルを選択**: ドロップダウンからターミナルを選びます（既定では設定済みのものが選ばれます。ターミナル選択がロックされている場合は非表示になります）
+4. **支払いを開始**: **ターミナル支払いを開始**をクリックすると、Mollieがデバイスへ支払いを送信します
+5. **お客様の支払い**: お客様がターミナルでカードをタップ、挿入、またはスワイプします。ステータスはリアルタイムで更新されます — `Sending to terminal…` → `Waiting for terminal…`
+6. **自動完了**: ターミナルが確定すると、注文が支払い済みとしてマークされ、POSは自動的に領収書へ遷移します
+
+### 支払いコントロール {#payment-controls}
+
+- **ターミナル支払いを開始**: 選択したターミナルへ新しい支払いリクエストを送信します
+- **支払いをキャンセル**: まだ開いている支払いをキャンセルします。支払いがターミナルに到達した後は、Mollieはキャンセル不可と報告するため、キャッシャーはデバイス上でキャンセルします
+
+### 注文管理 {#order-management}
+
+- **確認済みの完了**: Webhook、ポーリング、キャンセル、再試行のいずれも、注文を変更する前にMollieの正となる状態を取得します。そのため、注文が支払い済みとしてマークされるのは、Mollie側の状態が確定している場合のみです
+- **支払いの追跡**: 支払いの試行は、注文に追記のみの履歴として記録されます
+- **領収書の生成**: 支払いが成功すると、標準のPOS領収書が生成されます
+
+## 返金 {#refunds}
+
+返金に対応しています。通常のWooCommerceの注文画面から返金すると、その返金がMollieへ送信されます。Mollieが正であるため、返金の再試行では、別の返金を作成する**前に**Mollieの返金IDとメタデータと突き合わせます。そのため、誤って二重に返金されることはありません。
+
+## 未完了の支払いのクリーンアップ {#stale-payment-cleanup}
+
+チェックアウトが中断されると、Mollieの `pointofsale` 決済がMollie側で「開いた」ままになることがあります。プラグインは次の場合に、これらの開いたままの支払いを自動的にキャンセルします。
+
+- 自動ポーリングがタイムアウトしたとき（既定では5分）。支払いを放置せずにキャンセルが送信されます
+- **別の**支払い方法で注文が完了したとき（たとえばお客様が現金で支払った場合）、またはWooCommerceで注文がキャンセルされたとき
+- 支払いの途中でチェックアウトページが閉じられたとき。タブを離れる際にベストエフォートでキャンセルが送信されます
+- WP-Cronのスイープが10分ごとに実行され、未完了のしきい値（既定では10分）を過ぎて開いたままの支払いをキャンセルまたは解決するとき。ほかのクリーンアップ経路が実行される前にブラウザーが閉じられたり、ネットワークが切断されたりした場合も含みます
+
+支払いがすでにターミナルに到達している場合、Mollieはキャンセル不可と報告するため、キャッシャーはデバイス上でキャンセルします。その場合、これらのクリーンアップは何もしない安全な処理になります。
+
+## 要件 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Mollieアカウント">ライブAPIキーを持つ有効なMollieアカウント</RequirementItem>
+  <RequirementItem label="互換性のあるハードウェア">そのMollieアカウントで有効になっているMollie Terminalデバイス</RequirementItem>
+  <RequirementItem label="通貨">EUR — POSのターミナル決済は現時点ではEURに限定されています</RequirementItem>
+  <RequirementItem label="WCPOS">POSチェックアウトにはProバージョンが必要です</RequirementItem>
+  <RequirementItem label="安定した接続">API通信のための信頼できるインターネット接続</RequirementItem>
+</RequirementsList>
+
+## 対応範囲と制限 {#scope-and-limitations}
+
+:::important テストモードの制限
+Mollieのターミナルは**ライブ**アカウントにのみ存在します。Mollieの**テスト**APIキーでは、物理（またはiOS／Android）のターミナルを動かせないため、テストモードでターミナル決済をエンドツーエンドで試すことはできません。これはプラグインの制限ではなく、Mollieプラットフォーム側の制限です。テストモードが選択されていると、設定画面に警告が表示されます。ターミナル決済を受け付けるには、ライブAPIキーとともに **Live** モードを使用してください。
+:::
+
+:::note 通貨
+POSのターミナル決済は、Mollie Terminalのより広い通貨対応が確認されるまで、**EUR** に限定されています。
+:::
+
+## トラブルシューティング {#troubleshooting}
+
+### よくある問題 {#common-issues}
+
+<Accordion>
+  <AccordionItem question="ドロップダウンにターミナルが表示されない">
+
+  - **モード**が `Live` に設定され、実際に使われるAPIキーがライブキーであることを確認してください。テストアカウントにターミナルは存在しません
+  - ターミナルがMollieアカウントに登録され、**有効**になっているか確認してください。Mollieでは再有効化ができないため、無効なターミナルは表示されません
+  - サイトからMollieに到達できることを確認してください。一覧はAPI経由でリアルタイムに取得されます
+
+  </AccordionItem>
+
+  <AccordionItem question="支払いが開始できない">
+
+  - ターミナルが選択されているか（選択がロックされている場合は**既定のターミナル**が設定されているか）確認してください
+  - ターミナルの電源が入っていて、オンラインで、同じMollieアカウントで有効になっているか確認してください
+  - 注文の通貨が **EUR** であることを確認してください
+
+  </AccordionItem>
+
+  <AccordionItem question="ターミナルがタイムアウトした、または支払いが開いたままになった">
+
+  - プラグインはタイムアウト時（既定では5分）に、開いたままの支払いを自動的にキャンセルしようとします
+  - 支払いがすでにターミナルに到達していて自動的にキャンセルできない場合は、デバイス上でキャンセルしてください
+  - その後、あらためて支払いを開始するか、別の方法で支払いを受け付けられます
+
+  </AccordionItem>
+
+  <AccordionItem question="ターミナルで注文が完了したのに、更新が遅い">
+
+  - POSは2秒ごとにMollieへポーリングし、支払いが確定すると遷移します。通常はWebhookのほうが先に確定させます
+  - Mollieが正であるため、注文はMollieの正となる状態と突き合わせて調整されます。失われることはありません
+  - `WooCommerce > ステータス > ログ` でMollie APIのメッセージを確認してください
+
+  </AccordionItem>
+</Accordion>
+
+### サポートを受ける {#getting-help}
+
+技術サポートについて:
+- 問題を報告するには[GitHubリポジトリ](https://github.com/wcpos/mollie-terminal-for-woocommerce)にアクセスしてください
+- API関連の質問については、[Mollie Terminalのセットアップガイド](https://docs.mollie.com/docs/setting-up-terminal)と[Mollieの決済作成API](https://docs.mollie.com/reference/create-payment)をご確認ください
+- アカウントとハードウェアに関する問題については、Mollieのサポートにお問い合わせください
+
+## スクリーンショット {#screenshots}
+
+スクリーンショットは今後のアップデートで追加され、次の内容を示す予定です:
+- Mollieターミナルの設定画面 — APIキー、既定のターミナル、有効なターミナル
+- WCPOS設定でのゲートウェイの有効化
+- POSチェックアウトでの支払い処理の流れ
