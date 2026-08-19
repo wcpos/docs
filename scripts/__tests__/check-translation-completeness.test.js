@@ -201,7 +201,29 @@ Jedes Gateway kann für das POS aktiviert oder deaktiviert werden.
     expect(findLeftoverProse(source, translated)).toHaveLength(0);
   });
 
-  it('does not flag data lines inside multi-line JSX prop arrays', () => {
+  it('still flags untranslated user-facing labels inside non-machine prop arrays', () => {
+    // zones/keys/summary arrays carry rendered labels — only the named
+    // machine-data props (fields, facsimile, preview, segments) are exempt.
+    const source = `Intro prose for the zone map.
+
+<ReceiptAnatomy zones={[
+  { id: 'store', anchor: '#store', label: "Store header section shown to customers" },
+  { id: 'order', anchor: '#order', label: "Order and people details block" },
+  { id: 'lines', anchor: '#lines', label: "Line items purchased in this order" },
+]} />
+`;
+    const translated = `Einleitung für die Zonenkarte.
+
+<ReceiptAnatomy zones={[
+  { id: 'store', anchor: '#store', label: "Store header section shown to customers" },
+  { id: 'order', anchor: '#order', label: "Order and people details block" },
+  { id: 'lines', anchor: '#lines', label: "Line items purchased in this order" },
+]} />
+`;
+    expect(findLeftoverProse(source, translated).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('does not flag data lines inside machine-data prop arrays', () => {
     // fields={[ ... ]} arrays hold field names and sample values that must stay
     // identical across locales (receipts/receipt-data.mdx FieldIndex blocks).
     const source = `Intro prose for the field index.

@@ -166,6 +166,7 @@ function lineToProse(line) {
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ') // {/* jsx comment */}
     .replace(/<!--[\s\S]*?-->/g, ' ') // <!-- html comment -->
     .replace(/`[^`]*`/g, ' ') // inline code
+    .replace(/'[^'\s]*'/g, ' ') // space-free single-quoted machine tokens ('#store', 'store.name') — prose apostrophes span spaces and are untouched
     .replace(/\b[\w-]+\s*=\s*("[^"]*"|\{\{[^}]*\}\}|\{[^}]*\})/g, ' ') // attribute fragments
     .replace(/\]\(([^)]*)\)/g, '] ') // markdown link target
     .replace(/<[^>]+>/g, ' ') // jsx/html tags
@@ -217,7 +218,10 @@ function bodyLines(text) {
       inTemplateLiteral = true;
       continue;
     }
-    if (/=\s*\{\[/.test(line) && !/\]\}/.test(line)) {
+    // Named machine-data props only — field indexes and sample-receipt data that
+    // stay byte-identical across locales by design. Other arrays (zones, keys,
+    // summary, …) carry user-facing labels and must stay visible to the prose check.
+    if (/\b(?:fields|facsimile|preview|segments)=\s*\{\[/.test(line) && !/\]\}/.test(line)) {
       inPropArray = true;
       continue;
     }
