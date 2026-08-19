@@ -7,6 +7,7 @@ description: "WCPOS 收据模板中可用的规范数据契约完整参考。"
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲染。使用 Mustache 点路径，如 `{{order.number}}`、`{{store.name}}` 和 `{{totals.total_display}}`。数组通过区块渲染：
 
@@ -17,6 +18,148 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 ```
 
 规范契约由服务器端的 WCPOS 收据数据构建器生成，并由应用中的离线收据渲染器镜像。收据会立即从本地数据打开，然后在服务器响应可用时升级为服务器数据，因此自定义模板应使用以下字段，而非 PHP 订单方法。
+
+收据数据 v1.1 为每个商品行新增了已记录的原价、优惠券前售价以及节省金额字段。它还提供订单级的节省金额合计，其中包括一个 **总计节省** 值，该值将原价节省与 WooCommerce 折扣合并在一起，而不会改变订单合计或报表。
+
+## 收据结构对照 {#receipt-map}
+
+打印收据的每个部分都来自数据契约中的某一节。悬停任意一侧可查看对应关系；点击可跳转到该节的字段。本页所有示例都使用同一个示例订单。
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "VAT: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "收据 #1042", right: "2026年7月13日" },
+        { left: "收银员：Ada", right: "客户：Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × 浓缩咖啡豆", right: "29.00" },
+        { left: "~34.00~ · 节省 −5.00", sub: true },
+        { left: "1 × 陶瓷马克杯", right: "18.00" },
+        { left: "1 × 可颂", right: "5.75" },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "小计", right: "52.75" },
+        { left: "优惠券 SUMMER10", right: "−5.28" },
+        { left: "礼品包装", right: "2.50" },
+        { left: "运费", right: "10.00" },
+        { left: "合计", right: "59.97", bold: true },
+        { left: "总计节省", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "刷卡", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "感谢您的惠顾！", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      label: "店铺抬头",
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      label: "订单与人员",
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      label: "商品行项目",
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      label: "合计区块",
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      label: "付款",
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      label: "页脚",
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## 常用范例 {#common-recipes}
+
+大多数模板改动都属于以下三种之一。每张卡片先展示打印结果，然后给出确切的标记——可将其复制到任何无逻辑 HTML 或热敏 XML 模板中。第三张卡片展示的是 v1.9 之前的旧订单，而非上方的示例订单。
+
+<Recipes>
+  <Recipe
+    title="为原价添加删除线"
+    why="区块条件判断会在没有记录价格历史的订单上隐藏全部内容。"
+    preview={[
+      { left: "2 × 浓缩咖啡豆", right: "29.00" },
+      { left: "~34.00~ · 节省 −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="添加一行总计节省"
+    why="两重条件判断：当价格历史不完整或没有任何节省时，该行会消失。"
+    preview={[
+      { left: "合计", right: "59.97", bold: true },
+      { left: "总计节省", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+  <Recipe
+    title="安全地重新打印 v1.9 之前的订单"
+    why="旧订单把节省金额包含在折扣里——这样可避免重复打印。"
+    preview={[
+      { left: "1 × 浓缩咖啡豆", right: "14.50" },
+      { left: "~17.00~  折扣 −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+</Recipes>
 
 ## 渲染规则 {#rendering-rules}
 
@@ -39,6 +182,12 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 
 | 便捷字段 | 含税字段 | 不含税字段 |
 |-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
 | `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
 | `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
 | `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
@@ -49,6 +198,8 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
 ### 日期对象 {#date-objects}
@@ -88,6 +239,32 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 | `presentation_hints` | object | 格式化与渲染器提示 |
 | `i18n` | object | 内置和自定义模板的翻译标签 |
 
+## 各种价格之间的关系 {#price-model}
+
+一个商品行会携带多个价格，一旦您在金额上看到它们，这些名称就很好理解了。下面是示例订单中的浓缩咖啡行——一件原价 $17.00 的商品，特价 $14.50，并在此基础上再叠加 10% 的优惠券：
+
+<PriceFlow
+  caption="浓缩咖啡豆 —— 单件（该订单有两件）"
+  scaleLabel="原价 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "实付 13.05" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "顾客实际支付的金额", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "优惠券折扣（SUMMER10）", fields: 'lines[].discounts → 2.90 on this line' },
+    { kind: 'savings', title: "相对原价的节省", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "整个订单的特价节省", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "整个订单的所有优惠券折扣", value: '`totals.discount_total` = 5.28' },
+    { label: "节省 + 折扣，并去除旧版重叠部分", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+特价节省和优惠券折扣是两回事：特价节省是把售价与已记录的原价进行比较，而 `discounts` 是 WooCommerce 自身的优惠券计算结果。WooCommerce 的订单合计和报表始终只包含优惠券部分——这正是 `total_saved` 存在的原因，它是把两者合并起来、面向顾客的唯一数字。
+
 ## 字段参考 {#field-reference}
 
 完整的字段参考按部分分组如下。默认全部折叠——展开您需要的分组。
@@ -99,8 +276,8 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 
 | 字段 | 类型 | 示例／说明 |
 |-------|------|-----------------------|
-| `order.id` | number | `1234` |
-| `order.number` | string | 面向用户的订单编号，例如 `"10045"` |
+| `order.id` | number | `1042` |
+| `order.number` | string | 面向用户的订单编号，例如 `"1042"` |
 | `order.currency` | string | ISO 货币代码，例如 `"USD"` |
 | `order.customer_note` | string | 客户／订单备注 |
 | `order.wc_status` | string | WooCommerce 原始状态标识，例如 `"processing"` |
@@ -194,26 +371,135 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 
 ### lines {#lines}
 
-使用 `{{#lines}}...{{/lines}}` 进行循环。
+使用 `{{#lines}}...{{/lines}}` 进行循环。示例值取自[示例订单](#receipt-map)中的浓缩咖啡行。
 
-| 字段 | 类型 | 描述 |
-|-------|------|-------------|
-| `key` | string | 稳定的行键/订单项 ID |
-| `sku` | string | 产品 SKU |
-| `name` | string | 产品或行项目显示名称 |
-| `qty` | number | 销售数量 |
-| `qty_refunded` | number | 该行项目的退款数量 |
-| `unit_subtotal` / `_incl` / `_excl` | number | 折扣前单价 |
-| `unit_price` / `_incl` / `_excl` | number | 折扣后单价 |
-| `line_subtotal` / `_incl` / `_excl` | number | 折扣前行小计 |
-| `discounts` / `_incl` / `_excl` | number | 折扣金额（正值） |
-| `line_total` / `_incl` / `_excl` | number | 最终行合计 |
-| `total_refunded` | number | 该行的退款总额（正值） |
-| `taxes` | array | 该行按税率分列的税额行 |
-| `meta` | array | 订单项元数据，以 `{key, value}` 键值对形式表示 |
-| `attributes` | array | 商品/变体属性，以 `{key, value}` 键值对形式表示 |
+<FieldIndex
+  note="每个金额字段都成对提供：数字本身（用在 `{{#…}}` 条件判断中——零和 `null` 会隐藏该区块，而值为 `null` 的字段根本没有对应的 `_display` 孪生字段），以及它的 `_display` 字符串（用于打印）。标记为 incl/excl 的字段还提供 `_incl` 和 `_excl` 变体，每个变体都有各自的 `_display`。"
+  placeholder="筛选字段…… 试试“savings”"
+  emptyText="没有匹配的字段——清除筛选条件即可查看 `lines[]` 的全部字段。"
+  fields={[
+    { name: 'key', type: 'string', desc: "稳定的行键/订单项 ID。", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "产品 SKU。", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "产品或行项目显示名称。", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "销售数量。", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "该行项目的退款数量。", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "已记录的原始单价。在没有 POS 价格历史的订单上为 `null`——请将其包在一个区块中。",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "优惠券前的售出单价——有记录时取 POS 记录的价格，否则由存储的行小计推导得出。",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "原价减去售价，最小值为零。零为假值，因此带条件判断的行会自行隐藏。",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "已记录的原价乘以数量。",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "优惠券前的售价乘以数量。",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "该行从原价到售价的节省总额。",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "在 v1.9.0 之前的订单上为 true，这些订单的节省金额已包含在 `discounts` 中——这是防重复计算的标志。",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce 折扣前的单件金额。请勿把它当作原价使用。",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce 折扣后的最终单件金额。",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce 折扣前的行小计。",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce 原生的行折扣，以正值表示——在当前订单上仅包含优惠券。",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "优惠券后的最终行合计——即金额列中打印的数值。",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "该行的退款总额，以正值表示。",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "该行按税率分列的税额行。" },
+    { name: 'meta', type: 'array', desc: "订单项元数据，以 `{key, value}` 键值对形式表示。" },
+    { name: 'attributes', type: 'array', desc: "商品/变体属性，以 `{key, value}` 键值对形式表示。" },
+  ]}
+/>
 
-格式化变体包括 `unit_subtotal_display`、`unit_price_display`、`line_subtotal_display`、`discounts_display`、`line_total_display`，以及含税/不含税的 `_display` 变体。
+### 显示原价与节省金额 {#displaying-regular-price-and-savings}
+
+对于按单价排布的版式，可以像这样显示已记录的原价、售价和节省金额：
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+当数量重要时，请使用行合计字段：
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` 是优惠券之前的价格。WooCommerce 折扣之后的最终金额请使用 `unit_price` 或 `line_total`。
+
+:::note 重新打印 v1.9.0 之前创建的订单
+较早的 WCPOS 订单可能已经把从原价到售价的减免包含在 `discounts` 中。如果您的自定义模板同时打印行节省金额和行折扣，请使用 `savings_in_discounts` 以避免同一笔减免显示两次：
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+如果模板不打印行级的 `discounts` 行，那么即使 `savings_in_discounts` 为 true，也应继续显示 `line_savings`。内置模板会自动处理这一区别。
+:::
 
   </AccordionItem>
 
@@ -245,7 +531,6 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 |-------|------|-------------|
 | `label` | string | 优惠券描述或代码回退值 |
 | `code` | string | 优惠券代码 |
-| `codes` | string | 旧版/显示回退值，用于拼接的代码 |
 | `total` / `_incl` / `_excl` | number | 折扣金额，为正数值 |
 
 格式化变体：`total_display`、`total_incl_display` 和 `total_excl_display`。如果需要将折扣显示为负数行，请在模板中自行添加负号。
@@ -256,20 +541,86 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 
 ### totals {#totals}
 
-| 字段 | 类型 | 描述 |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | number | 折扣前的订单小计 |
-| `totals.discount_total` / `_incl` / `_excl` | number | 订单折扣总额，为正数值 |
-| `totals.tax_total` | number | 税额合计 |
-| `totals.total` / `_incl` / `_excl` | number | 订单总计 |
-| `totals.paid_total` | number | 已支付/已抵扣金额 |
-| `totals.change_total` | number | 找零给顾客的金额 |
-| `totals.refund_total` | number | 退款总额（正值） |
-| `totals.net_total` | number | `total - refund_total`，最小值为零 |
-| `totals.total_qty` | number | 商品行数量总和 |
-| `totals.line_count` | number | 商品行数 |
+示例值取自[示例订单](#receipt-map)，该订单随后收到了 $7.25 的部分退款。
 
-格式化变体包括 `subtotal_display`、`discount_total_display`、`tax_total_display`、`total_display`、`paid_total_display`、`change_total_display`、`refund_total_display` 和 `net_total_display`，以及适用情况下的含税/不含税变体。
+<FieldIndex
+  note="金额字段遵循与商品行相同的成对规则：裸数字用于条件判断，`_display` 字符串用于打印，标记处还提供 `_incl`/`_excl` 变体。"
+  placeholder="筛选字段…… 试试“saved”"
+  emptyText="没有匹配的字段——清除筛选条件即可查看 `totals` 的全部字段。"
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "折扣前的订单小计。",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "订单折扣总额，以正值表示——在当前订单上仅包含优惠券。",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "所有商品行上已记录的从原价到售价的节省总额，包含商品目录特价和收银台改价。",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "WooCommerce 折扣与原价节省的合并值，并已去除旧版重叠部分。这是面向顾客、涵盖全部节省的唯一数字。",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "该收据是否有足够的已记录价格数据来计算完整的节省合计。",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "税额合计。",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "订单总计。",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "已支付/已抵扣金额。",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "找零给顾客的金额。",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "退款总额，以正值表示。",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "总计减去退款，最小值为零。",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "商品行数量总和。", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "商品行数。", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+当您需要一个面向顾客、涵盖全部节省的数字时，请使用 `total_saved`。请勿在模板中把 `discount_total` 和 `sale_savings_total` 相加来自行计算：v1.9.0 之前创建的订单可能已经把 POS 价格节省包含在 WooCommerce 的折扣合计中。规范的 `total_saved` 字段会检测并去除这部分重叠。
+
+当任一商品行缺少足够的已记录价格数据、无法得出可靠的汇总值时，节省合计为 `null`，且 `total_saved_complete` 为 false。请先用 `total_saved_complete` 判断该行，再用 `total_saved` 隐藏零值：
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+内置的含价模板使用同样的判断结构，配合含税变体（`total_saved_incl` 和 `total_saved_incl_display`），并且仅在完整值大于零时才显示 **总计节省**。
 
   </AccordionItem>
 
@@ -290,7 +641,7 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 | `tax.breakdown_itemized` | boolean | 当优先显示按税率逐项列出时为 true |
 | `has_tax_summary` | boolean | 当 `tax_summary` 包含行数据时为 true |
 
-使用 `tax_summary` 循环遍历 `{{#tax_summary}}...{{/tax_summary}}`。
+使用 `{{#tax_summary}}...{{/tax_summary}}` 循环遍历 `tax_summary`。
 
 | 字段 | 类型 | 描述 |
 |-------|------|-------------|
@@ -414,7 +765,7 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 {{i18n.total}}: {{totals.total_display}}
 ```
 
-常用键包括 `order`、`date`、`cashier`、`customer`、`item`、`sku`、`qty`、`unit_price`、`discount`、`subtotal`、`total`、`tax`、`paid`、`tendered`、`change`、`tax_summary`、`refunded`、`net_total`、`customer_note`、`thank_you_purchase`、`opening_hours`，以及税号标签键，如 `store_tax_id_label_eu_vat` 和 `customer_tax_id_label_other`。扩展可能会添加额外的键。
+常用键包括 `order`、`date`、`cashier`、`customer`、`item`、`sku`、`qty`、`unit_price`、`regular_price`、`selling_price`、`savings`、`discount`、`subtotal`、`total_saved`、`total`、`tax`、`paid`、`tendered`、`change`、`tax_summary`、`refunded`、`net_total`、`customer_note`、`thank_you_purchase`、`opening_hours`，以及税号标签键，如 `store_tax_id_label_eu_vat` 和 `customer_tax_id_label_other`。扩展可能会添加额外的键。
 
   </AccordionItem>
 </Accordion>

@@ -7,7 +7,7 @@ description: "Vollständige Referenz zum kanonischen Datenvertrag, der in WCPOS-
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
-import { ReceiptAnatomy, PriceFlow, Recipes, Recipe } from '@site/src/components/ReceiptData';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 Logikfreie HTML-Vorlagen von WCPOS und thermische XML-Vorlagen werden aus derselben kanonischen Belegdaten-Payload gerendert. Verwenden Sie Mustache-Punktpfade wie `{{order.number}}`, `{{store.name}}` und `{{totals.total_display}}`. Arrays werden mit Abschnitten gerendert:
 
@@ -123,10 +123,12 @@ Die meisten Vorlagenänderungen gehören zu einer dieser drei Aufgaben. Jede Kar
       { left: '2 × Espressobohnen', right: '29.00' },
       { left: '~34.00~ · Ersparnis −5.00', sub: true },
     ]}
-    snippet={`{{# line_savings }}
-  <s>{{ line_regular_total_display }}</s>
-  {{ i18n.savings }}: -{{ line_savings_display }}
-{{/ line_savings }}`}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
   />
   <Recipe
     title="Zeile „Gesamt eingespart“ hinzufügen"
@@ -135,12 +137,12 @@ Die meisten Vorlagenänderungen gehören zu einer dieser drei Aufgaben. Jede Kar
       { left: 'GESAMT', right: '59.97', bold: true },
       { left: 'Gesamt eingespart', right: '10.28', sub: true },
     ]}
-    snippet={`{{# totals.total_saved_complete }}
-  {{# totals.total_saved }}
-    {{ i18n.total_saved }}:
-    {{ totals.total_saved_display }}
-  {{/ totals.total_saved }}
-{{/ totals.total_saved_complete }}`}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
   />
   <Recipe
     title="Bestellung vor v1.9 sicher erneut drucken"
@@ -149,11 +151,13 @@ Die meisten Vorlagenänderungen gehören zu einer dieser drei Aufgaben. Jede Kar
       { left: '1 × Espressobohnen', right: '14.50' },
       { left: '~17.00~  Rabatt −2.50', sub: true },
     ]}
-    snippet={`{{# line_savings }}
-  {{^ savings_in_discounts }}
-    {{ i18n.savings }}: -{{ line_savings_display }}
-  {{/ savings_in_discounts }}
-{{/ line_savings }}`}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
   />
 </Recipes>
 
@@ -367,35 +371,88 @@ Gängige Adressschlüssel sind `first_name`, `last_name`, `company`, `address_1`
 
 ### Zeilen {#lines}
 
-Mit `{{#lines}}...{{/lines}}` durchlaufen.
+Mit `{{#lines}}...{{/lines}}` durchlaufen. Die Beispielwerte stammen von der Espresso-Position aus [der Beispielbestellung](#receipt-map).
 
-| Feld | Typ | Beschreibung |
-|-------|------|-------------|
-| `key` | Zeichenfolge | Stabiler Zeilenschlüssel/Bestellpositions-ID |
-| `sku` | Zeichenfolge | Produkt-SKU |
-| `name` | Zeichenfolge | Anzeigename des Produkts oder der Position |
-| `qty` | Zahl | Verkaufte Menge |
-| `qty_refunded` | Zahl | Für diese Position erstattete Menge |
-| `regular_price` / `_incl` / `_excl` | Zahl/null | Erfasster regulärer Stückpreis |
-| `selling_price` / `_incl` / `_excl` | number/null | Verkaufseinzelpreis vor Coupon — der erfasste POS-Preis, sofern verfügbar, andernfalls aus der gespeicherten Zwischensumme der Position abgeleitet |
-| `unit_savings` / `_incl` / `_excl` | Zahl/null | `regular_price - selling_price`, auf null begrenzt |
-| `line_regular_total` / `_incl` / `_excl` | Zahl/null | Erfasster regulärer Preis multipliziert mit der Menge |
-| `line_selling_total` / `_incl` / `_excl` | Zahl/null | Verkaufspreis vor Coupons multipliziert mit der Menge |
-| `line_savings` / `_incl` / `_excl` | Zahl/null | Gesamtersparnis dieser Position zwischen regulärem Preis und Verkaufspreis |
-| `savings_in_discounts` | Boolesch | Wahr, wenn eine ältere Bestellung dieselbe Ersparnis bereits in `discounts` enthält |
-| `unit_subtotal` / `_incl` / `_excl` | Zahl | WooCommerce-Stückwert vor Rabatt; nicht als regulären Preis verwenden |
-| `unit_price` / `_incl` / `_excl` | Zahl | Endgültiger Stückwert nach WooCommerce-Rabatten |
-| `line_subtotal` / `_incl` / `_excl` | Zahl | WooCommerce-Zwischensumme der Zeile vor Rabatt |
-| `discounts` / `_incl` / `_excl` | Zahl | Nativer WooCommerce-Zeilenrabatt als positiver Wert; bei aktuellen Bestellungen normalerweise nur für Gutscheine |
-| `line_total` / `_incl` / `_excl` | Zahl | Endgültiger Gesamtbetrag der Zeile |
-| `total_refunded` | Zahl | Insgesamt für diese Zeile erstatteter Betrag als positiver Wert |
-| `taxes` | Array | Steuerzeilen je Steuersatz für diese Zeile |
-| `meta` | Array | Metadaten der Bestellposition als `{key, value}`-Paare |
-| `attributes` | Array | Produkt-/Variationsattribute als `{key, value}`-Paare |
-
-Jedes Geldfeld verfügt über ein formatiertes `_display`-Begleitfeld, einschließlich `regular_price_display`, `selling_price_display`, `unit_savings_display`, `line_regular_total_display`, `line_selling_total_display` und `line_savings_display`. Auch inklusive und exklusive Felder verfügen über `_display`-Varianten. Wenn ein Nullable-Einsparungsfeld `null` ist, wird sein `_display`-Begleitfeld vollständig weggelassen.
-
-Ersparnisfelder sind `null`, wenn die Bestellung nicht genügend aufgezeichnete POS-Preisdaten enthält. Vorlagen sollten sie daher in Mustache-Abschnitte einschließen, statt anzunehmen, dass jede historische Bestellung einen regulären Preis hat.
+<FieldIndex
+  note="Jedes Geldfeld kommt als Paar: die Zahl (in `{{#…}}`-Prüfungen verwenden — null und `null` blenden den Abschnitt aus, und ein `null`-Feld hat überhaupt kein `_display`-Gegenstück) und die zugehörige `_display`-Zeichenfolge (zum Ausgeben verwenden). Mit incl/excl gekennzeichnete Felder liefern zusätzlich `_incl`- und `_excl`-Varianten, jeweils mit eigenem `_display`."
+  placeholder="Felder filtern … versuchen Sie „savings“"
+  emptyText="Keine Felder gefunden — setzen Sie den Filter zurück, um alle Felder von `lines[]` zu sehen."
+  fields={[
+    { name: 'key', type: 'string', desc: "Stabiler Zeilenschlüssel / Bestellpositions-ID.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "Produkt-SKU.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Anzeigename des Produkts oder der Position.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Verkaufte Menge.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Für diese Position erstattete Menge.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Erfasster regulärer Stückpreis. Bei Bestellungen ohne POS-Preishistorie `null` — schließen Sie ihn in einen Abschnitt ein.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Verkaufseinzelpreis vor Gutschein — der erfasste POS-Preis, sofern verfügbar, andernfalls aus der gespeicherten Zwischensumme der Position abgeleitet.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Regulärer Preis minus Verkaufspreis, auf null begrenzt. Null ist falsy, sodass abgesicherte Zeilen sich selbst ausblenden.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Erfasster regulärer Preis multipliziert mit der Menge.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Verkaufspreis vor Gutscheinen multipliziert mit der Menge.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Gesamtersparnis dieser Position zwischen regulärem Preis und Verkaufspreis.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "Wahr bei Bestellungen vor v1.9.0, deren Ersparnis bereits in `discounts` enthalten ist — das Kennzeichen gegen Doppelzählung.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce-Stückwert vor Rabatt. Nicht als regulären Preis verwenden.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Endgültiger Stückwert nach WooCommerce-Rabatten.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce-Zwischensumme der Zeile vor Rabatt.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "Nativer WooCommerce-Zeilenrabatt als positiver Wert — bei aktuellen Bestellungen nur Gutscheine.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Endgültiger Zeilenbetrag nach Gutscheinen — was in der Betragsspalte gedruckt wird.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Insgesamt für diese Zeile erstatteter Betrag als positiver Wert.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Steuerzeilen je Steuersatz für diese Zeile." },
+    { name: 'meta', type: 'array', desc: "Metadaten der Bestellposition als `{key, value}`-Paare." },
+    { name: 'attributes', type: 'array', desc: "Produkt-/Variationsattribute als `{key, value}`-Paare." },
+  ]}
+/>
 
 ### Regulären Preis und Ersparnis anzeigen {#displaying-regular-price-and-savings}
 
@@ -484,23 +541,72 @@ Formatierte Varianten: `total_display`, `total_incl_display` und `total_excl_dis
 
 ### Summen {#totals}
 
-| Feld | Typ | Beschreibung |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | Zahl | Bestellzwischensumme vor Rabatten |
-| `totals.discount_total` / `_incl` / `_excl` | Zahl | Gesamtrabatt der Bestellung als positiver Wert |
-| `totals.sale_savings_total` / `_incl` / `_excl` | Zahl/null | Gesamte erfasste Ersparnisse zwischen regulärem Preis und Verkaufspreis über alle Produktzeilen hinweg, einschließlich Katalogangeboten und Änderungen der Kassenpreise |
-| `totals.total_saved` / `_incl` / `_excl` | Zahl/null | Kombinierte WooCommerce-Rabatte und Ersparnisse gegenüber dem regulären Preis, ohne Überschneidungen aus älteren Versionen |
-| `totals.total_saved_complete` | Boolesch | Ob der Beleg genügend erfasste Preisdaten enthält, um die vollständigen Ersparnissummen zu berechnen |
-| `totals.tax_total` | Zahl | Gesamtsteuerbetrag |
-| `totals.total` / `_incl` / `_excl` | Zahl | Gesamtsumme der Bestellung |
-| `totals.paid_total` | Zahl | Gezahlter/angerechneter Betrag |
-| `totals.change_total` | Zahl | An den Kunden ausgezahltes Rückgeld |
-| `totals.refund_total` | Zahl | Gesamter Rückerstattungsbetrag als positiver Wert |
-| `totals.net_total` | Zahl | `total - refund_total`, auf null begrenzt |
-| `totals.total_qty` | Zahl | Summe der Artikelmengen |
-| `totals.line_count` | Zahl | Anzahl der Produktzeilen |
+Die Beispielwerte stammen aus [der Beispielbestellung](#receipt-map), für die später eine Teilrückerstattung über 7,25 $ erfolgte.
 
-Formatierte Varianten umfassen `subtotal_display`, `discount_total_display`, `sale_savings_total_display`, `total_saved_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` und `net_total_display` sowie gegebenenfalls Varianten inklusive/exklusive Steuern.
+<FieldIndex
+  note="Geldfelder folgen derselben Paarung wie Positionen: eine reine Zahl für Prüfungen und eine `_display`-Zeichenfolge zur Ausgabe, mit `_incl`-/`_excl`-Varianten, wo gekennzeichnet."
+  placeholder="Felder filtern … versuchen Sie „saved“"
+  emptyText="Keine Felder gefunden — setzen Sie den Filter zurück, um alle Felder von `totals` zu sehen."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Bestellzwischensumme vor Rabatten.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Gesamtrabatt der Bestellung als positiver Wert — bei aktuellen Bestellungen nur Gutscheine.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Gesamte erfasste Ersparnisse zwischen regulärem Preis und Verkaufspreis über alle Produktzeilen hinweg, einschließlich Katalogangeboten und Preisänderungen an der Kasse.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Kombinierte WooCommerce-Rabatte und Ersparnisse gegenüber dem regulären Preis, ohne Überschneidungen aus älteren Versionen. Die eine kundenorientierte Angabe für alle Ersparnisse.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Ob der Beleg genügend erfasste Preisdaten enthält, um die vollständigen Ersparnissummen zu berechnen.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Gesamtsteuerbetrag.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Gesamtsumme der Bestellung.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Gezahlter/angerechneter Betrag.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "An den Kunden ausgezahltes Rückgeld.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Gesamter Rückerstattungsbetrag als positiver Wert.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Gesamtsumme abzüglich Rückerstattungen, auf null begrenzt.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Summe der Artikelmengen.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Anzahl der Produktzeilen.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
 
 Verwenden Sie `total_saved`, wenn eine einzelne kundenorientierte Angabe für alle Ersparnisse benötigt wird. Berechnen Sie diesen Wert nicht durch Addition von `discount_total` und `sale_savings_total` in der Vorlage: Bestellungen, die vor v1.9.0 erstellt wurden, enthalten ihre POS-Preisersparnis möglicherweise bereits in der Rabattsumme von WooCommerce. Das kanonische Feld `total_saved` erkennt und entfernt diese Überschneidung.
 

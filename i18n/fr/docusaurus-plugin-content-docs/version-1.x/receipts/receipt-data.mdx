@@ -541,20 +541,86 @@ Variantes formatées : `total_display`, `total_incl_display` et `total_excl_disp
 
 ### totals {#totals}
 
-| Champ | Type | Description |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | number | Sous-total de la commande avant remises |
-| `totals.discount_total` / `_incl` / `_excl` | number | Total des remises de la commande en valeur positive |
-| `totals.tax_total` | number | Montant total des taxes |
-| `totals.total` / `_incl` / `_excl` | number | Total général de la commande |
-| `totals.paid_total` | number | Montant payé/appliqué |
-| `totals.change_total` | number | Monnaie rendue au client |
-| `totals.refund_total` | number | Total remboursé en valeur positive |
-| `totals.net_total` | number | `total - refund_total`, limité à zéro |
-| `totals.total_qty` | number | Somme des quantités des lignes d'articles |
-| `totals.line_count` | number | Nombre de lignes de produits |
+Les valeurs d'exemple proviennent de [la commande d'exemple](#receipt-map), qui a ensuite fait l'objet d'un remboursement partiel de 7,25 $.
 
-Les variantes formatées incluent `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` et `net_total_display`, ainsi que les variantes TTC/HT le cas échéant.
+<FieldIndex
+  note="Les champs monétaires suivent le même appariement que les lignes d’articles : un nombre brut pour les conditions et une chaîne `_display` pour l’impression, avec des variantes `_incl`/`_excl` là où c’est indiqué."
+  placeholder="Filtrer les champs… essayez « saved »"
+  emptyText="Aucun champ ne correspond — effacez le filtre pour voir l’ensemble de `totals`."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Sous-total de la commande avant remises.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total des remises de la commande en valeur positive — uniquement les coupons sur les commandes actuelles.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Total des économies enregistrées entre prix normal et prix de vente sur les lignes de produits, y compris les soldes du catalogue et les changements de prix en caisse.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Remises WooCommerce et économies par rapport au prix normal combinées, chevauchement hérité retiré. L’unique chiffre destiné au client pour tout ce qui a été économisé.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Indique si le reçu dispose de suffisamment de données de prix enregistrées pour calculer les totaux d’économies complets.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Montant total des taxes.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total général de la commande.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Montant payé / appliqué.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "Monnaie rendue au client.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Total remboursé en valeur positive.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Total moins les remboursements, limité à zéro.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Somme des quantités des lignes d’articles.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Nombre de lignes de produits.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+Utilisez `total_saved` lorsque vous voulez un seul chiffre destiné au client pour tout ce qui a été économisé. Ne le calculez pas dans le modèle en additionnant `discount_total` et `sale_savings_total` : les commandes créées avant la v1.9.0 peuvent déjà inclure leur économie de prix PDV dans le total des remises de WooCommerce. Le champ canonique `total_saved` détecte et retire ce chevauchement.
+
+Les totaux d'économies valent `null` et `total_saved_complete` est faux dès qu'une ligne de produit ne dispose pas de suffisamment de données de prix enregistrées pour un agrégat fiable. Conditionnez la ligne avec `total_saved_complete`, puis utilisez `total_saved` pour masquer une valeur nulle :
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+Les modèles fournis qui affichent des prix utilisent la même structure de conditions avec les variantes TTC (`total_saved_incl` et `total_saved_incl_display`), et n'affichent **Total économisé** que lorsque la valeur complète est supérieure à zéro.
 
   </AccordionItem>
 

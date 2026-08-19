@@ -183,6 +183,8 @@ function bodyLines(text) {
   let inFrontmatter = false;
   let frontmatterDone = false;
   let inFence = false;
+  let inTemplateLiteral = false; // inside a JSX {`...`} template-literal child (e.g. <Recipe>{`...`}</Recipe>)
+  let inPropArray = false; // inside a multi-line JSX prop array (e.g. fields={[ ... ]})
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!frontmatterDone && i === 0 && line.trim() === '---') {
@@ -201,6 +203,24 @@ function bodyLines(text) {
       continue;
     }
     if (inFence) continue;
+    // JSX code containers hold machine content (template snippets, data props),
+    // not prose — skipping them mirrors the fenced-code rule above.
+    if (inTemplateLiteral) {
+      if (line.includes('`}')) inTemplateLiteral = false;
+      continue;
+    }
+    if (inPropArray) {
+      if (/\]\}/.test(line)) inPropArray = false;
+      continue;
+    }
+    if (line.includes('{`') && !line.slice(line.indexOf('{`') + 2).includes('`}')) {
+      inTemplateLiteral = true;
+      continue;
+    }
+    if (/=\s*\{\[/.test(line) && !/\]\}/.test(line)) {
+      inPropArray = true;
+      continue;
+    }
     if (/^\s*import\s/.test(line)) continue;
     out.push(line);
   }

@@ -55,11 +55,34 @@ import LinkCard from '@site/src/components/LinkCard';
 | **Epson Server Direct Print** | Server Direct Print가 있는 Epson ePOS 프린터 | 프린터가 WCPOS를 폴링 | 감열 전용 |
 | **PrintNode** | OS에 연결된 모든 프린터 + PrintNode 클라이언트 | WCPOS가 PrintNode에 PDF를 제출 | 모든 템플릿 |
 
+## WCPOS Cloud Print — 릴레이 {#relay}
+
+**폴링** 프린터(Star CloudPRNT 또는 Epson Server Direct Print)를 설정하면 WCPOS가 알려주는 폴 URL은 내 사이트가 아니라 **cloudprint.wcpos.com**을 가리킵니다. 이것이 **WCPOS Cloud Print**로, WCPOS가 운영하는 무료 릴레이이며 프린터와 스토어 사이에 위치합니다.
+
+**존재 이유.** 영수증 프린터는 거의 업데이트되지 않는 소형 펌웨어로 동작합니다. 최신 TLS 버전, 최신 인증 기관, 사이트 앞단의 CDN/방화벽(Cloudflare가 대표적입니다) 때문에 많은 프린터가 최신 호스팅의 스토어와 보안 연결을 맺지 못합니다. 프린터가 거부되거나 프린터가 거부하는 것입니다. 증상은 모든 설정이 올바른데도 프린터가 **Waiting** 상태에서 계속 멈춰 있는 것입니다. 릴레이는 오래된 펌웨어도 항상 협상할 수 있는 연결을 프린터에 제공하고, 그 트래픽을 스토어로 전달합니다.
+
+**작동 방식:**
+
+- 클라우드 인쇄 설정을 처음 여는 순간 사이트가 릴레이에 **자동으로** 연결됩니다 — 활성화하거나 구성할 것이 없습니다.
+- 프린터는 `cloudprint.wcpos.com`을 폴링하고, 릴레이가 요청을 스토어로 전달한 뒤 스토어의 응답을 반환합니다. 인쇄 작업은 릴레이를 **통과**할 뿐 릴레이에 저장되지 않습니다.
+- 릴레이가 대부분의 유휴 폴링을 흡수하므로, 유휴 상태의 프린터는 몇 초마다 한 번이 아니라 분당 약 한 번의 요청만 사이트에 발생시킵니다.
+- 사이트가 릴레이에 연결할 수 없는 경우(예: 릴레이가 접근할 수 없는 로컬 개발 사이트) WCPOS는 자동으로 사이트 직접 연결 URL로 대체합니다.
+
+:::note 직접 연결을 선호하시나요?
+모든 프린터의 설정 화면에는 사이트 직접 연결 URL을 보여주는 **고급** 항목이 있습니다. 호스팅이 프린터와 잘 호환된다는 것을 알고 있거나, 작업을 릴레이를 거쳐 보내고 싶지 않다면 이를 사용하세요. 개발자는 한 줄로 사이트 전체에서 릴레이를 끌 수 있습니다:
+
+```php
+add_filter( 'woocommerce_pos_cloud_print_relay_enabled', '__return_false' );
+```
+:::
+
+**릴레이가 볼 수 있는 것.** 연결하면 사이트 URL이 wcpos.com과 공유되며, 인쇄 작업(주문 정보를 포함하는 영수증 내용)이 프린터로 가는 도중 릴레이를 경유합니다. 어떤 것도 보관되지 않습니다. 자세한 내용은 [개인정보처리방침](https://wcpos.com/privacy)에 있습니다.
+
 ## 클라우드 프린터 설정 {#setup}
 
 클라우드 프린터는 WP Admin에서 한 번 구성되어 모든 장치에서 공유됩니다 — 장치마다 저장되는 로컬 프린터와는 다릅니다.
 
-**WP Admin > POS > Settings > Cloud Print**로 이동하여 **Add printer**를 클릭하세요. **이름**(예: "Kitchen" 또는 "Back office")을 지정합니다. WCPOS는 프린터로부터 안정적인 **프린터 ID**를 자동으로 도출하며, 이 ID는 절대 변경되지 않으므로 프린터의 펌웨어 구성에서 참조해도 안전합니다.
+**WP Admin > POS > 설정 > 클라우드 인쇄**로 이동하여 **Add printer**를 클릭하세요. **이름**(예: "Kitchen" 또는 "Back office")을 지정합니다. WCPOS는 프린터로부터 안정적인 **프린터 ID**를 자동으로 도출하며, 이 ID는 절대 변경되지 않으므로 프린터의 펌웨어 구성에서 참조해도 안전합니다.
 
 프린터가 생성된 후 제공업체 쪽을 구성합니다.
 
@@ -68,7 +91,7 @@ import LinkCard from '@site/src/components/LinkCard';
 <Steps>
   <StepCard number="1" title="WCPOS에서 프린터 추가">
 
-**WP Admin > POS > Settings > Cloud Print**에서 프린터를 추가하고 제공업체로 **Star CloudPRNT** 또는 **Epson Server Direct Print**를 선택합니다. WCPOS는 해당 프린터에 대한 **폴 URL**과 **일회용 토큰**을 생성합니다.
+**WP Admin > POS > 설정 > 클라우드 인쇄**에서 프린터를 추가하고 제공업체로 **Star CloudPRNT** 또는 **Epson Server Direct Print**를 선택합니다. WCPOS는 해당 프린터에 대한 **폴 URL**과 **일회용 토큰**을 생성합니다.
 
   </StepCard>
   <StepCard number="2" title="폴 URL과 토큰 복사">
@@ -100,7 +123,7 @@ PrintNode 계정에서 **API 키**를 생성합니다. 이를 통해 WCPOS가 Pr
   </StepCard>
   <StepCard number="3" title="WCPOS에 API 키 입력">
 
-**WP Admin > POS > Settings > Cloud Print**에서 프린터를 추가하고 제공업체로 **PrintNode**를 선택한 후 API 키를 붙여넣습니다. WCPOS는 이를 사용하여 PrintNode 계정에 등록된 프린터 목록을 가져옵니다.
+**WP Admin > POS > 설정 > 클라우드 인쇄**에서 프린터를 추가하고 제공업체로 **PrintNode**를 선택한 후 API 키를 붙여넣습니다. WCPOS는 이를 사용하여 PrintNode 계정에 등록된 프린터 목록을 가져옵니다.
 
   </StepCard>
   <StepCard number="4" title="프린터 선택" isLast>
@@ -134,7 +157,7 @@ stario.online에서 WCPOS용 API 키를 생성합니다. 키에는 장치를 나
   </StepCard>
   <StepCard number="3" title="WCPOS에 URL과 API 키 입력">
 
-**WP Admin > POS > Settings > Cloud Print**에서 프린터를 추가하고 제공업체로 **Star Online**을 선택한 후 CloudPRNT URL과 API 키를 붙여넣습니다. **Fetch my devices**를 클릭합니다.
+**WP Admin > POS > 설정 > 클라우드 인쇄**에서 프린터를 추가하고 제공업체로 **Star Online**을 선택한 후 CloudPRNT URL과 API 키를 붙여넣습니다. **Fetch my devices**를 클릭합니다.
 
   </StepCard>
   <StepCard number="4" title="Star 장치 선택" isLast>
@@ -181,6 +204,16 @@ Star 및 Epson 프린터는 **감열** 템플릿만 사용할 수 있습니다. 
 - **Star CloudPRNT** — 영수증이 **장치에서** 렌더링되어 CloudPRNT를 통해 프린터로 전달됩니다.
 - **Star Online, Epson, PrintNode** — 영수증이 선택한 주문과 템플릿으로부터 **서버에서** 렌더링된 후 프린터 또는 호스팅 릴레이로 전달됩니다.
 
+## 인쇄 대기열 {#print-queue}
+
+클라우드 프린터로 보낸 모든 작업은 프린터가 이를 수거하거나(폴링 프린터) 제공업체가 전달을 확인할 때까지 사이트의 대기열에 머무릅니다. **WP Admin > POS > 설정 > 클라우드 인쇄**에서 프린터 아래에 대기열이 표시됩니다:
+
+- 프린터별 또는 상태별(**Waiting**, **Printing**, **Printed**, **Failed**, **Cancelled**)로 **필터링**할 수 있으며, 개수가 실시간으로 표시됩니다.
+- 각 행에는 영수증이 얼마나 오래 **대기**했는지가 표시되고, 인쇄 대상 WooCommerce **주문**으로 연결됩니다.
+- 대기 중인 작업은 하나씩, 일괄로, 또는 프린터 단위로 **취소**할 수 있습니다. 실패한 작업은 **재시도**로 다시 대기열에 넣습니다.
+
+프린터에 대기 중인 작업이 있는데 몇 분 넘게 아무것도 수거하지 않았다면, **경고 배너**가 해당 프린터 이름과 밀린 영수증 수, 지연 시간을 표시하고 **모두 취소** 옵션을 제공합니다. 프린터가 뽑혀 있는 동안 대기 물량이 조용히 쌓이는 일은 없습니다.
+
 ## 테스트 인쇄 및 연결 상태 {#status}
 
 각 프린터 카드에는 **Test print** 버튼이 있어 짧은 진단 작업을 전송하므로, 실제 주문에 사용하기 전에 프린터에 도달할 수 있는지와 형식이 올바른지 확인할 수 있습니다.
@@ -207,6 +240,19 @@ Star 및 Epson 프린터는 **감열** 템플릿만 사용할 수 있습니다. 
   - 프린터 펌웨어의 **폴 URL과 토큰**이 WCPOS가 생성한 것과 정확히 일치하는지. 문자 하나만 틀려도 모든 폴링이 거부됩니다 — 확실하지 않으면 WCPOS에서 토큰을 재생성하고 다시 입력하세요.
   - 프린터가 인터넷을 통해 실제로 **사이트에 도달**할 수 있는지(올바른 DNS, 아웃바운드 HTTPS를 차단하는 방화벽 없음, 스토어의 유효한 SSL 인증서).
   - 프린터의 CloudPRNT / Server Direct Print 구성에서 **폴링이 활성화**되어 있고 적절한 간격으로 설정되어 있는지. 설정을 변경한 후에는 프린터를 재부팅하세요.
+  - (고급 항목의) **사이트 직접 연결 URL**을 입력했는데도 프린터가 연결되지 않는다면 표준 **cloudprint.wcpos.com** URL로 전환하세요. 많은 프린터가 최신 호스팅과 보안 연결을 협상하지 못하며, [릴레이가 바로 이 문제를 해결합니다](#relay).
+
+  </AccordionItem>
+
+  <AccordionItem question="프린터 URL이 cloudprint.wcpos.com을 가리키는 이유는 무엇인가요?">
+
+  이것이 [WCPOS Cloud Print](#relay)입니다. 프린터 펌웨어가 항상 협상할 수 있는 연결을 제공하고 인쇄 작업을 스토어로 전달하는 무료 릴레이입니다. 자동으로 켜져 있고, 작업은 릴레이에 저장되지 않으며, 원한다면 프린터의 **고급** 항목에서 사이트 직접 연결 URL을 언제든 사용할 수 있습니다.
+
+  </AccordionItem>
+
+  <AccordionItem question="릴레이가 생기기 전에 프린터를 설정했습니다 — 무언가 변경해야 하나요?">
+
+  아니요 — 프린터 구성에 이미 저장된 URL은 계속 작동합니다. 다만 그 프린터가 **Waiting 상태에 멈춰** 있다면, 해당 펌웨어가 호스팅에 직접 연결할 수 없는 종류일 가능성이 높습니다. 프린터 카드에서 **설정 &amp; 토큰**을 열어 토큰을 재생성한 뒤, 새 **cloudprint.wcpos.com** URL과 토큰을 프린터 구성에 입력하세요.
 
   </AccordionItem>
 

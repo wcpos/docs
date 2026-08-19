@@ -1,7 +1,7 @@
 ---
 title: Paramètres de caisse
 sidebar_label: Caisse
-description: Configurer les paramètres de caisse WCPOS dans l'administration WordPress, y compris les passerelles de paiement et le traitement des commandes.
+description: "Configurer les paramètres de caisse WCPOS dans l'administration WordPress, y compris les passerelles de paiement et le traitement des commandes."
 ---
 
 import Image from "@theme/IdealImage";
@@ -20,9 +20,13 @@ Cette section répertorie toutes les passerelles de paiement WooCommerce install
 
 | Colonne | Description |
 |--------|-------------|
-| **Activé** | Activer ou désactiver la passerelle pour la caisse PDV |
+| **Par défaut** | Choisissez la passerelle présélectionnée lorsqu'un caissier ouvre la caisse |
 | **Passerelle** | Le nom de la passerelle de paiement |
 | **Identifiant de passerelle** | L'identifiant de passerelle WooCommerce (utile pour les développeurs) |
+| **Activé** | Activer ou désactiver la passerelle pour la caisse PDV |
+| **Statut de commande** | Le statut attribué à une commande PDV lorsqu'elle est payée avec cette passerelle (voir [Statut de commande](#order-status) ci-dessous) |
+
+Chaque ligne dispose également d'un menu (⋮) proposant **Paramètres PDV** — pour modifier le **Titre** et la **Description** propres au PDV de la passerelle — et **Paramètres WooCommerce**, qui renvoie directement aux réglages complets de la passerelle dans WooCommerce.
 
 ### Activer une passerelle {#enabling-a-gateway}
 
@@ -30,9 +34,13 @@ Cette section répertorie toutes les passerelles de paiement WooCommerce install
 2. Activez le commutateur **Activé**
 3. La passerelle apparaîtra à l'encaissement du PDV au prochain chargement de page
 
+:::note Gratuit vs Pro
+Dans la version gratuite, seules les passerelles intégrées **Espèces** et **Carte** sont modifiables. L'activation pour le PDV des autres passerelles WooCommerce installées nécessite [WCPOS Pro](/getting-started/pro-license).
+:::
+
 ### Réorganiser les passerelles {#reordering-gateways}
 
-Glissez les passerelles pour modifier leur ordre d'affichage à l'encaissement du PDV. La première passerelle activée est sélectionnée par défaut lorsqu'un caissier ouvre la fenêtre d'encaissement.
+Glissez les passerelles pour modifier leur ordre d'affichage à l'encaissement du PDV. Utilisez la colonne **Par défaut** pour choisir la passerelle présélectionnée lorsqu'un caissier ouvre la fenêtre d'encaissement.
 
 ### PDV vs boutique en ligne {#pos-vs-online-store}
 
@@ -48,11 +56,58 @@ Une passerelle doit d'abord être installée et active dans `WP Admin > WooComme
 
 ## Statut de commande {#order-status}
 
-Configurez le statut de commande par défaut pour les commandes PDV terminées. Par défaut, les commandes PDV sont définies sur **Terminée** puisque le paiement est encaissé au point de vente.
+Le statut de commande est défini **par passerelle**, depuis la colonne **Statut de commande** du tableau des passerelles — une vente peut donc se conclure différemment selon son mode de paiement :
+
+- **Espèces** et **Carte** passent par défaut à **Terminée**, puisque le paiement est encaissé au point de vente.
+- Les passerelles dont l'argent arrive plus tard — comme **BACS** (virement bancaire direct) ou **Chèque** — passent par défaut à **En attente**.
+
+Choisissez n'importe quel statut de commande WooCommerce pour chaque passerelle. (Les versions antérieures utilisaient un unique statut global par défaut ; cette valeur a été reportée sur chaque passerelle lors de la mise à jour.)
+
+## Empêcher la survente {#prevent-overselling}
+
+L'option **Empêcher la survente** bloque les ventes en PDV d'articles dont le stock est insuffisant. Elle est **désactivée par défaut** : tant que vous ne l'activez pas, l'encaissement se comporte exactement comme avant.
+
+L'API REST de WooCommerce ne valide pas le stock à la création des commandes : une caisse très sollicitée (ou une liste de produits obsolète) peut donc vendre plus d'unités que vous n'en avez. Lorsque l'option est activée, WCPOS vérifie le stock à deux endroits :
+
+1. **À la caisse** — le caissier ne peut pas ajouter un article au panier (ni augmenter sa quantité) au-delà du stock disponible. Le PDV affiche la quantité réellement disponible, par exemple *« Seulement 3 disponibles pour Hoodie – Blue, M »*.
+2. **À l'encaissement, sur votre serveur** — la commande elle-même est validée avant la finalisation du paiement. Même si les données locales de la caisse étaient obsolètes, une commande qui entraînerait une survente est refusée et le caissier voit exactement quels articles manquent et combien sont disponibles. Le PDV actualise ensuite le stock de ces articles afin que le panier puisse être corrigé avec des chiffres exacts.
+
+Les paniers ouverts ne sont jamais empêchés de se synchroniser : la validation n'a lieu qu'au moment de l'encaissement.
+
+### Comment le stock est déterminé {#prevent-overselling-stock-rules}
+
+| Configuration du produit | Comportement lorsque l'option est activée |
+|---|---|
+| **Gère le stock** (une quantité est suivie) | Les ventes sont limitées à la quantité en stock. Plusieurs lignes du même produit dans le panier comptent dans la même limite. |
+| **La variation gère son propre stock** | La limite s'applique par variation. |
+| **La variation utilise le stock du produit parent** | Toutes les variations de ce produit partagent la quantité du produit parent. |
+| **Ne gère pas le stock** | C'est l'état de stock du produit qui décide : *Rupture de stock* ne peut pas être vendu ; *En stock* et *Réapprovisionnement* le peuvent. |
+
+### Le réapprovisionnement prime toujours {#prevent-overselling-backorders}
+
+Les **réglages de réapprovisionnement de chaque produit sont prioritaires** : c'est ainsi que vous autorisez la survente de produits précis pendant que l'option est activée.
+
+- **Ne pas autoriser** — les ventes s'arrêtent lorsque le stock est épuisé (c'est ce qu'applique l'option).
+- **Autoriser** — le produit peut toujours être vendu, même en dessous de zéro.
+- **Autoriser, mais notifier le client** — le produit peut toujours être vendu ; le caissier voit une note *« sera mis en réapprovisionnement »* lorsqu'une vente passe sous le stock disponible.
+
+### Empêcher la survente vs « Afficher les Produits Hors Stock » {#prevent-overselling-vs-display}
+
+Ces réglages couvrent des protections de stock différentes, mais tous deux peuvent empêcher l'ajout d'un article hors stock :
+
+- **Empêcher la survente** (cette page) vérifie les quantités disponibles lors de l'ajout ou de la mise à jour d'articles et valide de nouveau le stock à l'encaissement.
+- **Afficher les Produits Hors Stock** (un paramètre d'affichage du panneau de produits du PDV) contrôle la manière dont les produits et variations hors stock peuvent être sélectionnés. Activé, les produits hors stock restent visibles mais ne peuvent pas être ajoutés au panier. Désactivé, ils sont masqués ; les options de variation hors stock sont grisées et les scans de code-barres correspondants sont refusés.
+
+Désactiver Empêcher la survente n'annule pas ces règles du panneau de produits. Vous pouvez garder les articles hors stock visibles pendant qu'Empêcher la survente ajoute les garde-fous de quantité et d'encaissement — le caissier voit l'article avec un badge *Rupture de stock* et un bouton d'ajout au panier désactivé.
+
+:::note
+Une modification de cette option atteint les sessions PDV ouvertes à la prochaine connexion d'un caissier ou lors de la revalidation de l'application — la vérification côté serveur s'applique immédiatement.
+:::
 
 ## Documentation associée {#related-documentation}
 
 - [Notifications par e-mail](/settings/wp-admin/email-notifications) — options d'activation par e-mail pour les notifications administrateur, client et caissier
 - [Moyens de paiement](/payment) — aperçu des passerelles disponibles
 - [Paiement](/pos/checkout) — l'expérience de paiement au PDV
+- [Variations](/pos/product-panel/variations) — comment le stock des variations s'affiche dans le panneau de produits
 - [Passerelles personnalisées](/payment/gateways) — création d'intégrations de paiement personnalisées

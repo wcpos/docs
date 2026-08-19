@@ -7,6 +7,7 @@ description: "WCPOS रसीद टेम्पलेट में उपलब
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 WCPOS लॉजिकलेस HTML टेम्पलेट और थर्मल XML टेम्पलेट एक ही कैनोनिकल रसीद पेलोड से रेंडर होते हैं। Mustache डॉट पाथ जैसे `{{order.number}}`, `{{store.name}}`, और `{{totals.total_display}}` का उपयोग करें। ऐरे को सेक्शन के साथ रेंडर किया जाता है:
 
@@ -17,6 +18,148 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 ```
 
 कैनोनिकल कॉन्ट्रैक्ट सर्वर पर WCPOS रसीद डेटा बिल्डर द्वारा तैयार किया जाता है और ऐप में ऑफ़लाइन रसीद रेंडरर द्वारा मिरर किया जाता है। रसीदें स्थानीय डेटा से तुरंत खुलती हैं, फिर सर्वर प्रतिक्रिया उपलब्ध होने पर उसमें अपग्रेड हो जाती हैं, इसलिए कस्टम टेम्पलेट को PHP ऑर्डर मेथड के बजाय नीचे दिए गए फ़ील्ड का उपयोग करना चाहिए।
+
+रसीद डेटा v1.1 प्रत्येक उत्पाद लाइन के लिए रिकॉर्ड किए गए नियमित मूल्य, कूपन-पूर्व विक्रय मूल्य, और बचत फ़ील्ड जोड़ता है। यह ऑर्डर-स्तर की बचत कुल भी उपलब्ध कराता है, जिसमें एक **कुल बचत** मान शामिल है जो नियमित-मूल्य की बचत को WooCommerce छूटों के साथ जोड़ता है, बिना ऑर्डर कुल या रिपोर्ट बदले।
+
+## रसीद, मानचित्र के रूप में {#receipt-map}
+
+छपी हुई रसीद का हर हिस्सा डेटा कॉन्ट्रैक्ट के किसी एक अनुभाग से आता है। मिलान देखने के लिए किसी भी ओर होवर करें; उस अनुभाग के फ़ील्ड पर जाने के लिए क्लिक करें। इस पेज के सभी उदाहरण एक ही नमूना ऑर्डर का उपयोग करते हैं।
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: 'COFFEE MONSTER', center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "कर पहचान: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "रसीद #1042", right: "13 जुलाई 2026" },
+        { left: "कैशियर: Ada", right: "ग्राहक: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × एस्प्रेसो बीन्स", right: "29.00" },
+        { left: "~34.00~ · बचत −5.00", sub: true },
+        { left: "1 × सिरेमिक मग", right: "18.00" },
+        { left: "1 × क्रोसां", right: "5.75" },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "उप-योग", right: "52.75" },
+        { left: 'कूपन SUMMER10', right: '−5.28' },
+        { left: "गिफ़्ट रैप", right: "2.50" },
+        { left: "शिपिंग", right: "10.00" },
+        { left: "कुल", right: "59.97", bold: true },
+        { left: "कुल बचत", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "कार्ड", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "आपकी खरीदारी के लिए धन्यवाद!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      label: "स्टोर हेडर",
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      label: "ऑर्डर और लोग",
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      label: "लाइन आइटम",
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      label: "कुल ब्लॉक",
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      label: "भुगतान",
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      label: "फ़ुटर",
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## सामान्य नुस्खे {#common-recipes}
+
+अधिकांश टेम्पलेट संपादन इन तीन में से कोई एक होते हैं। हर कार्ड पहले छपा हुआ परिणाम दिखाता है, फिर सटीक मार्कअप — इसे किसी भी लॉजिकलेस HTML या थर्मल XML टेम्पलेट में कॉपी करें। तीसरा कार्ड ऊपर दिए गए नमूना ऑर्डर के बजाय v1.9 से पहले का एक पुराना ऑर्डर दिखाता है।
+
+<Recipes>
+  <Recipe
+    title="नियमित मूल्य पर लाइन खींचें"
+    why="सेक्शन गार्ड उन ऑर्डरों पर सब कुछ छिपा देता है जिनका मूल्य इतिहास रिकॉर्ड नहीं है."
+    preview={[
+      { left: '2 × एस्प्रेसो बीन्स', right: '29.00' },
+      { left: '~34.00~ · बचत −5.00', sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="कुल बचत की पंक्ति जोड़ें"
+    why="दो गार्ड: मूल्य इतिहास अधूरा होने पर या कुछ भी बचत न होने पर पंक्ति गायब हो जाती है."
+    preview={[
+      { left: 'कुल', right: '59.97', bold: true },
+      { left: 'कुल बचत', right: '10.28', sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+  <Recipe
+    title="v1.9 से पहले का ऑर्डर सुरक्षित रूप से दोबारा प्रिंट करें"
+    why="पुराने ऑर्डर बचत को छूट के भीतर रखते हैं — यह उसे दो बार छपने से रोकता है."
+    preview={[
+      { left: '1 × एस्प्रेसो बीन्स', right: '14.50' },
+      { left: '~17.00~  छूट −2.50', sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+</Recipes>
 
 ## रेंडरिंग नियम {#rendering-rules}
 
@@ -39,6 +182,12 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 | सुविधा फ़ील्ड | समावेशी फ़ील्ड | अनन्य फ़ील्ड |
 |-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
 | `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
 | `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
 | `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
@@ -49,6 +198,8 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
 ### दिनांक ऑब्जेक्ट {#date-objects}
@@ -58,39 +209,65 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 | फ़ील्ड | विवरण |
 |-------|-------------|
 | `datetime`, `date`, `time` | डिफ़ॉल्ट दिनांक/समय स्ट्रिंग |
-| `datetime_short`, `datetime_long`, `datetime_full` | लोकेल-अनुकूल संयुक्त फ़ॉर्मेट |
-| `date_short`, `date_long`, `date_full` | लोकेल-अनुकूल केवल-तिथि प्रारूप |
-| `date_ymd`, `date_dmy`, `date_mdy` | निश्चित-क्रम तिथि प्रारूप |
-| `weekday_short`, `weekday_long` | दिन के नाम |
-| `day`, `month`, `month_short`, `month_long`, `year` | तिथि के अलग-अलग भाग |
+| `datetime_short`, `datetime_long`, `datetime_full` | लोकेल-अवेयर संयुक्त प्रारूप |
+| `date_short`, `date_long`, `date_full` | लोकेल-अवेयर केवल-दिनांक प्रारूप |
+| `date_ymd`, `date_dmy`, `date_mdy` | निश्चित-क्रम दिनांक प्रारूप |
+| `weekday_short`, `weekday_long` | दिनों के नाम |
+| `day`, `month`, `month_short`, `month_long`, `year` | अलग-अलग दिनांक भाग |
 
-उपलब्ध तिथि ऑब्जेक्ट: `order.created`, `order.paid`, `order.completed`, `order.printed`, और `refunds[].date`। `order.printed` रेंडर समय पर रिफ़्रेश होता है, जो पुनर्मुद्रण के लिए उपयोगी है।
+उपलब्ध दिनांक ऑब्जेक्ट: `order.created`, `order.paid`, `order.completed`, `order.printed`, और `refunds[].date`। `order.printed` रेंडर के समय ताज़ा किया जाता है, जो दोबारा प्रिंट करने के लिए उपयोगी है।
 
 ## शीर्ष-स्तरीय अनुभाग {#top-level-sections}
 
 | अनुभाग | प्रकार | विवरण |
 |---------|------|-------------|
-| `order` | object | ऑर्डर पहचान, स्थिति, तिथियाँ, नोट, और भुगतान URL जानकारी |
-| `store` | object | स्टोर पहचान, पता, संपर्क विवरण, कर ID, लोगो, समय, और फ़ुटर टेक्स्ट |
-| `cashier` | object | वह उपयोगकर्ता जिसने ऑर्डर प्रोसेस किया |
-| `customer` | object | ग्राहक प्रदर्शन नाम, पते, और कर ID |
-| `lines` | array | उत्पाद लाइन आइटम |
-| `fees` | array | शुल्क पंक्तियाँ |
-| `shipping` | array | शिपिंग पंक्तियाँ |
-| `discounts` | array | कूपन/छूट पंक्तियाँ |
-| `totals` | object | ऑर्डर कुल, भुगतान कुल, रिफ़ंड सारांश, और आइटम गणना |
-| `tax` | object | सेक्शन गार्ड के लिए कर प्रदर्शन मोड फ़्लैग |
-| `tax_summary` | array | प्रति-दर कर सारांश पंक्तियाँ |
-| `has_tax_summary` | boolean | `tax_summary` के लिए सुविधा गार्ड |
-| `payments` | array | भुगतान पंक्तियाँ |
-| `refunds` | array | ऑर्डर पर लागू रिफ़ंड रिकॉर्ड |
-| `fiscal` | object | फ़िस्कल एकीकरण द्वारा भरे गए फ़िस्कल स्नैपशॉट फ़ील्ड |
-| `presentation_hints` | object | फ़ॉर्मेटिंग और रेंडरर संकेत |
-| `i18n` | object | बंडल और कस्टम टेम्पलेट्स के लिए अनुवादित लेबल |
+| `order` | ऑब्जेक्ट | ऑर्डर की पहचान, स्थिति, तिथियाँ, नोट, और भुगतान URL जानकारी |
+| `store` | ऑब्जेक्ट | स्टोर की पहचान, पता, संपर्क विवरण, कर ID, लोगो, समय, और फ़ुटर टेक्स्ट |
+| `cashier` | ऑब्जेक्ट | वह उपयोगकर्ता जिसने ऑर्डर प्रोसेस किया |
+| `customer` | ऑब्जेक्ट | ग्राहक का प्रदर्शन नाम, पते, और कर ID |
+| `lines` | ऐरे | उत्पाद लाइन आइटम |
+| `fees` | ऐरे | शुल्क पंक्तियाँ |
+| `shipping` | ऐरे | शिपिंग पंक्तियाँ |
+| `discounts` | ऐरे | कूपन/छूट पंक्तियाँ |
+| `totals` | ऑब्जेक्ट | ऑर्डर कुल, भुगतान कुल, रिफ़ंड सारांश, और आइटम गणना |
+| `tax` | ऑब्जेक्ट | सेक्शन गार्ड के लिए कर प्रदर्शन मोड फ़्लैग |
+| `tax_summary` | ऐरे | प्रति-दर कर सारांश पंक्तियाँ |
+| `has_tax_summary` | बूलियन | `tax_summary` के लिए सुविधा गार्ड |
+| `payments` | ऐरे | भुगतान पंक्तियाँ |
+| `refunds` | ऐरे | ऑर्डर पर लागू किए गए रिफ़ंड रिकॉर्ड |
+| `fiscal` | ऑब्जेक्ट | फ़िस्कल एकीकरण द्वारा भरे गए फ़िस्कल स्नैपशॉट फ़ील्ड |
+| `presentation_hints` | ऑब्जेक्ट | फ़ॉर्मेटिंग और रेंडरर संकेत |
+| `i18n` | ऑब्जेक्ट | बंडल किए गए और कस्टम टेम्पलेट के लिए अनुवादित लेबल |
+
+## मूल्य आपस में कैसे जुड़े हैं {#price-model}
+
+एक उत्पाद लाइन कई मूल्य लेकर चलती है, और नाम तभी समझ में आते हैं जब आप उन्हें राशि पर ही देखें। यह नमूना ऑर्डर की एस्प्रेसो लाइन है — $17.00 का उत्पाद, $14.50 पर सेल में, और ऊपर से 10% का कूपन:
+
+<PriceFlow
+  caption="एस्प्रेसो बीन्स — एक इकाई (ऑर्डर में दो हैं)"
+  scaleLabel="नियमित मूल्य 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 चुकाया" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "ग्राहक क्या चुकाता है", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "कूपन छूट (SUMMER10)", fields: 'lines[].discounts → इस लाइन पर 2.90' },
+    { kind: 'savings', title: "नियमित मूल्य की तुलना में बचत", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "पूरे ऑर्डर में सेल की बचत", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "पूरे ऑर्डर की सभी कूपन छूट", value: '`totals.discount_total` = 5.28' },
+    { label: "बचत + छूट, पुराना ओवरलैप हटाकर", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+सेल की बचत और कूपन छूट अलग-अलग चीज़ें हैं: सेल की बचत विक्रय मूल्य की तुलना रिकॉर्ड किए गए नियमित मूल्य से करती है, जबकि `discounts` WooCommerce का अपना कूपन गणित है। WooCommerce के ऑर्डर कुल और रिपोर्ट में हमेशा केवल कूपन वाला हिस्सा ही होता है — इसीलिए `total_saved` मौजूद है, वह एक ग्राहक-सामने वाला आँकड़ा जो दोनों को जोड़ता है।
 
 ## फ़ील्ड संदर्भ {#field-reference}
 
-पूर्ण फ़ील्ड संदर्भ नीचे अनुभाग के अनुसार समूहित है। सब कुछ डिफ़ॉल्ट रूप से संक्षिप्त है — जिस समूह की आपको आवश्यकता हो उसे विस्तृत करें।
+पूरा फ़ील्ड संदर्भ नीचे अनुभाग के अनुसार समूहित है। सब कुछ डिफ़ॉल्ट रूप से बंद है — जिस समूह की आवश्यकता हो उसे विस्तृत करें।
 
 <Accordion>
   <AccordionItem question="order — पहचान, स्थिति, तिथियाँ">
@@ -99,19 +276,19 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 | फ़ील्ड | प्रकार | उदाहरण / विवरण |
 |-------|------|-----------------------|
-| `order.id` | number | `1234` |
-| `order.number` | string | उपयोगकर्ता को दिखने वाला ऑर्डर नंबर, जैसे `"10045"` |
-| `order.currency` | string | ISO मुद्रा कोड, जैसे `"USD"` |
-| `order.customer_note` | string | ग्राहक/ऑर्डर नोट |
-| `order.wc_status` | string | WooCommerce की रॉ स्टेटस स्लग, जैसे `"processing"` |
-| `order.status_label` | string | स्थानीयकृत स्थिति लेबल, कस्टम स्थितियों सहित |
-| `order.created_via` | string | स्रोत/चैनल, जैसे `"woocommerce-pos"` |
-| `order.needs_payment` | boolean | भुगतान अनुभाग दिखाया जाना चाहिए या नहीं |
-| `order.payment_url` | string | उपलब्ध होने पर ऑर्डर भुगतान URL |
-| `order.created` | date object | ऑर्डर निर्माण तिथि |
-| `order.paid` | date object | भुगतान तिथि, भुगतान न होने पर खाली स्ट्रिंग |
-| `order.completed` | date object | पूर्ण होने की तिथि, अपूर्ण होने पर खाली स्ट्रिंग |
-| `order.printed` | date object | रेंडर-टाइम प्रिंट/रीप्रिंट टाइमस्टैम्प |
+| `order.id` | संख्या | `1042` |
+| `order.number` | स्ट्रिंग | उपयोगकर्ता को दिखने वाला ऑर्डर नंबर, जैसे `"1042"` |
+| `order.currency` | स्ट्रिंग | ISO मुद्रा कोड, जैसे `"USD"` |
+| `order.customer_note` | स्ट्रिंग | ग्राहक/ऑर्डर नोट |
+| `order.wc_status` | स्ट्रिंग | कच्चा WooCommerce स्थिति स्लग, जैसे `"processing"` |
+| `order.status_label` | स्ट्रिंग | स्थानीयकृत स्थिति लेबल, कस्टम स्थितियों सहित |
+| `order.created_via` | स्ट्रिंग | स्रोत/चैनल, जैसे `"woocommerce-pos"` |
+| `order.needs_payment` | बूलियन | भुगतान अनुभाग दिखाया जाना चाहिए या नहीं |
+| `order.payment_url` | स्ट्रिंग | उपलब्ध होने पर ऑर्डर भुगतान URL |
+| `order.created` | दिनांक ऑब्जेक्ट | ऑर्डर बनने की तिथि |
+| `order.paid` | दिनांक ऑब्जेक्ट | भुगतान की तिथि, भुगतान न होने पर खाली स्ट्रिंग |
+| `order.completed` | दिनांक ऑब्जेक्ट | पूर्ण होने की तिथि, अधूरा होने पर खाली स्ट्रिंग |
+| `order.printed` | दिनांक ऑब्जेक्ट | रेंडर के समय का प्रिंट/पुनः प्रिंट टाइमस्टैम्प |
 
   </AccordionItem>
 
@@ -121,37 +298,37 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 | फ़ील्ड | प्रकार | उदाहरण / विवरण |
 |-------|------|-----------------------|
-| `store.id` | number | स्टोर ID, या हटाए गए स्टोर के लिए ऐतिहासिक ID |
-| `store.name` | string | स्टोर प्रदर्शन नाम |
-| `store.address.address_1` | string | सड़क का पता पंक्ति 1 |
-| `store.address.address_2` | string | सुइट/यूनिट पंक्ति |
-| `store.address.city` | string | शहर/स्थानीयता |
-| `store.address.state` | string | राज्य/क्षेत्र |
-| `store.address.postcode` | string | पिन कोड |
-| `store.address.country` | string | ISO देश कोड |
-| `store.address_lines` | array | पूर्व-स्वरूपित पता पंक्तियाँ; अधिकांश टेम्पलेट्स के लिए अनुशंसित |
-| `store.tax_ids` | array | संरचित व्यापार कर ID; एकल कर ID के बजाय इसे लूप करें |
-| `store.phone` | string | स्टोर फ़ोन |
-| `store.email` | string | स्टोर ईमेल |
-| `store.logo` | string/null | स्टोर लोगो URL या डेटा URI |
-| `store.opening_hours` | string/null | संक्षिप्त कार्य-समय टेक्स्ट |
-| `store.opening_hours_vertical` | string/null | बहु-पंक्ति कार्य-समय ब्लॉक |
-| `store.opening_hours_inline` | string/null | अल्पविराम-पृथक कार्य-समय टेक्स्ट |
-| `store.opening_hours_notes` | string/null | खुलने के समय संबंधी फ्री-टेक्स्ट नोट्स |
-| `store.personal_notes` | string/null | रसीद फुटर/व्यक्तिगत नोट |
-| `store.policies_and_conditions` | string/null | रिफंड, वापसी, या नियम एवं शर्तों का टेक्स्ट |
-| `store.footer_imprint` | string/null | कानूनी फुटर इम्प्रिंट |
+| `store.id` | संख्या | स्टोर ID, या हटाए गए स्टोर के लिए ऐतिहासिक ID |
+| `store.name` | स्ट्रिंग | स्टोर का प्रदर्शन नाम |
+| `store.address.address_1` | स्ट्रिंग | पते की पहली पंक्ति |
+| `store.address.address_2` | स्ट्रिंग | सुइट/यूनिट पंक्ति |
+| `store.address.city` | स्ट्रिंग | शहर/स्थान |
+| `store.address.state` | स्ट्रिंग | राज्य/क्षेत्र |
+| `store.address.postcode` | स्ट्रिंग | पिन कोड |
+| `store.address.country` | स्ट्रिंग | ISO देश कोड |
+| `store.address_lines` | ऐरे | पूर्व-स्वरूपित पता पंक्तियाँ; अधिकांश टेम्पलेट के लिए अनुशंसित |
+| `store.tax_ids` | ऐरे | संरचित व्यावसायिक कर ID; एकल कर ID के बजाय इस पर लूप करें |
+| `store.phone` | स्ट्रिंग | स्टोर फ़ोन |
+| `store.email` | स्ट्रिंग | स्टोर ईमेल |
+| `store.logo` | स्ट्रिंग/null | स्टोर लोगो URL या डेटा URI |
+| `store.opening_hours` | स्ट्रिंग/null | संक्षिप्त खुलने के समय का टेक्स्ट |
+| `store.opening_hours_vertical` | स्ट्रिंग/null | बहु-पंक्ति खुलने के समय का ब्लॉक |
+| `store.opening_hours_inline` | स्ट्रिंग/null | अल्पविराम से अलग किया गया खुलने के समय का टेक्स्ट |
+| `store.opening_hours_notes` | स्ट्रिंग/null | खुलने के समय संबंधी मुक्त-पाठ नोट्स |
+| `store.personal_notes` | स्ट्रिंग/null | रसीद फ़ुटर/व्यक्तिगत नोट |
+| `store.policies_and_conditions` | स्ट्रिंग/null | रिफ़ंड, वापसी, या शर्तों का टेक्स्ट |
+| `store.footer_imprint` | स्ट्रिंग/null | कानूनी फ़ुटर इम्प्रिंट |
 
 ### कर ID ऑब्जेक्ट {#tax-id-objects}
 
-`store.tax_ids` और `customer.tax_ids` में समान संरचना वाले ऑब्जेक्ट होते हैं:
+`store.tax_ids` और `customer.tax_ids` में एक ही आकार वाले ऑब्जेक्ट होते हैं:
 
 | फ़ील्ड | प्रकार | विवरण |
 |-------|------|-------------|
-| `type` | string | पहचानकर्ता जैसे `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein`, या `other` |
-| `value` | string | प्रिंट करने के लिए कर ID मान |
-| `country` | string/null | ज्ञात होने पर ISO देश कोड |
-| `label` | string/null | स्थानीयकृत प्रदर्शन लेबल, रेंडरिंग से पहले रिज़ॉल्व किया गया |
+| `type` | स्ट्रिंग | पहचानकर्ता जैसे `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein`, या `other` |
+| `value` | स्ट्रिंग | प्रिंट करने के लिए कर ID मान |
+| `country` | स्ट्रिंग/null | ज्ञात होने पर ISO देश कोड |
+| `label` | स्ट्रिंग/null | स्थानीयकृत प्रदर्शन लेबल, रेंडर से पहले हल किया गया |
 
 उदाहरण:
 
@@ -169,8 +346,8 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 | फ़ील्ड | प्रकार | उदाहरण / विवरण |
 |-------|------|-----------------------|
-| `cashier.id` | number | WordPress उपयोगकर्ता ID, अज्ञात होने पर `0` |
-| `cashier.name` | string | कैशियर का प्रदर्शन नाम |
+| `cashier.id` | संख्या | WordPress उपयोगकर्ता ID, अज्ञात होने पर `0` |
+| `cashier.name` | स्ट्रिंग | कैशियर का प्रदर्शन नाम |
 
   </AccordionItem>
 
@@ -180,11 +357,11 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 | फ़ील्ड | प्रकार | उदाहरण / विवरण |
 |-------|------|-----------------------|
-| `customer.id` | number/null | ग्राहक ID, या अतिथि के लिए `null` |
-| `customer.name` | string | ग्राहक का प्रदर्शन नाम, या अतिथि लेबल |
-| `customer.billing_address.*` | object | WooCommerce बिलिंग पता फ़ील्ड |
-| `customer.shipping_address.*` | object | WooCommerce शिपिंग पता फ़ील्ड |
-| `customer.tax_ids` | array | ऑर्डर से स्नैपशॉट किए गए संरचित ग्राहक कर ID |
+| `customer.id` | संख्या/null | ग्राहक ID, या अतिथियों के लिए `null` |
+| `customer.name` | स्ट्रिंग | ग्राहक का प्रदर्शन नाम, या अतिथि लेबल |
+| `customer.billing_address.*` | ऑब्जेक्ट | WooCommerce बिलिंग पता फ़ील्ड |
+| `customer.shipping_address.*` | ऑब्जेक्ट | WooCommerce शिपिंग पता फ़ील्ड |
+| `customer.tax_ids` | ऐरे | ऑर्डर से स्नैपशॉट किए गए संरचित ग्राहक कर ID |
 
 सामान्य पता कुंजियों में `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email`, और `phone` शामिल हैं।
 
@@ -194,26 +371,135 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 ### lines {#lines}
 
-`{{#lines}}...{{/lines}}` के साथ लूप करें।
+`{{#lines}}...{{/lines}}` के साथ लूप करें। नमूना मान [नमूना ऑर्डर](#receipt-map) की एस्प्रेसो लाइन से हैं।
 
-| फ़ील्ड | प्रकार | विवरण |
-|-------|------|-------------|
-| `key` | string | स्थिर लाइन कुंजी/ऑर्डर आइटम ID |
-| `sku` | string | उत्पाद SKU |
-| `name` | string | उत्पाद या लाइन प्रदर्शन नाम |
-| `qty` | number | बेची गई मात्रा |
-| `qty_refunded` | number | इस लाइन के लिए वापस की गई मात्रा |
-| `unit_subtotal` / `_incl` / `_excl` | number | छूट-पूर्व इकाई मूल्य |
-| `unit_price` / `_incl` / `_excl` | number | छूट-पश्चात इकाई मूल्य |
-| `line_subtotal` / `_incl` / `_excl` | number | छूट-पूर्व लाइन उप-कुल |
-| `discounts` / `_incl` / `_excl` | number | छूट राशि एक धनात्मक मान के रूप में |
-| `line_total` / `_incl` / `_excl` | number | अंतिम लाइन कुल |
-| `total_refunded` | number | इस लाइन के लिए कुल रिफंड राशि एक धनात्मक मान के रूप में |
-| `taxes` | array | इस लाइन के लिए प्रति-दर कर पंक्तियाँ |
-| `meta` | array | ऑर्डर आइटम मेटा `{key, value}` जोड़ियों के रूप में |
-| `attributes` | array | उत्पाद/वेरिएशन विशेषताएँ `{key, value}` जोड़ियों के रूप में |
+<FieldIndex
+  note="हर मुद्रा फ़ील्ड एक जोड़े के रूप में आता है: संख्या (इसे `{{#…}}` गार्ड में उपयोग करें — शून्य और `null` अनुभाग छिपा देते हैं, और `null` फ़ील्ड का कोई `_display` जोड़ीदार होता ही नहीं) और उसकी `_display` स्ट्रिंग (इसे प्रिंट करने के लिए उपयोग करें)। incl/excl से चिह्नित फ़ील्ड `_incl` और `_excl` वैरिएंट भी देते हैं, जिनमें से हर एक का अपना `_display` होता है।"
+  placeholder="फ़ील्ड फ़िल्टर करें… “savings” आज़माएँ"
+  emptyText="कोई फ़ील्ड मेल नहीं खाता — `lines[]` के सभी फ़ील्ड देखने के लिए फ़िल्टर हटाएँ।"
+  fields={[
+    { name: 'key', type: 'string', desc: "स्थिर लाइन कुंजी / ऑर्डर आइटम ID।", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "उत्पाद SKU।", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "उत्पाद या लाइन का प्रदर्शन नाम।", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "बेची गई मात्रा।", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "इस लाइन के लिए रिफ़ंड की गई मात्रा।", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "रिकॉर्ड किया गया नियमित इकाई मूल्य। POS मूल्य इतिहास रहित ऑर्डरों पर `null` — इसे किसी अनुभाग में लपेटें।",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "कूपन-पूर्व विक्रय इकाई मूल्य — उपलब्ध होने पर रिकॉर्ड किया गया POS मूल्य, अन्यथा संग्रहीत लाइन उप-योग से निकाला गया।",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "नियमित मूल्य में से विक्रय मूल्य घटाकर, शून्य पर सीमित। शून्य falsy है, इसलिए गार्ड की गई पंक्तियाँ स्वयं छिप जाती हैं।",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "रिकॉर्ड किया गया नियमित मूल्य मात्रा से गुणा।",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "कूपन-पूर्व विक्रय मूल्य मात्रा से गुणा।",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "इस लाइन के लिए नियमित-से-विक्रय मूल्य की कुल बचत।",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "v1.9.0 से पहले के उन ऑर्डरों पर सही, जिनकी बचत पहले से ही `discounts` के भीतर है — दोहरी गिनती रोकने वाला फ़्लैग।",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce का छूट-पूर्व इकाई मान। इसे नियमित मूल्य के रूप में उपयोग न करें।",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce छूटों के बाद अंतिम इकाई मान।",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce का छूट-पूर्व लाइन उप-योग।",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "मूल WooCommerce लाइन छूट, धनात्मक मान के रूप में — वर्तमान ऑर्डरों पर केवल कूपन।",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "कूपनों के बाद अंतिम लाइन कुल — यही राशि वाले कॉलम में छपता है।",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "इस लाइन के लिए कुल रिफ़ंड, धनात्मक मान के रूप में।",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "इस लाइन के लिए प्रति-दर कर पंक्तियाँ।" },
+    { name: 'meta', type: 'array', desc: "ऑर्डर आइटम मेटा, `{key, value}` जोड़ों के रूप में।" },
+    { name: 'attributes', type: 'array', desc: "उत्पाद/विविधता विशेषताएँ, `{key, value}` जोड़ों के रूप में।" },
+  ]}
+/>
 
-फ़ॉर्मेट किए गए वेरिएंट में `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display`, और समावेशी/अपवर्जी `_display` वेरिएंट शामिल हैं।
+### नियमित मूल्य और बचत दिखाना {#displaying-regular-price-and-savings}
+
+इकाई-मूल्य वाले लेआउट के लिए, रिकॉर्ड किया गया नियमित मूल्य, विक्रय मूल्य, और बचत इस तरह दिखाएँ:
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+जब मात्रा मायने रखती हो, तब लाइन-कुल वाले फ़ील्ड उपयोग करें:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` कूपनों से पहले का मूल्य है। WooCommerce छूटों के बाद की अंतिम राशि के लिए `unit_price` या `line_total` उपयोग करें।
+
+:::note v1.9.0 से पहले बनाए गए ऑर्डर दोबारा प्रिंट करना
+पुराने WCPOS ऑर्डरों में नियमित-से-विक्रय मूल्य की कमी पहले से ही `discounts` में शामिल हो सकती है। यदि आपका कस्टम टेम्पलेट लाइन बचत और लाइन छूट दोनों प्रिंट करता है, तो एक ही कमी दो बार दिखने से बचने के लिए `savings_in_discounts` का उपयोग करें:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+यदि टेम्पलेट लाइन-स्तर की `discounts` पंक्ति प्रिंट नहीं करता, तो `savings_in_discounts` सही होने पर भी `line_savings` दिखाते रहें। बंडल किए गए टेम्पलेट यह अंतर स्वतः संभाल लेते हैं।
+:::
 
   </AccordionItem>
 
@@ -225,13 +511,13 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 | फ़ील्ड | प्रकार | विवरण |
 |-------|------|-------------|
-| `label` | string | शुल्क लेबल या शिपिंग विधि का नाम |
-| `method_id` | string | शिपिंग विधि ID (केवल शिपिंग) |
-| `total` / `_incl` / `_excl` | number | प्रदर्शन-पक्ष, समावेशी, और अनन्य योग |
-| `taxes` | array | प्रति-दर कर पंक्तियाँ |
-| `meta` | array | `{key, value}` मेटा जोड़ियाँ |
+| `label` | स्ट्रिंग | शुल्क लेबल या शिपिंग विधि का नाम |
+| `method_id` | स्ट्रिंग | शिपिंग विधि ID (केवल शिपिंग) |
+| `total` / `_incl` / `_excl` | संख्या | प्रदर्शन-पक्ष, समावेशी, और अनन्य कुल |
+| `taxes` | ऐरे | प्रति-दर कर पंक्तियाँ |
+| `meta` | ऐरे | `{key, value}` मेटा जोड़े |
 
-स्वरूपित संस्करण: `total_display`, `total_incl_display`, और `total_excl_display`।
+स्वरूपित वैरिएंट: `total_display`, `total_incl_display`, और `total_excl_display`।
 
   </AccordionItem>
 
@@ -243,12 +529,11 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 | फ़ील्ड | प्रकार | विवरण |
 |-------|------|-------------|
-| `label` | string | कूपन विवरण या कोड फ़ॉलबैक |
-| `code` | string | कूपन कोड |
-| `codes` | string | जुड़े हुए कोड के लिए लीगेसी/डिस्प्ले फ़ॉलबैक |
-| `total` / `_incl` / `_excl` | number | छूट राशि धनात्मक मान के रूप में |
+| `label` | स्ट्रिंग | कूपन विवरण या कोड फ़ॉलबैक |
+| `code` | स्ट्रिंग | कूपन कोड |
+| `total` / `_incl` / `_excl` | संख्या | छूट राशि, धनात्मक मान के रूप में |
 
-स्वरूपित वेरिएंट: `total_display`, `total_incl_display`, और `total_excl_display`। यदि आप छूट को ऋणात्मक पंक्तियों के रूप में दिखाना चाहते हैं तो टेम्पलेट में अपना माइनस चिह्न जोड़ें।
+स्वरूपित वैरिएंट: `total_display`, `total_incl_display`, और `total_excl_display`। यदि आप छूट को ऋणात्मक पंक्तियों के रूप में दिखाना चाहते हैं, तो टेम्पलेट में अपना स्वयं का ऋण चिह्न जोड़ें।
 
   </AccordionItem>
 
@@ -256,20 +541,86 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 ### totals {#totals}
 
-| फ़ील्ड | प्रकार | विवरण |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | number | छूट से पहले ऑर्डर उप-कुल |
-| `totals.discount_total` / `_incl` / `_excl` | number | ऑर्डर छूट कुल धनात्मक मान के रूप में |
-| `totals.tax_total` | number | कुल कर राशि |
-| `totals.total` / `_incl` / `_excl` | number | ऑर्डर कुल योग |
-| `totals.paid_total` | number | भुगतान/लागू की गई राशि |
-| `totals.change_total` | number | ग्राहक को लौटाई गई शेष राशि |
-| `totals.refund_total` | number | कुल वापसी राशि, धनात्मक मान के रूप में |
-| `totals.net_total` | number | `total - refund_total`, शून्य तक सीमित |
-| `totals.total_qty` | number | लाइन आइटम मात्राओं का योग |
-| `totals.line_count` | number | उत्पाद लाइन पंक्तियों की संख्या |
+नमूना मान [नमूना ऑर्डर](#receipt-map) से हैं, जिस पर बाद में $7.25 का आंशिक रिफ़ंड हुआ।
 
-स्वरूपित संस्करणों में `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display`, और `net_total_display` शामिल हैं, साथ ही जहाँ लागू हो वहाँ समावेशी/अनन्य संस्करण भी उपलब्ध हैं।
+<FieldIndex
+  note="मुद्रा फ़ील्ड लाइन आइटम जैसी ही जोड़ी का पालन करते हैं: गार्ड के लिए सादी संख्या और प्रिंट करने के लिए `_display` स्ट्रिंग, तथा जहाँ चिह्नित हो वहाँ `_incl`/`_excl` वैरिएंट।"
+  placeholder="फ़ील्ड फ़िल्टर करें… “saved” आज़माएँ"
+  emptyText="कोई फ़ील्ड मेल नहीं खाता — `totals` के सभी फ़ील्ड देखने के लिए फ़िल्टर हटाएँ।"
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "छूटों से पहले ऑर्डर का उप-योग।",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "ऑर्डर की कुल छूट, धनात्मक मान के रूप में — वर्तमान ऑर्डरों पर केवल कूपन।",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "उत्पाद लाइनों में रिकॉर्ड की गई नियमित-से-विक्रय मूल्य की कुल बचत, कैटलॉग सेल और काउंटर पर किए गए मूल्य परिवर्तनों सहित।",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "WooCommerce छूट और नियमित-मूल्य की बचत मिलाकर, पुराना ओवरलैप हटाकर। बचाई गई हर चीज़ के लिए एकमात्र ग्राहक-सामने वाला आँकड़ा।",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "क्या रसीद के पास पूर्ण बचत कुल की गणना के लिए पर्याप्त रिकॉर्ड किया गया मूल्य डेटा है।",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "कुल कर राशि।",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "ऑर्डर का महायोग।",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "चुकाई गई / लागू की गई राशि।",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "ग्राहक को लौटाया गया शेष।",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "कुल रिफ़ंड, धनात्मक मान के रूप में।",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "कुल में से रिफ़ंड घटाकर, शून्य पर सीमित।",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "लाइन आइटम मात्राओं का योग।", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "उत्पाद लाइन पंक्तियों की गिनती।", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+जब आप बचाई गई हर चीज़ के लिए एक ग्राहक-सामने वाला आँकड़ा चाहते हों, तब `total_saved` का उपयोग करें। इसकी गणना टेम्पलेट में `discount_total` और `sale_savings_total` जोड़कर न करें: v1.9.0 से पहले बनाए गए ऑर्डरों में उनकी POS मूल्य बचत पहले से ही WooCommerce के छूट कुल में शामिल हो सकती है। कैनोनिकल `total_saved` फ़ील्ड उस ओवरलैप का पता लगाकर उसे हटा देता है।
+
+जब किसी भी उत्पाद लाइन के पास भरोसेमंद कुल के लिए पर्याप्त रिकॉर्ड किया गया मूल्य डेटा न हो, तो बचत के कुल `null` होते हैं और `total_saved_complete` गलत होता है। पंक्ति को `total_saved_complete` से गार्ड करें, फिर शून्य मान छिपाने के लिए `total_saved` का उपयोग करें:
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+बंडल किए गए मूल्य-वाहक टेम्पलेट यही गार्ड संरचना कर-समावेशी वैरिएंट (`total_saved_incl` और `total_saved_incl_display`) के साथ उपयोग करते हैं, और **कुल बचत** केवल तभी दिखाते हैं जब पूर्ण मान शून्य से अधिक हो।
 
   </AccordionItem>
 
@@ -281,28 +632,28 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 | कर फ़ील्ड | प्रकार | विवरण |
 |-----------|------|-------------|
-| `tax.display` | string | `incl` या `excl` |
-| `tax.display_incl` | boolean | जब कीमतें कर सहित प्रदर्शित होती हैं तो True |
-| `tax.display_excl` | boolean | जब कीमतें कर रहित प्रदर्शित होती हैं तो True |
-| `tax.breakdown` | string | `hidden`, `single`, या `itemized` |
-| `tax.breakdown_hidden` | boolean | जब कर पंक्तियाँ छिपी होनी चाहिए तो True |
-| `tax.breakdown_single` | boolean | जब एकल कर कुल योग प्राथमिक हो तो True |
-| `tax.breakdown_itemized` | boolean | जब प्रति-दर पंक्तियाँ प्राथमिक हों तो True |
-| `has_tax_summary` | boolean | जब `tax_summary` में पंक्तियाँ हों तो True |
+| `tax.display` | स्ट्रिंग | `incl` या `excl` |
+| `tax.display_incl` | बूलियन | सही, जब मूल्य कर सहित प्रदर्शित होते हैं |
+| `tax.display_excl` | बूलियन | सही, जब मूल्य कर रहित प्रदर्शित होते हैं |
+| `tax.breakdown` | स्ट्रिंग | `hidden`, `single`, या `itemized` |
+| `tax.breakdown_hidden` | बूलियन | सही, जब कर पंक्तियाँ छिपाई जानी चाहिए |
+| `tax.breakdown_single` | बूलियन | सही, जब एकल कर कुल पसंद किया जाता है |
+| `tax.breakdown_itemized` | बूलियन | सही, जब प्रति-दर पंक्तियाँ पसंद की जाती हैं |
+| `has_tax_summary` | बूलियन | सही, जब `tax_summary` में पंक्तियाँ हों |
 
-`tax_summary` को `{{#tax_summary}}...{{/tax_summary}}` के साथ लूप करें।
+`tax_summary` पर `{{#tax_summary}}...{{/tax_summary}}` के साथ लूप करें।
 
 | फ़ील्ड | प्रकार | विवरण |
 |-------|------|-------------|
-| `code` | string | कर दर ID/कोड |
-| `rate` | number/null | हल होने पर दर प्रतिशत |
-| `label` | string | कर दर लेबल |
-| `compound` | boolean | क्या दर संयुक्त (compounded) है |
-| `taxable_amount_excl` | number/null | कर-रहित कर योग्य आधार |
-| `tax_amount` | number | एकत्रित कर |
-| `taxable_amount_incl` | number/null | कर-सहित कर योग्य आधार |
+| `code` | स्ट्रिंग | कर दर ID/कोड |
+| `rate` | संख्या/null | हल होने पर दर प्रतिशत |
+| `label` | स्ट्रिंग | कर दर लेबल |
+| `compound` | बूलियन | दर चक्रवृद्धि है या नहीं |
+| `taxable_amount_excl` | संख्या/null | कर रहित कर-योग्य आधार |
+| `tax_amount` | संख्या | वसूला गया कर |
+| `taxable_amount_incl` | संख्या/null | कर सहित कर-योग्य आधार |
 
-स्वरूपित (formatted) संस्करण: `taxable_amount_excl_display`, `tax_amount_display`, और `taxable_amount_incl_display`।
+स्वरूपित वैरिएंट: `taxable_amount_excl_display`, `tax_amount_display`, और `taxable_amount_incl_display`।
 
   </AccordionItem>
 
@@ -314,14 +665,14 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 | फ़ील्ड | प्रकार | विवरण |
 |-------|------|-------------|
-| `method_id` | string | भुगतान विधि पहचानकर्ता |
-| `method_title` | string | भुगतान विधि प्रदर्शन शीर्षक |
-| `amount` | number | ऑर्डर पर लागू की गई राशि |
-| `transaction_id` | string | गेटवे ट्रांज़ैक्शन ID |
-| `tendered` | number | उपलब्ध होने पर दी गई नकद राशि |
-| `change` | number | उपलब्ध होने पर लौटाई गई नकद शेष राशि |
+| `method_id` | स्ट्रिंग | भुगतान विधि पहचानकर्ता |
+| `method_title` | स्ट्रिंग | भुगतान विधि का प्रदर्शन शीर्षक |
+| `amount` | संख्या | ऑर्डर पर लागू की गई राशि |
+| `transaction_id` | स्ट्रिंग | गेटवे लेनदेन ID |
+| `tendered` | संख्या | मौजूद होने पर दी गई नकद राशि |
+| `change` | संख्या | मौजूद होने पर लौटाया गया नकद शेष |
 
-स्वरूपित वेरिएंट: `amount_display`, `tendered_display`, और `change_display`।
+स्वरूपित वैरिएंट: `amount_display`, `tendered_display`, और `change_display`।
 
   </AccordionItem>
 
@@ -329,30 +680,30 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 ### refunds {#refunds}
 
-`{{#refunds}}...{{/refunds}}` के साथ लूप करें। रिफ़ंड राशियाँ धनात्मक परिमाण होती हैं; टेम्पलेट यह तय करते हैं कि ऋण चिह्न लगाना है या एक अलग लौटाई-गई-वस्तुओं का ब्लॉक प्रदर्शित करना है।
+`{{#refunds}}...{{/refunds}}` के साथ लूप करें। रिफ़ंड राशियाँ धनात्मक परिमाण होती हैं; टेम्पलेट तय करते हैं कि ऋण चिह्न लगाना है या अलग लौटाए-गए-आइटम ब्लॉक रेंडर करना है।
 
 | फ़ील्ड | प्रकार | विवरण |
 |-------|------|-------------|
-| `id` | number | रिफ़ंड रिकॉर्ड ID |
-| `date` | date object | रिफ़ंड निर्माण तिथि |
-| `amount` | number | रिफ़ंड कुल |
-| `subtotal` | number | रिफंड की गई लाइन उप-कुल |
-| `tax_total` | number | रिफंड किया गया कर |
-| `shipping_total` | number | रिफंड की गई शिपिंग राशि |
-| `shipping_tax` | number | रिफंड किया गया शिपिंग कर |
-| `reason` | string | रिफंड का कारण |
-| `refunded_by_id` | number/null | रिफंड जारी करने वाले उपयोगकर्ता का ID |
-| `refunded_by_name` | string | रिफंड जारी करने वाले उपयोगकर्ता का प्रदर्शन नाम |
-| `refunded_payment` | boolean | क्या भुगतान गेटवे के माध्यम से रिफंड किया गया |
-| `destination` | string | `original_method`, `cash`, या `manual` |
-| `gateway_id` | string | रिफंड के लिए उपयोग किया गया गेटवे ID |
-| `gateway_title` | string | गेटवे प्रदर्शन शीर्षक |
-| `processing_mode` | string | प्रदाता/मैन्युअल प्रोसेसिंग मोड |
-| `lines` | array | रिफंड किए गए उत्पाद पंक्तियाँ |
-| `fees` | array | रिफंड किए गए शुल्क पंक्तियाँ |
-| `shipping` | array | रिफंड की गई शिपिंग पंक्तियाँ |
+| `id` | संख्या | रिफ़ंड रिकॉर्ड ID |
+| `date` | दिनांक ऑब्जेक्ट | रिफ़ंड बनने की तिथि |
+| `amount` | संख्या | रिफ़ंड कुल |
+| `subtotal` | संख्या | रिफ़ंड की गई लाइन उप-योग |
+| `tax_total` | संख्या | रिफ़ंड किया गया कर |
+| `shipping_total` | संख्या | रिफ़ंड की गई शिपिंग राशि |
+| `shipping_tax` | संख्या | रिफ़ंड किया गया शिपिंग कर |
+| `reason` | स्ट्रिंग | रिफ़ंड का कारण |
+| `refunded_by_id` | संख्या/null | रिफ़ंड जारी करने वाले उपयोगकर्ता की ID |
+| `refunded_by_name` | स्ट्रिंग | रिफ़ंड जारी करने वाले उपयोगकर्ता का प्रदर्शन नाम |
+| `refunded_payment` | बूलियन | भुगतान गेटवे के माध्यम से रिफ़ंड हुआ या नहीं |
+| `destination` | स्ट्रिंग | `original_method`, `cash`, या `manual` |
+| `gateway_id` | स्ट्रिंग | रिफ़ंड के लिए उपयोग किया गया गेटवे ID |
+| `gateway_title` | स्ट्रिंग | गेटवे का प्रदर्शन शीर्षक |
+| `processing_mode` | स्ट्रिंग | प्रदाता/मैन्युअल प्रोसेसिंग मोड |
+| `lines` | ऐरे | रिफ़ंड की गई उत्पाद पंक्तियाँ |
+| `fees` | ऐरे | रिफ़ंड की गई शुल्क पंक्तियाँ |
+| `shipping` | ऐरे | रिफ़ंड की गई शिपिंग पंक्तियाँ |
 
-रिफंड लाइन फ़ील्ड में `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl`, `line_total`, `unit_total`, और `taxes` शामिल हैं। रिफंड शुल्क और शिपिंग पंक्तियाँ `label`, `total`, `total_incl`, `total_excl`, और `taxes` का उपयोग करती हैं। कुल और कर राशियों के लिए प्रदर्शन वेरिएंट जोड़े जाते हैं।
+रिफ़ंड लाइन फ़ील्ड में `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl`, `line_total`, `unit_total`, और `taxes` शामिल हैं। रिफ़ंड शुल्क और शिपिंग पंक्तियाँ `label`, `total`, `total_incl`, `total_excl`, और `taxes` का उपयोग करती हैं। कुल और कर राशियों के लिए प्रदर्शन वैरिएंट जोड़े जाते हैं।
 
   </AccordionItem>
 
@@ -360,22 +711,22 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 ### fiscal {#fiscal}
 
-फ़िस्कल फ़ील्ड डिफ़ॉल्ट रूप से खाली होती हैं और फ़िस्कल एकीकरण या WCPOS Pro स्नैपशॉट संवर्धन द्वारा भरी जाती हैं।
+फ़िस्कल फ़ील्ड डिफ़ॉल्ट रूप से खाली रहते हैं और फ़िस्कल एकीकरण या WCPOS Pro स्नैपशॉट संवर्धन द्वारा भरे जाते हैं।
 
 | फ़ील्ड | प्रकार | विवरण |
 |-------|------|-------------|
-| `fiscal.immutable_id` | string | अपरिवर्तनीय फ़िस्कल पहचानकर्ता |
-| `fiscal.receipt_number` | string | फ़िस्कल रसीद संख्या |
-| `fiscal.sequence` | number/null | अनुक्रम काउंटर |
-| `fiscal.hash` | string | हैश/हस्ताक्षर मान |
-| `fiscal.qr_payload` | string | राजकोषीय सत्यापन के लिए QR पेलोड |
-| `fiscal.tax_agency_code` | string | कर प्राधिकरण कोड |
-| `fiscal.signed_at` | string | राजकोषीय हस्ताक्षर टाइमस्टैम्प |
-| `fiscal.signature_excerpt` | string | प्रदर्शन के लिए संक्षिप्त हस्ताक्षर |
-| `fiscal.document_label` | string | दस्तावेज़ लेबल, जैसे कर चालान |
-| `fiscal.is_reprint` | boolean | क्या यह रेंडर पुनर्मुद्रण है |
-| `fiscal.reprint_count` | number | पुनर्मुद्रण संख्या |
-| `fiscal.extra_fields` | array/object | क्षेत्राधिकार-विशिष्ट मान |
+| `fiscal.immutable_id` | स्ट्रिंग | अपरिवर्तनीय फ़िस्कल पहचानकर्ता |
+| `fiscal.receipt_number` | स्ट्रिंग | फ़िस्कल रसीद संख्या |
+| `fiscal.sequence` | संख्या/null | क्रम काउंटर |
+| `fiscal.hash` | स्ट्रिंग | हैश/हस्ताक्षर मान |
+| `fiscal.qr_payload` | स्ट्रिंग | फ़िस्कल सत्यापन के लिए QR पेलोड |
+| `fiscal.tax_agency_code` | स्ट्रिंग | कर प्राधिकरण कोड |
+| `fiscal.signed_at` | स्ट्रिंग | फ़िस्कल हस्ताक्षर टाइमस्टैम्प |
+| `fiscal.signature_excerpt` | स्ट्रिंग | प्रदर्शन के लिए छोटा किया गया हस्ताक्षर |
+| `fiscal.document_label` | स्ट्रिंग | दस्तावेज़ लेबल, जैसे कर इनवॉइस |
+| `fiscal.is_reprint` | बूलियन | यह रेंडर पुनः प्रिंट है या नहीं |
+| `fiscal.reprint_count` | संख्या | पुनः प्रिंट की गिनती |
+| `fiscal.extra_fields` | ऐरे/ऑब्जेक्ट | क्षेत्राधिकार-विशिष्ट मान |
 
   </AccordionItem>
 
@@ -383,22 +734,22 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 
 ### presentation_hints {#presentation_hints}
 
-ये फ़ील्ड मुख्य रूप से रेंडरर और फ़ॉर्मेटर द्वारा उपयोग किए जाते हैं। आवश्यकता होने पर ये टेम्पलेट्स में उपलब्ध होते हैं।
+ये फ़ील्ड मुख्य रूप से रेंडरर और फ़ॉर्मेटर द्वारा उपयोग किए जाते हैं। आवश्यकता पड़ने पर ये टेम्पलेट के लिए भी उपलब्ध हैं।
 
 | फ़ील्ड | प्रकार | विवरण |
 |-------|------|-------------|
-| `presentation_hints.display_tax` | string | `incl`, `excl`, `hidden`, `itemized`, या `single` |
-| `presentation_hints.prices_entered_with_tax` | boolean | कैटलॉग मूल्यों में कर शामिल है या नहीं |
-| `presentation_hints.rounding_mode` | string | WooCommerce कर राउंडिंग सेटिंग |
-| `presentation_hints.locale` | string | फ़ॉर्मेटिंग के लिए उपयोग किया जाने वाला लोकेल |
-| `presentation_hints.timezone` | string | रसीद का समय क्षेत्र |
-| `presentation_hints.currency_position` | string | मुद्रा चिह्न की स्थिति |
-| `presentation_hints.currency_symbol` | string | मुद्रा चिह्न |
-| `presentation_hints.price_thousand_separator` | string | हज़ार विभाजक |
-| `presentation_hints.price_decimal_separator` | string | दशमलव विभाजक |
-| `presentation_hints.price_num_decimals` | number | दशमलव स्थान |
-| `presentation_hints.price_display_suffix` | string | WooCommerce मूल्य प्रदर्शन प्रत्यय |
-| `presentation_hints.order_barcode_type` | string | गैलरी टेम्पलेट द्वारा उपयोग किया जाने वाला बारकोड प्रकार |
+| `presentation_hints.display_tax` | स्ट्रिंग | `incl`, `excl`, `hidden`, `itemized`, या `single` |
+| `presentation_hints.prices_entered_with_tax` | बूलियन | कैटलॉग मूल्य में कर शामिल है या नहीं |
+| `presentation_hints.rounding_mode` | स्ट्रिंग | WooCommerce कर राउंडिंग सेटिंग |
+| `presentation_hints.locale` | स्ट्रिंग | फ़ॉर्मेटिंग के लिए उपयोग किया गया लोकेल |
+| `presentation_hints.timezone` | स्ट्रिंग | रसीद का समय क्षेत्र |
+| `presentation_hints.currency_position` | स्ट्रिंग | मुद्रा चिह्न की स्थिति |
+| `presentation_hints.currency_symbol` | स्ट्रिंग | मुद्रा चिह्न |
+| `presentation_hints.price_thousand_separator` | स्ट्रिंग | हज़ार विभाजक |
+| `presentation_hints.price_decimal_separator` | स्ट्रिंग | दशमलव विभाजक |
+| `presentation_hints.price_num_decimals` | संख्या | दशमलव स्थान |
+| `presentation_hints.price_display_suffix` | स्ट्रिंग | WooCommerce मूल्य प्रदर्शन प्रत्यय |
+| `presentation_hints.order_barcode_type` | स्ट्रिंग | गैलरी टेम्पलेट द्वारा उपयोग किया गया बारकोड प्रकार |
 
   </AccordionItem>
 
@@ -414,7 +765,7 @@ WCPOS लॉजिकलेस HTML टेम्पलेट और थर्म
 {{i18n.total}}: {{totals.total_display}}
 ```
 
-सामान्य कुंजियों में `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, और tax-ID लेबल कुंजियाँ जैसे `store_tax_id_label_eu_vat` और `customer_tax_id_label_other` शामिल हैं। एक्सटेंशन द्वारा अतिरिक्त कुंजियाँ जोड़ी जा सकती हैं।
+सामान्य कुंजियों में `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, और कर-ID लेबल कुंजियाँ जैसे `store_tax_id_label_eu_vat` तथा `customer_tax_id_label_other` शामिल हैं। एक्सटेंशन अतिरिक्त कुंजियाँ जोड़ सकते हैं।
 
   </AccordionItem>
 </Accordion>

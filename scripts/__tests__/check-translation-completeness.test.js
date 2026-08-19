@@ -179,6 +179,52 @@ Jedes Gateway kann für das POS aktiviert oder deaktiviert werden.
     expect(findLeftoverProse(source, translated)).toHaveLength(0);
   });
 
+  it('does not flag machine content inside JSX template-literal children', () => {
+    // <Recipe>{`...`}</Recipe> blocks hold mustache template code that must stay
+    // byte-identical across locales (receipts/receipt-data.mdx).
+    const source = `Some intro prose about templates.
+
+<Recipe title="Line savings">{\`
+{{#lines}}
+  <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+{{/lines}}
+\`}</Recipe>
+`;
+    const translated = `Etwas einleitender Text über Vorlagen.
+
+<Recipe title="Zeilenersparnis">{\`
+{{#lines}}
+  <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+{{/lines}}
+\`}</Recipe>
+`;
+    expect(findLeftoverProse(source, translated)).toHaveLength(0);
+  });
+
+  it('does not flag data lines inside multi-line JSX prop arrays', () => {
+    // fields={[ ... ]} arrays hold field names and sample values that must stay
+    // identical across locales (receipts/receipt-data.mdx FieldIndex blocks).
+    const source = `Intro prose for the field index.
+
+<FieldIndex fields={[
+  {
+    name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+    sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+  },
+]} />
+`;
+    const translated = `Einleitung für den Feldindex.
+
+<FieldIndex fields={[
+  {
+    name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+    sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+  },
+]} />
+`;
+    expect(findLeftoverProse(source, translated)).toHaveLength(0);
+  });
+
   it('does not flag allowlisted product names left verbatim in prose', () => {
     const source = `Stripe Terminal
 
