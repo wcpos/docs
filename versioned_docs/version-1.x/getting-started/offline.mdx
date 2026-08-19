@@ -7,20 +7,21 @@ description: "What works offline in WCPOS, how the local database syncs with Woo
 
 import Icon from '@site/src/components/Icon';
 
-WCPOS stores your product and customer data locally on each device using a browser-based database (IndexedDB). This means parts of the POS work without an internet connection, while others require connectivity.
+WCPOS stores your product and customer data in a local database on each device. This means parts of the POS work without an internet connection, while others require connectivity.
 
 ## What Works Offline {#what-works-offline}
 
-- **Browsing products** — search, filter, and view product details from cached data
+- **Browsing products** — search, filter, and view product details from local data
 - **Browsing customers** — look up customer names, emails, and addresses
 - **Building a cart** — add items, change quantities, edit prices, and apply POS discounts
-- **Applying coupons** (Pro) — codes validate locally against synced coupon data; the server re-validates when the order is submitted
+- **Applying coupons** (Pro) — codes validate locally against synced coupon data; the server re-validates when the queued order reaches it
+- **Completing a sale with an offline-capable payment method** — Cash and externally processed Card sales are saved locally and queued for WooCommerce
 - **Barcode scanning** — scan barcodes to find products in the local database
 - **Viewing reports** — the default (offline) report type generates reports from locally stored orders
 
 ## What Requires a Connection {#what-requires-a-connection}
 
-- **Completing checkout** — processing payment and creating the order in WooCommerce requires server communication (applied coupons are re-validated here)
+- **Server-dependent checkout actions** — Web Checkout, integrated online or terminal gateways, and **Save to Server** need their respective services to be reachable
 - **Syncing data** — pulling new products, updated prices, or new customers from WooCommerce
 - **Logging in** — initial authentication requires a connection to your WordPress site
 - **Licence activation** — Pro licence checks need to reach the WCPOS licence server
@@ -28,15 +29,21 @@ WCPOS stores your product and customer data locally on each device using a brows
 
 ## How the Local Database Works {#how-the-local-database-works}
 
-When you first open WCPOS, it begins downloading your WooCommerce products and customers in the background. This process is progressive — the more you use the POS, the more complete your local data becomes.
+When you first open WCPOS, it seeds your product catalogue in the background and pulls other data as you use it — you can start selling as soon as the first products are on the device. From then on, a background change check (every 60 seconds by default, tunable in [Store health](/support/store-health)) fetches only what changed on the server.
 
 The local database:
 
 - **Persists between sessions** — data survives browser restarts and device reboots
-- **Is per-device** — each device maintains its own local copy
-- **Stays in sync** — WCPOS periodically checks for changes on the server and pulls updates
+- **Is per device (and per cashier)** — each device keeps its own local copy; cashiers don't share local data
+- **Stays in sync** — background change checks pull updates; your changes queue locally and push to the server
 
-For more technical detail, see the [Architecture](/reference/architecture) reference.
+You can see exactly what's on the device — and what's still waiting to send — in **Store health → Database**. For more technical detail, see [How the Sync Engine Works](/reference/sync-engine).
+
+## Changes You Make Offline Are Queued {#offline-writes}
+
+Every change you make in the POS — a sale, a product edit, a customer update — is saved to the device first and queued to send. While you're offline the queue simply waits; nothing is lost by losing connectivity mid-shift.
+
+When the connection returns, the queue drains automatically. If your server refuses a change outright (rare — for example, a record the server considers invalid), the POS won't retry it silently forever: the change is parked in **Store health → Database** under *"changes never reached your server"*, with the server's reason and explicit **Send again** / **Discard** actions. See [Store Health](/support/store-health#refused-changes).
 
 ## Connectivity Indicator {#connectivity-indicator}
 
@@ -44,15 +51,15 @@ The POS header shows a coloured dot indicating connection status:
 
 - **Green** — connected to the server, all features available
 - **Yellow** — intermittent connection, some operations may be slow
-- **Red** — offline, limited to browsing cached data
+- **Red** — offline, limited to local data
 
 ## What Happens During Connectivity Loss {#what-happens-during-connectivity-loss}
 
 If you lose your internet connection while using the POS:
 
-1. **Products and customers remain browsable** from cached data.
-2. **You can continue building carts** and editing items.
-3. **Checkout will fail** if attempted — the POS needs to reach your WooCommerce server to process the order.
+1. **Products and customers remain browsable** from local data.
+2. **You can continue building carts** and editing items — every change queues locally.
+3. **You can complete checkout with an offline-capable payment method** — the sale joins the outbound queue. Server-dependent payment gateways remain unavailable until their services are reachable.
 4. **Open orders are preserved** in the local database until connectivity returns.
 
 ## When Connection Restores {#when-connection-restores}
@@ -60,12 +67,12 @@ If you lose your internet connection while using the POS:
 Once your connection comes back:
 
 - The connectivity indicator turns green.
-- You can proceed to checkout and complete any parked orders.
+- **Queued changes drain to your server automatically** — sales and edits made while offline push without any manual action.
+- Server-dependent payment gateways and **Save to Server** become available again.
 - Background sync resumes, pulling any product or customer changes that happened while you were offline.
-- No manual action is required — WCPOS handles reconnection automatically.
 
 ## Tips for Unreliable Connections {#tips-for-unreliable-connections}
 
 - **Use "Save to Server" on important orders** — this pushes the order to WooCommerce immediately, so it's not lost if the device's local database is cleared.
-- **Sync regularly** — if you know connectivity is intermittent, sync your product catalogue while you have a good connection so local data is up to date.
-- **Consider the native apps** — the desktop and mobile apps (when available) can offer better offline resilience than the browser version.
+- **Check Store health after an outage** — the *changes waiting to send* tile in **Store health → Database** confirms when everything has reached your server.
+- **Sync while you have signal** — if you know connectivity will be intermittent, let the catalogue seed finish while you have a good connection.

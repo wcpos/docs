@@ -2,7 +2,7 @@
 title: Architecture
 sidebar_label: Architecture
 sidebar_position: 2
-description: Technical architecture of WCPOS explaining how the POS client communicates with the WooCommerce REST API.
+description: "Technical architecture of WCPOS explaining how the POS client communicates with the WooCommerce REST API."
 ---
 
 import LocalizedSVG from '@site/src/components/LocalizedSVG';
@@ -13,40 +13,31 @@ This page explains the technical architecture of WCPOS for developers and advanc
 
 WCPOS is designed as a two-part system:
 
-1. **PHP Plugin:** Hosted on your server, this is a relatively small plugin which extends the [WooCommerce REST API](/reference/wc-rest-api).
+1. **PHP Plugin:** Hosted on your server, this is a relatively small plugin which extends the [WooCommerce REST API](/reference/wc-rest-api) with POS-specific endpoints.
 
-2. **JavaScript Client:** This runs locally in your browser or the desktop app, and later on iOS and Android apps.
+2. **JavaScript Client:** This runs locally in your browser, the desktop app, or the iOS/Android apps.
 
 You can think of it as two separate worlds:
 
 - The _PHP world_ is where data management happens using WordPress and WooCommerce.
-- The _JavaScript world_ replicates your WooCommerce store locally, optimised for fast searching and offline use.
+- The _JavaScript world_ keeps a local, offline-capable copy of the store data your tills need, optimised for fast searching and instant response.
 
 <LocalizedSVG svgName="pos-client-woo-server" />
 
 ## Data Synchronization {#data-synchronization}
 
-Data is fetched from WooCommerce using the [WooCommerce REST API](https://woocommerce.github.io/woocommerce-rest-api-docs/). This means the POS has to download every product, variation, product category, customer, tax rate, and more to store them locally.
+:::info Changed in v1.10.0
+v1.10.0 replaces the previous replication layer with a dedicated **sync engine**. The summary below is the short version — the full explanation lives at [How the Sync Engine Works](/reference/sync-engine).
+:::
 
-Although this can be time-consuming initially, once downloaded, they're available instantly without the need to continually fetch from the server.
+The client is local-first: every screen reads and writes the device's local database, and a background sync engine keeps that database and WooCommerce convergent. The engine does **not** blindly mirror your whole store — it works from what your screens actually need:
 
-### What Gets Synced? {#what-gets-synced}
+- **Change detection:** the POS polls a lightweight change log with conditional requests; an idle store answers with a single bodyless `304`.
+- **Declared demand:** a screen declares what it's showing, and the engine decides whether that needs a request or is already answered locally.
+- **Seeds and lanes:** a bounded catalogue seed, a recent-orders window, and idle-time maintenance lanes fill and verify local data on schedules you can tune per device.
+- **Durable writes:** sales and edits queue locally and drain to WooCommerce, with visible recovery for anything the server refuses.
 
-- Products and variations
-- Product categories and tags
-- Customers
-- Tax rates and tax classes
-- Payment gateways (for checkout)
-- Orders (for order history in Pro)
-
-### Sync Strategy {#sync-strategy}
-
-WCPOS uses an incremental sync strategy:
-
-1. **Initial sync:** Downloads all data on first load
-2. **Incremental updates:** Only fetches changes since the last sync
-3. **Background sync:** Periodically checks for updates
-4. **Manual sync:** User can trigger a sync at any time
+What gets synced: products and variations, categories/tags/brands, customers, tax rates, coupons (Pro), and orders. Payment gateways are fetched at checkout.
 
 ## Architecture Pros and Cons {#architecture-pros-and-cons}
 
@@ -58,11 +49,13 @@ WCPOS uses an incremental sync strategy:
 
 ## Local Database {#local-database}
 
-The JavaScript client stores data in IndexedDB, a browser-based database. This provides:
+The client stores data in a local database on each device — the web and desktop apps use **OPFS (Origin Private File System) storage running in a worker**, and the mobile apps use the same on-disk format through a filesystem engine. All platforms share one storage format and recovery tooling. This provides:
 
-- **Persistence:** Data survives browser restarts
-- **Performance:** Fast queries without network latency
+- **Persistence:** Data survives browser restarts and device reboots
+- **Performance:** Fast queries without network latency — filtering, sorting, and pagination run inside the storage layer, so only the visible page of rows reaches the UI
 - **Offline browsing:** Cached data remains accessible without internet
+
+Each site + store + cashier combination gets its own local database, so cashiers and stores never share local data on one device. Upgrades never migrate a local database in place — the app re-downloads from the server, which is always the authoritative copy.
 
 ## Checkout Architecture {#checkout-architecture}
 
@@ -74,4 +67,4 @@ The checkout process uses an iframe/webview that loads the WooCommerce Order Pay
 
 ## API Extensions {#api-extensions}
 
-The PHP plugin extends the WooCommerce REST API with additional endpoints for POS-specific functionality. See [WooCommerce REST API](/reference/wc-rest-api) for details.
+The PHP plugin extends the WooCommerce REST API with additional endpoints for POS-specific functionality, registered under dedicated `wcpos/v1` and `wcpos/v2` namespaces — `wcpos/v2` carries the v1.10.0 sync surface, which is why the app and plugin versions ship in lockstep. See [WooCommerce REST API](/reference/wc-rest-api) for an introduction.
