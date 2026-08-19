@@ -2,25 +2,26 @@
 title: Funcionalidad sin conexión
 sidebar_label: Modo sin conexión
 sidebar_position: 5
-description: Qué funciona sin conexión en WCPOS, cómo se sincroniza la base de datos local con WooCommerce y qué ocurre cuando se pierde la conectividad.
+description: "Qué funciona sin conexión en WCPOS, cómo se sincroniza la base de datos local con WooCommerce y qué ocurre cuando se pierde la conectividad."
 ---
 
 import Icon from '@site/src/components/Icon';
 
-WCPOS almacena los datos de productos y clientes de forma local en cada dispositivo mediante una base de datos del navegador (IndexedDB). Esto significa que algunas funciones del POS funcionan sin conexión a internet, mientras que otras requieren conectividad.
+WCPOS almacena los datos de productos y clientes en una base de datos local en cada dispositivo. Esto significa que algunas partes del POS funcionan sin conexión a internet, mientras que otras requieren conectividad.
 
 ## Qué funciona sin conexión {#what-works-offline}
 
-- **Explorar productos** — buscar, filtrar y ver los detalles de productos desde los datos en caché
+- **Explorar productos** — buscar, filtrar y ver los detalles de productos a partir de los datos locales
 - **Explorar clientes** — consultar nombres, correos electrónicos y direcciones de clientes
 - **Crear un carrito** — agregar artículos, modificar cantidades, editar precios y aplicar descuentos del POS
+- **Aplicar cupones** (Pro) — los códigos se validan localmente con los datos de cupones sincronizados; el servidor los vuelve a validar cuando le llega el pedido en cola
+- **Completar una venta con un método de pago compatible con el modo sin conexión** — las ventas en efectivo y con tarjeta procesada externamente se guardan localmente y se ponen en cola para WooCommerce
 - **Escaneo de códigos de barras** — escanear códigos de barras para encontrar productos en la base de datos local
 - **Ver informes** — el tipo de informe predeterminado (sin conexión) genera informes a partir de los pedidos almacenados localmente
 
 ## Qué requiere conexión {#what-requires-a-connection}
 
-- **Finalizar la compra** — procesar el pago y crear el pedido en WooCommerce requiere comunicación con el servidor
-- **Aplicación de códigos de cupón** — la validación de cupones se realiza en el servidor
+- **Acciones de pago que dependen del servidor** — el pago web, las pasarelas integradas en línea o de terminal y **Guardar en el servidor** necesitan que sus respectivos servicios estén accesibles
 - **Sincronización de datos** — descarga de nuevos productos, precios actualizados o nuevos clientes desde WooCommerce
 - **Inicio de sesión** — la autenticación inicial requiere una conexión con el sitio de WordPress
 - **Activación de licencia** — las verificaciones de licencia Pro necesitan conectarse al servidor de licencias de WCPOS
@@ -28,15 +29,21 @@ WCPOS almacena los datos de productos y clientes de forma local en cada disposit
 
 ## Cómo funciona la base de datos local {#how-the-local-database-works}
 
-Al abrir WCPOS por primera vez, comienza a descargar los productos y clientes de WooCommerce en segundo plano. Este proceso es progresivo: cuanto más se utiliza el POS, más completos se vuelven los datos locales.
+Al abrir WCPOS por primera vez, este siembra el catálogo de productos en segundo plano y descarga el resto de los datos a medida que se utiliza: se puede empezar a vender en cuanto los primeros productos están en el dispositivo. A partir de ahí, una comprobación de cambios en segundo plano (cada 60 segundos de forma predeterminada, ajustable en [Estado de la tienda](/support/store-health)) descarga únicamente lo que ha cambiado en el servidor.
 
 La base de datos local:
 
 - **Persiste entre sesiones** — los datos se conservan tras reinicios del navegador y del dispositivo
-- **Es por dispositivo** — cada dispositivo mantiene su propia copia local
-- **Se mantiene sincronizada** — WCPOS verifica periódicamente si hay cambios en el servidor y descarga las actualizaciones
+- **Es por dispositivo (y por cajero)** — cada dispositivo mantiene su propia copia local; los cajeros no comparten los datos locales
+- **Se mantiene sincronizada** — las comprobaciones de cambios en segundo plano descargan las actualizaciones; sus cambios se ponen en cola localmente y se envían al servidor
 
-Para más detalles técnicos, consulte la referencia de [Arquitectura](/reference/architecture).
+Puede ver exactamente qué hay en el dispositivo —y qué está pendiente de enviarse— en **Estado de la tienda → Base de datos**. Para más detalles técnicos, consulte [Cómo funciona el motor de sincronización](/reference/sync-engine).
+
+## Los cambios que realiza sin conexión se ponen en cola {#offline-writes}
+
+Cada cambio que realiza en el POS —una venta, la edición de un producto, la actualización de un cliente— se guarda primero en el dispositivo y se pone en cola para enviarse. Mientras está sin conexión, la cola simplemente espera; no se pierde nada por quedarse sin conectividad a mitad de turno.
+
+Cuando vuelve la conexión, la cola se vacía automáticamente. Si su servidor rechaza un cambio de plano (algo poco frecuente; por ejemplo, un registro que el servidor considera no válido), el POS no lo reintentará en silencio para siempre: el cambio queda apartado en **Estado de la tienda → Base de datos**, en *«cambios que nunca llegaron a su servidor»*, con el motivo indicado por el servidor y acciones explícitas de **Volver a enviar** / **Descartar**. Consulte [Estado de la tienda](/support/store-health#refused-changes).
 
 ## Indicador de conectividad {#connectivity-indicator}
 
@@ -44,15 +51,15 @@ El encabezado del POS muestra un punto de color que indica el estado de la conex
 
 - **Verde** — conectado al servidor, todas las funciones disponibles
 - **Amarillo** — conexión intermitente, algunas operaciones pueden ser lentas
-- **Rojo** — sin conexión, limitado a la navegación de datos en caché
+- **Rojo** — sin conexión, limitado a los datos locales
 
 ## Qué ocurre durante una pérdida de conectividad {#what-happens-during-connectivity-loss}
 
 Si se pierde la conexión a Internet mientras se utiliza el POS:
 
-1. **Los productos y clientes siguen siendo navegables** a partir de los datos en caché.
-2. **Es posible continuar armando carritos** y editando artículos.
-3. **El proceso de pago fallará** si se intenta — el POS necesita comunicarse con el servidor de WooCommerce para procesar el pedido.
+1. **Los productos y clientes siguen siendo navegables** a partir de los datos locales.
+2. **Es posible continuar armando carritos** y editando artículos: cada cambio se pone en cola localmente.
+3. **Es posible completar el pago con un método de pago compatible con el modo sin conexión**: la venta se une a la cola de salida. Las pasarelas de pago que dependen del servidor siguen sin estar disponibles hasta que sus servicios sean accesibles.
 4. **Los pedidos abiertos se conservan** en la base de datos local hasta que se restablezca la conectividad.
 
 ## Cuando se restablece la conexión {#when-connection-restores}
@@ -60,12 +67,12 @@ Si se pierde la conexión a Internet mientras se utiliza el POS:
 Una vez que se restablezca la conexión:
 
 - El indicador de conectividad se vuelve verde.
-- Es posible proceder al cobro y completar cualquier pedido en espera.
+- **Los cambios en cola se envían automáticamente a su servidor**: las ventas y las ediciones realizadas sin conexión se suben sin ninguna acción manual.
+- Las pasarelas de pago que dependen del servidor y **Guardar en el servidor** vuelven a estar disponibles.
 - La sincronización en segundo plano se reanuda, descargando cualquier cambio de productos o clientes que se haya producido mientras no había conexión.
-- No se requiere ninguna acción manual: WCPOS gestiona la reconexión de forma automática.
 
 ## Consejos para conexiones inestables {#tips-for-unreliable-connections}
 
-- **Utilizar "Guardar en el servidor" en pedidos importantes**: esto envía el pedido a WooCommerce de inmediato, de modo que no se pierda si se borra la base de datos local del dispositivo.
-- **Sincronizar con regularidad**: si la conectividad es intermitente, conviene sincronizar el catálogo de productos mientras haya una buena conexión para que los datos locales estén actualizados.
-- **Considerar las aplicaciones nativas**: las aplicaciones de escritorio y móviles (cuando estén disponibles) pueden ofrecer una mayor resiliencia sin conexión que la versión del navegador.
+- **Utilizar «Guardar en el servidor» en pedidos importantes**: esto envía el pedido a WooCommerce de inmediato, de modo que no se pierda si se borra la base de datos local del dispositivo.
+- **Revisar el Estado de la tienda tras una interrupción**: la ficha de *cambios pendientes de enviar* en **Estado de la tienda → Base de datos** confirma cuándo ha llegado todo a su servidor.
+- **Sincronizar mientras haya cobertura**: si sabe que la conectividad será intermitente, deje que termine la siembra del catálogo mientras tenga buena conexión.

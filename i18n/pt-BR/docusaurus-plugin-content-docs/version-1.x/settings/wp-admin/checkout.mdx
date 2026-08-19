@@ -1,7 +1,7 @@
 ---
 title: Configurações de finalização da compra
 sidebar_label: Finalização da compra
-description: Configure as configurações de finalização da compra do WCPOS no admin do WordPress, incluindo gateways de pagamento e processamento de pedidos.
+description: "Configure as configurações de finalização da compra do WCPOS no admin do WordPress, incluindo gateways de pagamento e processamento de pedidos."
 ---
 
 import Image from "@theme/IdealImage";
@@ -63,9 +63,51 @@ O status do pedido é definido **por método de pagamento**, na coluna **Status 
 
 Selecione qualquer status de pedido do WooCommerce para cada método de pagamento. (Versões mais antigas usavam um único padrão global; esse valor foi migrado para cada método de pagamento durante a atualização.)
 
+## Evitar vendas em excesso {#prevent-overselling}
+
+A opção **Evitar vendas em excesso** impede vendas no POS de itens sem estoque suficiente. Ela vem **desativada por padrão** — até você habilitá-la, a finalização da compra funciona exatamente como antes.
+
+A API REST do WooCommerce não valida o estoque na criação dos pedidos, então um caixa movimentado (ou uma lista de produtos desatualizada) pode vender mais unidades do que você tem. Com a opção ativada, o WCPOS verifica o estoque em dois momentos:
+
+1. **No caixa** — o operador não consegue adicionar um item ao carrinho (nem aumentar sua quantidade) acima do estoque disponível. O POS mostra a quantidade que *realmente* está disponível, por exemplo *"Apenas 3 disponíveis para Hoodie – Blue, M"*.
+2. **Na finalização da compra, no seu servidor** — o próprio pedido é validado antes de o pagamento ser concluído. Mesmo que os dados locais do caixa estivessem desatualizados, um pedido que resultaria em venda em excesso é recusado e o operador vê exatamente quais itens estão faltando e quantos estão disponíveis. Em seguida, o POS atualiza o estoque desses itens para que o carrinho possa ser corrigido com números precisos.
+
+Carrinhos abertos nunca são impedidos de sincronizar — a validação só é executada no momento da finalização da compra.
+
+### Como o estoque é determinado {#prevent-overselling-stock-rules}
+
+| Configuração do produto | Comportamento com a opção ativada |
+|---|---|
+| **Gerencia estoque** (uma quantidade é controlada) | As vendas ficam limitadas à quantidade em estoque. Várias linhas do mesmo produto no carrinho contam para o mesmo limite. |
+| **A variação controla o próprio estoque** | O limite se aplica por variação. |
+| **A variação usa o estoque do produto pai** | Todas as variações desse produto compartilham a quantidade do produto pai. |
+| **Não gerencia estoque** | Quem decide é o status de estoque do produto: *Fora de estoque* não pode ser vendido; *Em estoque* e *Sob encomenda* podem. |
+
+### As encomendas continuam prevalecendo {#prevent-overselling-backorders}
+
+As **configurações de encomenda de cada produto têm prioridade** — é assim que você permite vendas em excesso para produtos específicos enquanto a opção está ativada:
+
+- **Não permitir** — as vendas param quando o estoque acaba (é isso que a opção impõe).
+- **Permitir** — o produto sempre pode ser vendido, mesmo abaixo de zero.
+- **Permitir, mas notificar o cliente** — o produto sempre pode ser vendido; o operador vê a observação *"será enviado sob encomenda"* quando uma venda fica abaixo do estoque disponível.
+
+### Evitar vendas em excesso vs. "Mostrar produtos fora de estoque" {#prevent-overselling-vs-display}
+
+Essas configurações cobrem proteções de estoque diferentes, mas ambas podem impedir que um item fora de estoque seja adicionado:
+
+- **Evitar vendas em excesso** (esta página) verifica as quantidades disponíveis quando itens são adicionados ou atualizados e valida o estoque novamente na finalização da compra.
+- **Mostrar produtos fora de estoque** (uma configuração de exibição no painel de produtos do POS) controla como produtos e variações fora de estoque podem ser selecionados. Quando habilitada, os produtos fora de estoque continuam visíveis, mas não podem ser adicionados ao carrinho. Quando desabilitada, eles ficam ocultos; as opções de variação fora de estoque também ficam esmaecidas e escaneamentos de código de barras correspondentes são recusados.
+
+Desativar Evitar vendas em excesso não anula essas regras do painel de produtos. Você pode manter os itens fora de estoque visíveis enquanto Evitar vendas em excesso acrescenta as proteções de quantidade e de finalização da compra — o operador vê o item com uma insígnia *Fora de estoque* e o botão de adicionar ao carrinho desabilitado.
+
+:::note
+A alteração da opção chega às sessões abertas do POS na próxima vez que um operador fizer login ou o aplicativo revalidar — a verificação no servidor passa a valer imediatamente.
+:::
+
 ## Documentação relacionada {#related-documentation}
 
 - [Notificações por e-mail](/settings/wp-admin/email-notifications) — controles individuais por e-mail para notificações de administrador, cliente e operador de caixa
 - [Métodos de pagamento](/payment) — visão geral dos métodos de pagamento disponíveis
 - [Finalização de compra](/pos/checkout) — a experiência de finalização de compra no POS
+- [Variações](/pos/product-panel/variations) — como o estoque das variações aparece no painel de produtos
 - [Métodos de pagamento personalizados](/payment/gateways) — criação de integrações de pagamento personalizadas

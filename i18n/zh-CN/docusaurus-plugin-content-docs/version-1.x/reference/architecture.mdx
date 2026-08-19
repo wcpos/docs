@@ -2,7 +2,7 @@
 title: 架构
 sidebar_label: 架构
 sidebar_position: 2
-description: WCPOS 的技术架构，解释了 POS 客户端如何与 WooCommerce REST API 通信。
+description: "WCPOS 的技术架构，解释了 POS 客户端如何与 WooCommerce REST API 通信。"
 ---
 
 import LocalizedSVG from '@site/src/components/LocalizedSVG';
@@ -13,40 +13,31 @@ import LocalizedSVG from '@site/src/components/LocalizedSVG';
 
 WCPOS 被设计为一个双部系统：
 
-1. **PHP 插件：** 托管在您的服务器上，这是一个相对较小的插件，扩展了 [WooCommerce REST API](/reference/wc-rest-api)。
+1. **PHP 插件：** 托管在您的服务器上，这是一个相对较小的插件，它以 POS 专用端点扩展了 [WooCommerce REST API](/reference/wc-rest-api)。
 
-2. **JavaScript 客户端：** 该客户端在您的浏览器或桌面应用程序中本地运行，之后还会在 iOS 和 Android 应用中运行。
+2. **JavaScript 客户端：** 该客户端在您的浏览器、桌面应用或 iOS/Android 应用中本地运行。
 
 您可以将其视为两个独立的世界：
 
 - _PHP 世界_ 是通过 WordPress 和 WooCommerce 进行数据管理的地方。
-- _JavaScript 世界_ 本地复制您的 WooCommerce 商店，针对快速搜索和离线使用进行了优化。
+- _JavaScript 世界_ 保存着收银台所需商店数据的本地离线副本，并针对快速搜索和即时响应进行了优化。
 
 <LocalizedSVG svgName="pos-client-woo-server" />
 
 ## 数据同步 {#data-synchronization}
 
-数据是通过 [WooCommerce REST API](https://woocommerce.github.io/woocommerce-rest-api-docs/) 从 WooCommerce 中获取的。这意味着 POS 必须下载每个产品、变体、产品类别、客户、税率等，以便将它们存储在本地。
+:::info v1.10.0 中的变更
+v1.10.0 以专用的**同步引擎**取代了先前的复制层。下面的概述只是简要版本——完整说明请参阅[同步引擎的工作原理](/reference/sync-engine)。
+:::
 
-虽然这最初可能会耗时，但一旦下载，它们可以立即使用，而无需不断从服务器获取。
+客户端采用本地优先设计：每个屏幕都从设备的本地数据库读取和写入，而后台同步引擎负责让该数据库与 WooCommerce 保持一致。该引擎**不会**盲目镜像您的整个商店——它以您的屏幕实际需要的内容为依据：
 
-### 同步内容 {#what-gets-synced}
+- **变更检测：** POS 使用条件请求轮询一份轻量的变更日志；空闲商店只会返回一个无正文的 `304`。
+- **声明式需求：** 屏幕声明它正在展示的内容，引擎则判断这是否需要发起请求，还是本地已能满足。
+- **预填充与通道：** 有界的产品目录预填充、近期订单窗口以及空闲时段的维护通道，会按您可为每台设备调整的计划填充并校验本地数据。
+- **持久化写入：** 销售和编辑会在本地排队并发送到 WooCommerce，对于服务器拒绝的内容还提供可见的恢复方式。
 
-- 产品和变体
-- 产品类别和标签
-- 客户
-- 税率和税类
-- 支付网关（用于结账）
-- 订单（用于 Pro 中的订单历史）
-
-### 同步策略 {#sync-strategy}
-
-WCPOS 使用增量同步策略：
-
-1. **初始同步：** 在首次加载时下载所有数据
-2. **增量更新：** 仅获取自上次同步以来的更改
-3. **后台同步：** 定期检查更新
-4. **手动同步：** 用户可以随时触发同步
+同步的内容包括：产品和变体、类别/标签/品牌、客户、税率、优惠券（Pro）以及订单。支付网关在结账时获取。
 
 ## 架构优缺点 {#architecture-pros-and-cons}
 
@@ -58,11 +49,13 @@ WCPOS 使用增量同步策略：
 
 ## 本地数据库 {#local-database}
 
-JavaScript 客户端将数据存储在 IndexedDB 中，这是一个基于浏览器的数据库。它提供：
+客户端将数据存储在每台设备的本地数据库中——网页应用和桌面应用使用**在 worker 中运行的 OPFS（源私有文件系统）存储**，而移动应用通过文件系统引擎使用相同的磁盘格式。所有平台共用同一种存储格式和恢复工具。它提供：
 
-- **持久性：** 数据在浏览器重启后仍然存在
-- **性能：** 迅速查询而无网络延迟
+- **持久性：** 数据在浏览器重启和设备重启后仍然存在
+- **性能：** 迅速查询而无网络延迟——筛选、排序和分页都在存储层内部完成，因此只有可见的那一页记录会到达界面
 - **离线浏览：** 缓存数据在没有互联网的情况下仍然可访问
+
+每个站点 + 商店 + 收银员的组合都有自己的本地数据库，因此同一台设备上的收银员和商店绝不会共享本地数据。升级时绝不会就地迁移本地数据库——应用会从服务器重新下载，服务器始终是权威副本。
 
 ## 结账架构 {#checkout-architecture}
 
@@ -74,4 +67,4 @@ JavaScript 客户端将数据存储在 IndexedDB 中，这是一个基于浏览�
 
 ## API 扩展 {#api-extensions}
 
-PHP 插件通过附加端点扩展了 WooCommerce REST API，以实现 POS 特定功能。有关详细信息，请参见 [WooCommerce REST API](/reference/wc-rest-api)。
+PHP 插件通过附加端点扩展了 WooCommerce REST API，以实现 POS 特定功能，这些端点注册在专用的 `wcpos/v1` 和 `wcpos/v2` 命名空间下——`wcpos/v2` 承载 v1.10.0 的同步接口，这也是应用与插件版本必须同步发布的原因。入门介绍请参见 [WooCommerce REST API](/reference/wc-rest-api)。

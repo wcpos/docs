@@ -7,6 +7,7 @@ description: "Riferimento completo per il contratto dati canonico disponibile ne
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 I modelli HTML logicless e i modelli XML termici di WCPOS eseguono il rendering dallo stesso payload canonico dello scontrino. Utilizzare i percorsi dot Mustache come `{{order.number}}`, `{{store.name}}` e `{{totals.total_display}}`. Gli array vengono renderizzati con le sezioni:
 
@@ -17,6 +18,148 @@ I modelli HTML logicless e i modelli XML termici di WCPOS eseguono il rendering 
 ```
 
 Il contratto canonico è prodotto dal builder dei dati scontrino WCPOS sul server e replicato dal renderer offline degli scontrini nell'app. Gli scontrini si aprono immediatamente dai dati locali, poi vengono aggiornati con la risposta del server quando disponibile, pertanto i modelli personalizzati dovrebbero utilizzare i campi indicati di seguito anziché i metodi PHP per gli ordini.
+
+Receipt Data v1.1 aggiunge, per ogni riga prodotto, i campi registrati di prezzo di listino, prezzo di vendita prima dei coupon e risparmio. Fornisce inoltre i totali di risparmio a livello di ordine, incluso un valore **Risparmio totale** che combina il risparmio sul prezzo di listino con gli sconti WooCommerce senza modificare i totali dell'ordine né i report.
+
+## Lo scontrino, mappato {#receipt-map}
+
+Ogni parte di uno scontrino stampato proviene da una sezione del contratto dati. Passa il mouse su uno dei due lati per vedere la corrispondenza; fai clic per passare ai campi di quella sezione. Tutti gli esempi di questa pagina usano lo stesso ordine di esempio.
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "P. IVA: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "Scontrino n. 1042", right: "13 lug 2026" },
+        { left: "Cassiere: Ada", right: "Cliente: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Espresso Beans", right: "29.00" },
+        { left: "~34.00~ · Risparmio −5.00", sub: true },
+        { left: "1 × Ceramic Mug", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "Subtotale", right: "52.75" },
+        { left: "Coupon SUMMER10", right: "−5.28" },
+        { left: "Confezione regalo", right: "2.50" },
+        { left: "Spedizione", right: "10.00" },
+        { left: "TOTALE", right: "59.97", bold: true },
+        { left: "Risparmio totale", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "Carta", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "Grazie per il tuo acquisto!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      label: "Intestazione del negozio",
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      label: "Ordine e persone",
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      label: "Righe prodotto",
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      label: "Blocco dei totali",
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      label: "Pagamenti",
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      label: "Piè di pagina",
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## Ricette comuni {#common-recipes}
+
+La maggior parte delle modifiche ai modelli rientra in una di queste tre. Ogni scheda mostra prima il risultato stampato, poi il markup esatto: copialo in qualsiasi modello HTML logicless o XML termico. La terza scheda mostra un ordine legacy precedente alla versione 1.9 anziché l'ordine di esempio qui sopra.
+
+<Recipes>
+  <Recipe
+    title="Barrare il prezzo di listino"
+    why="La sezione condizionale nasconde tutto negli ordini privi di uno storico dei prezzi registrato."
+    preview={[
+      { left: "2 × Espresso Beans", right: "29.00" },
+      { left: "~34.00~ · Risparmio −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="Aggiungere una riga Risparmio totale"
+    why="Due condizioni: la riga scompare quando lo storico dei prezzi è incompleto o quando non è stato risparmiato nulla."
+    preview={[
+      { left: "TOTALE", right: "59.97", bold: true },
+      { left: "Risparmio totale", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+  <Recipe
+    title="Ristampare in sicurezza un ordine precedente alla v1.9"
+    why="Gli ordini più vecchi portano il risparmio già dentro lo sconto: così non viene stampato due volte."
+    preview={[
+      { left: "1 × Espresso Beans", right: "14.50" },
+      { left: "~17.00~  Sconto −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+</Recipes>
 
 ## Regole di rendering {#rendering-rules}
 
@@ -39,6 +182,12 @@ Diversi campi dispongono di varianti con imposte incluse ed escluse, oltre a un 
 
 | Campo di comodo | Campo imposte incluse | Campo imposte escluse |
 |-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
 | `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
 | `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
 | `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
@@ -49,6 +198,8 @@ Diversi campi dispongono di varianti con imposte incluse ed escluse, oltre a un 
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
 ### Oggetti data {#date-objects}
@@ -88,6 +239,32 @@ Oggetti data disponibili: `order.created`, `order.paid`, `order.completed`, `ord
 | `presentation_hints` | object | Suggerimenti di formattazione e rendering |
 | `i18n` | object | Etichette tradotte per i modelli predefiniti e personalizzati |
 
+## Come si relazionano i prezzi {#price-model}
+
+Una riga prodotto porta con sé diversi prezzi, e i nomi diventano chiari quando li si vede applicati agli importi reali. Questa è la riga dell'espresso dell'ordine di esempio: un prodotto da 17,00 $ in saldo a 14,50 $, con in più un coupon del 10%:
+
+<PriceFlow
+  caption="Espresso Beans — una unità (l'ordine ne contiene due)"
+  scaleLabel="prezzo di listino 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 pagati" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "Quanto paga il cliente", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "Sconto coupon (SUMMER10)", fields: 'lines[].discounts → 2.90 su questa riga' },
+    { kind: 'savings', title: "Risparmio rispetto al prezzo di listino", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "Risparmio da saldo sull'intero ordine", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Tutti gli sconti coupon sull'intero ordine", value: '`totals.discount_total` = 5.28' },
+    { label: "Risparmio + sconti, sovrapposizione legacy rimossa", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Il risparmio da saldo e gli sconti coupon sono cose diverse: il risparmio da saldo confronta il prezzo di vendita con il prezzo di listino registrato, mentre `discounts` è l'aritmetica dei coupon di WooCommerce. I totali degli ordini e i report di WooCommerce contengono sempre e solo la parte relativa ai coupon: è per questo che esiste `total_saved`, l'unico valore rivolto al cliente che combina entrambe le cose.
+
 ## Riferimento dei campi {#field-reference}
 
 Il riferimento completo dei campi è raggruppato per sezione di seguito. Tutto è compresso per impostazione predefinita — espandi il gruppo che ti serve.
@@ -99,8 +276,8 @@ Il riferimento completo dei campi è raggruppato per sezione di seguito. Tutto �
 
 | Campo | Tipo | Esempio / descrizione |
 |-------|------|-----------------------|
-| `order.id` | number | `1234` |
-| `order.number` | string | Numero ordine visibile al cliente, ad es. `"10045"` |
+| `order.id` | number | `1042` |
+| `order.number` | string | Numero ordine visibile al cliente, ad es. `"1042"` |
 | `order.currency` | string | Codice valuta ISO, ad es. `"USD"` |
 | `order.customer_note` | string | Nota del cliente/ordine |
 | `order.wc_status` | string | Slug dello stato WooCommerce grezzo, ad es. `"processing"` |
@@ -194,26 +371,135 @@ Le chiavi di indirizzo più comuni includono `first_name`, `last_name`, `company
 
 ### lines {#lines}
 
-Iterare con `{{#lines}}...{{/lines}}`.
+Iterare con `{{#lines}}...{{/lines}}`. I valori di esempio sono quelli della riga dell'espresso dell'[ordine di esempio](#receipt-map).
 
-| Campo | Tipo | Descrizione |
-|-------|------|-------------|
-| `key` | string | Chiave stabile della riga/ID articolo dell'ordine |
-| `sku` | string | SKU del prodotto |
-| `name` | string | Nome visualizzato del prodotto o della riga |
-| `qty` | number | Quantità venduta |
-| `qty_refunded` | number | Quantità rimborsata per questa riga |
-| `unit_subtotal` / `_incl` / `_excl` | number | Prezzo unitario prima dello sconto |
-| `unit_price` / `_incl` / `_excl` | number | Prezzo unitario dopo lo sconto |
-| `line_subtotal` / `_incl` / `_excl` | number | Subtotale riga prima dello sconto |
-| `discounts` / `_incl` / `_excl` | number | Importo dello sconto come valore positivo |
-| `line_total` / `_incl` / `_excl` | number | Totale finale della riga |
-| `total_refunded` | number | Totale rimborsato per questa riga come valore positivo |
-| `taxes` | array | Righe di imposta per aliquota per questa riga |
-| `meta` | array | Metadati dell'elemento ordine come coppie `{key, value}` |
-| `attributes` | array | Attributi del prodotto/variante come coppie `{key, value}` |
+<FieldIndex
+  note="Ogni campo monetario arriva in coppia: il numero (da usare nelle sezioni condizionali `{{#…}}` — zero e `null` nascondono la sezione, e un campo `null` non ha alcun gemello `_display`) e la sua stringa `_display` (da usare per stampare). I campi contrassegnati incl/excl forniscono anche le varianti `_incl` e `_excl`, ciascuna con il proprio `_display`."
+  placeholder="Filtra i campi… prova «savings»"
+  emptyText="Nessun campo corrisponde — azzera il filtro per vedere tutto `lines[]`."
+  fields={[
+    { name: 'key', type: 'string', desc: "Chiave stabile della riga / ID articolo dell'ordine.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "SKU del prodotto.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Nome visualizzato del prodotto o della riga.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Quantità venduta.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Quantità rimborsata per questa riga.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prezzo di listino unitario registrato. `null` negli ordini privi di storico prezzi POS — racchiudilo in una sezione.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prezzo di vendita unitario prima dei coupon — il prezzo POS registrato quando disponibile, altrimenti ricavato dal subtotale di riga memorizzato.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Listino meno vendita, limitato a zero. Zero è falsy, quindi le righe condizionali si nascondono da sole.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prezzo di listino registrato moltiplicato per la quantità.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prezzo di vendita prima dei coupon moltiplicato per la quantità.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Risparmio totale dal prezzo di listino a quello di vendita per questa riga.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "True negli ordini precedenti alla v1.9.0 il cui risparmio è già dentro `discounts` — il flag anti-doppio conteggio.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Valore unitario WooCommerce prima dello sconto. Non usarlo come prezzo di listino.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Valore unitario finale dopo gli sconti WooCommerce.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Subtotale di riga WooCommerce prima dello sconto.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "Sconto di riga nativo WooCommerce come valore positivo — solo coupon negli ordini attuali.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Totale di riga finale dopo i coupon — ciò che viene stampato nella colonna degli importi.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Totale rimborsato per questa riga come valore positivo.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Righe di imposta per aliquota per questa riga." },
+    { name: 'meta', type: 'array', desc: "Metadati dell'elemento ordine come coppie `{key, value}`." },
+    { name: 'attributes', type: 'array', desc: "Attributi del prodotto/variante come coppie `{key, value}`." },
+  ]}
+/>
 
-Le varianti formattate includono `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display` e le varianti `_display` con e senza imposte.
+### Visualizzare prezzo di listino e risparmio {#displaying-regular-price-and-savings}
+
+Per un layout basato sul prezzo unitario, mostra il prezzo di listino registrato, il prezzo di vendita e il risparmio in questo modo:
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+Usa i campi del totale di riga quando conta la quantità:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` è il prezzo prima dei coupon. Usa `unit_price` o `line_total` per l'importo finale dopo gli sconti WooCommerce.
+
+:::note Ristampa di ordini creati prima della v1.9.0
+Gli ordini WCPOS più vecchi possono già includere in `discounts` la riduzione dal prezzo di listino a quello di vendita. Se il tuo modello personalizzato stampa sia il risparmio di riga sia lo sconto di riga, usa `savings_in_discounts` per evitare di mostrare due volte la stessa riduzione:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+Se il modello non stampa una riga `discounts` a livello di riga, continua a mostrare `line_savings` anche quando `savings_in_discounts` è true. I modelli predefiniti gestiscono automaticamente questa distinzione.
+:::
 
   </AccordionItem>
 
@@ -245,7 +531,6 @@ Iterare con `{{#discounts}}...{{/discounts}}`.
 |-------|------|-------------|
 | `label` | string | Descrizione del coupon o codice di riserva |
 | `code` | string | Codice coupon |
-| `codes` | string | Fallback legacy/visualizzazione per codici concatenati |
 | `total` / `_incl` / `_excl` | number | Importo dello sconto come valore positivo |
 
 Varianti formattate: `total_display`, `total_incl_display` e `total_excl_display`. Aggiungere il proprio segno meno nel template per visualizzare gli sconti come righe negative.
@@ -256,20 +541,86 @@ Varianti formattate: `total_display`, `total_incl_display` e `total_excl_display
 
 ### totals {#totals}
 
-| Campo | Tipo | Descrizione |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | number | Subtotale dell'ordine prima degli sconti |
-| `totals.discount_total` / `_incl` / `_excl` | number | Totale sconti dell'ordine come valore positivo |
-| `totals.tax_total` | number | Importo totale delle imposte |
-| `totals.total` / `_incl` / `_excl` | number | Totale generale dell'ordine |
-| `totals.paid_total` | number | Importo pagato/applicato |
-| `totals.change_total` | number | Resto restituito al cliente |
-| `totals.refund_total` | number | Totale rimborsato come valore positivo |
-| `totals.net_total` | number | `total - refund_total`, limitato a zero |
-| `totals.total_qty` | number | Somma delle quantità degli articoli |
-| `totals.line_count` | number | Numero di righe prodotto |
+I valori di esempio provengono dall'[ordine di esempio](#receipt-map), che ha in seguito ricevuto un rimborso parziale di 7,25 $.
 
-Le varianti formattate includono `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` e `net_total_display`, oltre alle varianti inclusive/esclusive dove applicabile.
+<FieldIndex
+  note="I campi monetari seguono lo stesso abbinamento delle righe prodotto: un numero puro per le sezioni condizionali e una stringa `_display` per la stampa, con le varianti `_incl`/`_excl` dove indicato."
+  placeholder="Filtra i campi… prova «saved»"
+  emptyText="Nessun campo corrisponde — azzera il filtro per vedere tutto `totals`."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Subtotale dell'ordine prima degli sconti.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Totale sconti dell'ordine come valore positivo — solo coupon negli ordini attuali.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Risparmio totale registrato dal prezzo di listino a quello di vendita su tutte le righe prodotto, inclusi i saldi a catalogo e le modifiche di prezzo alla cassa.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Sconti WooCommerce e risparmio sul prezzo di listino combinati, con la sovrapposizione legacy rimossa. L'unico valore rivolto al cliente per tutto ciò che è stato risparmiato.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Indica se lo scontrino dispone di dati di prezzo registrati sufficienti a calcolare i totali di risparmio completi.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Importo totale delle imposte.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Totale generale dell'ordine.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Importo pagato/applicato.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "Resto restituito al cliente.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Totale rimborsato come valore positivo.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Totale meno i rimborsi, limitato a zero.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Somma delle quantità degli articoli.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Numero di righe prodotto.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+Usa `total_saved` quando vuoi un unico valore rivolto al cliente per tutto ciò che è stato risparmiato. Non calcolarlo sommando `discount_total` e `sale_savings_total` nel modello: gli ordini creati prima della v1.9.0 possono già includere il risparmio di prezzo POS nel totale sconti di WooCommerce. Il campo canonico `total_saved` rileva e rimuove quella sovrapposizione.
+
+I totali di risparmio sono `null` e `total_saved_complete` è false quando una qualsiasi riga prodotto non dispone di dati di prezzo registrati sufficienti per un aggregato affidabile. Racchiudi la riga in `total_saved_complete`, poi usa `total_saved` per nascondere un valore pari a zero:
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+I modelli predefiniti che riportano i prezzi usano la stessa struttura di sezioni condizionali con le varianti comprensive di imposte (`total_saved_incl` e `total_saved_incl_display`), e mostrano **Risparmio totale** solo quando il valore completo è maggiore di zero.
 
   </AccordionItem>
 
@@ -414,7 +765,7 @@ Utilizzare le etichette `i18n` invece di inserire il testo direttamente nel codi
 {{i18n.total}}: {{totals.total_display}}
 ```
 
-Le chiavi comuni includono `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours` e le chiavi delle etichette per il codice fiscale/partita IVA come `store_tax_id_label_eu_vat` e `customer_tax_id_label_other`. Ulteriori chiavi possono essere aggiunte dalle estensioni.
+Le chiavi comuni includono `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours` e le chiavi delle etichette per il codice fiscale/partita IVA come `store_tax_id_label_eu_vat` e `customer_tax_id_label_other`. Ulteriori chiavi possono essere aggiunte dalle estensioni.
 
   </AccordionItem>
 </Accordion>

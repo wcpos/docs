@@ -55,6 +55,29 @@ Choisissez le fournisseur qui correspond à votre matériel.
 | **Epson Server Direct Print** | Imprimante Epson ePOS avec Server Direct Print | L'imprimante interroge WCPOS | Thermique uniquement |
 | **PrintNode** | Toute imprimante connectée à l'OS + client PrintNode | WCPOS soumet un PDF à PrintNode | Tout modèle |
 
+## WCPOS Cloud Print — le relais {#relay}
+
+Lorsque vous configurez une imprimante **interrogeant le serveur** (Star CloudPRNT ou Epson Server Direct Print), l'URL d'interrogation que WCPOS vous fournit pointe vers **cloudprint.wcpos.com**, et non vers votre propre site. C'est **WCPOS Cloud Print** — un relais gratuit exploité par WCPOS qui se place entre votre imprimante et votre boutique.
+
+**Pourquoi il existe.** Les imprimantes de reçus fonctionnent avec un firmware léger et rarement mis à jour. Beaucoup ne parviennent pas à établir une connexion sécurisée avec une boutique hébergée sur une infrastructure moderne : les versions récentes de TLS, les autorités de certification récentes ou un CDN/pare-feu placé devant le site (Cloudflare est un coupable fréquent) refusent l'imprimante — ou sont refusés par elle. Le symptôme est une imprimante bloquée indéfiniment sur **En attente**, alors que tous les paramètres sont corrects. Le relais présente aux imprimantes une connexion que les firmwares anciens savent toujours négocier, et transmet leur trafic à votre boutique.
+
+**Comment cela fonctionne :**
+
+- Votre site se connecte au relais **automatiquement** la première fois que vous ouvrez les réglages Cloud Print — il n'y a rien à activer ni à configurer.
+- L'imprimante interroge `cloudprint.wcpos.com` ; le relais transmet la requête à votre boutique et renvoie la réponse de celle-ci. Les travaux d'impression transitent **par** le relais — ils n'y sont jamais stockés.
+- Le relais absorbe l'essentiel des interrogations à vide : une imprimante inactive coûte donc à votre site environ une requête par minute au lieu d'une toutes les quelques secondes.
+- Si votre site ne peut pas se connecter au relais (par exemple, un site de développement local que le relais ne peut pas joindre), WCPOS bascule automatiquement sur les URL directes vers le site.
+
+:::note Vous préférez une connexion directe ?
+L'écran de configuration de chaque imprimante comporte une section **Advanced** qui affiche l'URL directe vers le site. Utilisez-la si vous savez que votre hébergement est compatible avec les imprimantes, ou si vous préférez ne pas faire transiter les travaux par le relais. Les développeurs peuvent désactiver le relais sur l'ensemble du site avec une seule ligne :
+
+```php
+add_filter( 'woocommerce_pos_cloud_print_relay_enabled', '__return_false' );
+```
+:::
+
+**Ce que le relais peut voir.** La connexion partage l'URL de votre site avec wcpos.com, et les travaux d'impression — le contenu des reçus, qui inclut les détails des commandes — transitent par le relais en route vers l'imprimante. Rien n'est conservé. Tous les détails figurent dans la [politique de confidentialité](https://wcpos.com/privacy).
+
 ## Configurer une imprimante cloud {#setup}
 
 Les imprimantes cloud sont configurées une seule fois dans WP Admin et partagées entre tous les appareils — contrairement aux imprimantes locales, qui sont stockées par appareil.
@@ -73,7 +96,7 @@ Dans **WP Admin > POS > Settings > Cloud Print**, ajoutez une imprimante et choi
   </StepCard>
   <StepCard number="2" title="Copier l'URL d'interrogation et le jeton">
 
-Copiez l'URL d'interrogation et le jeton générés. Le **jeton n'est affiché qu'une seule fois** — si vous le perdez, régénérez-en un nouveau depuis la carte de l'imprimante et mettez à jour l'imprimante avec la nouvelle valeur.
+Copiez l'URL d'interrogation et le jeton générés. L'URL pointe normalement vers **cloudprint.wcpos.com** — il s'agit du [relais WCPOS Cloud Print](#relay), et c'est bien ce que vous voulez ; l'URL directe vers le site se trouve dans la section **Advanced**. Le **jeton n'est affiché qu'une seule fois** — si vous le perdez, régénérez-en un nouveau depuis la carte de l'imprimante et mettez à jour l'imprimante avec la nouvelle valeur.
 
   </StepCard>
   <StepCard number="3" title="Les saisir dans la configuration de l'imprimante" isLast>
@@ -181,6 +204,16 @@ La façon dont le reçu est produit dépend de l'imprimante :
 - **Star CloudPRNT** — le reçu est rendu **sur l'appareil** et transmis à l'imprimante via CloudPRNT.
 - **Star Online, Epson et PrintNode** — le reçu est rendu **sur le serveur** à partir de la commande et du modèle sélectionnés, puis délivré à l'imprimante ou au relais hébergé.
 
+## La file d'attente d'impression {#print-queue}
+
+Chaque travail destiné à une imprimante cloud reste dans une file d'attente sur votre site jusqu'à ce que l'imprimante le récupère (imprimantes interrogeant le serveur) ou que le fournisseur en confirme la livraison. **WP Admin > POS > Settings > Cloud Print** affiche la file d'attente sous vos imprimantes :
+
+- **Filtrez** par imprimante ou par statut — **En attente**, **Impression en cours**, **Imprimé**, **Échec**, **Annulé** — avec des compteurs en direct.
+- Chaque ligne indique depuis combien de temps le reçu est **en attente** et renvoie vers la **commande** WooCommerce qu'il imprime.
+- **Annulez** les travaux en attente un par un, en lot, ou pour une imprimante entière d'un coup. **Relancer** remet en file d'attente un travail en échec.
+
+Si une imprimante a des travaux en attente mais n'a rien récupéré depuis plus de quelques minutes, une **bannière d'avertissement** nomme l'imprimante, indique combien de reçus sont en attente et depuis combien de temps, et propose **Tout annuler** — un arriéré ne peut jamais s'accumuler silencieusement pendant qu'une imprimante est débranchée.
+
 ## Impression de test et statut de connexion {#status}
 
 Chaque carte d'imprimante dispose d'un bouton **Test print** qui envoie un court diagnostic afin que vous puissiez confirmer que l'imprimante est accessible et que le format est correct avant de vous y fier pour de vraies commandes.
@@ -207,6 +240,19 @@ La carte affiche également un statut en direct :
   - Que l'**URL d'interrogation et le jeton** dans le firmware de l'imprimante correspondent exactement à ce que WCPOS a généré. Un seul caractère erroné fait que chaque interrogation est rejetée — régénérez le jeton dans WCPOS et ressaisissez-le en cas de doute.
   - Que l'imprimante peut réellement **atteindre votre site** via Internet (DNS correct, aucun pare-feu ne bloquant le HTTPS sortant, certificat SSL valide sur votre boutique).
   - Que **l'interrogation est activée** dans la configuration CloudPRNT / Server Direct Print de l'imprimante, avec un intervalle raisonnable. Redémarrez l'imprimante après avoir modifié ses paramètres.
+  - Si vous avez saisi l'**URL directe vers le site** (depuis la section Advanced) et que l'imprimante ne se connecte toujours pas, basculez sur l'URL standard **cloudprint.wcpos.com** — de nombreuses imprimantes ne savent pas négocier une connexion sécurisée avec un hébergement moderne, ce à quoi [le relais remédie précisément](#relay).
+
+  </AccordionItem>
+
+  <AccordionItem question="Pourquoi l'URL de mon imprimante pointe-t-elle vers cloudprint.wcpos.com ?">
+
+  Il s'agit de [WCPOS Cloud Print](#relay), le relais gratuit qui offre aux imprimantes une connexion que leur firmware sait toujours négocier et qui transmet leurs travaux d'impression à votre boutique. Il est actif automatiquement, les travaux n'y sont jamais stockés, et l'URL directe vers le site reste toujours disponible dans la section **Advanced** de l'imprimante si vous la préférez.
+
+  </AccordionItem>
+
+  <AccordionItem question="J'ai configuré mon imprimante avant l'existence du relais — dois-je changer quelque chose ?">
+
+  Non — les URL déjà enregistrées dans la configuration d'une imprimante continuent de fonctionner. Si cette imprimante est toutefois **bloquée sur En attente**, c'est que son firmware ne peut probablement pas se connecter directement à votre hébergement : ouvrez **Setup &amp; token** sur la carte de l'imprimante, régénérez le jeton, puis saisissez la nouvelle URL **cloudprint.wcpos.com** et le nouveau jeton dans la configuration de l'imprimante.
 
   </AccordionItem>
 

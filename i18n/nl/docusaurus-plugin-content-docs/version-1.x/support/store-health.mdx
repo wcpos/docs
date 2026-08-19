@@ -1,0 +1,90 @@
+---
+title: Winkelstatus
+sidebar_label: Winkelstatus
+sidebar_position: 2
+description: "Het onderdeel Winkelstatus in WCPOS: voorinstellingen voor synchronisatieprestaties en gemeten serverbelasting, downloaddekking per collectie, het herstellen van geweigerde wijzigingen en het activiteitenlog."
+---
+
+:::info Nieuw in v1.10.0
+Winkelstatus is geïntroduceerd in **WCPOS v1.10.0**. Het vervangt het losse Logs-scherm en voegt live inzicht toe in synchronisatie, lokale gegevensdekking en serverbelasting.
+:::
+
+**Winkelstatus** is het dashboard van de POS voor alles wat er tussen je apparaat en je WooCommerce-winkel gebeurt. Open het via het navigatiepaneel (het hartslagpictogram). Het heeft drie tabbladen: **Prestaties**, **Database** en **Logs**.
+
+## Prestaties {#performance}
+
+Het tabblad Prestaties beantwoordt de vraag „wat kost de POS mijn server, en verloopt de synchronisatie gezond?”
+
+- **Statusregel** — `✓ Normaal` of `⚠ Vraagt aandacht`, op basis van de huidige toestand van de engine (een storing die alweer is hersteld, blijft je niet een dag lang op de vingers tikken).
+- **Gemeten activiteit** — het aantal verzoeken en de gebruikelijke responstijd over de laatste 24 uur zijn metingen van déze kassa, geen schattingen. De hoeveelheid overgedragen gegevens is een ondergrens, omdat antwoorden zonder opgegeven grootte als nul meetellen.
+- **Beschikbaarheidsstrook** — één cel per uur voor de laatste 24 uur. Groen betekent dat de verzoeken dat uur zonder fouten zijn afgerond; oranje betekent dat er minstens één verzoek is mislukt (zelfs één — er is geen drempelwaarde); leeg betekent dat de app niet draaide.
+- **Aftelling tot de volgende controle** — wanneer de volgende wijzigingscontrole gepland staat. Op een inactieve kassa kan dit terecht langer zijn dan het ingestelde interval, omdat controles jitter krijgen en na 10 minuten inactiviteit vertragen. Een langere aftelling op een rustige kassa is normaal, geen vastgelopen synchronisatie.
+
+### Synchronisatievoorinstellingen {#sync-presets}
+
+Drie voorinstellingskaarten bepalen hoe gretig dit apparaat synchroniseert, via twee schuifregelaars — hoe vaak de POS op wijzigingen controleert, en hoeveel records er per keer worden opgevraagd:
+
+| Voorinstelling | Controle-interval | Records per verzoek |
+| --- | --- | --- |
+| **Eco** | 5 min | 25 |
+| **Gebalanceerd** (standaard) | 60 s | 50 |
+| **Realtime** | 10 s | 75 |
+
+Kies **Eco** voor gedeelde of goedkope hosting, en **Realtime** wanneer meerdere kassa's elkaars wijzigingen snel moeten zien en de server dat aankan. De schuifregelaars van **Aangepast** openen het volledige bereik (5 seconden–5 minuten, 10–100 records).
+
+Twee dingen om te weten:
+
+- **Instellingen gelden per apparaat.** Als je één kassa afstemt, blijft elk ander apparaat ongewijzigd — herhaal de wijziging op elke kassa die je wilt aanpassen.
+- Het cijfer *~N verzoeken per dag* naast de schuifregelaar is een nominaal controleritme afgeleid van het ingestelde interval, geen maximum of voorspelling. Jitter kan het werkelijke aantal in beide richtingen bewegen; een `304` zonder wijzigingen is goedkoop, maar telt nog steeds als een verzoek. Verval bij inactiviteit verlaagt het aantal alleen bij voorinstellingen die sneller zijn dan de ondergrens van 60 seconden, en vertraagt Gebalanceerd dus niet verder.
+
+Wijzigingen gaan direct in; opnieuw opstarten is niet nodig. Voor de techniek achter deze cijfers, zie [Synchronisatieprestaties](/reference/sync-performance).
+
+## Database {#database}
+
+Het tabblad Database beantwoordt de vraag „wat staat er op dit apparaat, en heeft alles mijn server bereikt?”
+
+Bovenaan staan vier tegels: de mijlpaal **Klaar om te verkopen**, het aantal records op dit apparaat, de gebruikte opslag en het aantal wijzigingen dat nog verstuurd moet worden.
+
+:::tip Klaar om te verkopen is een mijlpaal, geen drempel voor een volledige download
+Het slaat om zodra het eerste product op het apparaat staat. Offline zijn blokkeert dat niet — een kassa met producten op het apparaat is klaar om offline te verkopen. Dat is precies het punt van een local-first POS.
+:::
+
+### Dekkingstabel {#coverage}
+
+Elke gesynchroniseerde collectie krijgt een rij: **op apparaat**, **op server** en een dekkingsbalk. De cijfers volgen een strikte eerlijkheidsregel — het totaal *op server* is een echt door de server gerapporteerd cijfer, nooit een gok:
+
+- ***controleren…*** — de POS heeft nog geen actueel servertotaal. Als een rij hier langer dan ongeveer 15 minuten op blijft staan, mislukt de REST-route van die collectie mogelijk; controleer de [Logs](#logs).
+- **Een gedeeltelijke balk is vaak normaal.** Klanten worden geleidelijk gedownload tijdens inactiviteit, categorieën en kortingsbonnen worden gedownload zodra ze voor het eerst worden geopend, en de balk voor **bestellingen** meet tegen je volledige bestelgeschiedenis terwijl de kassa bewust alleen openstaande en recente bestellingen bewaart — bestellingen lezen dus als gedeeltelijk op een volledig gezonde kassa.
+- **Na een „Wissen en opnieuw downloaden” is een lege of lage telling het bedoelde resultaat, geen vastgelopen synchronisatie** — collecties die op aanvraag downloaden, vullen zich weer terwijl ze worden gebruikt, en de tekst bij elke rij vertelt hoe die collectie zich weer vult.
+
+### Wijzigingen die je server nooit hebben bereikt {#refused-changes}
+
+Als je server een wijziging definitief weigert (bijvoorbeeld een verkoop die is aangemaakt terwijl de site het verzoek als ongeldig afwees), probeert de POS die **niet** stilzwijgend eindeloos opnieuw, en verbergt hij die evenmin. De wijziging wordt geparkeerd en hier vermeld met de reden van de server zelf, het tijdstip en twee acties:
+
+- **Opnieuw versturen** — bouwt het verzoek opnieuw op uit het record zoals het er *nu* uitziet en zet het weer in de wachtrij. Als hetzelfde veld opnieuw wordt geweigerd, loopt het aantal pogingen zichtbaar op in plaats van dat er succes wordt voorgewend.
+- **Verwerpen** — laat de wijziging vallen. Het bevestigingsvenster vertelt je precies wat verwerpen voor dat record betekent (ook wanneer het record alleen ooit op dit apparaat heeft bestaan en verwerpen het dus verwijdert).
+
+Herstel is altijd een bewuste, zichtbare handeling — niets hier gaat automatisch.
+
+### Wissen en opnieuw downloaden {#clear-and-redownload}
+
+Elke collectierij biedt **Wissen en opnieuw downloaden**, waarmee de lokale kopie van die collectie wordt verwijderd en opnieuw wordt opgehaald. De bevestiging noemt hoeveel records en hoeveel opslag er ongeveer worden verwijderd, en wat er veilig op de server blijft staan. Gebruik dit liever dan alle lokale gegevens te wissen — het is gericht en je wordt er niet door uitgelogd. [Alle lokale gegevens wissen](/support/troubleshooting/clear-local-data) blijft de volledige reset.
+
+## Logs {#logs}
+
+Het tabblad Logs is een register van de synchronisatieactiviteit op dit apparaat: **tijd, niveau, gebeurtenis, duur, status** per rij, 30 dagen bewaard.
+
+- **Voorgedefinieerde filters** — Alles / Acties / Fouten / Synchronisatie, plus een schakelaar **Uitgebreide diagnostiek** die 24 uur lang extra details vastlegt en zichzelf daarna uitschakelt.
+- **Rijdetails** — fouten en waarschuwingen klappen open naar een reden in begrijpelijke taal, een regel over gegevensveiligheid, een voorgestelde volgende stap en een hulplink naar de [foutcode](/error-codes). Elke detailweergave bevat een kopieerbare gebeurteniscode — vermeld die wanneer je contact opneemt met support.
+- Logvermeldingen worden bij weergave vertaald, zodat een rij die maanden geleden is geschreven, leesbaar is in de taal waarin de kassa vandaag draait; de gebeurteniscode is de stabiele identificatie.
+
+:::note Twee tabbladen, twee tellingen
+Het tabblad Logs leidt zijn aantal vastgelopen records alleen af uit logvermeldingen; het tabblad Database telt ook geparkeerde geweigerde wijzigingen mee. Als ze verschillen, is **Database gezaghebbend** voor wat je server niet heeft bereikt.
+:::
+
+## Verwante pagina's {#related}
+
+- [Hoe de synchronisatie-engine werkt](/reference/sync-engine) — detail op ontwikkelaarsniveau over banen, wijzigingsdetectie en de schrijfwachtrij
+- [Synchronisatieprestaties](/reference/sync-performance) — de maxima voor verzoeken en de regels voor terugschakelen die je server beschermen
+- [Serverprestaties](/support/performance/server) — WordPress/WooCommerce-hosting afstemmen
+- [Alle lokale gegevens wissen](/support/troubleshooting/clear-local-data) — de volledige lokale reset

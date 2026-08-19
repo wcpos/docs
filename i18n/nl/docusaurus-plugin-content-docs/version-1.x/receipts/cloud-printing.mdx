@@ -55,6 +55,29 @@ Kies de provider die bij je hardware past.
 | **Epson Server Direct Print** | Epson ePOS-printer met Server Direct Print | Printer pollt WCPOS | Alleen thermisch |
 | **PrintNode** | Elke via het besturingssysteem verbonden printer + PrintNode-client | WCPOS dient een PDF in bij PrintNode | Elk sjabloon |
 
+## WCPOS Cloud Print — de relay {#relay}
+
+Wanneer je een **pollende** printer instelt (Star CloudPRNT of Epson Server Direct Print), verwijst de poll-URL die WCPOS je geeft naar **cloudprint.wcpos.com** en niet naar je eigen site. Dat is **WCPOS Cloud Print** — een gratis relay van WCPOS die tussen je printer en je winkel staat.
+
+**Waarom die bestaat.** Bonprinters draaien kleine, zelden bijgewerkte firmware. Veel printers kunnen geen beveiligde verbinding tot stand brengen met een winkel op moderne hosting: nieuwere TLS-versies, nieuwere certificaatautoriteiten of een CDN/firewall vóór de site (Cloudflare is een veelvoorkomende oorzaak) weigeren de printer — of worden door de printer geweigerd. Het symptoom is een printer die eeuwig op **Waiting** blijft staan hoewel elke instelling klopt. De relay biedt printers een verbinding die ook oudere firmware altijd tot stand kan brengen, en geeft hun verkeer door aan je winkel.
+
+**Hoe het werkt:**
+
+- Je site maakt **automatisch** verbinding met de relay zodra je de Cloud Print-instellingen voor het eerst opent — er valt niets in te schakelen of te configureren.
+- De printer pollt `cloudprint.wcpos.com`; de relay stuurt het verzoek door naar je winkel en geeft het antwoord van je winkel terug. Printtaken gaan **door** de relay heen — ze worden er nooit op opgeslagen.
+- De relay vangt het meeste inactieve pollen op, zodat een inactieve printer je site ongeveer één verzoek per minuut kost in plaats van één per paar seconden.
+- Kan je site geen verbinding maken met de relay (bijvoorbeeld een lokale ontwikkelsite die de relay niet kan bereiken), dan valt WCPOS automatisch terug op URL's rechtstreeks naar de site.
+
+:::note Liever een rechtstreekse verbinding?
+Het instelscherm van elke printer heeft een **Advanced**-uitklapgedeelte met de URL rechtstreeks naar de site. Gebruik die als je weet dat je hosting printervriendelijk is, of als je taken liever niet via de relay laat lopen. Ontwikkelaars kunnen de relay sitebreed uitschakelen met één regel:
+
+```php
+add_filter( 'woocommerce_pos_cloud_print_relay_enabled', '__return_false' );
+```
+:::
+
+**Wat de relay kan zien.** Door verbinding te maken deel je de URL van je site met wcpos.com, en printtaken — de inhoud van bonnen, inclusief bestelgegevens — passeren de relay op weg naar de printer. Er wordt niets bewaard. De volledige details staan in het [privacybeleid](https://wcpos.com/privacy).
+
 ## Een cloudprinter instellen {#setup}
 
 Cloudprinters worden één keer ingesteld in WP Admin en gedeeld over elk apparaat — in tegenstelling tot lokale printers, die per apparaat worden opgeslagen.
@@ -73,7 +96,7 @@ Voeg in **WP Admin > POS > Settings > Cloud Print** een printer toe en kies **St
   </StepCard>
   <StepCard number="2" title="Kopieer de poll-URL en token">
 
-Kopieer de gegenereerde poll-URL en token. De **token wordt slechts één keer getoond** — als je hem kwijtraakt, genereer dan een nieuwe vanaf de printerkaart en werk de printer bij met de nieuwe waarde.
+Kopieer de gegenereerde poll-URL en token. De URL verwijst normaal gesproken naar **cloudprint.wcpos.com** — dat is de [WCPOS Cloud Print-relay](#relay), en dat is ook de bedoeling; de URL rechtstreeks naar de site staat achter het **Advanced**-uitklapgedeelte. De **token wordt slechts één keer getoond** — als je hem kwijtraakt, genereer dan een nieuwe vanaf de printerkaart en werk de printer bij met de nieuwe waarde.
 
   </StepCard>
   <StepCard number="3" title="Voer ze in in de configuratie van de printer" isLast>
@@ -181,6 +204,16 @@ Hoe de bon wordt geproduceerd, hangt af van de printer:
 - **Star CloudPRNT** — de bon wordt **op het apparaat** gerenderd en via CloudPRNT aan de printer doorgegeven.
 - **Star Online, Epson en PrintNode** — de bon wordt **op de server** gerenderd op basis van de geselecteerde bestelling en het sjabloon, en vervolgens afgeleverd bij de printer of gehoste relay.
 
+## De printwachtrij {#print-queue}
+
+Elke taak voor een cloudprinter blijft in een wachtrij op je site staan totdat de printer hem ophaalt (pollende printers) of de provider de aflevering bevestigt. **WP Admin > POS > Settings > Cloud Print** toont de wachtrij onder je printers:
+
+- **Filter** op printer of op status — **Waiting**, **Printing**, **Printed**, **Failed**, **Cancelled** — met live aantallen.
+- Elke rij toont hoe lang de bon al **wacht** en linkt naar de WooCommerce-**bestelling** die wordt geprint.
+- **Annuleer** wachtende taken één voor één, in bulk of voor een hele printer tegelijk. **Opnieuw proberen** zet een mislukte taak terug in de wachtrij.
+
+Als een printer wachtende taken heeft maar al meer dan een paar minuten niets heeft opgehaald, noemt een **waarschuwingsbanner** de printer, toont hoeveel bonnen er opstapelen en hoe lang al, en biedt **Alles annuleren** — een achterstand kan nooit stilzwijgend oplopen terwijl een printer losgekoppeld is.
+
 ## Testprint & verbindingsstatus {#status}
 
 Elke printerkaart heeft een knop **Test print** die een korte diagnose verstuurt, zodat je kunt bevestigen dat de printer bereikbaar is en het formaat klopt voordat je erop vertrouwt voor echte bestellingen.
@@ -207,6 +240,19 @@ De kaart toont ook een live status:
   - Of de **poll-URL en token** in de firmware van de printer exact overeenkomen met wat WCPOS heeft gegenereerd. Eén verkeerd teken betekent dat elke poll wordt afgewezen — genereer de token opnieuw in WCPOS en voer hem opnieuw in als je twijfelt.
   - Of de printer **je site** daadwerkelijk via internet kan **bereiken** (juiste DNS, geen firewall die uitgaande HTTPS blokkeert, geldig SSL-certificaat op je winkel).
   - Of **polling is ingeschakeld** in de CloudPRNT- / Server Direct Print-configuratie van de printer, met een redelijk interval. Herstart de printer nadat je de instellingen hebt gewijzigd.
+  - Als je de **URL rechtstreeks naar de site** hebt ingevoerd (uit het Advanced-uitklapgedeelte) en de printer nog steeds geen verbinding maakt, schakel dan over op de standaard-URL **cloudprint.wcpos.com** — veel printers kunnen geen beveiligde verbinding met moderne hosting tot stand brengen, en dat is [precies wat de relay oplost](#relay).
+
+  </AccordionItem>
+
+  <AccordionItem question="Waarom verwijst mijn printer-URL naar cloudprint.wcpos.com?">
+
+  Dat is [WCPOS Cloud Print](#relay), de gratis relay die printers een verbinding geeft die hun firmware altijd tot stand kan brengen en die hun printtaken doorgeeft aan je winkel. Hij staat automatisch aan, taken worden er nooit op opgeslagen, en de URL rechtstreeks naar de site is altijd beschikbaar onder het **Advanced**-uitklapgedeelte van de printer als je dat liever hebt.
+
+  </AccordionItem>
+
+  <AccordionItem question="Ik heb mijn printer ingesteld voordat de relay bestond — moet ik iets wijzigen?">
+
+  Nee — URL's die al in de configuratie van een printer zijn opgeslagen, blijven werken. Blijft die printer echter **hangen op Waiting**, dan is zijn firmware waarschijnlijk van een type dat niet rechtstreeks met je hosting kan verbinden: open **Setup &amp; token** op de printerkaart, genereer de token opnieuw en voer de nieuwe **cloudprint.wcpos.com**-URL en token in de configuratie van de printer in.
 
   </AccordionItem>
 

@@ -1,7 +1,7 @@
 ---
 title: Checkout-Einstellungen
 sidebar_label: Checkout
-description: WCPOS Checkout-Einstellungen in der WordPress-Administration konfigurieren, einschließlich Zahlungsgateways und Bestellverarbeitung.
+description: "WCPOS Checkout-Einstellungen in der WordPress-Administration konfigurieren, einschließlich Zahlungsgateways und Bestellverarbeitung."
 ---
 
 import Image from "@theme/IdealImage";
@@ -63,9 +63,51 @@ Der Bestellstatus wird **pro Zahlungsgateway** über die Spalte **Bestellstatus*
 
 Für jedes Zahlungsgateway kann ein beliebiger WooCommerce-Bestellstatus ausgewählt werden. (Ältere Versionen verwendeten einen einzigen globalen Standardwert; dieser wurde beim Upgrade auf jedes Zahlungsgateway übertragen.)
 
+## Überverkauf verhindern {#prevent-overselling}
+
+Der Schalter **Überverkauf verhindern** stoppt POS-Verkäufe von Artikeln, für die nicht genügend Bestand vorhanden ist. Er ist **standardmäßig deaktiviert** — solange Sie ihn nicht aktivieren, verhält sich der Checkout genau wie bisher.
+
+Die REST-API von WooCommerce prüft den Bestand beim Anlegen von Bestellungen nicht, sodass eine stark ausgelastete Kasse (oder eine veraltete Produktliste) mehr Einheiten verkaufen könnte, als Sie vorrätig haben. Bei aktiviertem Schalter prüft WCPOS den Bestand an zwei Stellen:
+
+1. **An der Kasse** — der Kassierer kann einen Artikel nicht über den verfügbaren Bestand hinaus in den Warenkorb legen oder dessen Menge erhöhen. Das POS zeigt die tatsächlich verfügbare Menge an, z. B. *„Nur 3 verfügbar für Hoodie – Blue, M“*.
+2. **Beim Checkout, auf Ihrem Server** — die Bestellung selbst wird vor Abschluss der Zahlung geprüft. Selbst wenn die lokalen Daten der Kasse veraltet waren, wird eine Bestellung, die zu einem Überverkauf führen würde, abgelehnt, und dem Kassierer wird genau angezeigt, welche Artikel fehlen und wie viele verfügbar sind. Das POS aktualisiert anschließend den Bestand dieser Artikel, damit der Warenkorb mit korrekten Zahlen berichtigt werden kann.
+
+Offene Warenkörbe werden nie an der Synchronisierung gehindert — die Prüfung läuft ausschließlich im Moment des Checkouts.
+
+### Wie der Bestand ermittelt wird {#prevent-overselling-stock-rules}
+
+| Produktkonfiguration | Verhalten bei aktiviertem Schalter |
+|---|---|
+| **Bestand wird verwaltet** (eine Menge wird geführt) | Verkäufe sind auf die Bestandsmenge begrenzt. Mehrere Warenkorbzeilen desselben Produkts zählen auf dasselbe Limit. |
+| **Variation führt eigenen Bestand** | Das Limit gilt pro Variation. |
+| **Variation nutzt den Bestand des übergeordneten Produkts** | Alle Variationen dieses Produkts teilen sich die Menge des übergeordneten Produkts. |
+| **Bestand wird nicht verwaltet** | Es entscheidet der Lagerstatus des Produkts: *Ausverkauft* kann nicht verkauft werden; *Auf Lager* und *Nachbestellung* schon. |
+
+### Nachbestellungen haben Vorrang {#prevent-overselling-backorders}
+
+Die **Nachbestellungs-Einstellungen je Produkt haben Vorrang** — so erlauben Sie den Überverkauf einzelner Produkte, während der Schalter aktiv ist:
+
+- **Nicht erlauben** — Verkäufe stoppen, sobald der Bestand aufgebraucht ist (genau das setzt der Schalter durch).
+- **Erlauben** — das Produkt kann immer verkauft werden, auch unter null Bestand.
+- **Erlauben, aber Kunden benachrichtigen** — das Produkt kann immer verkauft werden; der Kassierer sieht den Hinweis *„wird nachbestellt“*, wenn ein Verkauf unter den verfügbaren Bestand fällt.
+
+### Überverkauf verhindern vs. „Nicht vorrätige Produkte anzeigen“ {#prevent-overselling-vs-display}
+
+Diese Einstellungen decken unterschiedliche Bestandsabsicherungen ab, aber beide können verhindern, dass ein ausverkaufter Artikel hinzugefügt wird:
+
+- **Überverkauf verhindern** (diese Seite) prüft die verfügbaren Mengen beim Hinzufügen oder Ändern von Artikeln und validiert den Bestand beim Checkout erneut.
+- **Nicht vorrätige Produkte anzeigen** (eine Anzeigeeinstellung im POS-Produktpanel) steuert, wie ausverkaufte Produkte und Variationen ausgewählt werden können. Aktiviert bleiben ausverkaufte Produkte sichtbar, können aber nicht in den Warenkorb gelegt werden. Deaktiviert werden sie ausgeblendet; ausverkaufte Variationsoptionen werden zudem ausgegraut und passende Barcode-Scans abgelehnt.
+
+Das Deaktivieren von Überverkauf verhindern setzt diese Regeln des Produktpanels nicht außer Kraft. Sie können ausverkaufte Artikel sichtbar lassen, während Überverkauf verhindern die Mengen- und Checkout-Absicherungen ergänzt — der Kassierer sieht den Artikel mit dem Abzeichen *Ausverkauft* und einer deaktivierten Schaltfläche zum Hinzufügen zum Warenkorb.
+
+:::note
+Eine Änderung des Schalters erreicht offene POS-Sitzungen, sobald sich ein Kassierer das nächste Mal anmeldet oder die App neu validiert — die serverseitige Prüfung greift sofort.
+:::
+
 ## Verwandte Dokumentation {#related-documentation}
 
 - [E-Mail-Benachrichtigungen](/settings/wp-admin/email-notifications) — Umschaltoptionen je E-Mail für Administrator-, Kunden- und Kassierer-Benachrichtigungen
 - [Zahlungsmethoden](/payment) — Übersicht der verfügbaren Zahlungsgateways
 - [Checkout](/pos/checkout) — der Checkout-Ablauf im POS
+- [Variationen](/pos/product-panel/variations) — wie der Bestand von Variationen im Produktpanel angezeigt wird
 - [Benutzerdefinierte Zahlungsgateways](/payment/gateways) — Erstellung benutzerdefinierter Zahlungsintegrationen

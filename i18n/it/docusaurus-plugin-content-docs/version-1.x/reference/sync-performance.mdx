@@ -1,0 +1,88 @@
+---
+title: Prestazioni di sincronizzazione e rispetto per il server
+sidebar_label: Prestazioni di sincronizzazione
+sidebar_position: 4
+description: "Come il motore di sincronizzazione WCPOS protegge il tuo server: tetti massimi di richieste, rallentamento sotto pressione, garanzie di reattività e i numeri misurati che li sostengono."
+---
+
+:::info Novità della versione 1.10.0
+Questa pagina descrive il motore di sincronizzazione introdotto in **WCPOS 1.10.0**. Per capire come funziona il motore dal punto di vista meccanico, parti da [Come funziona il motore di sincronizzazione](/reference/sync-engine).
+:::
+
+La maggior parte dei negozi WCPOS gira su hosting PHP condiviso: una manciata di worker PHP, un bootstrap completo di WordPress a ogni richiesta REST, plugin di sicurezza che limitano le raffiche. Le richieste che il client tratta come gratuite degradano il negozio online, fanno scattare i limitatori di frequenza e competono con il traffico generato dal cassiere — il tutto moltiplicato per ogni cassa e ogni scheda del browser che utilizzi.
+
+Il motore di sincronizzazione della versione 1.10.0 considera tutto questo un vincolo di progettazione, non un ripensamento: **proteggere l'hosting del commerciante fa parte del lavoro del motore di sincronizzazione.** Questa pagina spiega le regole che il motore segue e le misurazioni che le sostengono.
+
+## Le quattro regole fondamentali {#the-four-rules}
+
+Ogni comportamento di sincronizzazione pianificato nel motore è governato da quattro princìpi invariabili:
+
+1. **Il costo dipende da ciò che è cambiato, mai dalle dimensioni del catalogo.** Un digest economico o un controllo rapido precede sempre qualsiasi recupero massivo. Mantenere sincronizzato un negozio con 50.000 prodotti che non è cambiato costa all'incirca quanto un negozio con 500 prodotti che non è cambiato.
+2. **Nessuna espansione illimitata delle richieste.** Ogni corsia in background dichiara un tetto massimo di richieste per esecuzione, verificato da test automatici. I lavori più grandi vengono eseguiti come lotti delimitati con cursori riprendibili: una scansione si distribuisce nel tempo previsto invece di concentrarsi in una raffica.
+3. **La manutenzione non intralcia mai il cassiere.** Le richieste che rendono una cassa pronta a vendere vengono eseguite per prime; le verifiche di integrità e i precaricamenti in background arrivano dopo, nei momenti di inattività.
+4. **Sotto pressione, la manutenzione è la prima a farsi da parte.** Quando il tuo server dà segnali di affaticamento, il motore rallenta il proprio lavoro in background prima di toccare qualsiasi cosa riguardi il cassiere.
+
+## Quanto costa la sincronizzazione al tuo server {#request-budgets}
+
+Il costo a regime è determinato dal **preset di sincronizzazione**, scelto per ciascun dispositivo in **Stato del negozio → Prestazioni**:
+
+| Preset | Intervallo di controllo | Record per richiesta | Controlli nominali al giorno |
+| --- | --- | --- | --- |
+| Eco | 5 min | 25 | 288 |
+| Bilanciato (predefinito) | 60 s | 50 | 1.440 |
+| Tempo reale | 10 s | 75 | 8.640 |
+
+Contano entrambi i regolatori, e di solito è il peso della pagina a incidere davvero su un hosting condiviso: una pagina di record pesante richiede tempo reale di elaborazione al server, e l'intervallo si limita a moltiplicarlo. Nessun preset arriva alla pagina massima da 100 record; quel valore è raggiungibile solo tramite i cursori Personalizzato (intervallo 5 s–5 min, 10–100 record).
+
+Oltre al preset:
+
+- **Un controllo in inattività costa poco.** Il motore invia richieste condizionali, quindi un controllo senza modifiche riceve come risposta un unico `304 Not Modified` privo di corpo — resta una richiesta, ma senza payload e con un carico minimo per il server.
+- **I controlli hanno un jitter di ±20%**, così un insieme di registratori di cassa distribuisce le proprie richieste invece di sincronizzarsi in raffiche.
+- **Le casse inattive rallentano** passando a una cadenza più lenta dopo 10 minuti senza interazione, e tornano immediatamente al ritmo pieno a qualsiasi attività, comprese le scansioni di codici a barre.
+- **La manutenzione in background è limitata.** Un controllo di integrità senza scostamenti costa al massimo qualche pagina aggregata economica e **zero** recuperi di dettaglio: i blocchi che risultano dimostrabilmente allineati al server vengono saltati del tutto. Quando viene rilevato uno scostamento, gli approfondimenti sono limitati a **due per esecuzione**, e riprendono tramite un cursore persistente invece di concentrarsi in una raffica. La verifica completa delle eliminazioni è limitata a **11 richieste per esecuzione**, e il precaricamento del digest a 5 blocchi per esecuzione. Questi tetti sono dichiarati nel codice e verificati dalla CI.
+
+:::note La cifra «richieste al giorno» mostrata nell'app è nominale
+Stato del negozio ricava la stima *~N richieste al giorno* dall'intervallo configurato. Consideralo un tasso di controllo nominale, non un tetto massimo né una previsione: il jitter di ±20% può spostare il conteggio effettivo in entrambe le direzioni, e un `304` conta comunque come una richiesta. Il decadimento in inattività riduce il conteggio solo per i preset più rapidi del suo limite minimo di 60 secondi; non rallenta ulteriormente il preset predefinito Bilanciato.
+:::
+
+## Rallentare quando il tuo server è in difficoltà {#server-pressure}
+
+Ogni risposta che il motore riceve alimenta un monitor di pressione per singolo negozio. Reagisce a:
+
+- un `429` HTTP (immediatamente),
+- errori `5xx` ripetuti o guasti di trasporto (tre nell'arco di un minuto mobile),
+- lentezza persistente (tempo di risposta mediano superiore a 2 secondi),
+- un'intestazione `Retry-After`, che diventa un limite minimo rigido per il controllo successivo.
+
+Quando una di queste condizioni scatta, il motore **raddoppia il proprio intervallo di controllo delle modifiche** un passo alla volta, e le corsie di manutenzione saltano del tutto le proprie esecuzioni. Le richieste generate dal cassiere — ricerche, letture di codici a barre, pagamento — non vengono mai limitate; l'obiettivo è alleggerire il carico rinviabile, non rallentare la vendita.
+
+Il ripristino è deliberatamente asimmetrico: il rallentamento è istantaneo, ma l'intervallo torna indietro di un passo solo dopo **dieci risposte sane consecutive**, così un server instabile non viene sbalzato tra cadenze rapide e lente. Lo stato di pressione sopravvive anche alla scelta di un preset più rapido da parte del commerciante: la protezione agisce al di sotto di qualunque livello sia configurato, e non c'è modo di disattivarla.
+
+## Restare reattivi sul dispositivo {#device-responsiveness}
+
+L'altra metà delle prestazioni è la cassa stessa: la sincronizzazione in background non deve mai far scattare l'interfaccia.
+
+- **Le verifiche cedono il passo al ciclo di eventi.** La verifica di integrità suddivide il proprio lavoro in blocchi e cede il controllo tra un blocco e l'altro, mantenendo il proprio blocco ininterrotto più lungo intorno ai **30 ms** — al di sotto della soglia di ~100 ms in cui le persone percepiscono un rallentamento. Misurata su 10.000 prodotti locali, una verifica completa costa circa **68 ms** di elaborazione distribuiti su oltre 17 cessioni del controllo; con 50.000 prodotti, meno di 300 ms.
+- **Il primo risultato resta rapido anche sotto carico.** I limiti sul tempo di comparsa del primo risultato sono fissati nella CI anche mentre sono in corso contemporaneamente un'applicazione massiva o una verifica completa — millisecondi a una cifra con dimensioni di catalogo tipiche nell'ambiente di benchmark.
+- **Solo la pagina visibile arriva all'app.** Il lavoro di query (filtro, ordinamento, paginazione) viene eseguito all'interno del livello di archiviazione, quindi un aggiornamento della schermata sposta dieci righe, non diecimila.
+
+Queste cifre provengono dalla suite di contratti prestazionali del motore, che viene eseguita in isolamento nella CI con budget fissati all'incirca un ordine di grandezza sopra il valore misurato a regime — progettati per intercettare regressioni di un ordine di grandezza, non per fallire su un runner lento.
+
+## Verificato su un negozio reale {#live-verification}
+
+Le regole di rispetto per il server non sono solo oggetto di test unitari. Un controllo end-to-end dal vivo su un vero negozio WordPress verifica i princìpi che contano di più su un hosting reale:
+
+- **Zero** richieste di manutenzione (traffico di integrità o di digest) prima che il catalogo prodotti venga visualizzato all'apertura del negozio.
+- Dopo la pausa successiva all'apertura, al massimo qualche pagina aggregata economica e non più di due approfondimenti di dettaglio.
+
+Questo scenario è nato da una regressione reale: una precedente build di sviluppo della verifica emetteva ~41 richieste (1,2 MB) a ogni apertura del negozio, per ogni dispositivo. Il progetto basato sul digest che l'ha sostituita riduce una verifica senza scostamenti alle sole pagine aggregate e a nient'altro — quella classe di bug è ora protetta da tetti dichiarati nella CI, non dalla vigilanza di chi rivede il codice.
+
+## Cosa non affermiamo {#honest-limits}
+
+Alcune cose che questa pagina volutamente non dice, perché non abbiamo (ancora) numeri difendibili al riguardo:
+
+- **Nessuna cifra end-to-end del tipo «la sincronizzazione iniziale richiede X minuti».** Il tempo di download iniziale dipende in modo preponderante dai tempi di risposta del tuo server e dalle dimensioni del catalogo. Il costo lato dispositivo per applicare i record è ridotto (l'applicazione massiva di 10.000 prodotti si misura in meno di 10 ms di elaborazione); a dominare sono la rete e il server.
+- **Nessuna affermazione del tipo «X% più veloce della versione 1.9».** Le architetture sono abbastanza diverse da rendere un singolo numero comparativo più fuorviante che informativo. Le differenze strutturali sono illustrate in [Cosa è cambiato nella versione 1.10.0](/reference/sync-engine#what-changed-in-v1100).
+- Le cifre di benchmark riportate sopra provengono dall'ambiente di test del motore (archiviazione in memoria, runner isolato). I dispositivi reali e i negozi reali variano; è proprio per questo che **Stato del negozio → Prestazioni** mostra i conteggi di richieste misurati sulla tua cassa e il tempo di risposta tipico delle ultime 24 ore anziché delle proiezioni. La cifra sul volume di dati è un limite inferiore, perché le risposte prive di dimensione dichiarata contribuiscono per zero.
+
+Per l'ottimizzazione lato server — requisiti di hosting, HPOS, caching e diagnosi delle risposte lente — vedi [Prestazioni del server](/support/performance/server).

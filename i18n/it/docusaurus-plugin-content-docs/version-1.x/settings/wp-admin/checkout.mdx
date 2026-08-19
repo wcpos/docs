@@ -1,7 +1,7 @@
 ---
 title: Impostazioni di pagamento
 sidebar_label: Pagamento
-description: Configura le impostazioni di pagamento di WCPOS nell’amministrazione di WordPress, inclusi i gateway di pagamento e l’elaborazione degli ordini.
+description: "Configura le impostazioni di pagamento di WCPOS nell’amministrazione di WordPress, inclusi i gateway di pagamento e l’elaborazione degli ordini."
 ---
 
 import Image from "@theme/IdealImage";
@@ -63,9 +63,51 @@ Lo stato dell'ordine viene impostato **per ogni metodo di pagamento**, dalla col
 
 Seleziona qualsiasi stato dell'ordine WooCommerce per ogni metodo di pagamento. (Le versioni precedenti usavano un unico valore predefinito globale; quel valore è stato migrato su ogni metodo di pagamento al momento dell'aggiornamento.)
 
+## Prevenire la vendita eccessiva {#prevent-overselling}
+
+L'interruttore **Previeni la vendita eccessiva** blocca le vendite POS di articoli con scorte insufficienti. È **disattivato per impostazione predefinita** — finché non lo attivi, la cassa si comporta esattamente come prima.
+
+L'API REST di WooCommerce non convalida le scorte alla creazione degli ordini, quindi una cassa molto attiva (o un elenco prodotti non aggiornato) potrebbe vendere più unità di quelle disponibili. Con l'interruttore attivo, WCPOS verifica le scorte in due punti:
+
+1. **Alla cassa** — il cassiere non può aggiungere un articolo al carrello (né aumentarne la quantità) oltre le scorte disponibili. Il POS mostra la quantità effettivamente disponibile, ad esempio *"Solo 3 disponibili per Hoodie – Blue, M"*.
+2. **Al checkout, sul tuo server** — l'ordine stesso viene convalidato prima del completamento del pagamento. Anche se i dati locali della cassa non erano aggiornati, un ordine che causerebbe una vendita eccessiva viene rifiutato e al cassiere viene mostrato esattamente quali articoli mancano e quanti sono disponibili. Il POS aggiorna poi le scorte di quegli articoli, così il carrello può essere corretto con numeri accurati.
+
+I carrelli aperti non vengono mai bloccati nella sincronizzazione — la convalida viene eseguita solo al momento del checkout.
+
+### Come vengono determinate le scorte {#prevent-overselling-stock-rules}
+
+| Configurazione del prodotto | Comportamento quando l'interruttore è attivo |
+|---|---|
+| **Gestisce le scorte** (viene tracciata una quantità) | Le vendite sono limitate alla quantità in stock. Più righe dello stesso prodotto nel carrello concorrono allo stesso limite. |
+| **La variazione gestisce le proprie scorte** | Il limite si applica per variazione. |
+| **La variazione usa le scorte del prodotto padre** | Tutte le variazioni di quel prodotto condividono la quantità del prodotto padre. |
+| **Non gestisce le scorte** | Decide lo stato delle scorte del prodotto: *Esaurito* non può essere venduto; *Disponibile* e *Ordine arretrato* sì. |
+
+### Gli ordini arretrati hanno la precedenza {#prevent-overselling-backorders}
+
+Le **impostazioni di ordine arretrato del singolo prodotto hanno la priorità** — è così che consenti la vendita eccessiva per prodotti specifici mentre l'interruttore è attivo:
+
+- **Non consentire** — le vendite si fermano quando le scorte si esauriscono (è ciò che l'interruttore applica).
+- **Consenti** — il prodotto può sempre essere venduto, anche sotto lo zero.
+- **Consenti, ma avvisa il cliente** — il prodotto può sempre essere venduto; il cassiere vede la nota *"sarà messo in ordine arretrato"* quando una vendita scende sotto le scorte disponibili.
+
+### Prevenire la vendita eccessiva vs. "Mostra prodotti esauriti" {#prevent-overselling-vs-display}
+
+Queste impostazioni coprono tutele delle scorte diverse, ma entrambe possono impedire l'aggiunta di un articolo esaurito:
+
+- **Previeni la vendita eccessiva** (questa pagina) verifica le quantità disponibili quando gli articoli vengono aggiunti o aggiornati e convalida nuovamente le scorte al checkout.
+- **Mostra prodotti esauriti** (un'impostazione di visualizzazione nel pannello prodotti del POS) controlla come possono essere selezionati i prodotti e le variazioni esauriti. Se attiva, i prodotti esauriti restano visibili ma non possono essere aggiunti al carrello. Se disattivata, vengono nascosti; anche le opzioni di variazione esaurite appaiono in grigio e le scansioni di codici a barre corrispondenti vengono rifiutate.
+
+Disattivare Previeni la vendita eccessiva non annulla quelle regole del pannello prodotti. Puoi mantenere visibili gli articoli esauriti mentre Previeni la vendita eccessiva aggiunge le tutele su quantità e checkout — il cassiere vede l'articolo con un badge *Esaurito* e il pulsante di aggiunta al carrello disattivato.
+
+:::note
+La modifica dell'interruttore raggiunge le sessioni POS aperte al successivo accesso di un cassiere o alla riconvalida dell'app — il controllo lato server si applica immediatamente.
+:::
+
 ## Documentazione correlata {#related-documentation}
 
 - [Notifiche email](/settings/wp-admin/email-notifications) — opzioni di attivazione per singola email per notifiche ad amministratore, cliente e cassiere
 - [Metodi di pagamento](/payment) — panoramica dei metodi di pagamento disponibili
 - [Cassa](/pos/checkout) — l'esperienza di cassa POS
+- [Variazioni](/pos/product-panel/variations) — come le scorte delle variazioni appaiono nel pannello prodotti
 - [Metodi di pagamento personalizzati](/payment/gateways) — creazione di integrazioni di pagamento personalizzate

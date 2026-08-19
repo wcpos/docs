@@ -1,0 +1,88 @@
+---
+title: Performances de synchronisation et respect du serveur
+sidebar_label: Performances de synchronisation
+sidebar_position: 4
+description: "Comment le moteur de synchronisation WCPOS protège votre serveur : plafonds de requêtes bornés, ralentissement sous tension, garanties de réactivité et chiffres mesurés qui les sous-tendent."
+---
+
+:::info Nouveauté de la v1.10.0
+Cette page décrit le moteur de synchronisation introduit dans **WCPOS v1.10.0**. Pour comprendre le fonctionnement mécanique du moteur, commencez par [Fonctionnement du moteur de synchronisation](/reference/sync-engine).
+:::
+
+La plupart des boutiques WCPOS tournent sur un hébergement PHP mutualisé : une poignée de workers PHP, un démarrage complet de WordPress à chaque requête REST, des extensions de sécurité qui limitent les rafales. Les requêtes que le client considère comme gratuites dégradent la boutique en ligne, déclenchent les limiteurs de débit et entrent en concurrence avec le trafic du caissier lui-même — le tout multiplié par chaque caisse et chaque onglet de navigateur que vous utilisez.
+
+Le moteur de synchronisation de la v1.10.0 traite cela comme une contrainte de conception, et non comme une réflexion après coup : **protéger l’hébergement du commerçant fait partie du travail du moteur de synchronisation.** Cette page explique les règles que suit le moteur et les mesures qui les justifient.
+
+## Les quatre règles permanentes {#the-four-rules}
+
+Tout comportement de synchronisation programmé dans le moteur est régi par quatre invariants :
+
+1. **Le coût est proportionnel à ce qui a changé, jamais à la taille du catalogue.** Un condensé peu coûteux ou un contrôle en court-circuit précède toujours toute récupération en masse. Une boutique de 50 000 produits qui n’a pas changé coûte à peu près autant à maintenir synchronisée qu’une boutique de 500 produits qui n’a pas changé.
+2. **Aucun essaimage illimité de requêtes.** Chaque voie d’arrière-plan déclare un plafond de requêtes par exécution, appliqué par des tests automatisés. Les travaux plus lourds s’exécutent par lots bornés avec des curseurs reprenables — un balayage s’étale sur son planning au lieu de partir en rafale.
+3. **La maintenance ne gêne jamais le caissier.** Les requêtes qui rendent une caisse prête à vendre passent en premier ; les audits d’intégrité et les préchargements d’arrière-plan s’exécutent ensuite, pendant les périodes d’inactivité.
+4. **Sous pression, la maintenance ralentit en premier.** Lorsque votre serveur signale une difficulté, le moteur ralentit son propre travail d’arrière-plan avant de toucher à quoi que ce soit qui concerne le caissier.
+
+## Ce que la synchronisation coûte à votre serveur {#request-budgets}
+
+Le coût en régime permanent est déterminé par le **préréglage de synchronisation**, choisi appareil par appareil dans **État de la boutique → Performance** :
+
+| Préréglage | Intervalle de contrôle | Enregistrements par requête | Contrôles nominaux par jour |
+| --- | --- | --- | --- |
+| Éco | 5 min | 25 | 288 |
+| Équilibré (par défaut) | 60 s | 50 | 1 440 |
+| Temps réel | 10 s | 75 | 8 640 |
+
+Les deux curseurs comptent, et c’est en général le poids des pages qui coûte réellement cher à un hébergement mutualisé — une page d’enregistrements lourde consomme un temps serveur bien réel, et l’intervalle ne fait que le multiplier. Aucun préréglage ne livre la page maximale de 100 enregistrements ; celle-ci n’est accessible que par les curseurs Personnalisé (intervalle de 5 s à 5 min, de 10 à 100 enregistrements).
+
+En plus du préréglage :
+
+- **Un contrôle à vide coûte peu.** Le moteur envoie des requêtes conditionnelles : un contrôle sans changement reçoit donc pour toute réponse un unique `304 Not Modified` sans corps — cela reste une requête, mais sans charge utile et avec un travail serveur minimal.
+- **Les contrôles sont décalés de ±20 %**, afin qu’un parc de caisses répartisse ses requêtes au lieu de se synchroniser en rafales.
+- **Les caisses inactives ralentissent** vers une cadence plus lente après 10 minutes sans interaction et repartent instantanément à la moindre activité, y compris un scan de code-barres.
+- **La maintenance d’arrière-plan est plafonnée.** Un contrôle d’intégrité sans dérive coûte au plus quelques pages d’agrégats peu coûteuses et **zéro** récupération de détail — les groupes dont la correspondance avec le serveur est prouvée sont purement et simplement ignorés. Lorsqu’une dérive est détectée, les analyses détaillées sont plafonnées à **deux par exécution** et reprennent via un curseur persistant plutôt que de partir en rafale. L’audit complet des suppressions est borné à **11 requêtes par exécution**, et le préchargement des condensés à 5 blocs par exécution. Ces plafonds sont déclarés dans le code et appliqués par l’intégration continue.
+
+:::note Le chiffre « requêtes par jour » affiché dans l’application est nominal
+État de la boutique calcule son estimation *~N requêtes par jour* à partir de l’intervalle configuré. Considérez-la comme une fréquence de contrôle nominale, ni comme un plafond ni comme une prévision : le décalage de ±20 % fait varier le décompte réel dans un sens comme dans l’autre, et un `304` compte quand même comme une requête. La décroissance en cas d’inactivité ne réduit le décompte que pour les préréglages plus rapides que son plancher de 60 secondes ; elle ne ralentit pas davantage le préréglage Équilibré par défaut.
+:::
+
+## Ralentir quand votre serveur peine {#server-pressure}
+
+Chaque réponse reçue par le moteur alimente un moniteur de pression par boutique. Il réagit à :
+
+- un `429` HTTP (immédiatement),
+- des erreurs `5xx` répétées ou des échecs de transport (trois en une minute glissante),
+- une lenteur persistante (temps de réponse médian supérieur à 2 secondes),
+- un en-tête `Retry-After`, qui devient un plancher strict pour le contrôle suivant.
+
+Lorsque l’un de ces seuils est franchi, le moteur **double son intervalle de contrôle des changements**, un palier à la fois, et les voies de maintenance sautent purement et simplement leurs exécutions. Les requêtes déclenchées par le caissier — recherches, lectures de codes-barres, encaissement — ne sont jamais bridées ; l’objectif est de délester la charge différable, pas de ralentir la vente.
+
+La récupération est délibérément asymétrique : le ralentissement est instantané, mais l’intervalle ne redescend d’un palier qu’après **dix réponses saines consécutives**, afin qu’un serveur instable ne soit pas ballotté entre cadence rapide et cadence lente. L’état de pression survit également au choix d’un préréglage plus rapide par le commerçant — la protection s’applique sous n’importe quel palier configuré, et il n’existe aucun moyen de la désactiver.
+
+## Rester réactif sur l’appareil {#device-responsiveness}
+
+L’autre moitié de la performance, c’est la caisse elle-même — la synchronisation d’arrière-plan ne doit jamais faire saccader l’interface.
+
+- **Les audits cèdent la main à la boucle d’événements.** L’audit d’intégrité découpe son travail et rend la main entre les blocs, maintenant son plus long bloc ininterrompu autour de **30 ms** — sous le seuil d’environ 100 ms à partir duquel un humain perçoit une latence. Mesuré sur 10 000 produits locaux, un audit complet coûte environ **68 ms** de calcul répartis sur plus de 17 interruptions ; sur 50 000 produits, moins de 300 ms.
+- **Le premier résultat reste rapide sous charge.** Les contrats de délai avant premier résultat sont figés dans l’intégration continue, même pendant l’exécution simultanée d’une application en masse ou d’un audit complet — quelques millisecondes seulement pour des tailles de catalogue courantes dans l’environnement de test.
+- **Seule la page visible passe dans l’application.** Le travail de requête (filtre, tri, pagination) s’exécute à l’intérieur de la couche de stockage : la mise à jour d’un écran déplace donc dix lignes, pas dix mille.
+
+Ces chiffres proviennent de la suite de contrats de performance figée du moteur, qui s’exécute isolément en intégration continue avec des budgets fixés environ un ordre de grandeur au-dessus du régime permanent mesuré — conçue pour détecter les régressions d’un ordre de grandeur, pas pour échouer sur un exécuteur lent.
+
+## Vérifié sur une boutique réelle {#live-verification}
+
+Les règles de respect du serveur ne sont pas seulement testées unitairement. Une vérification de bout en bout sur une véritable boutique WordPress contrôle les invariants qui comptent le plus sur un hébergement réel :
+
+- **Zéro** requête de maintenance (trafic d’intégrité ou de condensés) avant l’affichage du catalogue produits à l’ouverture de la boutique.
+- Après la temporisation qui suit l’ouverture, tout au plus une poignée de pages d’agrégats peu coûteuses et pas plus de deux analyses détaillées.
+
+Ce scénario est né d’une régression réelle : une version de développement antérieure de l’audit émettait environ 41 requêtes (1,2 Mo) à chaque ouverture de boutique, et par appareil. La conception à base de condensés qui l’a remplacée ramène un audit sans dérive à ses seules pages d’agrégats — cette catégorie de bogue est désormais protégée par des plafonds déclarés en intégration continue, et non par la vigilance des relecteurs.
+
+## Ce que nous n’affirmons pas {#honest-limits}
+
+Quelques points que cette page se garde délibérément d’avancer, faute de chiffres défendables (pour l’instant) :
+
+- **Aucun chiffre de bout en bout du type « la synchronisation initiale prend X minutes ».** La durée du téléchargement initial dépend avant tout des temps de réponse de votre serveur et de la taille de votre catalogue. Le coût côté appareil pour appliquer les enregistrements est faible (l’application en masse de 10 000 produits se mesure à moins de 10 ms de calcul) ; le réseau et le serveur dominent.
+- **Aucune affirmation du type « X % plus rapide que la v1.9 ».** Les architectures diffèrent suffisamment pour qu’un chiffre comparatif unique induise plus en erreur qu’il n’informe. Les différences structurelles sont exposées dans [Ce qui a changé en v1.10.0](/reference/sync-engine#what-changed-in-v1100).
+- Les chiffres de référence ci-dessus proviennent de l’environnement de test du moteur (stockage en mémoire, exécuteur isolé). Les appareils et les boutiques réels varient ; c’est précisément pour cela que **État de la boutique → Performance** affiche le nombre de requêtes mesuré sur votre caisse et le temps de réponse typique des dernières 24 heures plutôt que des projections. Son chiffre de volume de données est une borne inférieure, car les réponses sans taille déclarée comptent pour zéro.
+
+Pour le réglage côté serveur — prérequis d’hébergement, HPOS, mise en cache et diagnostic des réponses lentes — voir [Performances du serveur](/support/performance/server).

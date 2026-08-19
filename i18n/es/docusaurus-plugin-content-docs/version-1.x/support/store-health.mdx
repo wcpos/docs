@@ -1,0 +1,90 @@
+---
+title: Estado de la tienda
+sidebar_label: Estado de la tienda
+sidebar_position: 2
+description: "El área Estado de la tienda en WCPOS: preajustes de rendimiento de la sincronización y carga medida del servidor, cobertura de descarga por colección, recuperación de cambios rechazados y el registro de actividad."
+---
+
+:::info Novedad en la v1.10.0
+Estado de la tienda se introduce en **WCPOS v1.10.0**. Sustituye a la antigua pantalla de Registros independiente y añade visibilidad en tiempo real sobre la sincronización, la cobertura de datos locales y la carga del servidor.
+:::
+
+**Estado de la tienda** es el panel del POS para todo lo que ocurre entre su dispositivo y su tienda WooCommerce. Ábralo desde el cajón de navegación (el icono de latido). Tiene tres pestañas: **Rendimiento**, **Base de datos** y **Registros**.
+
+## Rendimiento {#performance}
+
+La pestaña Rendimiento responde a la pregunta «¿qué le está costando el POS a mi servidor, y es sana la sincronización?».
+
+- **Línea de estado**: `✓ Normal` o `⚠ Requiere atención`, según el estado actual del motor (un bache que ya se ha resuelto no le estará regañando durante un día entero).
+- **Actividad medida**: las solicitudes realizadas y el tiempo de respuesta típico de las últimas 24 horas son mediciones de esta caja, no estimaciones. El volumen de datos transferidos es un límite inferior, porque las respuestas sin un tamaño declarado aportan cero.
+- **Franja de disponibilidad**: una celda por hora durante las últimas 24 horas. Verde significa que las solicitudes de esa hora se completaron sin errores; ámbar significa que al menos una solicitud falló (aunque sea una: no hay umbral); vacío significa que la aplicación no estaba en marcha.
+- **Cuenta atrás de la siguiente comprobación**: cuándo toca la siguiente comprobación de cambios. En una caja inactiva puede marcar legítimamente más tiempo que el intervalo configurado, porque las comprobaciones llevan una variación aleatoria y se espacian tras 10 minutos de inactividad. Una cuenta atrás más larga en una caja tranquila es normal, no una sincronización atascada.
+
+### Preajustes de sincronización {#sync-presets}
+
+Tres tarjetas de preajuste determinan con cuánta avidez sincroniza este dispositivo, mediante dos controles: con qué frecuencia comprueba el POS si hay cambios y cuántos registros solicita cada vez:
+
+| Preajuste | Intervalo de comprobación | Registros por solicitud |
+| --- | --- | --- |
+| **Eco** | 5 min | 25 |
+| **Equilibrado** (predeterminado) | 60 s | 50 |
+| **Tiempo real** | 10 s | 75 |
+
+Elija **Eco** para alojamientos compartidos o económicos, y **Tiempo real** cuando varias cajas necesiten ver rápidamente los cambios de las demás y el servidor pueda permitírselo. Los deslizadores **Personalizado** abren el rango completo (de 5 segundos a 5 minutos, de 10 a 100 registros).
+
+Dos cosas que conviene saber:
+
+- **Los ajustes son por dispositivo.** Ajustar una caja deja todos los demás dispositivos sin cambios: repita el cambio en cada caja que quiera ajustar.
+- La cifra de *~N solicitudes al día* que se muestra junto al control es una tasa de comprobación nominal derivada del intervalo configurado, no un tope ni una predicción. La variación aleatoria puede mover el recuento real en ambos sentidos; un `304` sin cambios cuesta poco, pero sigue contando como una solicitud. El decaimiento por inactividad reduce el recuento solo en los preajustes más rápidos que su mínimo de 60 segundos, así que no ralentiza aún más el preajuste Equilibrado.
+
+Los cambios se aplican de inmediato; no hace falta reiniciar. Para conocer la ingeniería que hay detrás de estas cifras, consulte [Rendimiento de la sincronización](/reference/sync-performance).
+
+## Base de datos {#database}
+
+La pestaña Base de datos responde a la pregunta «¿qué hay en este dispositivo, y ha llegado todo a mi servidor?».
+
+Arriba, cuatro fichas: el hito **Listo para vender**, los registros de este dispositivo, el almacenamiento utilizado y los cambios pendientes de enviar.
+
+:::tip Listo para vender es un hito, no una condición de descarga completa
+Se activa en cuanto el primer producto está en el dispositivo. Estar sin conexión no lo bloquea: una caja con productos en el dispositivo está lista para vender sin conexión. De eso se trata en un POS local-first.
+:::
+
+### Tabla de cobertura {#coverage}
+
+Cada colección sincronizada tiene su fila: **en el dispositivo**, **en el servidor** y una barra de cobertura. Los números siguen una estricta regla de honestidad: el total *en el servidor* es una cifra real informada por el servidor, nunca una suposición:
+
+- ***comprobando…***: el POS todavía no tiene un total del servidor actualizado. Si una fila se queda así más de unos 15 minutos, puede que la ruta REST de esa colección esté fallando; consulte [Registros](#logs).
+- **Que una barra esté parcial suele ser normal.** Los clientes se descargan gradualmente en los ratos de inactividad, las categorías y los cupones se descargan al abrirlos por primera vez, y la barra de **pedidos** se mide contra todo su historial de pedidos mientras la caja conserva deliberadamente solo los pedidos abiertos y recientes, así que los pedidos aparecen como parciales en una caja perfectamente sana.
+- **Después de un «Borrar y volver a descargar», un recuento vacío o bajo es el resultado previsto, no una sincronización atascada**: las colecciones que se descargan bajo demanda se rellenan a medida que se usan, y el texto de cada fila indica cómo se rellena esa colección.
+
+### Cambios que nunca llegaron a su servidor {#refused-changes}
+
+Si su servidor rechaza de forma permanente un cambio (por ejemplo, una venta creada mientras el sitio rechazaba la solicitud por no ser válida), el POS **no** lo reintenta en silencio para siempre, ni lo oculta. El cambio se aparca y se muestra aquí con el motivo indicado por el propio servidor, cuándo ocurrió y dos acciones:
+
+- **Enviar de nuevo**: reconstruye la solicitud a partir del registro tal como está *ahora* y vuelve a ponerla en cola. Si el mismo campo se rechaza otra vez, el recuento de intentos sube de forma visible en lugar de fingir que ha funcionado.
+- **Descartar**: elimina el cambio. El diálogo de confirmación le indica exactamente qué significa descartarlo para ese registro (incluido el caso en que el registro solo haya existido en este dispositivo, donde descartarlo lo elimina).
+
+La recuperación siempre es una acción deliberada y visible: aquí no hay nada automático.
+
+### Borrar y volver a descargar {#clear-and-redownload}
+
+Cada fila de colección ofrece **Borrar y volver a descargar**, que elimina la copia local de esa colección y vuelve a descargarla. La confirmación indica cuántos registros y aproximadamente cuánto almacenamiento se van a eliminar, y qué permanece a salvo en el servidor. Es preferible a borrar todos los datos locales: es específico y no cierra su sesión. [Limpiar Todos los Datos Locales](/support/troubleshooting/clear-local-data) sigue siendo el restablecimiento completo.
+
+## Registros {#logs}
+
+La pestaña Registros es un libro de la actividad de sincronización de este dispositivo: **hora, nivel, evento, duración y estado** por fila, conservados durante 30 días.
+
+- **Filtros predefinidos**: Todo / Acciones / Errores / Sincronización, además de un interruptor de **Diagnósticos detallados** que captura información adicional durante 24 horas y luego se desactiva solo.
+- **Detalles de la fila**: los errores y las advertencias se expanden para mostrar un motivo en lenguaje sencillo, una línea sobre la seguridad de los datos, un siguiente paso sugerido y un enlace de ayuda al [código de error](/error-codes). Cada vista de detalle incluye un código de evento que se puede copiar: indíquelo al contactar con el soporte.
+- Las entradas del registro se traducen al mostrarse, así que una fila escrita hace meses se lee en el idioma en el que funcione hoy la caja; el código de evento es el identificador estable.
+
+:::note Dos pestañas, dos recuentos
+La pestaña Registros obtiene su recuento de registros atascados únicamente de las entradas del registro; la pestaña Base de datos incluye además los cambios rechazados que están aparcados. Cuando difieran, **Base de datos es la autoridad** sobre lo que no ha llegado a su servidor.
+:::
+
+## Páginas relacionadas {#related}
+
+- [Cómo funciona el motor de sincronización](/reference/sync-engine): detalle a nivel de desarrollador sobre los carriles, la detección de cambios y la cola de escrituras
+- [Rendimiento de la sincronización](/reference/sync-performance): los topes de solicitudes y las reglas de reducción de ritmo que protegen su servidor
+- [Rendimiento del servidor](/support/performance/server): ajuste del alojamiento de WordPress/WooCommerce
+- [Limpiar Todos los Datos Locales](/support/troubleshooting/clear-local-data): el restablecimiento local completo

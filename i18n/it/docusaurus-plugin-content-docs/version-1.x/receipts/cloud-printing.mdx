@@ -55,6 +55,29 @@ Scegli il provider che corrisponde al tuo hardware.
 | **Epson Server Direct Print** | Stampante Epson ePOS con Server Direct Print | La stampante effettua il polling su WCPOS | Solo termici |
 | **PrintNode** | Qualsiasi stampante collegata al sistema operativo + client PrintNode | WCPOS invia un PDF a PrintNode | Qualsiasi modello |
 
+## WCPOS Cloud Print — il relay {#relay}
+
+Quando configuri una stampante con **polling** (Star CloudPRNT o Epson Server Direct Print), il poll URL che WCPOS ti fornisce punta a **cloudprint.wcpos.com**, non al tuo sito. Si tratta di **WCPOS Cloud Print**, un relay gratuito gestito da WCPOS che si colloca tra la tua stampante e il tuo negozio.
+
+**Perché esiste.** Le stampanti per ricevute eseguono un firmware ridotto e aggiornato di rado. Molte non riescono a completare una connessione sicura verso un negozio su hosting moderno: versioni TLS più recenti, autorità di certificazione più recenti o un CDN/firewall davanti al sito (Cloudflare è un colpevole frequente) rifiuteranno la stampante — o ne verranno rifiutati. Il sintomo è una stampante bloccata su **Waiting** per sempre, anche se ogni impostazione è corretta. Il relay offre alle stampanti una connessione che anche il firmware più datato riesce sempre a negoziare, e inoltra il loro traffico al tuo negozio.
+
+**Come funziona:**
+
+- Il tuo sito si collega al relay **automaticamente** la prima volta che apri le impostazioni Cloud Print — non c'è nulla da abilitare o configurare.
+- La stampante effettua il polling su `cloudprint.wcpos.com`; il relay inoltra la richiesta al tuo negozio e restituisce la risposta del tuo negozio. I lavori di stampa passano **attraverso** il relay: non vi vengono mai memorizzati.
+- Il relay assorbe la maggior parte del polling a vuoto, così una stampante inattiva costa al tuo sito circa una richiesta al minuto anziché una ogni pochi secondi.
+- Se il tuo sito non riesce a collegarsi al relay (per esempio un sito di sviluppo locale che il relay non può raggiungere), WCPOS ripiega automaticamente sugli URL diretti al sito.
+
+:::note Preferisci una connessione diretta?
+La schermata di configurazione di ogni stampante ha una sezione **Advanced** che mostra l'URL diretto al sito. Usala se sai che il tuo hosting è compatibile con le stampanti, o se preferisci non instradare i lavori attraverso il relay. Gli sviluppatori possono disattivare il relay per l'intero sito con una sola riga:
+
+```php
+add_filter( 'woocommerce_pos_cloud_print_relay_enabled', '__return_false' );
+```
+:::
+
+**Cosa può vedere il relay.** Collegarsi condivide l'URL del tuo sito con wcpos.com, e i lavori di stampa — il contenuto delle ricevute, che include i dettagli dell'ordine — transitano dal relay lungo il percorso verso la stampante. Nulla viene conservato. Tutti i dettagli sono nell'[informativa sulla privacy](https://wcpos.com/privacy).
+
 ## Configurazione di una stampante cloud {#setup}
 
 Le stampanti cloud vengono configurate una sola volta in WP Admin e condivise tra tutti i dispositivi — a differenza delle stampanti locali, che sono memorizzate per ogni dispositivo.
@@ -181,6 +204,16 @@ Il modo in cui viene prodotta la ricevuta dipende dalla stampante:
 - **Star CloudPRNT** — la ricevuta viene renderizzata **sul dispositivo** e consegnata alla stampante tramite CloudPRNT.
 - **Star Online, Epson e PrintNode** — la ricevuta viene renderizzata **sul server** a partire dall'ordine e dal modello selezionati, quindi recapitata alla stampante o al relay ospitato.
 
+## La coda di stampa {#print-queue}
+
+Ogni lavoro destinato a una stampante cloud resta in una coda sul tuo sito finché la stampante non lo ritira (stampanti con polling) o il provider non ne conferma la consegna. **WP Admin > POS > Settings > Cloud Print** mostra la coda sotto le tue stampanti:
+
+- **Filtra** per stampante o per stato — **Waiting**, **Printing**, **Printed**, **Failed**, **Cancelled** — con conteggi in tempo reale.
+- Ogni riga mostra da quanto tempo la ricevuta è **in attesa** e rimanda all'**ordine** WooCommerce che stampa.
+- **Annulla** i lavori in attesa uno alla volta, in blocco, oppure per un'intera stampante in una sola operazione. **Riprova** rimette in coda un lavoro fallito.
+
+Se una stampante ha lavori in attesa ma non ne ritira nessuno da più di qualche minuto, un **banner di avviso** indica il nome della stampante, quante ricevute sono in arretrato e da quanto tempo, e propone **Annulla tutto**: un arretrato non può mai accumularsi in silenzio mentre una stampante è scollegata.
+
 ## Stampa di prova e stato della connessione {#status}
 
 Ogni scheda della stampante ha un pulsante **Test print** che invia una breve diagnostica, in modo da poter confermare che la stampante sia raggiungibile e che il formato sia corretto prima di affidarvi gli ordini reali.
@@ -207,6 +240,19 @@ La scheda mostra anche uno stato in tempo reale:
   - Che il **poll URL e il token** nel firmware della stampante corrispondano esattamente a quanto generato da WCPOS. Un solo carattere errato significa che ogni polling viene rifiutato — rigenera il token in WCPOS e reinseriscilo se hai dubbi.
   - Che la stampante possa effettivamente **raggiungere il tuo sito** tramite Internet (DNS corretto, nessun firewall che blocchi l'HTTPS in uscita, certificato SSL valido sul tuo negozio).
   - Che il **polling sia abilitato** nella configurazione CloudPRNT / Server Direct Print della stampante, con un intervallo sensato. Riavvia la stampante dopo aver modificato le impostazioni.
+  - Se hai inserito l'**URL diretto al sito** (dalla sezione Advanced) e la stampante continua a non connettersi, passa all'URL standard **cloudprint.wcpos.com**: molte stampanti non riescono a negoziare una connessione sicura con l'hosting moderno, ed è [esattamente ciò che il relay risolve](#relay).
+
+  </AccordionItem>
+
+  <AccordionItem question="Perché l'URL della mia stampante punta a cloudprint.wcpos.com?">
+
+  Si tratta di [WCPOS Cloud Print](#relay), il relay gratuito che offre alle stampanti una connessione che il loro firmware riesce sempre a negoziare e che inoltra i loro lavori di stampa al tuo negozio. È attivo automaticamente, i lavori non vi vengono mai memorizzati e l'URL diretto al sito è sempre disponibile nella sezione **Advanced** della stampante, se lo preferisci.
+
+  </AccordionItem>
+
+  <AccordionItem question="Ho configurato la stampante prima che il relay esistesse: devo cambiare qualcosa?">
+
+  No — gli URL già salvati nella configurazione di una stampante continuano a funzionare. Se però quella stampante è **bloccata su Waiting**, il suo firmware è probabilmente tra quelli che non riescono a connettersi direttamente al tuo hosting: apri **Setup &amp; token** sulla scheda della stampante, rigenera il token e inserisci il nuovo URL **cloudprint.wcpos.com** e il token nella configurazione della stampante.
 
   </AccordionItem>
 

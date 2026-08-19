@@ -7,6 +7,7 @@ description: "WCPOSレシートテンプレートで使用できる正規デー�
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレートは、同一の正規レシートペイロードからレンダリングされます。`{{order.number}}`、`{{store.name}}`、`{{totals.total_display}}`のようなMustacheドットパスを使用します。配列はセクションでレンダリングされます：
 
@@ -17,6 +18,148 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 ```
 
 正規コントラクトはサーバー上のWCPOSレシートデータビルダーによって生成され、アプリ内のオフラインレシートレンダラーによってミラーリングされます。レシートはローカルデータからすぐに表示され、サーバーレスポンスが利用可能になると更新されるため、カスタムテンプレートではPHPの注文メソッドではなく以下のフィールドを使用してください。
+
+レシートデータ v1.1 では、各商品明細に記録済みの通常価格、クーポン適用前の販売価格、割引額のフィールドが追加されました。また、注文レベルの割引合計も提供されます。これには、通常価格からの割引と WooCommerce の割引を合算した **合計割引額** の値が含まれますが、注文合計やレポートが変わることはありません。
+
+## レシートの対応関係 {#receipt-map}
+
+印刷されるレシートの各部分は、データコントラクトのいずれかのセクションに対応しています。どちらか一方にカーソルを合わせると対応関係が表示され、クリックするとそのセクションのフィールドに移動します。このページのすべての例では、同じサンプル注文を使用しています。
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "VAT: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "レシート #1042", right: "2026年7月13日" },
+        { left: "キャッシャー: Ada", right: "顧客: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Espresso Beans", right: "29.00" },
+        { left: "~34.00~ · 割引 −5.00", sub: true },
+        { left: "1 × Ceramic Mug", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "小計", right: "52.75" },
+        { left: "クーポン SUMMER10", right: "−5.28" },
+        { left: "ギフトラッピング", right: "2.50" },
+        { left: "配送", right: "10.00" },
+        { left: "合計", right: "59.97", bold: true },
+        { left: "合計割引額", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "カード", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "ご購入ありがとうございました！", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      label: "店舗ヘッダー",
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      label: "注文と担当者",
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      label: "明細行",
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      label: "合計ブロック",
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      label: "支払い",
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      label: "フッター",
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## よく使うレシピ {#common-recipes}
+
+テンプレートの編集のほとんどは、次の3つのいずれかです。各カードには、まず印刷結果が表示され、続いて実際のマークアップが表示されます。ロジックレス HTML またはサーマル XML のテンプレートにそのままコピーしてください。3つ目のカードは、上記のサンプル注文ではなく v1.9 より前のレガシー注文を示しています。
+
+<Recipes>
+  <Recipe
+    title="通常価格に取り消し線を引く"
+    why="価格履歴が記録されていない注文では、セクションガードによってすべて非表示になります。"
+    preview={[
+      { left: "2 × Espresso Beans", right: "29.00" },
+      { left: "~34.00~ · 割引 −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="合計割引額の行を追加する"
+    why="2つのガード: 価格履歴が不完全な場合や、割引がなかった場合にこの行は表示されません。"
+    preview={[
+      { left: "合計", right: "59.97", bold: true },
+      { left: "合計割引額", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+  <Recipe
+    title="v1.9 より前の注文を安全に再印刷する"
+    why="古い注文では割引額の中に値引きが含まれているため、二重表示を防ぎます。"
+    preview={[
+      { left: "1 × Espresso Beans", right: "14.50" },
+      { left: "~17.00~  割引 −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+</Recipes>
 
 ## レンダリングルール {#rendering-rules}
 
@@ -39,6 +182,12 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 
 | 便利フィールド | 税込フィールド | 税抜フィールド |
 |-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
 | `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
 | `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
 | `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
@@ -49,6 +198,8 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
 ### 日付オブジェクト {#date-objects}
@@ -88,6 +239,32 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 | `presentation_hints` | object | 書式設定およびレンダラーヒント |
 | `i18n` | object | 組み込みテンプレートおよびカスタムテンプレート用の翻訳ラベル |
 
+## 価格どうしの関係 {#price-model}
+
+1つの商品明細には複数の価格が含まれますが、実際の金額の上で見れば名前の意味は明確になります。以下はサンプル注文のエスプレッソの明細です。通常価格 $17.00 の商品が $14.50 で販売され、さらに 10% のクーポンが適用されています。
+
+<PriceFlow
+  caption="Espresso Beans — 1個あたり（注文には2個含まれます）"
+  scaleLabel="通常価格 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 支払額" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "顧客が支払う金額", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "クーポン割引 (SUMMER10)", fields: 'lines[].discounts → この明細で 2.90' },
+    { kind: 'savings', title: "通常価格からの割引額", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "注文全体のセール割引額", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "注文全体のクーポン割引額", value: '`totals.discount_total` = 5.28' },
+    { label: "割引額と値引きの合計（レガシーの重複を除去）", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+セール割引額とクーポン割引は別のものです。セール割引額は販売価格と記録された通常価格を比較したものであるのに対し、`discounts` は WooCommerce 自体のクーポン計算です。WooCommerce の注文合計とレポートに含まれるのはクーポン分のみです。だからこそ、両方を合算した唯一の顧客向けの数値として `total_saved` が存在します。
+
 ## フィールドリファレンス {#field-reference}
 
 完全なフィールドリファレンスは、以下でセクションごとにグループ化されています。すべてデフォルトで折りたたまれています。必要なグループを展開してください。
@@ -99,8 +276,8 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 
 | フィールド | 型 | 例 / 説明 |
 |-------|------|-----------------------|
-| `order.id` | number | `1234` |
-| `order.number` | string | 表示用の注文番号（例: `"10045"`） |
+| `order.id` | number | `1042` |
+| `order.number` | string | 表示用の注文番号（例: `"1042"`） |
 | `order.currency` | string | ISO 通貨コード（例: `"USD"`） |
 | `order.customer_note` | string | 顧客メモ / 注文メモ |
 | `order.wc_status` | string | WooCommerce のステータススラッグ（例: `"processing"`） |
@@ -194,26 +371,135 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 
 ### lines {#lines}
 
-`{{#lines}}...{{/lines}}` でループします。
+`{{#lines}}...{{/lines}}` でループします。サンプル値は[サンプル注文](#receipt-map)のエスプレッソの明細です。
 
-| フィールド | 型 | 説明 |
-|-------|------|-------------|
-| `key` | string | 固定の明細キー／注文アイテム ID |
-| `sku` | string | 商品 SKU |
-| `name` | string | 商品名または明細の表示名 |
-| `qty` | number | 販売数量 |
-| `qty_refunded` | number | この明細の返金数量 |
-| `unit_subtotal` / `_incl` / `_excl` | number | 割引前単価 |
-| `unit_price` / `_incl` / `_excl` | number | 割引後単価 |
-| `line_subtotal` / `_incl` / `_excl` | number | 割引前明細小計 |
-| `discounts` / `_incl` / `_excl` | number | 割引額（正の値） |
-| `line_total` / `_incl` / `_excl` | number | 明細合計 |
-| `total_refunded` | number | この明細の返金合計（正の値） |
-| `taxes` | array | この明細の税率別税額行 |
-| `meta` | array | 注文項目メタ（`{key, value}` ペア） |
-| `attributes` | array | 商品／バリエーション属性（`{key, value}` ペア） |
+<FieldIndex
+  note="金額フィールドはすべてペアで提供されます。数値（`{{#…}}` ガードで使用します。ゼロと `null` はセクションを非表示にし、`null` のフィールドには `_display` の対になる値がまったくありません）と、その `_display` 文字列（印刷に使用します）です。incl/excl の印が付いたフィールドには `_incl` と `_excl` のバリアントもあり、それぞれに独自の `_display` があります。"
+  placeholder="フィールドを絞り込み… 「savings」で試してください"
+  emptyText="一致するフィールドがありません — フィルターをクリアすると `lines[]` のすべてが表示されます。"
+  fields={[
+    { name: 'key', type: 'string', desc: "固定の明細キー／注文アイテム ID。", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "商品 SKU。", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "商品名または明細の表示名。", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "販売数量。", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "この明細の返金数量。", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "記録された通常単価。POS の価格履歴がない注文では `null` になります。セクションで囲んでください。",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "クーポン適用前の販売単価。記録された POS 価格があればそれを使用し、なければ保存された明細小計から算出されます。",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "通常価格から販売価格を引いた値（ゼロ以上に制限）。ゼロは偽値となるため、ガードで囲んだ行は自動的に非表示になります。",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "記録された通常価格に数量を掛けた値。",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "クーポン適用前の販売価格に数量を掛けた値。",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "この明細における通常価格から販売価格までの割引額の合計。",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "値引きがすでに `discounts` に含まれている v1.9.0 より前の注文で true になります。二重計上を防ぐためのフラグです。",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce の割引前単価。これを通常価格として使用しないでください。",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce の割引適用後の最終単価。",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce の割引前明細小計。",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce 本来の明細割引額（正の値）。現行の注文ではクーポンのみです。",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "クーポン適用後の最終的な明細合計。金額欄に印刷される値です。",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "この明細の返金合計（正の値）。",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "この明細の税率別税額行。" },
+    { name: 'meta', type: 'array', desc: "注文項目メタ（`{key, value}` ペア）。" },
+    { name: 'attributes', type: 'array', desc: "商品／バリエーション属性（`{key, value}` ペア）。" },
+  ]}
+/>
 
-フォーマット済みバリアントには `unit_subtotal_display`、`unit_price_display`、`line_subtotal_display`、`discounts_display`、`line_total_display`、および税込／税抜の `_display` バリアントがあります。
+### 通常価格と割引額の表示 {#displaying-regular-price-and-savings}
+
+単価レイアウトでは、記録された通常価格、販売価格、割引額を次のように表示します。
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+数量が関係する場合は、明細合計のフィールドを使用します。
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` はクーポン適用前の価格です。WooCommerce の割引適用後の最終金額には `unit_price` または `line_total` を使用してください。
+
+:::note v1.9.0 より前に作成された注文の再印刷
+古い WCPOS の注文では、通常価格から販売価格への値引きがすでに `discounts` に含まれている場合があります。カスタムテンプレートで明細の割引額と明細の値引きの両方を印刷する場合は、`savings_in_discounts` を使用して同じ値引きが二重に表示されないようにしてください。
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+テンプレートが明細レベルの `discounts` の行を印刷しない場合は、`savings_in_discounts` が true であっても `line_savings` を表示し続けてください。組み込みテンプレートはこの区別を自動的に処理します。
+:::
 
   </AccordionItem>
 
@@ -245,7 +531,6 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 |-------|------|-------------|
 | `label` | string | クーポンの説明またはコードのフォールバック |
 | `code` | string | クーポンコード |
-| `codes` | string | 結合されたコードのレガシー/表示フォールバック |
 | `total` / `_incl` / `_excl` | number | 正の値としての割引額 |
 
 フォーマット済みバリアント: `total_display`、`total_incl_display`、`total_excl_display`。割引をマイナス行として表示する場合は、テンプレート内で独自にマイナス記号を追加してください。
@@ -256,20 +541,86 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 
 ### totals {#totals}
 
-| フィールド | 型 | 説明 |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | number | 割引前の注文小計 |
-| `totals.discount_total` / `_incl` / `_excl` | number | 正の値としての注文割引合計 |
-| `totals.tax_total` | number | 税額合計 |
-| `totals.total` / `_incl` / `_excl` | number | 注文総計 |
-| `totals.paid_total` | number | 支払済み／適用済み金額 |
-| `totals.change_total` | number | 顧客へのお釣り |
-| `totals.refund_total` | number | 返金合計（正の値） |
-| `totals.net_total` | number | `total - refund_total`（ゼロ以上に制限） |
-| `totals.total_qty` | number | 明細数量の合計 |
-| `totals.line_count` | number | 商品明細行の数 |
+サンプル値は[サンプル注文](#receipt-map)のもので、この注文にはその後 $7.25 の一部返金が行われています。
 
-フォーマット済みバリアントとして `subtotal_display`、`discount_total_display`、`tax_total_display`、`total_display`、`paid_total_display`、`change_total_display`、`refund_total_display`、`net_total_display` があり、該当する場合は税込／税抜バリアントも含まれます。
+<FieldIndex
+  note="金額フィールドは明細行と同じペアの形式に従います。ガード用の素の数値と、印刷用の `_display` 文字列があり、印が付いたものには `_incl` / `_excl` のバリアントがあります。"
+  placeholder="フィールドを絞り込み… 「saved」で試してください"
+  emptyText="一致するフィールドがありません — フィルターをクリアすると `totals` のすべてが表示されます。"
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "割引前の注文小計。",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "正の値としての注文割引合計。現行の注文ではクーポンのみです。",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "商品明細全体で記録された、通常価格から販売価格までの割引額の合計。カタログのセールとレジでの価格変更を含みます。",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "WooCommerce の割引と通常価格からの割引額を合算し、レガシーの重複を除いた値。節約された金額全体を表す唯一の顧客向けの数値です。",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "完全な割引合計を算出できるだけの価格データがレシートに記録されているかどうか。",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "税額合計。",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "注文総計。",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "支払済み／適用済み金額。",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "顧客へのお釣り。",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "返金合計（正の値）。",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "合計から返金を差し引いた値（ゼロ以上に制限）。",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "明細数量の合計。", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "商品明細行の数。", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+節約された金額全体を1つの顧客向けの数値として表示したい場合は `total_saved` を使用してください。テンプレート内で `discount_total` と `sale_savings_total` を足して算出しないでください。v1.9.0 より前に作成された注文では、POS の価格による値引きがすでに WooCommerce の割引合計に含まれている場合があります。正規の `total_saved` フィールドは、この重複を検出して除去します。
+
+いずれかの商品明細に、信頼できる集計に必要な価格データが記録されていない場合、割引合計は `null` となり、`total_saved_complete` は false になります。行を `total_saved_complete` でガードし、そのうえで `total_saved` を使ってゼロの値を非表示にしてください。
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+価格を表示する組み込みテンプレートは、税込バリアント（`total_saved_incl` と `total_saved_incl_display`）で同じガード構造を使用し、完全な値がゼロより大きい場合にのみ **合計割引額** を表示します。
 
   </AccordionItem>
 
@@ -414,7 +765,7 @@ fiscal フィールドはデフォルトでは空であり、財務連携機能�
 {{i18n.total}}: {{totals.total_display}}
 ```
 
-一般的なキーには `order`、`date`、`cashier`、`customer`、`item`、`sku`、`qty`、`unit_price`、`discount`、`subtotal`、`total`、`tax`、`paid`、`tendered`、`change`、`tax_summary`、`refunded`、`net_total`、`customer_note`、`thank_you_purchase`、`opening_hours`、および `store_tax_id_label_eu_vat` や `customer_tax_id_label_other` などの税 ID ラベルキーがあります。拡張機能によってキーが追加される場合もあります。
+一般的なキーには `order`、`date`、`cashier`、`customer`、`item`、`sku`、`qty`、`unit_price`、`regular_price`、`selling_price`、`savings`、`discount`、`subtotal`、`total_saved`、`total`、`tax`、`paid`、`tendered`、`change`、`tax_summary`、`refunded`、`net_total`、`customer_note`、`thank_you_purchase`、`opening_hours`、および `store_tax_id_label_eu_vat` や `customer_tax_id_label_other` などの税 ID ラベルキーがあります。拡張機能によってキーが追加される場合もあります。
 
   </AccordionItem>
 </Accordion>

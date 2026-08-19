@@ -1,0 +1,90 @@
+---
+title: Stato del negozio
+sidebar_label: Stato del negozio
+sidebar_position: 2
+description: "L'area Stato del negozio in WCPOS: preset per le prestazioni di sincronizzazione e carico del server misurato, copertura dei download per collezione, recupero delle modifiche rifiutate e registro delle attività."
+---
+
+:::info Novità della versione 1.10.0
+Stato del negozio viene introdotto in **WCPOS 1.10.0**. Sostituisce la schermata Log a sé stante e aggiunge una visibilità in tempo reale su sincronizzazione, dati locali e carico del server.
+:::
+
+**Stato del negozio** è la dashboard del POS per tutto ciò che accade tra il tuo dispositivo e il tuo negozio WooCommerce. Aprila dal menu di navigazione (l'icona a forma di battito cardiaco). Ha tre schede: **Prestazioni**, **Database** e **Log**.
+
+## Prestazioni {#performance}
+
+La scheda Prestazioni risponde alla domanda «quanto sta costando il POS al mio server, e la sincronizzazione è in salute?»
+
+- **Riga di stato** — `✓ Normal` oppure `⚠ Needs attention`, in base allo stato attuale del motore (un contrattempo già rientrato non ti rimprovererà per un giorno intero).
+- **Attività misurata** — le richieste effettuate e il tempo di risposta tipico nelle ultime 24 ore sono misurazioni reali di questa cassa, non stime. Il volume di dati trasferiti è un limite inferiore, perché le risposte prive di dimensione dichiarata contribuiscono per zero.
+- **Striscia di disponibilità** — una cella per ogni ora delle ultime 24. Verde significa che in quell'ora le richieste sono andate a buon fine senza errori; ambra significa che almeno una richiesta non è riuscita (anche una sola — non c'è alcuna soglia); vuoto significa che l'app non era in esecuzione.
+- **Conto alla rovescia del prossimo controllo** — quando è previsto il prossimo controllo delle modifiche. Su una cassa inattiva può legittimamente indicare un tempo più lungo dell'intervallo configurato, perché i controlli hanno un jitter e rallentano dopo 10 minuti di inattività. Un conto alla rovescia più lungo su una cassa tranquilla è normale, non è una sincronizzazione bloccata.
+
+### Preset di sincronizzazione {#sync-presets}
+
+Tre schede preimpostate stabiliscono con quanta insistenza questo dispositivo si sincronizza, agendo su due regolatori: con quale frequenza il POS controlla la presenza di modifiche e quanti record richiede alla volta:
+
+| Preset | Intervallo di controllo | Record per richiesta |
+| --- | --- | --- |
+| **Eco** | 5 min | 25 |
+| **Bilanciato** (predefinito) | 60 s | 50 |
+| **Tempo reale** | 10 s | 75 |
+
+Scegli **Eco** per hosting condiviso o economico, **Tempo reale** quando più casse devono vedere rapidamente le reciproche modifiche e il server può permetterselo. I cursori **Personalizzato** aprono l'intera gamma (da 5 secondi a 5 minuti, da 10 a 100 record).
+
+Due cose da sapere:
+
+- **Le impostazioni valgono per singolo dispositivo.** Regolare una cassa lascia invariati tutti gli altri dispositivi: ripeti la modifica su ogni cassa che vuoi regolare.
+- La cifra *~N richieste al giorno* mostrata accanto al regolatore è un tasso di controllo nominale ricavato dall'intervallo configurato, non un tetto massimo né una previsione. Il jitter può spostare il conteggio effettivo in entrambe le direzioni; un `304` senza modifiche costa poco ma conta comunque come una richiesta. Il decadimento in inattività abbassa il conteggio solo per i preset più rapidi del suo limite minimo di 60 secondi, quindi non rallenta ulteriormente Bilanciato.
+
+Le modifiche hanno effetto immediato; non serve alcun riavvio. Per l'ingegneria dietro questi numeri, vedi [Prestazioni di sincronizzazione](/reference/sync-performance).
+
+## Database {#database}
+
+La scheda Database risponde alla domanda «cosa c'è su questo dispositivo, e tutto è arrivato al mio server?»
+
+In alto trovi quattro riquadri: il traguardo **Pronto a vendere**, i record presenti su questo dispositivo, lo spazio di archiviazione utilizzato e le modifiche in attesa di essere inviate.
+
+:::tip Pronto a vendere è un traguardo, non un requisito di download completo
+Scatta non appena il primo prodotto è sul dispositivo. Essere offline non lo blocca: una cassa che ha prodotti sul dispositivo è pronta a vendere offline. È proprio questo il senso di un POS local-first.
+:::
+
+### Tabella di copertura {#coverage}
+
+Ogni collezione sincronizzata ha una propria riga: **sul dispositivo**, **sul server** e una barra di copertura. I numeri seguono una rigorosa regola di onestà — il totale *sul server* è una cifra realmente riportata dal server, mai una supposizione:
+
+- ***controllo in corso…*** — il POS non dispone ancora di un totale aggiornato dal server. Se una riga resta così per più di circa 15 minuti, la route REST di quella collezione potrebbe non funzionare; controlla i [Log](#logs).
+- **Una barra parziale è spesso normale.** I clienti vengono scaricati gradualmente nei momenti di inattività, categorie e coupon vengono scaricati alla prima apertura, e la barra degli **ordini** si misura sull'intera cronologia dei tuoi ordini mentre la cassa mantiene deliberatamente solo gli ordini aperti e recenti — quindi gli ordini risultano parziali anche su una cassa perfettamente sana.
+- **Dopo una «Cancella e riscarica», un conteggio vuoto o basso è il risultato previsto, non una sincronizzazione bloccata** — le collezioni che si scaricano su richiesta si ripopolano man mano che vengono usate, e il testo di ciascuna riga spiega come quella collezione si ripopola.
+
+### Modifiche che non hanno mai raggiunto il tuo server {#refused-changes}
+
+Se il tuo server rifiuta in modo definitivo una modifica (per esempio una vendita creata mentre il sito considerava la richiesta non valida), il POS **non** la ritenta all'infinito in silenzio, e non la nasconde. La modifica viene messa da parte ed elencata qui con la motivazione fornita dal server stesso, il momento in cui è avvenuta e due azioni:
+
+- **Invia di nuovo** — ricostruisce la richiesta a partire dal record così com'è *adesso* e la rimette in coda. Se lo stesso campo viene rifiutato di nuovo, il numero di tentativi aumenta in modo visibile invece di fingere che sia andata a buon fine.
+- **Scarta** — elimina la modifica. La finestra di conferma ti dice esattamente cosa comporta scartarla per quel record (compreso il caso in cui il record sia esistito solo su questo dispositivo, dove scartarlo lo elimina).
+
+Il recupero è sempre un'azione deliberata e visibile: qui nulla è automatico.
+
+### Cancella e riscarica {#clear-and-redownload}
+
+Ogni riga di collezione offre **Cancella e riscarica**, che rimuove la copia locale di quella collezione e la scarica di nuovo. La conferma indica quanti record e all'incirca quanto spazio di archiviazione verranno rimossi, e cosa resta al sicuro sul server. Preferiscila alla cancellazione di tutti i dati locali: è mirata e non ti disconnette. [Cancella tutti i dati locali](/support/troubleshooting/clear-local-data) resta la reimpostazione completa.
+
+## Log {#logs}
+
+La scheda Log è un registro dell'attività di sincronizzazione su questo dispositivo: **ora, livello, evento, durata, stato** per ogni riga, conservato per 30 giorni.
+
+- **Filtri predefiniti** — Tutti / Azioni / Errori / Sincronizzazione, più un interruttore **Diagnostica dettagliata** che raccoglie informazioni aggiuntive per 24 ore e poi si disattiva da solo.
+- **Dettagli delle righe** — errori e avvisi si espandono mostrando una motivazione in linguaggio semplice, una riga sulla sicurezza dei dati, un passo successivo suggerito e un link di aiuto per il [codice di errore](/error-codes). Ogni vista di dettaglio riporta un codice evento copiabile: citalo quando contatti l'assistenza.
+- Le voci di log vengono tradotte al momento della visualizzazione, quindi una riga scritta mesi fa si legge nella lingua in cui la cassa funziona oggi; il codice evento è l'identificatore stabile.
+
+:::note Due schede, due conteggi
+La scheda Log ricava il proprio conteggio dei record bloccati dalle sole voci di log; la scheda Database include anche le modifiche rifiutate messe da parte. Quando i due valori differiscono, **fa fede il Database** su ciò che non ha raggiunto il tuo server.
+:::
+
+## Pagine correlate {#related}
+
+- [Come funziona il motore di sincronizzazione](/reference/sync-engine) — dettagli a livello di sviluppatore su corsie, rilevamento delle modifiche e coda di scrittura
+- [Prestazioni di sincronizzazione](/reference/sync-performance) — i tetti massimi di richieste e le regole di rallentamento che proteggono il tuo server
+- [Prestazioni del server](/support/performance/server) — ottimizzazione dell'hosting WordPress/WooCommerce
+- [Cancella tutti i dati locali](/support/troubleshooting/clear-local-data) — la reimpostazione locale completa

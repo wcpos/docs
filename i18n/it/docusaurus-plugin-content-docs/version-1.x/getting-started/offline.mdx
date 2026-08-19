@@ -2,41 +2,48 @@
 title: Funzionalità offline
 sidebar_label: Modalità offline
 sidebar_position: 5
-description: Cosa funziona offline in WCPOS, come il database locale si sincronizza con WooCommerce e cosa succede quando la connettività viene persa.
+description: "Cosa funziona offline in WCPOS, come il database locale si sincronizza con WooCommerce e cosa succede quando la connettività viene persa."
 ---
 
 import Icon from '@site/src/components/Icon';
 
-WCPOS archivia localmente i dati di prodotti e clienti su ciascun dispositivo usando un database basato su browser (IndexedDB). Questo significa che alcune parti del POS funzionano senza connessione a Internet, mentre altre richiedono connettività.
+WCPOS archivia i dati di prodotti e clienti in un database locale su ciascun dispositivo. Questo significa che alcune parti del POS funzionano senza connessione a Internet, mentre altre richiedono connettività.
 
 ## Cosa funziona offline {#what-works-offline}
 
-- **Consultazione dei prodotti** — cercare, filtrare e visualizzare i dettagli dei prodotti dai dati memorizzati nella cache
+- **Consultazione dei prodotti** — cercare, filtrare e visualizzare i dettagli dei prodotti dai dati locali
 - **Consultazione dei clienti** — cercare nomi, email e indirizzi dei clienti
 - **Preparazione del carrello** — aggiungere articoli, modificare quantità, modificare prezzi e applicare sconti POS
+- **Applicazione dei coupon** (Pro) — i codici vengono convalidati localmente sui dati dei coupon sincronizzati; il server riconvalida quando l'ordine in coda lo raggiunge
+- **Completamento di una vendita con un metodo di pagamento utilizzabile offline** — le vendite in contanti e quelle con carta elaborate esternamente vengono salvate localmente e messe in coda per WooCommerce
 - **Scansione dei codici a barre** — scansionare codici a barre per trovare prodotti nel database locale
 - **Visualizzazione dei report** — il tipo di report predefinito (offline) genera report dagli ordini archiviati localmente
 
 ## Cosa richiede una connessione {#what-requires-a-connection}
 
-- **Completamento del checkout** — l'elaborazione del pagamento e la creazione dell'ordine in WooCommerce richiedono la comunicazione con il server
-- **Applicazione dei codici coupon** — la convalida dei coupon avviene sul server
+- **Azioni di checkout che dipendono dal server** — il Checkout Web, i gateway online o da terminale integrati e **Salva sul server** richiedono che i rispettivi servizi siano raggiungibili
 - **Sincronizzazione dei dati** — recupero di nuovi prodotti, prezzi aggiornati o nuovi clienti da WooCommerce
-- **Accesso** — l’autenticazione iniziale richiede una connessione al sito WordPress
+- **Accesso** — l'autenticazione iniziale richiede una connessione al sito WordPress
 - **Attivazione della licenza** — i controlli della licenza Pro devono raggiungere il server delle licenze WCPOS
 - **Elaborazione dei rimborsi** — i rimborsi non possono essere messi in coda offline; il gateway e il negozio devono essere entrambi raggiungibili (vedi [Rimborsi](/orders/refunds))
 
 ## Come funziona il database locale {#how-the-local-database-works}
 
-Alla prima apertura di WCPOS, il download dei prodotti e dei clienti WooCommerce inizia in background. Questo processo è graduale — più si utilizza il POS, più i dati locali diventano completi.
+Alla prima apertura di WCPOS, il catalogo prodotti viene precaricato in background e gli altri dati vengono recuperati man mano che usi il POS: puoi iniziare a vendere non appena i primi prodotti sono sul dispositivo. Da quel momento in poi, un controllo delle modifiche in background (ogni 60 secondi per impostazione predefinita, regolabile in [Stato del negozio](/support/store-health)) recupera solo ciò che è cambiato sul server.
 
 Il database locale:
 
 - **Persiste tra le sessioni** — i dati rimangono disponibili dopo il riavvio del browser e del dispositivo
-- **È specifico per dispositivo** — ogni dispositivo mantiene la propria copia locale
-- **Rimane sincronizzato** — WCPOS verifica periodicamente la presenza di modifiche sul server e recupera gli aggiornamenti
+- **È specifico per dispositivo (e per cassiere)** — ogni dispositivo mantiene la propria copia locale; i cassieri non condividono i dati locali
+- **Rimane sincronizzato** — i controlli delle modifiche in background recuperano gli aggiornamenti; le tue modifiche vengono messe in coda localmente e inviate al server
 
-Per ulteriori dettagli tecnici, consulta il riferimento [Architettura](/reference/architecture).
+Puoi vedere esattamente cosa si trova sul dispositivo — e cosa è ancora in attesa di essere inviato — in **Stato del negozio → Database**. Per ulteriori dettagli tecnici, consulta [Come funziona il motore di sincronizzazione](/reference/sync-engine).
+
+## Le modifiche fatte offline vengono messe in coda {#offline-writes}
+
+Ogni modifica che fai nel POS — una vendita, la modifica di un prodotto, l'aggiornamento di un cliente — viene prima salvata sul dispositivo e messa in coda per l'invio. Mentre sei offline la coda semplicemente attende: perdere la connettività a metà turno non fa perdere nulla.
+
+Quando la connessione torna, la coda si svuota automaticamente. Se il tuo server rifiuta del tutto una modifica (evento raro — per esempio un record che il server considera non valido), il POS non la ritenta all'infinito in silenzio: la modifica viene messa da parte in **Stato del negozio → Database**, sotto *«modifiche che non hanno mai raggiunto il tuo server»*, con la motivazione fornita dal server e le azioni esplicite **Invia di nuovo** / **Scarta**. Vedi [Stato del negozio](/support/store-health#refused-changes).
 
 ## Indicatore di connettività {#connectivity-indicator}
 
@@ -44,15 +51,15 @@ L'intestazione del POS mostra un punto colorato che indica lo stato della connes
 
 - **Verde** — connesso al server, tutte le funzionalità sono disponibili
 - **Giallo** — connessione intermittente, alcune operazioni potrebbero essere lente
-- **Rosso** — offline, limitato alla consultazione dei dati memorizzati nella cache
+- **Rosso** — offline, limitato ai dati locali
 
 ## Cosa succede durante la perdita di connettività {#what-happens-during-connectivity-loss}
 
 Se la connessione Internet viene persa durante l'uso del POS:
 
-1. **Prodotti e clienti restano consultabili** dai dati memorizzati nella cache.
-2. **È possibile continuare a creare carrelli** e modificare gli articoli.
-3. **Il completamento dell'ordine non riuscirà** se tentato — il POS deve raggiungere il server WooCommerce per elaborare l'ordine.
+1. **Prodotti e clienti restano consultabili** dai dati locali.
+2. **È possibile continuare a creare carrelli** e modificare gli articoli: ogni modifica viene messa in coda localmente.
+3. **È possibile completare il checkout con un metodo di pagamento utilizzabile offline** — la vendita entra nella coda in uscita. I gateway di pagamento che dipendono dal server restano non disponibili finché i loro servizi non sono raggiungibili.
 4. **Gli ordini aperti vengono conservati** nel database locale fino al ripristino della connettività.
 
 ## Quando la connessione viene ripristinata {#when-connection-restores}
@@ -60,12 +67,12 @@ Se la connessione Internet viene persa durante l'uso del POS:
 Quando la connessione torna disponibile:
 
 - L'indicatore di connettività diventa verde.
-- È possibile procedere alla cassa e completare eventuali ordini parcheggiati.
+- **Le modifiche in coda vengono inviate automaticamente al tuo server** — le vendite e le modifiche effettuate offline partono senza alcuna azione manuale.
+- I gateway di pagamento che dipendono dal server e **Salva sul server** tornano disponibili.
 - La sincronizzazione in background riprende, recuperando eventuali modifiche a prodotti o clienti avvenute mentre eri offline.
-- Non è richiesta alcuna azione manuale — WCPOS gestisce automaticamente la riconnessione.
 
 ## Suggerimenti per connessioni instabili {#tips-for-unreliable-connections}
 
-- **Usa "Salva sul server" per gli ordini importanti** — in questo modo l'ordine viene inviato subito a WooCommerce, così non viene perso se il database locale del dispositivo viene cancellato.
-- **Sincronizza regolarmente** — se sai che la connettività è intermittente, sincronizza il catalogo prodotti quando hai una buona connessione, così i dati locali restano aggiornati.
-- **Valuta le app native** — le app desktop e mobili (quando disponibili) possono offrire una maggiore affidabilità offline rispetto alla versione browser.
+- **Usa «Salva sul server» per gli ordini importanti** — in questo modo l'ordine viene inviato subito a WooCommerce, così non viene perso se il database locale del dispositivo viene cancellato.
+- **Controlla Stato del negozio dopo un'interruzione** — il riquadro *modifiche in attesa di essere inviate* in **Stato del negozio → Database** conferma quando tutto ha raggiunto il tuo server.
+- **Sincronizza quando hai segnale** — se sai che la connettività sarà intermittente, lascia che il precaricamento del catalogo si concluda mentre hai una buona connessione.

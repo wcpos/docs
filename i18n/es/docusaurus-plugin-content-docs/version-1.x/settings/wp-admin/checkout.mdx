@@ -1,7 +1,7 @@
 ---
 title: Configuración de caja
 sidebar_label: Caja
-description: Configuración de caja de WCPOS en el administrador de WordPress, incluyendo pasarelas de pago y procesamiento de pedidos.
+description: "Configuración de caja de WCPOS en el administrador de WordPress, incluyendo pasarelas de pago y procesamiento de pedidos."
 ---
 
 import Image from "@theme/IdealImage";
@@ -63,9 +63,51 @@ El estado del pedido se configura **por pasarela**, desde la columna **Estado de
 
 Es posible seleccionar cualquier estado de pedido de WooCommerce para cada pasarela. (Las versiones anteriores utilizaban un único valor predeterminado global; ese valor se migró a cada pasarela durante la actualización.)
 
+## Evitar la sobreventa {#prevent-overselling}
+
+La opción **Evitar sobreventa** impide las ventas en el POS de artículos que no tienen suficiente stock. Está **desactivada de forma predeterminada**: hasta que la actives, la finalización de compra se comporta exactamente igual que antes.
+
+La API REST de WooCommerce no valida el stock al crear los pedidos, por lo que una caja con mucha actividad (o una lista de productos desactualizada) podría vender más unidades de las que tienes. Con la opción activada, WCPOS comprueba el stock en dos momentos:
+
+1. **En la caja** — el cajero no puede añadir un artículo al carrito (ni aumentar su cantidad) por encima del stock disponible. El POS muestra la cantidad que *sí* está disponible, por ejemplo *"Solo hay 3 disponibles para Hoodie – Blue, M"*.
+2. **Al finalizar la compra, en tu servidor** — el propio pedido se valida antes de completar el pago. Aunque los datos locales de la caja estuvieran desactualizados, un pedido que provocaría sobreventa se rechaza y el cajero ve exactamente qué artículos faltan y cuántos hay disponibles. A continuación, el POS actualiza el stock de esos artículos para que el carrito pueda corregirse con cifras exactas.
+
+Los carritos abiertos nunca dejan de sincronizarse: la validación solo se ejecuta en el momento de finalizar la compra.
+
+### Cómo se determina el stock {#prevent-overselling-stock-rules}
+
+| Configuración del producto | Comportamiento con la opción activada |
+|---|---|
+| **Gestiona el stock** (se controla una cantidad) | Las ventas se limitan a la cantidad en stock. Varias líneas del mismo producto en el carrito cuentan para el mismo límite. |
+| **La variación gestiona su propio stock** | El límite se aplica por variación. |
+| **La variación usa el stock del producto padre** | Todas las variaciones de ese producto comparten la cantidad del producto padre. |
+| **No gestiona el stock** | Decide el estado de stock del producto: *Sin stock* no se puede vender; *En stock* y *Pedido pendiente* sí. |
+
+### Los pedidos pendientes siempre mandan {#prevent-overselling-backorders}
+
+La **configuración de pedidos pendientes de cada producto tiene prioridad**: así es como se permite la sobreventa de productos concretos mientras la opción está activada.
+
+- **No permitir** — las ventas se detienen cuando se agota el stock (esto es lo que aplica la opción).
+- **Permitir** — el producto siempre se puede vender, incluso por debajo de cero.
+- **Permitir, pero avisar al cliente** — el producto siempre se puede vender; el cajero ve una nota de *"se enviará como pedido pendiente"* cuando una venta baja del stock disponible.
+
+### Evitar la sobreventa frente a "Mostrar productos agotados" {#prevent-overselling-vs-display}
+
+Estos ajustes cubren protecciones de stock diferentes, pero ambos pueden impedir que se añada un artículo agotado:
+
+- **Evitar sobreventa** (esta página) comprueba las cantidades disponibles cuando se añaden o actualizan artículos y vuelve a validar el stock al finalizar la compra.
+- **Mostrar productos agotados** (un ajuste de visualización del panel de productos del POS) controla cómo se pueden seleccionar los productos y las variaciones agotados. Cuando está activado, los productos agotados siguen siendo visibles pero no se pueden añadir al carrito. Cuando está desactivado, se ocultan; las opciones de variación agotadas también aparecen atenuadas y los escaneos de código de barras coincidentes se rechazan.
+
+Desactivar Evitar sobreventa no anula esas reglas del panel de productos. Puedes mantener visibles los artículos agotados mientras Evitar sobreventa añade las comprobaciones de cantidad y de finalización de compra: el cajero ve el artículo con una insignia de *Sin stock* y el botón de añadir al carrito desactivado.
+
+:::note
+Los cambios en esta opción llegan a las sesiones abiertas del POS la próxima vez que un cajero inicie sesión o la aplicación revalide; la comprobación del lado del servidor se aplica de inmediato.
+:::
+
 ## Documentación relacionada {#related-documentation}
 
 - [Notificaciones por correo electrónico](/settings/wp-admin/email-notifications) — opciones por correo electrónico para notificaciones de administrador, cliente y cajero
 - [Métodos de pago](/payment) — descripción general de las pasarelas disponibles
 - [Finalización de compra](/pos/checkout) — la experiencia de pago en el POS
+- [Variaciones](/pos/product-panel/variations) — cómo se muestra el stock de las variaciones en el panel de productos
 - [Pasarelas personalizadas](/payment/gateways) — creación de integraciones de pago personalizadas

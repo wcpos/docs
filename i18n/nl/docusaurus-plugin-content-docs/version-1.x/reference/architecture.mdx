@@ -13,40 +13,31 @@ Deze pagina legt de technische architectuur van WCPOS uit voor ontwikkelaars en 
 
 WCPOS is ontworpen als een tweedelig systeem:
 
-1. **PHP-plug-in:** Gehost op je server, dit is een relatief kleine plug-in die de [WooCommerce REST API](/reference/wc-rest-api) uitbreidt.
+1. **PHP-plug-in:** Gehost op je server, dit is een relatief kleine plug-in die de [WooCommerce REST API](/reference/wc-rest-api) uitbreidt met POS-specifieke endpoints.
 
-2. **JavaScript-client:** Deze draait lokaal in je browser of de desktop-app, en later in iOS- en Android-apps.
+2. **JavaScript-client:** Deze draait lokaal in je browser, de desktop-app of de iOS-/Android-apps.
 
 Je kunt het zien als twee aparte werelden:
 
 - De _PHP-wereld_ is waar databeheer plaatsvindt met behulp van WordPress en WooCommerce.
-- De _JavaScript-wereld_ repliceert je WooCommerce-winkel lokaal, geoptimaliseerd voor snel zoeken en offlinegebruik.
+- De _JavaScript-wereld_ houdt een lokale, offline bruikbare kopie bij van de winkelgegevens die je kassa's nodig hebben, geoptimaliseerd voor snel zoeken en directe respons.
 
 <LocalizedSVG svgName="pos-client-woo-server" />
 
 ## Gegevenssynchronisatie {#data-synchronization}
 
-Gegevens worden opgehaald uit WooCommerce via de [WooCommerce REST API](https://woocommerce.github.io/woocommerce-rest-api-docs/). Dit betekent dat de POS elk product, elke variatie, productcategorie, klant, belastingtarief en meer moet downloaden om ze lokaal op te slaan.
+:::info Gewijzigd in v1.10.0
+v1.10.0 vervangt de vorige replicatielaag door een specifieke **synchronisatie-engine**. De samenvatting hieronder is de korte versie — de volledige uitleg staat in [Hoe de synchronisatie-engine werkt](/reference/sync-engine).
+:::
 
-Hoewel dit aanvankelijk tijdrovend kan zijn, zijn ze na het downloaden onmiddellijk beschikbaar zonder dat ze voortdurend van de server hoeven te worden opgehaald.
+De client werkt local-first: elk scherm leest en schrijft in de lokale database van het apparaat, en een synchronisatie-engine op de achtergrond houdt die database en WooCommerce bij elkaar. De engine spiegelt je hele winkel **niet** blindelings — hij vertrekt vanuit wat je schermen daadwerkelijk nodig hebben:
 
-### Wat wordt er gesynchroniseerd? {#what-gets-synced}
+- **Wijzigingsdetectie:** de POS raadpleegt een licht wijzigingslogboek met voorwaardelijke verzoeken; een inactieve winkel antwoordt met een enkele `304` zonder body.
+- **Aangegeven behoefte:** een scherm geeft aan wat het toont, en de engine bepaalt of daar een verzoek voor nodig is of dat het lokaal al beantwoord is.
+- **Aanvullingen en banen:** een begrensde catalogusaanvulling, een venster met recente bestellingen en onderhoudsbanen tijdens inactiviteit vullen en verifiëren de lokale gegevens volgens schema's die je per apparaat kunt afstemmen.
+- **Duurzame schrijfacties:** verkopen en bewerkingen komen lokaal in de wachtrij en worden naar WooCommerce verzonden, met zichtbaar herstel voor alles wat de server weigert.
 
-- Producten en variaties
-- Productcategorieën en tags
-- Klanten
-- Belastingtarieven en belastingklassen
-- Betaalgateways (voor het afrekenen)
-- Bestellingen (voor de bestelgeschiedenis in Pro)
-
-### Synchronisatiestrategie {#sync-strategy}
-
-WCPOS gebruikt een incrementele synchronisatiestrategie:
-
-1. **Initiële synchronisatie:** Downloadt alle gegevens bij de eerste keer laden
-2. **Incrementele updates:** Haalt alleen wijzigingen op sinds de laatste synchronisatie
-3. **Achtergrondsynchronisatie:** Controleert periodiek op updates
-4. **Handmatige synchronisatie:** Gebruiker kan op elk moment een synchronisatie starten
+Wat wordt er gesynchroniseerd: producten en variaties, categorieën/tags/merken, klanten, belastingtarieven, kortingsbonnen (Pro) en bestellingen. Betaalgateways worden bij het afrekenen opgehaald.
 
 ## Voor- en nadelen van de architectuur {#architecture-pros-and-cons}
 
@@ -58,11 +49,13 @@ WCPOS gebruikt een incrementele synchronisatiestrategie:
 
 ## Lokale database {#local-database}
 
-De JavaScript-client slaat gegevens op in IndexedDB, een browsergebaseerde database. Dit biedt:
+De client slaat gegevens op in een lokale database op elk apparaat — de web- en desktop-app gebruiken **OPFS-opslag (Origin Private File System) die in een worker draait**, en de mobiele apps gebruiken hetzelfde schijfformaat via een bestandssysteem-engine. Alle platforms delen één opslagformaat en dezelfde herstelgereedschappen. Dit biedt:
 
-- **Persistentie:** Gegevens blijven behouden na herstart van de browser
-- **Prestaties:** Snelle query's zonder netwerklatentie
+- **Persistentie:** Gegevens blijven behouden na herstart van de browser en na het opnieuw opstarten van het apparaat
+- **Prestaties:** Snelle query's zonder netwerklatentie — filteren, sorteren en pagineren gebeuren binnen de opslaglaag, zodat alleen de zichtbare pagina met rijen de interface bereikt
 - **Offline bladeren:** Gecachte gegevens blijven toegankelijk zonder internet
+
+Elke combinatie van site + winkel + kassamedewerker krijgt een eigen lokale database, zodat kassamedewerkers en winkels op één apparaat nooit lokale gegevens delen. Bij upgrades wordt een lokale database nooit ter plaatse gemigreerd — de app downloadt opnieuw vanaf de server, die altijd de gezaghebbende kopie is.
 
 ## Afrekenarchitectuur {#checkout-architecture}
 
@@ -74,4 +67,4 @@ Het afrekenproces gebruikt een iframe/webview die de WooCommerce Order Pay-pagin
 
 ## API-uitbreidingen {#api-extensions}
 
-De PHP-plug-in breidt de WooCommerce REST API uit met extra endpoints voor POS-specifieke functionaliteit. Zie [WooCommerce REST API](/reference/wc-rest-api) voor details.
+De PHP-plug-in breidt de WooCommerce REST API uit met extra endpoints voor POS-specifieke functionaliteit, geregistreerd onder de eigen naamruimten `wcpos/v1` en `wcpos/v2` — `wcpos/v2` bevat het synchronisatie-oppervlak van v1.10.0, en daarom worden de app- en plug-inversies gelijk opgeleverd. Zie [WooCommerce REST API](/reference/wc-rest-api) voor een introductie.

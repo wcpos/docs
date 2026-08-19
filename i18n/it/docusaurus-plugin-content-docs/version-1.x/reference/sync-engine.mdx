@@ -1,0 +1,121 @@
+---
+title: Come funziona il motore di sincronizzazione
+sidebar_label: Motore di sincronizzazione
+sidebar_position: 3
+description: "Riferimento per sviluppatori sul motore di sincronizzazione WCPOS introdotto nella versione 1.10.0: ambiti, corsie di sincronizzazione, rilevamento delle modifiche, domanda dichiarata, resoconto della copertura e coda di scrittura offline."
+---
+
+:::info Novità della versione 1.10.0
+Questa pagina descrive il motore di sincronizzazione introdotto in **WCPOS 1.10.0**. Le versioni precedenti usano un modello di replica diverso, per singola schermata — vedi [Cosa è cambiato nella versione 1.10.0](#what-changed-in-v1100) in fondo a questa pagina.
+:::
+
+WCPOS è local-first: ogni schermata legge e scrive su un database presente sul dispositivo, e un **motore di sincronizzazione** mantiene convergenti quel database e il tuo negozio WooCommerce lavorando in background. Questa pagina spiega come il motore decide cosa recuperare, quando recuperarlo e come le tue vendite tornano al server — con il livello di dettaglio utile a sviluppatori, integratori e proprietari di negozi che vogliono capire cosa sta facendo il POS al loro hosting.
+
+## Un motore per ogni negozio e cassiere {#one-engine-per-scope}
+
+Il POS esegue **un motore di sincronizzazione per ogni combinazione di sito + negozio + cassiere** su ciascun dispositivo. Quel motore possiede il proprio database locale, quindi cambiare negozio o cassiere significa cambiare l'intero piano dati anziché filtrare un unico insieme condiviso di record. L'isolamento per cassiere è voluto: due cassieri sullo stesso dispositivo non condividono mai i dati locali.
+
+Durante gli aggiornamenti i database locali non vengono mai migrati sul posto: l'app avvia un database nuovo e riscarica dal server, che detiene sempre la copia autorevole (vedi [Aggiornamento dalla versione 1.9](#upgrading-from-v19)).
+
+Nelle installazioni Pro multi-negozio, ogni richiesta di sincronizzazione identifica il proprio negozio, così un prezzo modificato alla cassa aggiorna il prezzo di quel negozio anziché quello del negozio online.
+
+## Cosa viene eseguito in background {#sync-lanes}
+
+Tutto ciò che il motore esegue secondo una pianificazione è una **corsia** (*lane*): un'unità di lavoro in background dotata di nome e di limiti precisi. Le corsie si dividono in tre gruppi:
+
+| Gruppo | Corsie | Cadenza predefinita |
+| --- | --- | --- |
+| **In entrata (pull)** | Controllo delle modifiche (segnale di modifica) | 10 s – 5 min, in base al tuo [preset di sincronizzazione](/support/store-health#sync-presets) |
+| | Ordini recenti, precaricamento del catalogo prodotti, precaricamento dei dati di riferimento | ~5 min |
+| | Flusso graduale dei clienti (solo nei momenti di inattività) | ~5 min |
+| **In uscita (push)** | Svuotamento delle scritture — invia le modifiche locali in coda | ~10 s |
+| **Manutenzione** | Verifiche di integrità e delle eliminazioni, aggiornamento dei totali del server | da pochi minuti a ~17 min |
+
+Per ogni corsia valgono due proprietà:
+
+- **Ogni corsia dichiara un tetto massimo di richieste per esecuzione.** Nessuna corsia può generare un numero illimitato di richieste in una singola esecuzione; i lavori più grandi usano lotti delimitati con cursori riprendibili. È un principio di progettazione fondamentale, approfondito in [Prestazioni di sincronizzazione](/reference/sync-performance).
+- **La manutenzione cede il passo al cassiere.** Le verifiche e i precaricamenti in background vengono eseguiti dopo il lavoro interattivo che rende una cassa pronta a vendere, mai prima, e sono la prima cosa a essere messa in pausa quando il tuo server mostra segni di affaticamento.
+
+Le cadenze riportate sopra sono valori predefiniti. L'intervallo di controllo e il numero di record per richiesta sono regolabili dal commerciante su ciascun dispositivo da **Stato del negozio → Prestazioni** nel POS — vedi [Stato del negozio](/support/store-health).
+
+## Come il POS viene a conoscenza delle modifiche {#change-signal}
+
+Il motore non riscarica i dati per scoprire se sono cambiati. Il server tiene un registro delle modifiche e il POS interroga un leggero **controllo delle modifiche** che risponde a una sola domanda: c'è stato qualche movimento dalla mia ultima posizione?
+
+- **Un solo controllo copre otto collezioni** — prodotti, variazioni, aliquote fiscali, clienti, coupon, categorie, marche e tag. Gli ordini sono deliberatamente esclusi dal controllo delle modifiche; la loro attualità è garantita dalla corsia dedicata degli ordini recenti, ed è per questo che gli aggiornamenti di prodotti e ordini possono arrivare con ritmi diversi.
+- **Una cassa inattiva costa quasi nulla.** Il motore invia richieste condizionali: quando non è cambiato nulla, il server risponde con un unico `304 Not Modified` privo di corpo. Un negozio tranquillo si assesta su una minuscola risposta per ogni controllo.
+- **I controlli hanno un jitter di ±20%**, così più registratori di cassa sullo stesso sito si sfasano tra loro invece di colpire il server con raffiche sincronizzate.
+- **Decadimento in inattività:** dopo 10 minuti senza interazione i controlli si diradano (fino a un limite minimo di 60 secondi). Qualsiasi attività reale — un tocco, la pressione di un tasto, una scansione di codice a barre accettata — riporta immediatamente alla cadenza piena e attiva subito un controllo di recupero. Il decadimento può solo allungare l'intervallo; non interroga mai il server più spesso di quanto configurato.
+- **Una cassa rimasta chiusa per giorni ricalcola la propria base invece di ripercorrere la cronologia.** Se il registro delle modifiche si è spostato troppo oltre l'ultima posizione della cassa, ripercorrere ogni riga costerebbe centinaia di richieste. Il motore porta invece il cursore in testa e ricontrolla lo stato attuale sul server di ciò che il dispositivo già possiede: il costo dipende così dalle dimensioni della copia locale, non da quanto a lungo la cassa è rimasta assente.
+
+## Come le schermate ottengono i loro dati {#declared-demand}
+
+Nella versione 1.10.0 le schermate non eseguono una propria sincronizzazione. **Una schermata dichiara che cosa sta mostrando — termine di ricerca, filtri, ordinamento, pagina — e il motore decide se ciò richieda o meno una richiesta.** Ogni dichiarazione si risolve in uno di tre modi:
+
+- **Recuperata** — il motore ha svolto lavoro sulla rete per soddisfarla.
+- **Servita localmente** — il dispositivo aveva già la risposta, oppure un recupero recente identico la copre.
+- **Sostituita** — la schermata è andata avanti (hai scorso, hai cambiato un filtro) e una dichiarazione più recente l'ha rimpiazzata. È la normalità, non un errore.
+
+Un filtro a cui si può rispondere solo localmente non raggiunge mai il server. E una dichiarazione andata a buon fine non significa che una collezione sia stata scaricata per intero: la completezza viene tracciata separatamente (sezione successiva).
+
+Non tutto viene scaricato in anticipo, e ciò che si trova sul dispositivo all'avvio varia da collezione a collezione:
+
+1. **Precaricate** — i prodotti si popolano tramite un precaricamento delimitato del catalogo; le aliquote fiscali vengono scaricate all'avvio (un POS non può fare i calcoli del carrello senza di esse).
+2. **Su richiesta, più un flusso graduale in inattività** — i clienti non hanno alcun precaricamento anticipato. Il flusso graduale dei clienti scarica un piccolo lotto a ogni intervallo di inattività, saltandolo del tutto quando il cassiere è attivo, mentre i clienti nuovi o modificati arrivano tramite il controllo delle modifiche.
+3. **Recuperate alla prima apertura** — categorie, tag, marche e coupon vengono scaricati quando un cassiere li apre per la prima volta. Una collezione che nessuno apre non genera mai alcuna richiesta.
+
+I selettori di variazione, inoltre, aggiornano prezzo e giacenza una volta a ogni apertura, così una variazione già presente viene mostrata all'istante ma non riporta mai una giacenza vecchia di giorni.
+
+## «È stato scaricato tutto?» — una copertura onesta {#coverage}
+
+Un dato come *«1.240 prodotti su 5.000»* ha bisogno di un totale **lato server** come denominatore. Il motore ne mantiene uno per ogni collezione (aggiornato all'incirca ogni 15 minuti, di solito a costo zero: le risposte di sincronizzazione reali contengono già il totale, quindi raramente serve una richiesta dedicata) e rispetta un rigoroso patto di onestà:
+
+- Un totale del server obsoleto o mancante viene mostrato come *controllo in corso…*, mai sostituito in silenzio con un conteggio locale. Un denominatore locale mostrerebbe sempre il 100% e nasconderebbe proprio la lacuna che quel numero esiste per rivelare.
+- Quando il motore non può garantire la completezza, il verdetto è *sconosciuto* e l'interfaccia etichetta la cifra come conteggio locale.
+- La barra di copertura degli ordini si misura sull'**intera** cronologia degli ordini presente sul server, mentre la cassa mantiene deliberatamente solo gli ordini aperti e recenti: per questo una cassa perfettamente sana risulta lì parziale per scelta progettuale.
+
+Questi numeri compaiono in **Stato del negozio → Database**, insieme al traguardo *Pronto a vendere* che scatta non appena il primo prodotto è sul dispositivo — essere offline non lo blocca, perché vendere offline è proprio il punto. Vedi [Stato del negozio](/support/store-health).
+
+## Come le modifiche tornano al tuo negozio {#write-path}
+
+Ogni scrittura locale — una vendita, la modifica di un prodotto, l'aggiornamento di un cliente — finisce prima in una **coda in uscita durevole** sul dispositivo, e una corsia di svuotamento invia la coda a WooCommerce ogni pochi secondi. È questo che rende sicura la vendita offline: una vendita registrata senza connessione resta in coda e viene inviata quando la connessione torna.
+
+Dettagli che contano:
+
+- **Le scritture del carrello sono serializzate per ordine.** Le raffiche rapide dello scanner vengono applicate una alla volta, e l'aggiunta ripetuta di un articolo viene unita alla riga che duplicherebbe anziché accodare una seconda riga.
+- **Le conferme degli ordini adottano la copia del server.** WooCommerce assegna gli ID alle voci di riga dell'ordine al momento della creazione; il motore adotta l'ordine confermato, così gli aggiornamenti successivi corrispondono a quelle righe invece di aggiungerne di duplicate. L'adozione è prudente: non sovrascrive mai una modifica locale che il server non ha ancora visto e si applica solo agli ordini.
+- **Una scrittura che il server rifiuta in modo definitivo non viene mai ritentata in silenzio.** Viene messa da parte con la motivazione fornita dal server stesso e mostrata in **Stato del negozio → Database** come *«modifiche che non hanno mai raggiunto il tuo server»*, con due azioni esplicite: **Invia di nuovo** (ricostruisce la richiesta a partire dal record così com'è adesso, così le correzioni successive vengono applicate) e **Scarta**. Non esiste alcun ciclo di riprova automatico: il recupero è sempre un'azione visibile e deliberata. Vedi [Stato del negozio](/support/store-health#database) per la guida rivolta ai commercianti.
+
+### Più schede del browser {#multi-tab}
+
+Eseguire il POS web in più schede dello stesso negozio è supportato. Ogni scheda può registrare una vendita — le scritture si accodano alla coda condivisa — ma **una sola scheda eletta si occupa dell'invio** per ciascun ambito negozio + cassiere. Se quella scheda viene chiusa, il browser promuove automaticamente la successiva. Due schede con l'accesso effettuato da cassieri diversi sono ambiti separati e ciascuna gestisce la propria coda.
+
+## Archiviazione locale {#local-storage}
+
+Le app web e desktop archiviano i dati tramite un **worker OPFS (Origin Private File System)**; le app iOS e Android usano lo stesso formato su disco attraverso un motore su filesystem. Tutte e quattro le piattaforme condividono un unico formato di archiviazione e gli stessi strumenti di recupero in caso di corruzione. (Le versioni precedenti usavano IndexedDB sul web e SQLite su nativo.)
+
+Le query vengono eseguite all'interno del livello di database — selettore, ordinamento e paginazione — così solo la pagina di righe visibile passa all'app. Su un set di prova sintetico da 10.000 ordini, questo spostamento ha ridotto il costo di aggiornamento per scrittura in presenza di una sottoscrizione attiva da ~27 ms a ~0,06 ms.
+
+## Aggiornamento dalla versione 1.9 {#upgrading-from-v19}
+
+La versione 1.10.0 non migra i database locali: esegue una **risincronizzazione a freddo**:
+
+1. Al primo avvio l'app apre un database locale nuovo e riscarica dal tuo negozio. Aspettati un riscaricamento completo una tantum su ogni dispositivo.
+2. Non si perde nulla: il tuo server WooCommerce è la copia autorevole di tutti i dati sincronizzati. Le modifiche in sospeso non ancora inviate vengono trasmesse o segnalate **prima** che i vecchi dati vengano ripuliti — l'aggiornamento non può distruggere una vendita non inviata.
+3. **L'app e il plugin viaggiano di pari passo.** I client 1.10.0 parlano la versione 2 dell'API di sincronizzazione del plugin. Se viene aggiornata solo una delle due parti, le richieste falliscono con errori `rest_no_route` — quella firma significa «aggiorna l'altra metà», non un'installazione danneggiata.
+
+## Cosa è cambiato nella versione 1.10.0 {#what-changed-in-v1100}
+
+| | 1.9.x | 1.10.0 |
+| --- | --- | --- |
+| Unità di sincronizzazione | Un flusso di replica per ogni query di schermata montata | Un motore per sito + negozio + cassiere |
+| Cosa innesca un recupero | Il montaggio di una schermata | Una schermata che dichiara ciò di cui ha bisogno |
+| Rilevamento delle modifiche | Interrogazioni periodiche + verifica completa ogni ora | Cursore sul registro delle modifiche con risposte condizionali `304` |
+| Totali del server | Non tracciati | Totali per collezione con onesti stati *controllo in corso…* |
+| Scritture fallite | Ritentate in modo opaco | Coda durevole, pannello di recupero visibile, nessuna riprova silenziosa |
+| Web multi-scheda | Non coordinato | Un solo mittente eletto per ambito |
+| Ricerca locale | Corrispondenza per prefisso di parola | Corrispondenza per sottostringa (minimo 3 caratteri) |
+| Archiviazione | IndexedDB (web), SQLite (nativo) | Archiviazione in formato OPFS su tutte le piattaforme |
+| Regolazione della sincronizzazione | Fissa | Preset e regolatori per dispositivo in Stato del negozio |
+
+Per la filosofia sulle prestazioni che sta dietro al motore — tetti massimi di richieste, rallentamento sotto pressione del server e i numeri misurati — vedi [Prestazioni di sincronizzazione](/reference/sync-performance).

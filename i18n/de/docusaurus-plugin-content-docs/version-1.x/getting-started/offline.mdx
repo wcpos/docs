@@ -2,25 +2,26 @@
 title: Offline-Funktionalität
 sidebar_label: Offline-Modus
 sidebar_position: 5
-description: Was in WCPOS offline funktioniert, wie die lokale Datenbank mit WooCommerce synchronisiert wird und was bei Verbindungsverlust passiert.
+description: "Was in WCPOS offline funktioniert, wie die lokale Datenbank mit WooCommerce synchronisiert wird und was bei Verbindungsverlust passiert."
 ---
 
 import Icon from '@site/src/components/Icon';
 
-WCPOS speichert Produkt- und Kundendaten lokal auf jedem Gerät in einer browserbasierten Datenbank (IndexedDB). Das bedeutet, dass Teile des POS auch ohne Internetverbindung funktionieren, während andere eine Verbindung erfordern.
+WCPOS speichert Produkt- und Kundendaten in einer lokalen Datenbank auf jedem Gerät. Das bedeutet, dass Teile des POS auch ohne Internetverbindung funktionieren, während andere eine Verbindung erfordern.
 
 ## Was offline funktioniert {#what-works-offline}
 
-- **Produkte durchsuchen** — Produkte aus zwischengespeicherten Daten suchen, filtern und Produktdetails anzeigen
+- **Produkte durchsuchen** — Produkte aus lokalen Daten suchen, filtern und Produktdetails anzeigen
 - **Kunden durchsuchen** — Kundennamen, E-Mail-Adressen und Anschriften nachschlagen
 - **Warenkorb zusammenstellen** — Artikel hinzufügen, Mengen ändern, Preise bearbeiten und POS-Rabatte anwenden
+- **Gutscheine einlösen** (Pro) — Codes werden lokal anhand der synchronisierten Gutscheindaten validiert; der Server validiert erneut, sobald die in die Warteschlange gestellte Bestellung bei ihm ankommt
+- **Einen Verkauf mit einer offlinefähigen Zahlungsmethode abschließen** — Bar- und extern abgewickelte Kartenverkäufe werden lokal gespeichert und für WooCommerce in die Warteschlange gestellt
 - **Barcode-Scannen** — Barcodes scannen, um Produkte in der lokalen Datenbank zu finden
 - **Berichte anzeigen** — der Standard-Berichtstyp (offline) erstellt Berichte aus lokal gespeicherten Bestellungen
 
 ## Was eine Verbindung erfordert {#what-requires-a-connection}
 
-- **Checkout abschließen** — die Zahlungsabwicklung und das Erstellen der Bestellung in WooCommerce erfordern eine Serververbindung
-- **Gutscheincodes einlösen** — die Gutscheinvalidierung erfolgt auf dem Server
+- **Serverabhängige Checkout-Aktionen** — Web-Checkout, integrierte Online- oder Terminal-Gateways sowie **Auf Server speichern** benötigen jeweils erreichbare Dienste
 - **Daten synchronisieren** — neue Produkte, aktualisierte Preise oder neue Kunden aus WooCommerce abrufen
 - **Anmeldung** — die erstmalige Authentifizierung erfordert eine Verbindung zu Ihrer WordPress-Website
 - **Lizenzaktivierung** — Pro-Lizenzprüfungen müssen den WCPOS-Lizenzserver erreichen können
@@ -28,15 +29,21 @@ WCPOS speichert Produkt- und Kundendaten lokal auf jedem Gerät in einer browser
 
 ## Funktionsweise der lokalen Datenbank {#how-the-local-database-works}
 
-Beim ersten Öffnen von WCPOS werden Ihre WooCommerce-Produkte und -Kunden im Hintergrund heruntergeladen. Dieser Vorgang ist progressiv — je häufiger Sie das POS nutzen, desto vollständiger werden Ihre lokalen Daten.
+Beim ersten Öffnen von WCPOS wird Ihr Produktkatalog im Hintergrund grundbefüllt; weitere Daten werden im Laufe der Nutzung nachgeholt — Sie können verkaufen, sobald die ersten Produkte auf dem Gerät sind. Danach holt eine Änderungsprüfung im Hintergrund (standardmäßig alle 60 Sekunden, einstellbar unter [Shop-Zustand](/support/store-health)) nur noch das, was sich auf dem Server geändert hat.
 
 Die lokale Datenbank:
 
 - **Bleibt zwischen Sitzungen erhalten** — Daten überdauern Browser-Neustarts und Geräte-Neustarts
-- **Ist gerätebezogen** — jedes Gerät verwaltet seine eigene lokale Kopie
-- **Bleibt synchron** — WCPOS prüft regelmäßig auf Änderungen auf dem Server und lädt Aktualisierungen herunter
+- **Ist gerätebezogen (und kassiererbezogen)** — jedes Gerät führt seine eigene lokale Kopie; Kassierer teilen sich keine lokalen Daten
+- **Bleibt synchron** — Änderungsprüfungen im Hintergrund holen Aktualisierungen; Ihre eigenen Änderungen werden lokal in die Warteschlange gestellt und an den Server gesendet
 
-Weitere technische Details finden Sie in der Referenz zur [Architektur](/reference/architecture).
+Was genau sich auf dem Gerät befindet — und was noch auf den Versand wartet — sehen Sie unter **Shop-Zustand → Datenbank**. Weitere technische Details finden Sie unter [So funktioniert die Sync-Engine](/reference/sync-engine).
+
+## Offline vorgenommene Änderungen werden in die Warteschlange gestellt {#offline-writes}
+
+Jede Änderung, die Sie im POS vornehmen — ein Verkauf, eine Produktbearbeitung, eine Kundenaktualisierung — wird zuerst auf dem Gerät gespeichert und zum Senden in die Warteschlange gestellt. Solange Sie offline sind, wartet die Warteschlange einfach; ein Verbindungsverlust mitten in der Schicht führt zu keinem Datenverlust.
+
+Sobald die Verbindung zurückkehrt, wird die Warteschlange automatisch abgearbeitet. Lehnt Ihr Server eine Änderung endgültig ab (selten — zum Beispiel bei einem Datensatz, den der Server als ungültig ansieht), wiederholt das POS sie nicht stillschweigend endlos: Die Änderung wird unter **Shop-Zustand → Datenbank** im Bereich *„Änderungen, die Ihren Server nie erreicht haben“* geparkt, mit der Begründung des Servers und den ausdrücklichen Aktionen **Erneut senden** / **Verwerfen**. Siehe [Shop-Zustand](/support/store-health#refused-changes).
 
 ## Verbindungsanzeige {#connectivity-indicator}
 
@@ -44,15 +51,15 @@ In der POS-Kopfzeile wird ein farbiger Punkt angezeigt, der den Verbindungsstatu
 
 - **Grün** — mit dem Server verbunden, alle Funktionen verfügbar
 - **Gelb** — instabile Verbindung, einige Vorgänge können langsam sein
-- **Rot** — offline, nur zwischengespeicherte Daten können durchsucht werden
+- **Rot** — offline, nur lokale Daten verfügbar
 
 ## Was bei einem Verbindungsverlust passiert {#what-happens-during-connectivity-loss}
 
 Wenn die Internetverbindung während der Nutzung des POS unterbrochen wird:
 
-1. **Produkte und Kunden bleiben durchsuchbar** — aus zwischengespeicherten Daten.
-2. **Warenkörbe können weiterhin zusammengestellt** und Artikel bearbeitet werden.
-3. **Der Checkout schlägt fehl**, wenn er versucht wird — das POS muss den WooCommerce-Server erreichen können, um die Bestellung zu verarbeiten.
+1. **Produkte und Kunden bleiben durchsuchbar** — aus lokalen Daten.
+2. **Warenkörbe können weiterhin zusammengestellt** und Artikel bearbeitet werden — jede Änderung wird lokal in die Warteschlange gestellt.
+3. **Sie können den Checkout mit einer offlinefähigen Zahlungsmethode abschließen** — der Verkauf reiht sich in die ausgehende Warteschlange ein. Serverabhängige Zahlungsgateways bleiben nicht verfügbar, bis ihre Dienste erreichbar sind.
 4. **Offene Bestellungen werden** in der lokalen Datenbank gespeichert, bis die Verbindung wiederhergestellt ist.
 
 ## Wenn die Verbindung wiederhergestellt wird {#when-connection-restores}
@@ -60,12 +67,12 @@ Wenn die Internetverbindung während der Nutzung des POS unterbrochen wird:
 Sobald die Verbindung wiederhergestellt ist:
 
 - Die Verbindungsanzeige wird grün.
-- Sie können zur Kasse gehen und alle geparkten Bestellungen abschließen.
+- **Die Änderungen in der Warteschlange werden automatisch an Ihren Server übertragen** — offline getätigte Verkäufe und Bearbeitungen werden ohne manuelles Zutun gesendet.
+- Serverabhängige Zahlungsgateways und **Auf Server speichern** stehen wieder zur Verfügung.
 - Die Hintergrundsynchronisation wird fortgesetzt und ruft alle Produkt- oder Kundenänderungen ab, die während der Offline-Zeit vorgenommen wurden.
-- Es ist keine manuelle Aktion erforderlich — WCPOS stellt die Verbindung automatisch wieder her.
 
 ## Tipps für unzuverlässige Verbindungen {#tips-for-unreliable-connections}
 
 - **„Auf Server speichern" bei wichtigen Bestellungen verwenden** — dadurch wird die Bestellung sofort an WooCommerce übertragen, sodass sie nicht verloren geht, wenn die lokale Datenbank des Geräts gelöscht wird.
-- **Regelmäßig synchronisieren** — bei unzuverlässiger Verbindung sollte der Produktkatalog synchronisiert werden, solange eine stabile Verbindung besteht, damit die lokalen Daten aktuell sind.
-- **Ziehen Sie die nativen Apps in Betracht** — die Desktop- und mobilen Apps (sobald verfügbar) können eine bessere Offline-Stabilität bieten als die Browser-Version.
+- **Nach einer Störung den Shop-Zustand prüfen** — die Kachel *Änderungen, die auf den Versand warten* unter **Shop-Zustand → Datenbank** bestätigt, wann alles Ihren Server erreicht hat.
+- **Synchronisieren, solange Sie Empfang haben** — wenn Sie wissen, dass die Verbindung zeitweise ausfallen wird, lassen Sie die Grundbefüllung des Katalogs abschließen, solange eine stabile Verbindung besteht.

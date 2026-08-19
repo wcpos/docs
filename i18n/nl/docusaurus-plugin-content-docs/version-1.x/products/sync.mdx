@@ -2,60 +2,79 @@
 title: Productsynchronisatie
 sidebar_label: "Downloaden & synchroniseren"
 sidebar_position: 1
-description: Hoe WCPOS producten downloadt en synchroniseert vanuit WooCommerce, inclusief incrementele synchronisatie en lokale opslag.
+description: "Hoe WCPOS producten downloadt en synchroniseert vanuit WooCommerce, inclusief synchronisatievoorinstellingen, dekking en het actueel houden van de catalogus."
 ---
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
 
-Een van de belangrijke aspecten van het WCPOS (Point of Sale)-systeem is de aanpak van gegevensbeheer. Het biedt een efficiente manier om een grote hoeveelheid productgegevens te verwerken. In deze handleiding wordt uitgelegd hoe producten binnen WCPOS worden gedownload en gesynchroniseerd.
+WCPOS bewaart op elk apparaat een lokale kopie van je producten, zodat de catalogus direct doorzoekbaar is en offline blijft werken. In deze handleiding lees je hoe producten op het apparaat terechtkomen en hoe ze actueel blijven.
 
-## Lokale opslag van producten {#local-storage-of-products}
+:::info Gewijzigd in v1.10.0
+v1.10.0 introduceert een nieuwe synchronisatie-engine. Als je POS ouder is dan v1.10.0, zie dan [Wat er is gewijzigd in v1.10.0](#what-changed-in-v1100) hieronder.
+:::
 
-WCPOS haalt producten op uit je WooCommerce-winkel en slaat ze lokaal op je apparaat op. Deze aanpak betekent dat een product, zodra het is gedownload, niet steeds opnieuw hoeft te worden opgehaald. Terwijl je de POS blijft gebruiken, worden geleidelijk alle producten uit je WooCommerce-winkel gedownload en wordt er een lokale database van je producten opgebouwd.
+## Hoe producten op het apparaat terechtkomen {#how-products-arrive}
 
-## Producten in batches downloaden {#batch-downloading-of-products}
+- **Een catalogusaanvulling loopt op de achtergrond.** Vanaf de eerste start downloadt de POS je catalogus volgens een schema in kleine batches, zonder dat je iets hoeft te doen. Je kunt beginnen met verkopen zodra de eerste producten binnen zijn — afrekenen wacht niet op een volledige download.
+- **Wat je bekijkt, wordt op aanvraag gedownload.** Zoeken, filteren op categorie of een barcode scannen haalt de overeenkomende producten rechtstreeks op als ze nog niet lokaal staan. Een zoekopdracht sleept geen ongerelateerde producten meer mee — er wordt opgehaald waar je om vroeg.
+- **Updates komen binnen via wijzigingscontroles.** Zodra een product lokaal staat, downloadt de POS het niet opnieuw om te zien of het is gewijzigd. De POS raadpleegt een licht wijzigingslogboek (elke 60 seconden bij de standaardvoorinstelling) en haalt alleen op wat daadwerkelijk is gewijzigd — een inactieve winkel antwoordt met een enkele, vrijwel gratis reactie "er is niets gewijzigd".
 
-Voor de meeste winkels kan proberen om meer dan ongeveer 50 producten tegelijk te downloaden leiden tot een hoge serverbelasting, langere responstijden of zelfs servercrashes. Om dit te voorkomen, is WCPOS ontworpen om producten in kleine batches te downloaden, meestal rond de 50 producten per keer. Dit proces gaat door totdat de volledige voorraad lokaal is opgeslagen, zodat een grote hoeveelheid gegevens kan worden beheerd zonder je server onnodig te belasten.
+## Hoe groot zijn de batches? {#batch-size}
 
-## De productzoekfunctie gebruiken {#using-the-product-search}
+Standaard vraagt de POS **50 producten tegelijk** op. Dat is geen vaste constante meer — het is een van de twee knoppen die worden ingesteld door je synchronisatievoorinstelling in **Winkelstatus → Prestaties**:
 
-Een effectieve manier om het downloaden van producten in batches te starten, is het gebruik van de productzoekfunctie. Telkens wanneer je een productzoekopdracht uitvoert, haalt het POS-systeem een nieuwe batch producten op en slaat deze op. Deze strategie helpt niet alleen om geleidelijk nieuwe producten te downloaden, maar verbetert ook de snelheid en efficientie van de zoekfunctie naarmate meer producten lokaal worden opgeslagen.
+| Voorinstelling | Controle-interval | Records per verzoek |
+| --- | --- | --- |
+| Eco | 5 min | 25 |
+| Gebalanceerd (standaard) | 60 s | 50 |
+| Realtime | 10 s | 75 |
 
-## Conclusie {#conclusion}
+Kleine batches bestaan om je server te beschermen: grote pagina's kosten de server echte rekentijd en op gedeelde hosting kunnen ze de webwinkel vertragen of tegen limieten aanlopen. Kies Eco bij bescheiden hosting en Realtime voor winkels met meerdere kassa's op sterke hosting. Zie [Winkelstatus](/support/store-health#sync-presets) voor meer informatie.
 
-Het is belangrijk om te begrijpen dat niet al je producten in een keer in je POS-systeem verschijnen, en dat is volkomen normaal. Na verloop van tijd download je al je producten door de productzoekfunctie en andere POS-bewerkingen te gebruiken. Zie [Architectuur](/reference/architecture) voor meer gedetailleerde informatie over hoe WCPOS werkt.
+## De downloadvoortgang controleren {#checking-progress}
 
-WCPOS is ontworpen om de serverbelasting en operationele efficiëntie te optimaliseren. De functie voor het progressief downloaden van producten zorgt voor een soepele, efficiënte en gebruiksvriendelijke ervaring voor winkelbeheer.
+Open **Winkelstatus → Database** om per verzameling te zien hoeveel records er op dit apparaat staan ten opzichte van je server, met een dekkingsbalk. Het aantal *op server* is een echt door de server gerapporteerd totaal — zolang de POS dat nog bevestigt, toont de rij *bezig met controleren…* in plaats van een schatting.
+
+Een gedeeltelijk gevulde productenbalk betekent simpelweg dat de aanvulling nog niet klaar is; die loopt op de achtergrond gewoon door. Lijkt een specifiek product te ontbreken, zoek er dan naar — daarmee wordt het rechtstreeks opgehaald.
 
 :::tip
-Als u aanhoudende synchronisatieproblemen ondervindt die niet met een normale synchronisatie kunnen worden opgelost, kunt u [alle lokale gegevens wissen](/support/troubleshooting/clear-local-data) om een nieuwe download van uw volledige winkel af te dwingen.
+Als een verzameling lijkt vast te lopen, gebruik dan **Wissen en opnieuw downloaden** op de rij ervan in Winkelstatus → Database voordat je grijpt naar de volledige reset [alle lokale gegevens wissen](/support/troubleshooting/clear-local-data).
 :::
+
+## Wat er is gewijzigd in v1.10.0 {#what-changed-in-v1100}
+
+Eerdere versies downloadden de catalogus *geleidelijk tijdens het gebruik*: elke zoekopdracht of scrollbeweging haalde weer een batch producten op en elke 5 minuten liep er een volledige controle. Dat model is afgeschaft. In v1.10.0:
+
+- De catalogus wordt gevuld via een geplande aanvulling op de achtergrond — je hoeft niet te zoeken of te scrollen om producten te laten downloaden.
+- Een zoekopdracht haalt de producten op die eraan voldoen, niet een willekeurige volgende batch.
+- Wijzigingscontroles lopen op het interval van de door jou gekozen voorinstelling (standaard 60 seconden) met voorwaardelijke verzoeken, in plaats van een vaste volledige controle om de 5 minuten.
+- De downloadvoortgang is per verzameling zichtbaar in **Winkelstatus → Database**.
+
+Ontwikkelaars vinden de volledige werking in [Hoe de synchronisatie-engine werkt](/reference/sync-engine).
 
 ## Veelgestelde vragen {#faq}
 
 <Accordion>
-  <AccordionItem question="Hoe laad ik meer producten?">
+  <AccordionItem question="Moet ik iets doen om mijn producten te downloaden?">
 
-  Productsynchronisatie in de POS kan op verschillende manieren worden geactiveerd:
-
-  - Wanneer de POS voor het eerst wordt geladen.
-  - Elke keer dat u een productzoekopdracht uitvoert.
-  - Door een filter toe te passen, bijvoorbeeld op categorie of tag.
-  - Door naar het einde van de productlijst te scrollen.
-  - Door handmatig op de synchronisatieknop te drukken (kort indrukken voor synchronisatie, **lang indrukken** voor de optie Wissen en vernieuwen).
-  - Bovendien synchroniseert de POS automatisch elke 5 minuten.
-
-  Zodra alle producten zijn gedownload, halen toekomstige synchronisaties alleen de producten op die sinds de laatste synchronisatie zijn bijgewerkt.
+  Nee. De catalogusaanvulling downloadt je producten automatisch op de achtergrond. Zoeken of filteren haalt specifieke producten direct op als ze nog niet lokaal staan, maar gewoon rondbladeren is niet wat de download voltooit — dat doet de aanvulling op de achtergrond.
 
   </AccordionItem>
 
-  <AccordionItem question="Ik heb naar beneden gescrold en nog steeds worden niet alle producten weergegeven">
+  <AccordionItem question="Hoe snel bereiken productwijzigingen de POS?">
 
-  Er kunnen een paar redenen zijn waarom niet alle producten worden weergegeven:
+  Bij de standaardvoorinstelling Gebalanceerd controleert de POS elke 60 seconden op wijzigingen (de controles worden licht gespreid, zodat meerdere kassa's de server niet tegelijk benaderen). Alleen gewijzigde producten worden opgehaald. Als meerdere kassa's elkaars wijzigingen sneller moeten zien, gebruik dan de voorinstelling Realtime.
 
-  - De POS verbergt standaard artikelen die niet op voorraad zijn. Deze instelling kan worden aangepast in de instellingen voor productweergave als u artikelen die niet op voorraad zijn wilt weergeven.
-  - De WooCommerce REST API is alleen compatibel met de standaard WooCommerce-producttypen: eenvoudig, variabel, gegroepeerd en extern. Als u een aangepast producttype gebruikt, wordt dit mogelijk niet weergegeven in de POS.
+  </AccordionItem>
+
+  <AccordionItem question="Ik zie niet al mijn producten in de POS">
+
+  Daar zijn enkele mogelijke oorzaken voor:
+
+  - De aanvulling op de achtergrond is mogelijk simpelweg nog niet klaar — bekijk de rij met producten in **Winkelstatus → Database**.
+  - De POS verbergt standaard artikelen die niet op voorraad zijn. Dit kan worden aangepast in de instellingen voor productweergave.
+  - De WooCommerce REST API ondersteunt alleen de standaardproducttypen (eenvoudig, variabel, gegroepeerd, extern). Aangepaste producttypen worden mogelijk niet weergegeven in de POS.
 
   </AccordionItem>
 </Accordion>

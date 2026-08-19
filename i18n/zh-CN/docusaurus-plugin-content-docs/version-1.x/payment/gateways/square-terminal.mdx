@@ -12,7 +12,7 @@ import RequirementItem from '@site/src/components/RequirementItem';
 import Steps from '@site/src/components/Steps';
 import StepCard from '@site/src/components/StepCard';
 
-# Square Terminal 支付网关 {#square-terminal-gateway}
+# Square Terminal 支付网关
 
 Square Terminal 支付网关允许您直接从 WCPOS 在 [Square Terminal](https://squareup.com/hardware/terminal) 硬件上收取 WooCommerce 订单付款。付款请求由 WooCommerce 发起，在已配对的 Square Terminal 设备上完成，结果会写回订单。
 
@@ -22,11 +22,11 @@ Square Terminal 支付网关允许您直接从 WCPOS 在 [Square Terminal](https
   <FeatureCard icon="credit-card" title="硬件集成">
     将付款发送至已配对的 Square Terminal 设备，收取面对面刷卡付款
   </FeatureCard>
-  <FeatureCard icon="link" title="便捷配对">
-    使用短期有效的 Square 设备码从 WooCommerce 配对终端
+  <FeatureCard icon="link" title="一键连接">
+    直接向 Square 授权——无需创建或粘贴访问令牌
   </FeatureCard>
-  <FeatureCard icon="bolt" title="Webhook 确认">
-    经过验证的 Square Webhook 确认交易完成，等待期间提供实时状态更新
+  <FeatureCard icon="bolt" title="可靠的完成确认">
+    付款通过轮询和后台清扫程序确认，Webhook 可加快这一过程
   </FeatureCard>
   <FeatureCard icon="shield" title="安全交易">
     符合 PCI 标准的持卡交易处理，在 Square 硬件上完成
@@ -38,92 +38,155 @@ Square Terminal 支付网关允许您直接从 WCPOS 在 [Square Terminal](https
 
 ## 工作原理 {#how-it-works}
 
-与基于浏览器 SDK 的支付网关不同，Square Terminal 使用 Square 的**服务端 Terminal API**。当您发起支付时，WooCommerce 会为该订单创建一个 Terminal Checkout，Square 将其推送到已配对的设备。顾客在终端上完成支付，Square 通过签名 webhook 通知您的站点。Webhook 是权威的完成信号；POS 也会轮询以便在等待期间更新状态。
+与基于浏览器 SDK 的支付网关不同，Square Terminal 使用 Square 的**服务端 Terminal API**。当您发起支付时，WooCommerce 会为该订单创建一个 Terminal Checkout，Square 将其推送到已配对的设备。顾客在终端上完成支付，结果会写回订单。
 
-这意味着 Square Terminal 设备必须在线，并登录到相同的 Square 账户和位置，同时您的站点必须通过 HTTPS 公开可访问，以便 Square 能够发送 webhook。
+**付款如何确认。** 付款进行期间，POS 会轮询 Square，后台清扫程序会核对轮询遗漏的任何情况——例如浏览器标签页被关闭。Square Webhook 是*可选*的补充，可缩短等待时间；它们并非必需，没有 Webhook 的站点也绝不会丢失付款。
 
-## 安装 {#installation}
+Square Terminal 设备必须在线，并登录到与插件相同的 Square 账户和位置。
+
+## 安装设置 {#setup}
 
 <Steps>
   <StepCard number="1" title="安装 Square Terminal for WooCommerce">
 
-从 `WP Admin > POS > 设置 > 扩展` 安装，或从 [GitHub 发布页面](https://github.com/wcpos/square-terminal-for-woocommerce/releases)下载最新的**插件 zip 文件**（不是 GitHub 源代码 zip 或 tarball），然后通过 `插件 > 新增 > 上传插件` 上传。
+从 `WP Admin > POS > Settings > Extensions` 安装，或从 [GitHub 发布页面](https://github.com/wcpos/square-terminal-for-woocommerce/releases)下载最新的**插件 zip 文件**（不是 GitHub 源代码 zip 或 tarball），然后通过 `Plugins > Add New > Upload Plugin` 上传。
 
   </StepCard>
-  <StepCard number="2" title="配置 Square 设置">
+  <StepCard number="2" title="连接到 Square">
 
-1. 导航至 `WP Admin > WooCommerce > 设置 > 支付`
-2. 在支付方式列表中找到 **Square Terminal**，点击打开设置
-3. 选择**环境**（`Sandbox` 用于测试，`Production` 用于正式支付）
-4. 输入所选环境（Sandbox 或 Production）的**访问令牌**，可从 [Square Developer Dashboard](https://developer.squareup.com/apps) 获取
-5. 输入**位置 ID** — 即接收 Terminal 付款的 Square 位置
-6. 输入**Webhook 签名密钥**和 **Webhook 通知 URL**（参见下一步）
-7. 点击**验证设置**以确认凭据有效，然后保存
+1. 前往 `WP Admin > WooCommerce > Settings > Payments` 并打开 **Square Terminal**
+2. 在 **Square account** 下选择**环境**——`Sandbox` 用于测试，`Production` 用于正式支付
+3. 点击 **Connect to Square** 并批准 Square 向您展示的权限
+4. 选择**位置 ID**——即 Terminal 接收付款所属的 Square 位置
+
+请在连接**之前**选择环境。一次连接只覆盖一个环境；沙盒连接绝不能授权生产环境的付款。
+
+:::note 已经在使用官方的 WooCommerce Square 插件？
+环境和位置 ID 会从其设置中预填充。仅会读取这两个值——两个插件之间不共享任何凭据，您仍需在此处连接或提供访问令牌。
+:::
+
+:::note 更想使用自己的访问令牌？
+打开 **Advanced settings**，粘贴所选环境的访问令牌，而不进行连接。其他一切工作方式完全相同。
+:::
+
+  </StepCard>
+  <StepCard number="3" title="配对您的 Square Terminal">
+
+在 **Terminal** 下：
+
+1. 点击 **Create Device Code**——会出现一个配对代码
+2. 在 Square Terminal 上打开设备代码登录界面并输入该代码。如果该 Terminal 当前已登录 Square POS 或其他集成，请先退出——当它被其他应用占用时，无法进入设备代码界面。
+3. 点击 **Check for readers** 确认它现在出现在 *Paired with this plugin* 下
+
+配对之前列表为空是正常现象，而不是故障。Square 的设备 API 只会报告已设置为 **Terminal API** 用途的 Terminal——运行 Square POS 的 Terminal 在其上输入设备代码之前根本不会出现。
+
+  </StepCard>
+  <StepCard number="4" title="在 WCPOS 中启用" isLast>
+
+1. 前往 `WP Admin > POS > Settings > Checkout`
+2. 找到 **Square Terminal** 网关并为 POS 启用它
+3. 保存设置
 
 :::note
-无需在 WooCommerce 设置中启用 Square Terminal 网关。它将在后续步骤中专门为 POS 启用。
+WooCommerce 设置界面上的 **Enable/Disable** 复选框仅控制*在线商店*的结账。只要此网关已配置好，无论是否勾选该复选框，WCPOS 都会自动使用它。
 :::
-
-  </StepCard>
-  <StepCard number="3" title="在 Square 中设置 Webhook">
-
-当 Terminal 付款完成时，Square 会发送一个已签名的 Webhook，该 Webhook 用于将订单标记为已支付。
-
-1. 在 [Square Developer Dashboard](https://developer.squareup.com/apps) 中打开您的应用程序，然后转到 **Webhook** 部分
-2. 添加对 **`terminal.checkout.updated`** 事件的订阅
-3. 将通知 URL 设置为插件设置中显示的 **Webhook 通知 URL**——必须**完全匹配**
-4. 将 **Webhook 签名密钥**复制到插件设置中，以便验证传入的事件
-
-:::warning 重要提示
-Square 中的 Webhook 通知 URL 必须与插件设置中的值完全匹配，且 Webhook 签名密钥必须正确。如果不匹配，Square 付款将在设备上完成，但 WooCommerce 订单不会更新。
-:::
-
-  </StepCard>
-  <StepCard number="4" title="配对 Square Terminal">
-
-1. 在同一设置页面中，点击**创建设备代码**
-2. 系统会生成一个配对代码并显示给您
-3. 在 Square Terminal 上登录，并在设备配对屏幕上输入该代码
-4. 配对成功后，终端将关联到您配置的位置。请记下其**设备 ID**——在处理付款时需要输入
-
-:::warning 重要提示
-终端必须成功配对并处于在线状态，才能处理付款。请确保在继续操作前完成配对。
-:::
-
-  </StepCard>
-  <StepCard number="5" title="在 WCPOS 中启用" isLast>
-
-1. 前往 `WP Admin > POS > 设置 > 结账`
-2. 在列表中找到 **Square Terminal** 网关
-3. 启用该网关以在 POS 中使用
-4. 保存设置
 
   </StepCard>
 </Steps>
+
+## 配对 Terminal {#pairing}
+
+在收银员可以选择某台 Square Terminal 之前，它必须与**此插件**配对。配对会创建一个 Terminal API *Device Code*，而这是插件寻址该设备的唯一方式。
+
+在设置界面的 **Terminal** 下：
+
+- **Create Device Code** —— 生成一个要在 Terminal 上输入的代码。它有效期很短；如果过期，请重新生成一个。
+- **Check for readers** —— 列出 Square 能看到的内容，分为两组：
+  - **Paired with this plugin** —— 可在结账时选择
+  - **Other devices Square can see at this location** —— 由其他应用设置，因此在与此插件配对之前无法在此选择
+- **Validate Settings** —— 对照 Square 检查凭据和位置
+
+:::note 为什么您拥有的 Terminal 可能无法选择
+Device Code 属于创建它的应用，因此由其他 Terminal API 集成设置的 Terminal 会出现在 *Other devices Square can see* 下，但无法在此处选择。运行 Square POS 的 Terminal 则根本不会出现。
+
+无论哪种情况，解决办法都相同：让 Terminal 退出它当前配对的对象，然后在此处输入一个新的 **Create Device Code**。
+:::
+
+## Webhook {#webhooks}
+
+Webhook 是**可选的**。它们可以缩短付款确认所需的时间。无论如何，轮询和后台清扫程序都会确认每一笔付款，因此没有 Webhook 订阅的站点仍然可以正常工作——只是结算稍慢一些。
+
+:::note 如果您使用了 Connect to Square 则不可用
+Webhook 订阅属于某个 Square *应用*，而添加订阅需要在 Square Developer Dashboard 中拥有该应用的访问权限。如果您使用 **Connect to Square** 进行连接，那么您授权的是 WCPOS 应用，而不是您自己的应用，因此没有可供您添加订阅的仪表板，也没有可供您复制的签名密钥。
+
+付款仍会正常确认——通过轮询和清扫程序。以下步骤仅适用于您在 Advanced settings 下使用**自己的访问令牌**设置插件的情况。
+:::
+
+要添加 Webhook，请使用您自己的 Square 应用：
+
+1. 在设置界面的 **Terminal → Webhooks** 下，点击 **Copy** 复制 Webhook URL
+2. 在 [Square Developer Dashboard](https://developer.squareup.com/apps) 中打开您的应用，前往 **Webhooks**
+3. 为 **`terminal.checkout.updated`** 事件添加订阅，并将该 URL 粘贴为通知 URL
+4. 将 Square 中的 **Webhook Signature Key** 复制到插件的 **Advanced settings** 中
+
+随后，**Webhooks** 行会报告是否已收到经签名验证的 Webhook，以及收到的时间。
+
+:::warning URL 必须完全一致
+Square 会针对它所收到的通知 URL 对每个 Webhook 进行签名。如果 Square 中的 URL 与插件中的哪怕相差一个字符，每次投递都会验证失败。请使用 **Copy** 按钮，而不要手动输入。
+:::
+
+:::note 为什么这一步是手动的
+Square 的 Webhook Subscriptions API 的作用范围是*应用*，而不是单个卖家，并且[无法使用卖家访问令牌调用](https://developer.squareup.com/docs/webhooks/webhook-subscriptions-api)。因此插件无法代您创建该订阅。
+:::
+
+### 如果 Webhook 不再通过验证 {#webhook-troubleshooting}
+
+当**当前**设置下还没有 Webhook 到达并通过验证时，**Webhooks** 行会显示 *Not verified yet*。如果已经有付款运行过，请按以下顺序检查：
+
+1. Advanced settings 中的 **Webhook Signature Key** 与 Square 中的一致
+2. Square 中的通知 URL 与插件中显示的 URL 完全一致
+3. 已订阅 `terminal.checkout.updated` 事件
+4. 您的站点可通过 HTTPS 公开访问——请在 Square Dashboard 中检查投递尝试记录
+
+更改环境、Webhook URL 或签名密钥会重置该行，直到下一个 Webhook 到达为止。这是有意为之：在旧设置下验证通过的投递，并不能说明新设置的情况。
+
+## 设置项参考 {#settings}
+
+设置界面按照安装设置的运行顺序排列。
+
+| 部分 | 包含内容 |
+|---|---|
+| **Square account** | 环境、**Connect to Square**、位置 ID |
+| **Terminal** | 配对控件、读卡器列表、Webhook 状态 |
+| **Checkout behaviour** | 跳过收据界面、收集签名、调试日志 |
+| **Advanced settings** | 访问令牌、Webhook 签名密钥、Webhook URL 覆盖 |
+
+**Advanced settings** 默认折叠。它包含手动访问令牌（仅在您不使用连接方式时才需要）以及 Webhook 签名密钥。除非您的公开 URL 与插件推导出的 URL 不同（例如位于代理或自定义域名之后），否则 **Webhook URL 覆盖**应保持为空。
 
 ## 使用方法 {#usage}
 
 ### 处理付款 {#processing-payments}
 
 1. **添加商品**：在 POS 中将商品添加到购物车
-2. **选择网关**：选择"Square Terminal"作为付款方式
-3. **选择设备**：输入已配对终端的**终端设备 ID**，用于接收付款
-4. **发起付款**：点击**发起付款** — Square 会将结账推送到设备
+2. **选择网关**：选择“Square Terminal”作为付款方式
+3. **选择设备**：从 **Terminal Device** 列表中选择已配对的终端
+4. **发起付款**：点击 **Start Payment**——Square 会将结账推送到设备
 5. **顾客付款**：顾客在 Square Terminal 上轻触、插入或刷卡完成付款
-6. **自动完成**：当 Square 的已验证 webhook 确认付款后，订单将标记为已支付。等待期间状态会实时更新。
+6. **完成**：等待期间状态会实时更新，一旦 Square 确认付款，订单便会标记为已支付
+
+在 **Sandbox** 中，设备列表包含 Square 文档中的测试设备 ID，因此无需硬件即可演练各种结果——成功、超时、离线。
 
 ### 付款控制 {#payment-controls}
 
-使用 Square Terminal 网关时，您可以执行以下操作：
-
-- **发起付款**：向选定的终端发送新的付款请求
-- **取消付款**：取消终端上正在进行的付款
-- **付款状态**：实时状态区域显示当前付款的状态
-- **付款日志**：按订单记录每个关键的 Square 步骤和结果
+- **Start Payment**：向选定的终端发送新的付款请求
+- **Cancel Payment**：取消终端上正在进行的付款
+- **Check Status**：立即向 Square 查询当前状态
+- **Release Payment**：断开无响应的终端，以便通过其他方式支付该订单；被放弃的结账仍会在后台完成核对
+- **Payment Log**：可选的按订单日志，记录每个 Square 步骤和结果
 
 ### 订单管理 {#order-management}
 
-- **Webhook 权威确认**：订单仅在经过验证的 Square webhook 确认终端付款后才会标记为已支付
+- **经过验证的完成确认**：只有在付款对照 Square 的 Payment 对象验证通过后，订单才会标记为已支付——绝不会基于未经验证的信号
 - **付款追踪**：Square 标识符和付款日志存储在订单中，关键步骤会写入订单备注
 - **小票生成**：付款成功后会生成标准 POS 小票
 
@@ -131,16 +194,16 @@ Square 中的 Webhook 通知 URL 必须与插件设置中的值完全匹配，�
 
 <RequirementsList>
   <RequirementItem label="Square 账户">已激活的 Square 卖家账户</RequirementItem>
-  <RequirementItem label="API 凭据">从 Square Developer Dashboard 获取的 Access Token、Location ID 和 Webhook Signature Key</RequirementItem>
-  <RequirementItem label="兼容硬件">一台 Square Terminal 设备，已联网并登录到相同的 Square 门店</RequirementItem>
-  <RequirementItem label="公开 HTTPS 站点">站点必须可通过 HTTPS 访问，以便 Square 能够发送 Webhook 通知</RequirementItem>
+  <RequirementItem label="Square 位置">一个 Square 位置及其位置 ID</RequirementItem>
+  <RequirementItem label="兼容硬件">一台 Square Terminal 设备，已联网并登录到相同的 Square 位置</RequirementItem>
+  <RequirementItem label="公开 HTTPS 站点">仅在您需要 Webhook 时才必需；没有 Webhook 时付款通过轮询确认</RequirementItem>
   <RequirementItem label="WCPOS">POS 结账需要 Pro 版本</RequirementItem>
 </RequirementsList>
 
 ## 硬件兼容性 {#hardware-compatibility}
 
 :::important 连接要求
-Square Terminal 使用 Square 的服务端 Terminal API：结账由您的站点创建，并由 Square 传送到已配对的设备。终端必须在线并登录到同一 Square 账户和位置，且您的站点必须通过 HTTPS 接收 Square webhook 才能更新订单。
+Square Terminal 使用 Square 的服务端 Terminal API：结账由您的站点创建，并由 Square 传送到已配对的设备。终端必须在线，并登录到与插件相同的 Square 账户和位置。
 :::
 
 ### 支持的终端 {#supported-terminals}
@@ -149,9 +212,10 @@ Square Terminal 使用 Square 的服务端 Terminal API：结账由您的站点�
 
 ## 范围与限制 {#scope-and-limitations}
 
-:::note v0.1 范围
-- 此早期版本专注于 **POS / 订单支付** 流程。在面向客户的店面结账页面上默认关闭，需要手动启用。
-- 该插件**仅支持收款**——暂不支持退款。Square 标识符已存储在订单中，以便后续添加退款支持。
+:::note 当前范围
+- 专注于 **POS / 订单支付** 流程。在面向客户的店面结账页面上默认关闭，需要显式启用。
+- **仅支持收款**——暂不支持退款。Square 标识符已存储在订单中，以便后续添加退款支持。
+- Webhook 订阅必须在 Square 中手动添加；参见 [Webhook](#webhooks)。
 :::
 
 ## 故障排除 {#troubleshooting}
@@ -159,36 +223,50 @@ Square Terminal 使用 Square 的服务端 Terminal API：结账由您的站点�
 ### 常见问题 {#common-issues}
 
 <Accordion>
+  <AccordionItem question="Terminal Device 列表为空">
+
+  - 终端必须先**与此插件**配对——请使用 **Create Device Code** 并在设备上输入该代码
+  - 通过 Square Dashboard 或 Square POS 应用配对的终端在此处配对之前不会出现
+  - 点击 **Check for readers**：如果它出现在 *Other devices Square can see* 下，说明它存在但未与此插件配对
+  - 确认**位置 ID** 与终端所登录的位置一致
+
+  </AccordionItem>
+
   <AccordionItem question="设备无法配对">
 
-  - 确保在设备代码过期之前已输入该代码——如需要，请点击**创建设备代码**重新生成一个
-  - 确认终端已联网，并且登录的 Square 账户和**位置 ID** 与插件设置一致
-  - 检查**环境**（沙箱/生产）和**访问令牌**是否与终端登录的账户匹配
+  - 确保在设备代码过期之前已输入该代码——请用 **Create Device Code** 重新生成一个
+  - 确认终端已联网，并且登录的 Square 账户和**位置 ID** 与插件一致
+  - 检查**环境**是否与终端所登录的账户匹配
 
   </AccordionItem>
 
-  <AccordionItem question="验证设置失败">
+  <AccordionItem question="Validate Settings 失败">
 
-  - 确认**访问令牌**与所选**环境**匹配（沙箱令牌无法在生产环境中使用，反之亦然）
+  - 如果已连接，请检查 **Square account** 行是否仍显示 *Connected to Square*；如果提示您重新连接，说明授权已失效
+  - 如果使用访问令牌，请确认它与所选**环境**匹配——沙盒令牌无法在生产环境中使用，反之亦然
   - 确认**位置 ID** 属于该账户
-  - 从 Square Developer Dashboard 重新复制令牌，以排除多余字符的影响
 
   </AccordionItem>
 
-  <AccordionItem question="终端上付款已完成，但订单未更新">
+  <AccordionItem question="终端上付款已完成，但订单更新缓慢">
 
-  - Square 中的 **Webhook 通知 URL** 必须与插件设置**完全一致**
-  - 确保已在 Square Developer Dashboard 中订阅 **`terminal.checkout.updated`** 事件
-  - 确认插件中的 **Webhook 签名密钥**与 Square 中的一致
-  - 确保您的站点可通过 HTTPS 公开访问；在 Square Dashboard 中检查 webhook 投递记录
+  - 这正是 Webhook 所解决的问题。没有 Webhook 时，订单会在轮询或后台清扫程序下一次核对时更新
+  - 检查 **Webhooks** 行——如果在付款运行之后它仍显示 *Not verified yet*，请按照[如果 Webhook 不再通过验证](#webhook-troubleshooting)处理
+  - 订单绝不会丢失：清扫程序会核对轮询遗漏的任何付款
 
   </AccordionItem>
 
   <AccordionItem question="无法发起付款">
 
-  - 确认已输入有效的**终端设备 ID**，且设备已配对并处于在线状态
+  - 确认已选择终端，且设备已配对并处于在线状态
   - 检查设备是否已登录到已配置的**位置 ID**
-  - 查看**付款日志**和 WordPress 错误日志中的 Square API 消息
+  - 查看**付款日志**以及 `WooCommerce > Status > Logs` 中的 Square API 消息
+
+  </AccordionItem>
+
+  <AccordionItem question="提示需要重新连接到 Square">
+
+  Square 授权会自动续期。如果续期无法完成，插件会结束该授权，而不是让它停留在不可用的状态，设置界面则会要求您重新连接。点击 **Reconnect to Square**——无需更改其他任何内容。
 
   </AccordionItem>
 </Accordion>
@@ -200,9 +278,11 @@ Square Terminal 使用 Square 的服务端 Terminal API：结账由您的站点�
 - 查阅 [Square Terminal API 文档](https://developer.squareup.com/docs/terminal-api/overview)，获取硬件和 API 指南
 - 如有账户和硬件问题，请联系 Square 支持团队
 
+日志写入 `WooCommerce > Status > Logs` 中的 `sqtwc` 句柄下，并记录每次设备查询和 Webhook 结果。
+
 ## 截图 {#screenshots}
 
 截图将在后续更新中添加，届时将展示：
-- Square 凭据、Webhook 和设备配对配置
+- Square account、Terminal 和 Advanced settings 各部分
 - 在 WCPOS 设置中启用网关
 - POS 结账中的支付处理流程

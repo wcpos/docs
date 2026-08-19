@@ -7,6 +7,7 @@ description: "مرجع شامل لعقد البيانات القياسي الم�
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 تُعرَض قوالب HTML بلا منطق وقوالب XML الحرارية في WCPOS من حمولة بيانات الإيصال القياسية نفسها. استخدم مسارات Mustache النقطية مثل `{{order.number}}` و`{{store.name}}` و`{{totals.total_display}}`. تُعرَض المصفوفات باستخدام الأقسام:
 
@@ -17,6 +18,148 @@ import AccordionItem from '@site/src/components/AccordionItem';
 ```
 
 يُنتَج العقد القياسي بواسطة منشئ بيانات الإيصال في WCPOS على الخادم ويُنسَخ بواسطة عارض الإيصالات في وضع عدم الاتصال داخل التطبيق. تُفتح الإيصالات فورًا من البيانات المحلية، ثم تُحدَّث باستجابة الخادم عند توفرها، لذا يجب أن تستخدم القوالب المخصّصة الحقول أدناه بدلًا من دوال طلبات PHP.
+
+تضيف بيانات الإيصال v1.1 حقولًا مسجَّلة للسعر الاعتيادي وسعر البيع قبل القسيمة وقيمة التوفير لكل بند منتج. كما توفّر إجماليات توفير على مستوى الطلب، بما فيها قيمة **إجمالي ما تم توفيره** التي تجمع التوفير مقابل السعر الاعتيادي مع خصومات WooCommerce دون تغيير إجماليات الطلب أو التقارير.
+
+## الإيصال، مُخطَّطًا {#receipt-map}
+
+كل جزء من الإيصال المطبوع يأتي من قسم واحد من عقد البيانات. مرّر المؤشر على أي من الجانبين لرؤية التطابق؛ وانقر للانتقال إلى حقول ذلك القسم. وتستخدم جميع الأمثلة في هذه الصفحة الطلب النموذجي نفسه.
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "VAT: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "إيصال رقم 1042", right: "13 يوليو 2026" },
+        { left: "أمين الصندوق: Ada", right: "العميل: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Espresso Beans", right: "29.00" },
+        { left: "~34.00~ · توفير −5.00", sub: true },
+        { left: "1 × Ceramic Mug", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "المجموع الفرعي", right: "52.75" },
+        { left: "قسيمة SUMMER10", right: "−5.28" },
+        { left: "تغليف الهدايا", right: "2.50" },
+        { left: "الشحن", right: "10.00" },
+        { left: "الإجمالي", right: "59.97", bold: true },
+        { left: "إجمالي ما تم توفيره", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "بطاقة", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "شكرًا لشرائك!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      label: "ترويسة المتجر",
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      label: "الطلب والأشخاص",
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      label: "بنود المنتجات",
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      label: "كتلة الإجماليات",
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      label: "المدفوعات",
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      label: "التذييل",
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## وصفات شائعة {#common-recipes}
+
+معظم تعديلات القوالب هي واحدة من هذه الثلاث. تعرض كل بطاقة النتيجة المطبوعة أولًا، ثم الترميز الدقيق — انسخه إلى أي قالب HTML بلا منطق أو قالب XML حراري. وتعرض البطاقة الثالثة طلبًا قديمًا سابقًا للإصدار 1.9 بدلًا من الطلب النموذجي أعلاه.
+
+<Recipes>
+  <Recipe
+    title="شطب السعر الاعتيادي"
+    why="يخفي حارس القسم كل شيء في الطلبات التي لا تحمل سجل أسعار مسجَّلًا."
+    preview={[
+      { left: "2 × Espresso Beans", right: "29.00" },
+      { left: "~34.00~ · توفير −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="إضافة صف إجمالي ما تم توفيره"
+    why="حارسان: يختفي الصف عندما يكون سجل الأسعار ناقصًا أو عندما لا يتحقق أي توفير."
+    preview={[
+      { left: "الإجمالي", right: "59.97", bold: true },
+      { left: "إجمالي ما تم توفيره", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+  <Recipe
+    title="إعادة طباعة طلب سابق للإصدار 1.9 بأمان"
+    why="الطلبات القديمة تحمل التوفير داخل الخصم — وهذا يمنع طباعته مرتين."
+    preview={[
+      { left: "1 × Espresso Beans", right: "14.50" },
+      { left: "~17.00~  خصم −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+</Recipes>
 
 ## قواعد العرض {#rendering-rules}
 
@@ -39,6 +182,12 @@ import AccordionItem from '@site/src/components/AccordionItem';
 
 | الحقل المُيسَّر | الحقل الشامل للضريبة | الحقل الحصري للضريبة |
 |-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
 | `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
 | `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
 | `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
@@ -49,6 +198,8 @@ import AccordionItem from '@site/src/components/AccordionItem';
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
 ### كائنات التاريخ {#date-objects}
@@ -87,6 +238,32 @@ import AccordionItem from '@site/src/components/AccordionItem';
 | `fiscal` | object | حقول اللقطة المالية التي تملؤها تكاملات الضرائب |
 | `presentation_hints` | object | تلميحات التنسيق والعرض |
 | `i18n` | object | تسميات مترجمة للقوالب المضمّنة والمخصّصة |
+
+## كيف ترتبط الأسعار ببعضها {#price-model}
+
+يحمل بند المنتج الواحد عدة أسعار، وتصبح التسميات مفهومة بمجرد رؤيتها على المبالغ نفسها. هذا هو بند الإسبريسو من الطلب النموذجي — منتج بسعر 17.00 دولارًا معروض بـ 14.50 دولارًا، مع قسيمة بنسبة 10% فوق ذلك:
+
+<PriceFlow
+  caption="Espresso Beans — وحدة واحدة (الطلب يحتوي على وحدتين)"
+  scaleLabel="السعر الاعتيادي 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 مدفوعة" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "ما يدفعه العميل", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "خصم القسيمة (SUMMER10)", fields: 'lines[].discounts → 2.90 on this line' },
+    { kind: 'savings', title: "التوفير مقابل السعر الاعتيادي", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "توفير العروض عبر الطلب", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "جميع خصومات القسائم عبر الطلب", value: '`totals.discount_total` = 5.28' },
+    { label: "التوفير + الخصومات، بعد إزالة التداخل القديم", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+توفير العروض وخصومات القسائم شيئان مختلفان: فتوفير العروض يقارن سعر البيع بالسعر الاعتيادي المسجَّل، بينما `discounts` هي حسابات القسائم الخاصة بـ WooCommerce. ولا تتضمّن إجماليات طلبات WooCommerce وتقاريرها سوى جزء القسائم — ولهذا يوجد `total_saved` بوصفه الرقم الوحيد الموجَّه للعميل الذي يجمع الاثنين.
 
 ## مرجع الحقول {#field-reference}
 
@@ -194,26 +371,135 @@ import AccordionItem from '@site/src/components/AccordionItem';
 
 ### lines {#lines}
 
-كرّر باستخدام `{{#lines}}...{{/lines}}`.
+كرّر باستخدام `{{#lines}}...{{/lines}}`. القيم النموذجية هي بند الإسبريسو من [الطلب النموذجي](#receipt-map).
 
-| الحقل | النوع | الوصف |
-|-------|------|-------------|
-| `key` | string | مفتاح البند الثابت / معرّف عنصر الطلب |
-| `sku` | string | رمز SKU للمنتج |
-| `name` | string | اسم العرض للمنتج أو البند |
-| `qty` | number | الكمية المباعة |
-| `qty_refunded` | number | الكمية المستردة لهذا البند |
-| `unit_subtotal` / `_incl` / `_excl` | number | سعر الوحدة قبل الخصم |
-| `unit_price` / `_incl` / `_excl` | number | سعر الوحدة بعد الخصم |
-| `line_subtotal` / `_incl` / `_excl` | number | المجموع الفرعي للسطر قبل الخصم |
-| `discounts` / `_incl` / `_excl` | number | مبلغ الخصم كقيمة موجبة |
-| `line_total` / `_incl` / `_excl` | number | إجمالي السطر النهائي |
-| `total_refunded` | number | إجمالي المبلغ المسترد لهذا السطر كقيمة موجبة |
-| `taxes` | array | صفوف الضريبة حسب المعدل لهذا السطر |
-| `meta` | array | بيانات وصفية لعنصر الطلب كأزواج `{key, value}` |
-| `attributes` | array | سمات المنتج/المتغيّر كأزواج `{key, value}` |
+<FieldIndex
+  note="يأتي كل حقل مالي في صورة زوج: الرقم (استخدمه في حراس `{{#…}}` — إذ يخفي الصفر و`null` القسم، ولا يملك الحقل ذو القيمة `null` توأمًا بامتداد `_display` أصلًا) وسلسلة `_display` الخاصة به (استخدمها للطباعة). أما الحقول الموسومة بـ incl/excl فتأتي أيضًا بصيغتَي `_incl` و`_excl`، ولكل منهما `_display` خاص بها."
+  placeholder="تصفية الحقول… جرّب savings"
+  emptyText="لا حقول مطابقة — امسح عامل التصفية لعرض كل `lines[]`."
+  fields={[
+    { name: 'key', type: 'string', desc: "مفتاح البند الثابت / معرّف عنصر الطلب.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "رمز SKU للمنتج.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "اسم العرض للمنتج أو البند.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "الكمية المباعة.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "الكمية المستردة لهذا البند.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "سعر الوحدة الاعتيادي المسجَّل. يكون `null` في الطلبات التي لا تحمل سجل أسعار من نقطة البيع — ضعه داخل قسم.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "سعر الوحدة المعروض قبل القسائم — وهو سعر نقطة البيع المسجَّل عند توفره، وإلا فيُشتق من المجموع الفرعي المخزَّن للبند.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "الاعتيادي ناقص سعر البيع، مع تقييد الحد الأدنى بالصفر. والصفر قيمة خاطئة منطقيًا، لذا تخفي الصفوف المحروسة نفسها.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "السعر الاعتيادي المسجَّل مضروبًا في الكمية.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "سعر البيع قبل القسائم مضروبًا في الكمية.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "إجمالي التوفير من السعر الاعتيادي إلى سعر البيع لهذا البند.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "تكون صحيحة في الطلبات السابقة للإصدار 1.9.0 التي يوجد توفيرها بالفعل داخل `discounts` — وهي علامة منع الاحتساب المزدوج.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "قيمة الوحدة قبل الخصم في WooCommerce. لا تستخدمها بوصفها السعر الاعتيادي.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "قيمة الوحدة النهائية بعد خصومات WooCommerce.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "المجموع الفرعي للبند قبل الخصم في WooCommerce.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "خصم البند الأصلي في WooCommerce كقيمة موجبة — قسائم فقط في الطلبات الحالية.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "إجمالي البند النهائي بعد القسائم — وهو ما يُطبع في عمود المبلغ.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "إجمالي المبلغ المسترد لهذا البند كقيمة موجبة.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "صفوف الضريبة حسب المعدل لهذا البند." },
+    { name: 'meta', type: 'array', desc: "بيانات وصفية لعنصر الطلب كأزواج `{key, value}`." },
+    { name: 'attributes', type: 'array', desc: "سمات المنتج/المتغيّر كأزواج `{key, value}`." },
+  ]}
+/>
 
-تتضمّن الصيغ المنسّقة `unit_subtotal_display` و`unit_price_display` و`line_subtotal_display` و`discounts_display` و`line_total_display`، بالإضافة إلى صيغ `_display` الشاملة والحصرية للضريبة.
+### عرض السعر الاعتيادي والتوفير {#displaying-regular-price-and-savings}
+
+لتخطيط قائم على سعر الوحدة، اعرض السعر الاعتيادي المسجَّل وسعر البيع والتوفير هكذا:
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+استخدم حقول إجمالي البند عندما تكون الكمية مهمة:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+إن `selling_price` هو السعر قبل القسائم. استخدم `unit_price` أو `line_total` للمبلغ النهائي بعد خصومات WooCommerce.
+
+:::note إعادة طباعة طلبات أُنشئت قبل الإصدار 1.9.0
+قد تتضمّن طلبات WCPOS الأقدم بالفعل التخفيض من السعر الاعتيادي إلى سعر البيع داخل `discounts`. فإذا كان قالبك المخصّص يطبع توفير البند وخصم البند معًا، فاستخدم `savings_in_discounts` لتجنّب عرض التخفيض نفسه مرتين:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+وإذا كان القالب لا يطبع صف `discounts` على مستوى البند، فاستمر في عرض `line_savings` حتى عندما تكون `savings_in_discounts` صحيحة. وتتعامل القوالب المضمّنة مع هذا التمييز تلقائيًا.
+:::
 
   </AccordionItem>
 
@@ -245,7 +531,6 @@ import AccordionItem from '@site/src/components/AccordionItem';
 |-------|------|-------------|
 | `label` | string | وصف القسيمة أو الرمز كقيمة بديلة |
 | `code` | string | رمز القسيمة |
-| `codes` | string | قيمة بديلة قديمة/للعرض للرموز المدمجة |
 | `total` / `_incl` / `_excl` | number | مبلغ الخصم كقيمة موجبة |
 
 الصيغ المنسّقة: `total_display` و`total_incl_display` و`total_excl_display`. أضف علامة السالب الخاصة بك في القالب إذا أردت عرض الخصومات كصفوف سالبة.
@@ -256,20 +541,86 @@ import AccordionItem from '@site/src/components/AccordionItem';
 
 ### totals {#totals}
 
-| الحقل | النوع | الوصف |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | number | المجموع الفرعي للطلب قبل الخصومات |
-| `totals.discount_total` / `_incl` / `_excl` | number | إجمالي خصم الطلب كقيمة موجبة |
-| `totals.tax_total` | number | إجمالي مبلغ الضريبة |
-| `totals.total` / `_incl` / `_excl` | number | المجموع الإجمالي للطلب |
-| `totals.paid_total` | number | المبلغ المدفوع/المُطبَّق |
-| `totals.change_total` | number | الباقي المُعاد للعميل |
-| `totals.refund_total` | number | إجمالي المبلغ المسترد كقيمة موجبة |
-| `totals.net_total` | number | `total - refund_total`، مع تقييد الحد الأدنى بالصفر |
-| `totals.total_qty` | number | مجموع كميات بنود الطلب |
-| `totals.line_count` | number | عدد صفوف بنود المنتجات |
+القيم النموذجية مأخوذة من [الطلب النموذجي](#receipt-map)، الذي تلقّى لاحقًا استردادًا جزئيًا بقيمة 7.25 دولارًا.
 
-تتضمّن الصيغ المنسّقة `subtotal_display` و`discount_total_display` و`tax_total_display` و`total_display` و`paid_total_display` و`change_total_display` و`refund_total_display` و`net_total_display`، بالإضافة إلى الصيغ الشاملة/الحصرية للضريبة حيثما ينطبق ذلك.
+<FieldIndex
+  note="تتبع الحقول المالية التزاوج نفسه المتّبع في بنود المنتجات: رقم مجرّد للحراس وسلسلة `_display` للطباعة، مع صيغتَي `_incl`/`_excl` حيثما وُسمت بذلك."
+  placeholder="تصفية الحقول… جرّب saved"
+  emptyText="لا حقول مطابقة — امسح عامل التصفية لعرض كل `totals`."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "المجموع الفرعي للطلب قبل الخصومات.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "إجمالي خصم الطلب كقيمة موجبة — قسائم فقط في الطلبات الحالية.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "إجمالي التوفير المسجَّل من السعر الاعتيادي إلى سعر البيع عبر بنود المنتجات، بما في ذلك عروض الكتالوج وتغييرات الأسعار عند نقطة البيع.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "خصومات WooCommerce والتوفير مقابل السعر الاعتيادي مجتمعَين، بعد إزالة التداخل القديم. وهو الرقم الوحيد الموجَّه للعميل لكل ما تم توفيره.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "ما إذا كان لدى الإيصال بيانات أسعار مسجَّلة كافية لحساب إجماليات التوفير الكاملة.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "إجمالي مبلغ الضريبة.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "المجموع الإجمالي للطلب.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "المبلغ المدفوع/المُطبَّق.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "الباقي المُعاد للعميل.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "إجمالي المبلغ المسترد كقيمة موجبة.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "الإجمالي ناقص المبالغ المستردة، مع تقييد الحد الأدنى بالصفر.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "مجموع كميات بنود الطلب.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "عدد صفوف بنود المنتجات.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+استخدم `total_saved` عندما تريد رقمًا واحدًا موجَّهًا للعميل لكل ما تم توفيره. ولا تحسبه بجمع `discount_total` و`sale_savings_total` داخل القالب: فالطلبات التي أُنشئت قبل الإصدار 1.9.0 قد تتضمّن بالفعل توفير سعر نقطة البيع داخل إجمالي خصم WooCommerce. أما حقل `total_saved` القياسي فيكتشف ذلك التداخل ويزيله.
+
+تكون إجماليات التوفير `null` وتكون `total_saved_complete` خاطئة عندما يفتقر أي بند منتج إلى بيانات أسعار مسجَّلة كافية لإجمالي موثوق. احرس الصف بـ `total_saved_complete`، ثم استخدم `total_saved` لإخفاء القيمة الصفرية:
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+تستخدم القوالب المضمّنة التي تعرض الأسعار بنية الحراسة نفسها مع الصيغ الشاملة للضريبة (`total_saved_incl` و`total_saved_incl_display`)، ولا تعرض **إجمالي ما تم توفيره** إلا عندما تكون القيمة الكاملة أكبر من الصفر.
 
   </AccordionItem>
 

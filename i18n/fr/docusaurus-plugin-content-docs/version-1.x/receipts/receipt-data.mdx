@@ -7,6 +7,7 @@ description: "Référence complète du contrat de données canonique disponible 
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 Les modèles HTML sans logique et les modèles XML thermiques de WCPOS sont rendus à partir du même payload de reçu canonique. Utilisez les chemins à points Mustache tels que `{{order.number}}`, `{{store.name}}` et `{{totals.total_display}}`. Les tableaux sont rendus avec des sections :
 
@@ -17,6 +18,148 @@ Les modèles HTML sans logique et les modèles XML thermiques de WCPOS sont rend
 ```
 
 Le contrat canonique est produit par le générateur de données de reçu WCPOS sur le serveur et reproduit par le moteur de rendu de reçu hors ligne dans l'application. Les reçus s'ouvrent immédiatement à partir des données locales, puis sont mis à jour avec la réponse du serveur lorsqu'elle est disponible. Les modèles personnalisés doivent donc utiliser les champs ci-dessous plutôt que les méthodes PHP de commande.
+
+La version 1.1 des données de reçu ajoute, pour chaque ligne de produit, les champs de prix normal enregistré, de prix de vente avant coupon et d'économies. Elle fournit également des totaux d'économies au niveau de la commande, dont une valeur **Total économisé** qui combine les économies par rapport au prix normal et les remises WooCommerce, sans modifier les totaux de commande ni les rapports.
+
+## Le reçu, cartographié {#receipt-map}
+
+Chaque partie d'un reçu imprimé provient d'une section du contrat de données. Survolez l'un ou l'autre côté pour voir la correspondance ; cliquez pour accéder aux champs de cette section. Tous les exemples de cette page utilisent la même commande d'exemple.
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "TVA : US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "Reçu n° 1042", right: "13 juil. 2026" },
+        { left: "Caissier : Ada", right: "Client : Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Grains d’espresso", right: "29.00" },
+        { left: "~34.00~ · Économies −5.00", sub: true },
+        { left: "1 × Mug en céramique", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "Sous-total", right: "52.75" },
+        { left: "Coupon SUMMER10", right: "−5.28" },
+        { left: "Emballage cadeau", right: "2.50" },
+        { left: "Livraison", right: "10.00" },
+        { left: "TOTAL", right: "59.97", bold: true },
+        { left: "Total économisé", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "Carte", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "Merci pour votre achat !", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      label: "En-tête de la boutique",
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      label: "Commande et personnes",
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      label: "Lignes d’articles",
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      label: "Bloc des totaux",
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      label: "Paiements",
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      label: "Pied de page",
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## Recettes courantes {#common-recipes}
+
+La plupart des modifications de modèle relèvent de l'une de ces trois recettes. Chaque carte montre d'abord le résultat imprimé, puis le balisage exact — copiez-le dans n'importe quel modèle HTML sans logique ou XML thermique. La troisième carte présente une commande héritée antérieure à la v1.9, et non la commande d'exemple ci-dessus.
+
+<Recipes>
+  <Recipe
+    title="Barrer le prix normal"
+    why="La condition de section masque tout sur les commandes sans historique de prix enregistré."
+    preview={[
+      { left: "2 × Grains d’espresso", right: "29.00" },
+      { left: "~34.00~ · Économies −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="Ajouter une ligne Total économisé"
+    why="Deux conditions : la ligne disparaît lorsque l’historique de prix est incomplet ou qu’aucune économie n’a été réalisée."
+    preview={[
+      { left: "TOTAL", right: "59.97", bold: true },
+      { left: "Total économisé", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+  <Recipe
+    title="Réimprimer sans risque une commande antérieure à la v1.9"
+    why="Les anciennes commandes portent l’économie à l’intérieur de la remise — ceci évite de l’imprimer deux fois."
+    preview={[
+      { left: "1 × Grains d’espresso", right: "14.50" },
+      { left: "~17.00~  Remise −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+</Recipes>
 
 ## Règles de rendu {#rendering-rules}
 
@@ -39,6 +182,12 @@ Plusieurs champs disposent de variantes TTC et HT ainsi qu'une valeur pratique c
 
 | Champ pratique | Champ TTC | Champ HT |
 |-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
 | `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
 | `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
 | `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
@@ -49,6 +198,8 @@ Plusieurs champs disposent de variantes TTC et HT ainsi qu'une valeur pratique c
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
 ### Objets date {#date-objects}
@@ -88,6 +239,32 @@ Objets de date disponibles : `order.created`, `order.paid`, `order.completed`, `
 | `presentation_hints` | object | Indications de formatage et de rendu |
 | `i18n` | object | Libellés traduits pour les modèles intégrés et personnalisés |
 
+## Comment les prix s'articulent {#price-model}
+
+Une ligne de produit porte plusieurs prix, et leurs noms prennent tout leur sens une fois qu'on les voit appliqués aux montants. Voici la ligne d'espresso de la commande d'exemple — un produit à 17,00 $ soldé à 14,50 $, avec en plus un coupon de 10 % :
+
+<PriceFlow
+  caption="Grains d’espresso — une unité (la commande en contient deux)"
+  scaleLabel="prix normal 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 payés" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "Ce que paie le client", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "Remise du coupon (SUMMER10)", fields: 'lines[].discounts → 2.90 sur cette ligne' },
+    { kind: 'savings', title: "Économies par rapport au prix normal", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "Économies sur soldes pour la commande", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Toutes les remises de coupon pour la commande", value: '`totals.discount_total` = 5.28' },
+    { label: "Économies + remises, chevauchement hérité retiré", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Les économies sur soldes et les remises de coupon sont deux choses différentes : les économies sur soldes comparent le prix de vente au prix normal enregistré, tandis que `discounts` correspond au calcul de coupons propre à WooCommerce. Les totaux de commande et les rapports WooCommerce ne contiennent jamais que la part coupon — c'est pourquoi `total_saved` existe, comme unique chiffre destiné au client qui combine les deux.
+
 ## Référence des champs {#field-reference}
 
 La référence complète des champs est regroupée par section ci-dessous. Tout est replié par défaut — développez le groupe dont vous avez besoin.
@@ -99,8 +276,8 @@ La référence complète des champs est regroupée par section ci-dessous. Tout 
 
 | Champ | Type | Exemple / description |
 |-------|------|-----------------------|
-| `order.id` | number | `1234` |
-| `order.number` | string | Numéro de commande visible par le client, par ex. `"10045"` |
+| `order.id` | number | `1042` |
+| `order.number` | string | Numéro de commande visible par le client, par ex. `"1042"` |
 | `order.currency` | string | Code devise ISO, par ex. `"USD"` |
 | `order.customer_note` | string | Note du client / de la commande |
 | `order.wc_status` | string | Slug brut du statut WooCommerce, par ex. `"processing"` |
@@ -194,26 +371,135 @@ Les clés d'adresse courantes incluent `first_name`, `last_name`, `company`, `ad
 
 ### lines {#lines}
 
-Boucler avec `{{#lines}}...{{/lines}}`.
+Boucler avec `{{#lines}}...{{/lines}}`. Les valeurs d'exemple proviennent de la ligne d'espresso de [la commande d'exemple](#receipt-map).
 
-| Champ | Type | Description |
-|-------|------|-------------|
-| `key` | string | Clé stable de ligne / identifiant d'article de commande |
-| `sku` | string | SKU du produit |
-| `name` | string | Nom d'affichage du produit ou de la ligne |
-| `qty` | number | Quantité vendue |
-| `qty_refunded` | number | Quantité remboursée pour cette ligne |
-| `unit_subtotal` / `_incl` / `_excl` | number | Prix unitaire avant remise |
-| `unit_price` / `_incl` / `_excl` | number | Prix unitaire après remise |
-| `line_subtotal` / `_incl` / `_excl` | number | Sous-total de la ligne avant remise |
-| `discounts` / `_incl` / `_excl` | number | Montant de la remise en valeur positive |
-| `line_total` / `_incl` / `_excl` | number | Total final de la ligne |
-| `total_refunded` | number | Total remboursé pour cette ligne en valeur positive |
-| `taxes` | array | Lignes de taxe par taux pour cette ligne |
-| `meta` | array | Métadonnées de l'article de commande sous forme de paires `{key, value}` |
-| `attributes` | array | Attributs du produit/de la variation sous forme de paires `{key, value}` |
+<FieldIndex
+  note="Chaque champ monétaire arrive par paire : le nombre (à utiliser dans les conditions `{{#…}}` — zéro et `null` masquent la section, et un champ `null` n’a aucun jumeau `_display`) et sa chaîne `_display` (à utiliser pour l’impression). Les champs marqués TTC/HT fournissent aussi des variantes `_incl` et `_excl`, chacune avec son propre `_display`."
+  placeholder="Filtrer les champs… essayez « savings »"
+  emptyText="Aucun champ ne correspond — effacez le filtre pour voir l’ensemble de `lines[]`."
+  fields={[
+    { name: 'key', type: 'string', desc: "Clé stable de ligne / identifiant d’article de commande.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "SKU du produit.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Nom d’affichage du produit ou de la ligne.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Quantité vendue.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Quantité remboursée pour cette ligne.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix unitaire normal enregistré. `null` sur les commandes sans historique de prix PDV — encadrez-le dans une section.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix unitaire de vente avant coupon — le prix PDV enregistré lorsqu’il est disponible, sinon déduit du sous-total de ligne stocké.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix normal moins prix de vente, limité à zéro. Zéro est une valeur fausse, donc les lignes conditionnées se masquent d’elles-mêmes.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix normal enregistré multiplié par la quantité.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix de vente avant coupon multiplié par la quantité.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Total des économies entre prix normal et prix de vente pour cette ligne.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "Vrai sur les commandes antérieures à la v1.9.0 dont l’économie est déjà incluse dans `discounts` — l’indicateur anti-double-comptage.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Valeur unitaire WooCommerce avant remise. Ne l’utilisez pas comme prix normal.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Valeur unitaire finale après les remises WooCommerce.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Sous-total de ligne WooCommerce avant remise.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "Remise de ligne native WooCommerce en valeur positive — uniquement les coupons sur les commandes actuelles.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total final de la ligne après coupons — ce qui s’imprime dans la colonne des montants.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Total remboursé pour cette ligne en valeur positive.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Lignes de taxe par taux pour cette ligne." },
+    { name: 'meta', type: 'array', desc: "Métadonnées de l’article de commande sous forme de paires `{key, value}`." },
+    { name: 'attributes', type: 'array', desc: "Attributs du produit/de la variation sous forme de paires `{key, value}`." },
+  ]}
+/>
 
-Les variantes formatées incluent `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display`, ainsi que les variantes `_display` TTC/HT.
+### Afficher le prix normal et les économies {#displaying-regular-price-and-savings}
+
+Pour une mise en page au prix unitaire, affichez le prix normal enregistré, le prix de vente et l'économie de cette façon :
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+Utilisez les champs de total de ligne lorsque la quantité compte :
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` est le prix avant coupons. Utilisez `unit_price` ou `line_total` pour le montant final après les remises WooCommerce.
+
+:::note Réimpression de commandes créées avant la v1.9.0
+Les anciennes commandes WCPOS peuvent déjà inclure la réduction entre prix normal et prix de vente dans `discounts`. Si votre modèle personnalisé imprime à la fois les économies de ligne et les remises de ligne, utilisez `savings_in_discounts` pour éviter d'afficher deux fois la même réduction :
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+Si le modèle n'imprime pas de ligne `discounts` au niveau de l'article, continuez à afficher `line_savings` même lorsque `savings_in_discounts` est vrai. Les modèles fournis gèrent cette distinction automatiquement.
+:::
 
   </AccordionItem>
 
@@ -245,7 +531,6 @@ Boucle avec `{{#discounts}}...{{/discounts}}`.
 |-------|------|-------------|
 | `label` | string | Description du coupon ou code par défaut |
 | `code` | string | Code du coupon |
-| `codes` | string | Valeur de repli héritée/affichage pour les codes concaténés |
 | `total` / `_incl` / `_excl` | number | Montant de la remise en valeur positive |
 
 Variantes formatées : `total_display`, `total_incl_display` et `total_excl_display`. Ajoutez votre propre signe moins dans le modèle si vous souhaitez afficher les remises sous forme de lignes négatives.
@@ -256,20 +541,86 @@ Variantes formatées : `total_display`, `total_incl_display` et `total_excl_disp
 
 ### totals {#totals}
 
-| Champ | Type | Description |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | number | Sous-total de la commande avant remises |
-| `totals.discount_total` / `_incl` / `_excl` | number | Total des remises de la commande en valeur positive |
-| `totals.tax_total` | number | Montant total des taxes |
-| `totals.total` / `_incl` / `_excl` | number | Total général de la commande |
-| `totals.paid_total` | number | Montant payé/appliqué |
-| `totals.change_total` | number | Monnaie rendue au client |
-| `totals.refund_total` | number | Total remboursé en valeur positive |
-| `totals.net_total` | number | `total - refund_total`, limité à zéro |
-| `totals.total_qty` | number | Somme des quantités des lignes d'articles |
-| `totals.line_count` | number | Nombre de lignes de produits |
+Les valeurs d'exemple proviennent de [la commande d'exemple](#receipt-map), qui a ensuite fait l'objet d'un remboursement partiel de 7,25 $.
 
-Les variantes formatées incluent `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` et `net_total_display`, ainsi que les variantes TTC/HT le cas échéant.
+<FieldIndex
+  note="Les champs monétaires suivent le même appariement que les lignes d’articles : un nombre brut pour les conditions et une chaîne `_display` pour l’impression, avec des variantes `_incl`/`_excl` là où c’est indiqué."
+  placeholder="Filtrer les champs… essayez « saved »"
+  emptyText="Aucun champ ne correspond — effacez le filtre pour voir l’ensemble de `totals`."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Sous-total de la commande avant remises.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total des remises de la commande en valeur positive — uniquement les coupons sur les commandes actuelles.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Total des économies enregistrées entre prix normal et prix de vente sur les lignes de produits, y compris les soldes du catalogue et les changements de prix en caisse.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Remises WooCommerce et économies par rapport au prix normal combinées, chevauchement hérité retiré. L’unique chiffre destiné au client pour tout ce qui a été économisé.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Indique si le reçu dispose de suffisamment de données de prix enregistrées pour calculer les totaux d’économies complets.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Montant total des taxes.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total général de la commande.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Montant payé / appliqué.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "Monnaie rendue au client.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Total remboursé en valeur positive.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Total moins les remboursements, limité à zéro.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Somme des quantités des lignes d’articles.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Nombre de lignes de produits.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+Utilisez `total_saved` lorsque vous voulez un seul chiffre destiné au client pour tout ce qui a été économisé. Ne le calculez pas dans le modèle en additionnant `discount_total` et `sale_savings_total` : les commandes créées avant la v1.9.0 peuvent déjà inclure leur économie de prix PDV dans le total des remises de WooCommerce. Le champ canonique `total_saved` détecte et retire ce chevauchement.
+
+Les totaux d'économies valent `null` et `total_saved_complete` est faux dès qu'une ligne de produit ne dispose pas de suffisamment de données de prix enregistrées pour un agrégat fiable. Conditionnez la ligne avec `total_saved_complete`, puis utilisez `total_saved` pour masquer une valeur nulle :
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+Les modèles fournis qui affichent des prix utilisent la même structure de conditions avec les variantes TTC (`total_saved_incl` et `total_saved_incl_display`), et n'affichent **Total économisé** que lorsque la valeur complète est supérieure à zéro.
 
   </AccordionItem>
 
@@ -414,7 +765,7 @@ Utilisez les libellés `i18n` au lieu de coder le texte en dur lorsque c'est pos
 {{i18n.total}}: {{totals.total_display}}
 ```
 
-Les clés courantes incluent `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, ainsi que les clés de libellé d'identifiant fiscal telles que `store_tax_id_label_eu_vat` et `customer_tax_id_label_other`. Des clés supplémentaires peuvent être ajoutées par des extensions.
+Les clés courantes incluent `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, ainsi que les clés de libellé d'identifiant fiscal telles que `store_tax_id_label_eu_vat` et `customer_tax_id_label_other`. Des clés supplémentaires peuvent être ajoutées par des extensions.
 
   </AccordionItem>
 </Accordion>

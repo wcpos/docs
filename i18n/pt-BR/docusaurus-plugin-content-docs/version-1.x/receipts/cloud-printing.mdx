@@ -55,6 +55,29 @@ Escolha o provedor que corresponde ao seu hardware.
 | **Epson Server Direct Print** | Impressora Epson ePOS com Server Direct Print | A impressora faz sondagem no WCPOS | Apenas térmico |
 | **PrintNode** | Qualquer impressora conectada ao SO + cliente PrintNode | O WCPOS envia um PDF ao PrintNode | Qualquer modelo |
 
+## WCPOS Cloud Print — o relé {#relay}
+
+Ao configurar uma impressora **por sondagem** (Star CloudPRNT ou Epson Server Direct Print), a URL de sondagem que o WCPOS fornece aponta para **cloudprint.wcpos.com**, e não para o seu próprio site. Esse é o **WCPOS Cloud Print** — um relé gratuito operado pelo WCPOS que fica entre a sua impressora e a sua loja.
+
+**Por que ele existe.** Impressoras de recibo executam firmwares pequenos e raramente atualizados. Muitas não conseguem completar uma conexão segura com uma loja em hospedagem moderna: versões mais novas de TLS, autoridades certificadoras mais recentes ou uma CDN/firewall na frente do site (o Cloudflare é um culpado comum) vão recusar a impressora — ou ser recusadas por ela. O sintoma é uma impressora eternamente presa em **Waiting**, mesmo com todas as configurações corretas. O relé oferece às impressoras uma conexão que firmwares antigos sempre conseguem negociar, e repassa o tráfego delas para a sua loja.
+
+**Como funciona:**
+
+- Seu site se conecta ao relé **automaticamente** na primeira vez que você abre as configurações de Cloud Print — não há nada para ativar ou configurar.
+- A impressora faz sondagem em `cloudprint.wcpos.com`; o relé encaminha a requisição à sua loja e devolve a resposta dela. Os trabalhos de impressão passam **através** do relé — nunca ficam armazenados nele.
+- O relé absorve a maior parte da sondagem ociosa, então uma impressora ociosa custa ao seu site cerca de uma requisição por minuto, em vez de uma a cada poucos segundos.
+- Se o seu site não conseguir se conectar ao relé (por exemplo, um site de desenvolvimento local que o relé não alcança), o WCPOS recorre automaticamente às URLs diretas para o site.
+
+:::note Prefere uma conexão direta?
+A tela de configuração de cada impressora tem uma seção **Advanced** que mostra a URL direta para o site. Use-a se você souber que sua hospedagem é amigável a impressoras, ou se preferir não rotear os trabalhos pelo relé. Desenvolvedores podem desativar o relé em todo o site com uma linha:
+
+```php
+add_filter( 'woocommerce_pos_cloud_print_relay_enabled', '__return_false' );
+```
+:::
+
+**O que o relé pode ver.** Conectar-se compartilha a URL do seu site com o wcpos.com, e os trabalhos de impressão — o conteúdo dos recibos, que inclui detalhes do pedido — transitam pelo relé a caminho da impressora. Nada é retido. Os detalhes completos estão na [política de privacidade](https://wcpos.com/privacy).
+
 ## Configurando uma impressora na nuvem {#setup}
 
 As impressoras na nuvem são configuradas uma vez no WP Admin e compartilhadas em todos os dispositivos — diferentemente das impressoras locais, que são armazenadas por dispositivo.
@@ -73,7 +96,7 @@ Em **WP Admin > POS > Settings > Cloud Print**, adicione uma impressora e escolh
   </StepCard>
   <StepCard number="2" title="Copie a URL de sondagem e o token">
 
-Copie a URL de sondagem e o token gerados. O **token é exibido apenas uma vez** — se você perdê-lo, gere um novo a partir do cartão da impressora e atualize a impressora com o novo valor.
+Copie a URL de sondagem e o token gerados. A URL normalmente aponta para **cloudprint.wcpos.com** — esse é o [relé WCPOS Cloud Print](#relay), e é ele que você quer; a URL direta para o site fica na seção **Advanced**. O **token é exibido apenas uma vez** — se você perdê-lo, gere um novo a partir do cartão da impressora e atualize a impressora com o novo valor.
 
   </StepCard>
   <StepCard number="3" title="Insira-os na configuração da impressora" isLast>
@@ -181,6 +204,16 @@ Como o recibo é produzido depende da impressora:
 - **Star CloudPRNT** — o recibo é renderizado **no dispositivo** e entregue à impressora através do CloudPRNT.
 - **Star Online, Epson e PrintNode** — o recibo é renderizado **no servidor** a partir do pedido e do modelo selecionados, e então entregue à impressora ou ao relé hospedado.
 
+## A fila de impressão {#print-queue}
+
+Todo trabalho destinado a uma impressora na nuvem fica em uma fila no seu site até que a impressora o colete (impressoras por sondagem) ou que o provedor confirme a entrega. **WP Admin > POS > Settings > Cloud Print** mostra a fila abaixo das suas impressoras:
+
+- **Filtre** por impressora ou por status — **Waiting**, **Printing**, **Printed**, **Failed**, **Cancelled** — com contagens ao vivo.
+- Cada linha mostra há quanto tempo o recibo está **aguardando** e leva ao **pedido** do WooCommerce que ele imprime.
+- **Cancele** trabalhos em espera um a um, em lote, ou de uma impressora inteira de uma vez. **Retry** recoloca um trabalho que falhou na fila.
+
+Se uma impressora tem trabalhos em espera mas não coleta nada há mais de alguns minutos, um **banner de aviso** nomeia a impressora, mostra quantos recibos estão acumulados e há quanto tempo, e oferece **Cancel all** — um acúmulo nunca pode se formar em silêncio enquanto uma impressora está desconectada.
+
 ## Impressão de teste e status da conexão {#status}
 
 Cada cartão de impressora tem um botão **Test print** que envia um diagnóstico curto para que você possa confirmar que a impressora está acessível e que o formato está correto antes de confiar nela para pedidos reais.
@@ -207,6 +240,19 @@ O cartão também mostra um status ao vivo:
   - A **URL de sondagem e o token** no firmware da impressora correspondem exatamente ao que o WCPOS gerou. Um único caractere errado faz com que todas as sondagens sejam rejeitadas — gere novamente o token no WCPOS e insira-o novamente se estiver em dúvida.
   - A impressora realmente consegue **alcançar seu site** pela internet (DNS correto, sem firewall bloqueando o HTTPS de saída, certificado SSL válido na sua loja).
   - A **sondagem está habilitada** na configuração CloudPRNT / Server Direct Print da impressora, com um intervalo razoável. Reinicie a impressora após alterar suas configurações.
+  - Se você inseriu a **URL direta para o site** (da seção Advanced) e a impressora ainda assim não conecta, mude para a URL padrão **cloudprint.wcpos.com** — muitas impressoras não conseguem negociar uma conexão segura com hospedagem moderna, que é [exatamente o que o relé resolve](#relay).
+
+  </AccordionItem>
+
+  <AccordionItem question="Por que a URL da minha impressora aponta para cloudprint.wcpos.com?">
+
+  Esse é o [WCPOS Cloud Print](#relay), o relé gratuito que dá às impressoras uma conexão que o firmware delas sempre consegue negociar e repassa os trabalhos de impressão para a sua loja. Ele fica ativo automaticamente, os trabalhos nunca são armazenados nele, e a URL direta para o site continua sempre disponível na seção **Advanced** da impressora, se você preferir.
+
+  </AccordionItem>
+
+  <AccordionItem question="Configurei minha impressora antes de o relé existir — preciso mudar alguma coisa?">
+
+  Não — as URLs já salvas na configuração de uma impressora continuam funcionando. Se, porém, essa impressora estiver **presa em Waiting**, é provável que o firmware dela não consiga se conectar diretamente à sua hospedagem: abra **Setup &amp; token** no cartão da impressora, gere um novo token e insira a nova URL **cloudprint.wcpos.com** e o token na configuração da impressora.
 
   </AccordionItem>
 

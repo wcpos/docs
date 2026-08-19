@@ -2,60 +2,79 @@
 title: "Sincronización de Productos"
 sidebar_label: "Descargar y Sincronizar"
 sidebar_position: 1
-description: "Cómo WCPOS descarga y sincroniza productos de WooCommerce, incluyendo la sincronización incremental y el almacenamiento local."
+description: "Cómo WCPOS descarga y sincroniza los productos de WooCommerce, incluidos los preajustes de sincronización, la cobertura y el mantenimiento del catálogo al día."
 ---
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
 
-Uno de los aspectos significativos del sistema WCPOS (Punto de Venta) es su enfoque en la gestión de datos. Proporciona una manera eficiente de manejar un gran volumen de datos de productos. Esta guía explica cómo se descargan y sincronizan los productos dentro de WCPOS.
+WCPOS mantiene una copia local de sus productos en cada dispositivo, de modo que el catálogo se explora y se busca al instante y sigue funcionando sin conexión. Esta guía explica cómo llegan los productos al dispositivo y cómo se mantienen actualizados.
 
-## Almacenamiento Local de Productos {#local-storage-of-products}
+:::info Cambios en la v1.10.0
+La v1.10.0 introduce un nuevo motor de sincronización. Si su POS es anterior a la v1.10.0, consulte [Qué cambió en la v1.10.0](#what-changed-in-v1100) más abajo.
+:::
 
-WCPOS obtiene los productos de tu tienda WooCommerce y los almacena localmente en tu dispositivo. Este enfoque significa que una vez que un producto es descargado, no necesita ser obtenido repetidamente. A medida que continúas usando el POS, descargará progresivamente todos los productos de tu tienda WooCommerce, creando una base de datos local de tus productos.
+## Cómo llegan los productos al dispositivo {#how-products-arrive}
 
-## Descarga por Lotes de Productos {#batch-downloading-of-products}
+- **Una siembra del catálogo se ejecuta en segundo plano.** Desde el primer arranque, el POS descarga su catálogo en pequeños lotes de forma programada, sin que usted haga nada. Puede empezar a vender en cuanto llegan los primeros productos: el pago no espera a que la descarga esté completa.
+- **Lo que está consultando se descarga bajo demanda.** Buscar, filtrar por categoría o escanear un código de barras descarga directamente los productos coincidentes si aún no están en local. Una búsqueda ya no arrastra consigo productos no relacionados: descarga lo que usted ha pedido.
+- **Las actualizaciones llegan mediante comprobaciones de cambios.** Una vez que un producto está en local, el POS no vuelve a descargarlo para ver si ha cambiado. Consulta un registro de cambios ligero (cada 60 segundos con el preajuste predeterminado) y descarga solo lo que ha cambiado realmente: una tienda sin actividad responde con una única respuesta de «nada ha cambiado», casi gratuita.
 
-Para la mayoría de las tiendas, intentar descargar más de unos 50 productos a la vez podría resultar en una alta carga del servidor, tiempos de respuesta más lentos o incluso caídas del servidor. Para prevenir esto, WCPOS está diseñado para descargar productos en pequeños lotes, generalmente alrededor de 50 productos a la vez. Este proceso continúa hasta que todo el inventario ha sido almacenado localmente, asegurando que un gran volumen de datos pueda ser gestionado sin poner un estrés indebido en tu servidor.
+## ¿De qué tamaño son los lotes? {#batch-size}
 
-## Uso de la Búsqueda de Productos {#using-the-product-search}
+De forma predeterminada, el POS solicita **50 productos cada vez**. Esto ya no es una constante fija: es uno de los dos controles que determina su preajuste de sincronización en **Estado de la tienda → Rendimiento**:
 
-Una forma efectiva de iniciar la descarga por lotes de productos es utilizando la función de búsqueda de productos. Cada vez que realizas una búsqueda de productos, el sistema POS obtiene y almacena otro lote de productos. Esta estrategia no solo te ayuda a descargar gradualmente nuevos productos, sino que también mejora la velocidad y eficiencia de la función de búsqueda a medida que más productos se almacenan localmente.
+| Preajuste | Intervalo de comprobación | Registros por solicitud |
+| --- | --- | --- |
+| Eco | 5 min | 25 |
+| Equilibrado (predeterminado) | 60 s | 50 |
+| Tiempo real | 10 s | 75 |
 
-## Conclusión {#conclusion}
+Los lotes pequeños existen para proteger su servidor: las páginas grandes consumen tiempo real de servidor al construirse y, en alojamientos compartidos, pueden ralentizar la tienda online o activar límites de frecuencia. Elija Eco para alojamientos modestos y Tiempo real para comercios con varias cajas y un alojamiento potente. Consulte [Estado de la tienda](/support/store-health#sync-presets) para más detalles.
 
-Es importante entender que todos tus productos no aparecerán de una vez en tu sistema POS, y esto es completamente normal. Con el tiempo, al usar la búsqueda de productos y otras operaciones del POS, descargarás todos tus productos. Para obtener información más detallada sobre cómo funciona WCPOS, consulta [Arquitectura](/reference/architecture).
+## Comprobar el progreso de la descarga {#checking-progress}
 
-WCPOS está diseñado para optimizar la carga del servidor y la eficiencia operativa. La función de descarga progresiva de productos garantiza una experiencia de gestión minorista fluida, eficiente y fácil de usar.
+Abra **Estado de la tienda → Base de datos** para ver, por colección, cuántos registros hay en este dispositivo frente a los que hay en su servidor, con una barra de cobertura. La cifra *en el servidor* es un total real informado por el servidor: mientras el POS aún la está confirmando, la fila muestra *comprobando…* en lugar de una suposición.
+
+Que la barra de productos esté parcial significa simplemente que la siembra no ha terminado; seguirá completándose en segundo plano. Si parece faltar un producto concreto, búsquelo: eso lo descarga directamente.
 
 :::tip
-Si estás experimentando problemas de sincronización persistentes que una sincronización normal no puede resolver, puedes [borrar todos los datos locales](/support/troubleshooting/clear-local-data) para forzar una nueva descarga de toda tu tienda.
+Si una colección parece atascada, utilice **Borrar y volver a descargar** en su fila de Estado de la tienda → Base de datos antes de recurrir al restablecimiento completo de [borrar todos los datos locales](/support/troubleshooting/clear-local-data).
 :::
+
+## Qué cambió en la v1.10.0 {#what-changed-in-v1100}
+
+Las versiones anteriores descargaban el catálogo *progresivamente con el uso*: cada búsqueda o desplazamiento traía otro lote de productos, y cada 5 minutos se ejecutaba un sondeo completo. Ese modelo se ha retirado. En la v1.10.0:
+
+- El catálogo se completa mediante una siembra programada en segundo plano: no hace falta buscar ni desplazarse para que los productos se descarguen.
+- Una búsqueda descarga los productos que coinciden con ella, no un lote siguiente arbitrario.
+- Las comprobaciones de cambios se ejecutan con el intervalo del preajuste elegido (60 segundos de forma predeterminada) mediante solicitudes condicionales, en lugar de un sondeo completo fijo cada 5 minutos.
+- El progreso de la descarga se puede ver por colección en **Estado de la tienda → Base de datos**.
+
+Los desarrolladores encontrarán la mecánica completa en [Cómo funciona el motor de sincronización](/reference/sync-engine).
 
 ## F.A.Q. {#faq}
 
 <Accordion>
-  <AccordionItem question="¿Cómo hago para que se carguen más productos?">
+  <AccordionItem question="¿Tengo que hacer algo para descargar mis productos?">
 
-  La sincronización de productos en el POS puede ser activada de varias maneras:
-
-  - Cuando se carga por primera vez el POS.
-  - Cada vez que ejecutas una búsqueda de producto.
-  - Aplicando un filtro, por ejemplo, por categoría o etiqueta.
-  - Desplazándote hacia la parte inferior de la lista de productos.
-  - Presionando el botón de sincronización manualmente (presión corta para sincronizar, **presión larga** para la opción de Borrar y Refrescar).
-  - Además, el POS sincronizará automáticamente cada 5 minutos.
-
-  Una vez que todos los productos están descargados, las sincronizaciones futuras solo obtendrán los productos que han sido actualizados desde la última sincronización.
+  No. La siembra del catálogo descarga sus productos en segundo plano de forma automática. Buscar o filtrar descarga productos concretos de inmediato si aún no están en local, pero no es la navegación habitual lo que completa la descarga: es la siembra en segundo plano.
 
   </AccordionItem>
 
-  <AccordionItem question="He desplazado hasta abajo y aún no se muestran todos los productos">
+  <AccordionItem question="¿Con qué rapidez llegan al POS los cambios en los productos?">
 
-  Podría haber un par de razones por las cuales no se muestran todos los productos:
+  Con el preajuste predeterminado Equilibrado, el POS comprueba si hay cambios cada 60 segundos (las comprobaciones llevan una ligera variación aleatoria para que varias cajas no accedan al servidor a la vez). Solo se descargan los productos modificados. Si varias cajas necesitan ver antes los cambios de las demás, utilice el preajuste Tiempo real.
 
-  - El POS ocultará los artículos fuera de stock por defecto. Esta configuración se puede alterar en la configuración de visualización de productos si deseas mostrar artículos fuera de stock.
-  - La API REST de WooCommerce solo es compatible con los tipos de productos estándar de WooCommerce, que son simple, variable, agrupado y externo. Si estás utilizando un tipo de producto personalizado, podrían no mostrarse en el POS.
+  </AccordionItem>
+
+  <AccordionItem question="No veo todos mis productos en el POS">
+
+  Hay varias posibilidades:
+
+  - Puede que la siembra en segundo plano simplemente no haya terminado: consulte la fila de productos en **Estado de la tienda → Base de datos**.
+  - El POS oculta los artículos agotados de forma predeterminada. Esto se puede cambiar en los ajustes de visualización de productos.
+  - La API REST de WooCommerce solo admite los tipos de producto estándar (simple, variable, agrupado y externo). Los tipos de producto personalizados podrían no mostrarse en el POS.
 
   </AccordionItem>
 </Accordion>

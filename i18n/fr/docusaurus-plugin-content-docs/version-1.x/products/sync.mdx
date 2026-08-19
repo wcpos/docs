@@ -2,60 +2,79 @@
 title: Synchronisation des produits
 sidebar_label: Téléchargement et synchronisation
 sidebar_position: 1
-description: "Comment WCPOS télécharge et synchronise les produits depuis WooCommerce, y compris la synchronisation incrémentielle et le stockage local."
+description: "Comment WCPOS télécharge et synchronise les produits depuis WooCommerce, y compris les préréglages de synchronisation, la couverture et la fraîcheur du catalogue."
 ---
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
 
-L'un des aspects majeurs du système WCPOS (point de vente) est son approche de la gestion des données. Il offre un moyen efficace de gérer un grand volume de données produits. Ce guide explique comment les produits sont téléchargés et synchronisés dans WCPOS.
+WCPOS conserve une copie locale de vos produits sur chaque appareil : le catalogue se parcourt et se recherche instantanément, et continue de fonctionner hors connexion. Ce guide explique comment les produits arrivent sur l'appareil et comment ils restent à jour.
 
-## Stockage local des produits {#local-storage-of-products}
+:::info Modifié dans la v1.10.0
+La v1.10.0 introduit un nouveau moteur de synchronisation. Si votre PDV est antérieur à la v1.10.0, consultez [Ce qui a changé dans la v1.10.0](#what-changed-in-v1100) ci-dessous.
+:::
 
-WCPOS récupère les produits de votre boutique WooCommerce et les stocke localement sur votre appareil. Ainsi, une fois qu'un produit est téléchargé, il n'a pas besoin d'être récupéré à nouveau. Au fur et à mesure de l'utilisation du PDV, celui-ci télécharge progressivement tous les produits de votre boutique WooCommerce, créant une base de données locale de vos produits.
+## Comment les produits arrivent sur l'appareil {#how-products-arrive}
 
-## Téléchargement des produits par lots {#batch-downloading-of-products}
+- **Un amorçage du catalogue s'exécute en arrière-plan.** Dès le premier lancement, le PDV télécharge votre catalogue par petits lots, selon une planification, sans que vous ayez quoi que ce soit à faire. Vous pouvez commencer à vendre dès que les premiers produits arrivent — l'encaissement n'attend pas un téléchargement complet.
+- **Ce que vous consultez se télécharge à la demande.** Une recherche, un filtrage par catégorie ou la lecture d'un code-barres récupère directement les produits correspondants s'ils ne sont pas encore locaux. Une recherche n'entraîne plus le téléchargement de produits sans rapport — elle récupère ce que vous avez demandé.
+- **Les mises à jour arrivent par les contrôles des changements.** Une fois qu'un produit est local, le PDV ne le retélécharge pas pour vérifier s'il a changé. Il interroge un journal des changements léger (toutes les 60 secondes avec le préréglage par défaut) et ne récupère que ce qui a réellement changé — une boutique inactive répond par une unique réponse « rien n'a changé », presque gratuite.
 
-Pour la plupart des boutiques, tenter de télécharger plus d'environ 50 produits à la fois pourrait entraîner une charge serveur élevée, des temps de réponse plus lents, voire des plantages du serveur. Pour éviter cela, WCPOS est conçu pour télécharger les produits par petits lots, généralement environ 50 produits à la fois. Ce processus se poursuit jusqu'à ce que l'ensemble de l'inventaire soit stocké localement, garantissant qu'un grand volume de données peut être géré sans surcharger votre serveur.
+## Quelle est la taille des lots ? {#batch-size}
 
-## Utilisation de la recherche de produits {#using-the-product-search}
+Par défaut, le PDV demande **50 produits à la fois**. Ce n'est plus une constante fixe — c'est l'un des deux cadrans définis par votre préréglage de synchronisation dans **État de la boutique → Performances** :
 
-Un moyen efficace de lancer le téléchargement par lots des produits est d'utiliser la fonction de recherche de produits. Chaque fois qu'une recherche de produits est effectuée, le système PDV récupère et stocke un nouveau lot de produits. Cette stratégie permet non seulement de télécharger progressivement de nouveaux produits, mais améliore également la rapidité et l'efficacité de la fonction de recherche à mesure que davantage de produits sont stockés localement.
+| Préréglage | Intervalle de contrôle | Enregistrements par requête |
+| --- | --- | --- |
+| Eco | 5 min | 25 |
+| Équilibré (par défaut) | 60 s | 50 |
+| Temps réel | 10 s | 75 |
 
-## Conclusion {#conclusion}
+Les petits lots existent pour protéger votre serveur : les grandes pages demandent un temps serveur réel pour être construites et, sur un hébergement mutualisé, elles peuvent ralentir la boutique en ligne ou déclencher des plafonds de requêtes. Choisissez Eco pour un hébergement modeste, Temps réel pour les boutiques à plusieurs caisses sur un hébergement solide. Consultez [État de la boutique](/support/store-health#sync-presets) pour les détails.
 
-Il est important de comprendre que tous vos produits n'apparaîtront pas immédiatement dans votre système PDV, et c'est tout à fait normal. Au fil du temps, en utilisant la recherche de produits et les autres opérations du PDV, vous téléchargerez l'ensemble de vos produits. Pour des informations plus détaillées sur le fonctionnement de WCPOS, consultez la section [Architecture](/reference/architecture).
+## Suivre la progression du téléchargement {#checking-progress}
 
-WCPOS est conçu pour optimiser la charge serveur et l'efficacité opérationnelle. La fonctionnalité de téléchargement progressif des produits garantit une expérience de gestion de point de vente fluide, efficace et conviviale.
+Ouvrez **État de la boutique → Base de données** pour voir, collection par collection, combien d'enregistrements se trouvent sur cet appareil par rapport à votre serveur, avec une barre de couverture. Le nombre *sur le serveur* est un total réellement communiqué par le serveur — tant que le PDV est en train de le confirmer, la ligne affiche *vérification…* plutôt qu'une estimation.
+
+Une barre de produits partielle signifie simplement que l'amorçage n'est pas terminé ; il continuera à se remplir en arrière-plan. Si un produit précis semble manquer, recherchez-le — cela le récupère directement.
 
 :::tip
-Si vous rencontrez des problèmes de synchronisation persistants qu'une synchronisation normale ne peut pas résoudre, vous pouvez [effacer toutes les données locales](/support/troubleshooting/clear-local-data) pour forcer un nouveau téléchargement de l'ensemble de votre boutique.
+Si une collection semble bloquée, utilisez **Effacer et retélécharger** sur sa ligne dans État de la boutique → Base de données avant de recourir à la réinitialisation complète [effacer toutes les données locales](/support/troubleshooting/clear-local-data).
 :::
+
+## Ce qui a changé dans la v1.10.0 {#what-changed-in-v1100}
+
+Les versions antérieures téléchargeaient le catalogue *progressivement au fil de l'utilisation* : chaque recherche ou défilement récupérait un nouveau lot de produits, et une interrogation complète s'exécutait toutes les 5 minutes. Ce modèle est abandonné. Dans la v1.10.0 :
+
+- Le catalogue se remplit grâce à un amorçage planifié en arrière-plan — vous n'avez pas besoin de rechercher ni de faire défiler pour que les produits se téléchargent.
+- Une recherche récupère les produits qui lui correspondent, et non un lot suivant arbitraire.
+- Les contrôles des changements s'exécutent à l'intervalle du préréglage que vous avez choisi (60 secondes par défaut) au moyen de requêtes conditionnelles, au lieu d'une interrogation complète fixe toutes les 5 minutes.
+- La progression du téléchargement est visible collection par collection dans **État de la boutique → Base de données**.
+
+Les développeurs trouveront l'ensemble des mécanismes dans [Fonctionnement du moteur de synchronisation](/reference/sync-engine).
 
 ## F.A.Q. {#faq}
 
 <Accordion>
-  <AccordionItem question="Comment faire charger davantage de produits ?">
+  <AccordionItem question="Dois-je faire quelque chose pour télécharger mes produits ?">
 
-  La synchronisation des produits dans le PDV peut être déclenchée de plusieurs manières :
-
-  - Au premier chargement du PDV.
-  - À chaque recherche de produit effectuée.
-  - Lors de l'application d'un filtre, par exemple par catégorie ou par étiquette.
-  - En faisant défiler jusqu'en bas de la liste des produits.
-  - En appuyant manuellement sur le bouton de synchronisation (appui court pour synchroniser, **appui long** pour l'option Effacer et actualiser).
-  - De plus, le PDV se synchronise automatiquement toutes les 5 minutes.
-
-  Une fois tous les produits téléchargés, les synchronisations suivantes ne récupéreront que les produits mis à jour depuis la dernière synchronisation.
+  Non. L'amorçage du catalogue télécharge vos produits automatiquement en arrière-plan. Une recherche ou un filtrage récupère immédiatement des produits précis s'ils ne sont pas encore locaux, mais ce n'est pas la navigation ordinaire qui achève le téléchargement — c'est l'amorçage en arrière-plan.
 
   </AccordionItem>
 
-  <AccordionItem question="J'ai fait défiler jusqu'en bas et tous les produits ne s'affichent toujours pas">
+  <AccordionItem question="En combien de temps les modifications de produits parviennent-elles au PDV ?">
 
-  Il peut y avoir plusieurs raisons pour lesquelles tous les produits ne s'affichent pas :
+  Avec le préréglage Équilibré par défaut, le PDV vérifie les changements toutes les 60 secondes (les contrôles sont légèrement aléatoirisés afin que plusieurs caisses ne sollicitent pas le serveur en même temps). Seuls les produits modifiés sont récupérés. Si plusieurs caisses doivent voir plus vite les modifications des autres, utilisez le préréglage Temps réel.
 
-  - Le PDV masque par défaut les articles en rupture de stock. Ce paramètre peut être modifié dans les paramètres d'affichage des produits pour afficher les articles en rupture de stock.
-  - L'API REST WooCommerce n'est compatible qu'avec les types de produits WooCommerce standard, à savoir simple, variable, groupé et externe. Si un type de produit personnalisé est utilisé, il est possible qu'il ne s'affiche pas dans le PDV.
+  </AccordionItem>
+
+  <AccordionItem question="Je ne vois pas tous mes produits dans le PDV">
+
+  Plusieurs possibilités :
+
+  - L'amorçage en arrière-plan n'est peut-être tout simplement pas terminé — vérifiez la ligne des produits dans **État de la boutique → Base de données**.
+  - Le PDV masque par défaut les articles en rupture de stock. Cela peut être modifié dans les paramètres d'affichage des produits.
+  - L'API REST de WooCommerce ne prend en charge que les types de produits standard (simple, variable, groupé, externe). Les types de produits personnalisés peuvent ne pas s'afficher dans le PDV.
 
   </AccordionItem>
 </Accordion>

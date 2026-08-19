@@ -166,6 +166,7 @@ function lineToProse(line) {
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ') // {/* jsx comment */}
     .replace(/<!--[\s\S]*?-->/g, ' ') // <!-- html comment -->
     .replace(/`[^`]*`/g, ' ') // inline code
+    .replace(/'[^'\s]*'/g, ' ') // space-free single-quoted machine tokens ('#store', 'store.name') — prose apostrophes span spaces and are untouched
     .replace(/\b[\w-]+\s*=\s*("[^"]*"|\{\{[^}]*\}\}|\{[^}]*\})/g, ' ') // attribute fragments
     .replace(/\]\(([^)]*)\)/g, '] ') // markdown link target
     .replace(/<[^>]+>/g, ' ') // jsx/html tags
@@ -183,6 +184,8 @@ function bodyLines(text) {
   let inFrontmatter = false;
   let frontmatterDone = false;
   let inFence = false;
+  let inTemplateLiteral = false; // inside a JSX {`...`} template-literal child (e.g. <Recipe>{`...`}</Recipe>)
+  let inPropArray = false; // inside a multi-line JSX prop array (e.g. fields={[ ... ]})
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!frontmatterDone && i === 0 && line.trim() === '---') {
@@ -201,6 +204,27 @@ function bodyLines(text) {
       continue;
     }
     if (inFence) continue;
+    // JSX code containers hold machine content (template snippets, data props),
+    // not prose — skipping them mirrors the fenced-code rule above.
+    if (inTemplateLiteral) {
+      if (line.includes('`}')) inTemplateLiteral = false;
+      continue;
+    }
+    if (inPropArray) {
+      if (/\]\}/.test(line)) inPropArray = false;
+      continue;
+    }
+    if (line.includes('{`') && !line.slice(line.indexOf('{`') + 2).includes('`}')) {
+      inTemplateLiteral = true;
+      continue;
+    }
+    // Named machine-data props only — field indexes and sample-receipt data that
+    // stay byte-identical across locales by design. Other arrays (zones, keys,
+    // summary, …) carry user-facing labels and must stay visible to the prose check.
+    if (/\b(?:fields|facsimile|preview|segments)=\s*\{\[/.test(line) && !/\]\}/.test(line)) {
+      inPropArray = true;
+      continue;
+    }
     if (/^\s*import\s/.test(line)) continue;
     out.push(line);
   }

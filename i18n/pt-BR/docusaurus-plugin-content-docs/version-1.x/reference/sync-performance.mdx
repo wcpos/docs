@@ -1,0 +1,88 @@
+---
+title: Desempenho da sincronização e cortesia com o servidor
+sidebar_label: Desempenho da sincronização
+sidebar_position: 4
+description: "Como o motor de sincronização do WCPOS protege o seu servidor: tetos de requisições delimitados, recuo sob pressão, garantias de responsividade e os números medidos por trás delas."
+---
+
+:::info Novidade na v1.10.0
+Esta página descreve o motor de sincronização introduzido no **WCPOS v1.10.0**. Para entender como o motor funciona mecanicamente, comece por [Como funciona o motor de sincronização](/reference/sync-engine).
+:::
+
+A maioria das lojas WCPOS roda em hospedagem PHP compartilhada: um punhado de workers PHP, uma inicialização completa do WordPress a cada requisição REST, plugins de segurança que limitam a taxa de rajadas. Requisições que o cliente trata como gratuitas degradam a loja online, acionam limitadores de taxa e competem com o próprio tráfego do operador de caixa — multiplicadas por cada caixa e cada aba do navegador que você mantém.
+
+O motor de sincronização da v1.10.0 trata isso como uma restrição de projeto, e não como uma questão secundária: **proteger a hospedagem do lojista faz parte do trabalho do motor de sincronização.** Esta página explica as regras que o motor segue e as medições por trás delas.
+
+## As quatro regras permanentes {#the-four-rules}
+
+Todo comportamento programado de sincronização no motor é regido por quatro invariantes:
+
+1. **O custo escala com o que mudou, nunca com o tamanho do catálogo.** Um resumo barato ou uma verificação de atalho sempre precede qualquer busca em massa. Uma loja com 50.000 produtos que não mudou custa aproximadamente o mesmo para manter sincronizada que uma loja com 500 produtos que não mudou.
+2. **Sem disparo ilimitado.** Toda faixa em segundo plano declara um teto de requisições por execução, garantido por testes automatizados. Trabalhos maiores rodam como lotes delimitados com cursores retomáveis — uma varredura se distribui ao longo de sua programação em vez de estourar de uma vez.
+3. **A manutenção nunca atrapalha o operador de caixa.** As requisições que deixam um caixa pronto para vender rodam primeiro; auditorias de integridade e preparações em segundo plano rodam depois, em tempo ocioso.
+4. **Sob pressão, a manutenção recua primeiro.** Quando seu servidor sinaliza dificuldade, o motor desacelera o próprio trabalho em segundo plano antes que qualquer coisa voltada ao operador de caixa seja afetada.
+
+## O que a sincronização custa ao seu servidor {#request-budgets}
+
+O custo em regime permanente é definido pela **predefinição de sincronização**, escolhida por dispositivo em **Saúde da loja → Desempenho**:
+
+| Predefinição | Intervalo de verificação | Registros por requisição | Verificações nominais por dia |
+| --- | --- | --- | --- |
+| Eco | 5 min | 25 | 288 |
+| Equilibrado (padrão) | 60 s | 50 | 1.440 |
+| Tempo real | 10 s | 75 | 8.640 |
+
+Ambos os controles importam, e o peso da página costuma ser o que de fato custa caro para uma hospedagem compartilhada — uma página pesada de registros consome tempo real de servidor, e o intervalo apenas multiplica isso. Nenhuma predefinição usa a página máxima de 100 registros; ela só é alcançável pelos controles deslizantes Personalizado (intervalo de 5 s a 5 min, 10 a 100 registros).
+
+Além da predefinição:
+
+- **Uma verificação ociosa é de baixo custo.** O motor envia requisições condicionais, então uma verificação sem alterações é respondida por um único `304 Not Modified` sem corpo — ainda é uma requisição, mas sem carga útil e com trabalho mínimo do servidor.
+- **As verificações têm variação de ±20%**, para que um conjunto de caixas espalhe suas requisições em vez de sincronizá-las em rajadas.
+- **Caixas ociosos decaem** para uma cadência mais lenta após 10 minutos sem interação e voltam instantaneamente com qualquer atividade, incluindo leituras de código de barras.
+- **A manutenção em segundo plano é limitada.** Uma verificação de integridade sem divergências custa no máximo algumas páginas agregadas baratas e **zero** buscas de detalhe — blocos que comprovadamente coincidem com o servidor são ignorados por completo. Quando há divergência, os detalhamentos são limitados a **dois por execução**, retomando por um cursor persistido em vez de estourar de uma vez. A auditoria completa de exclusões é limitada a **11 requisições por execução**, e a preparação do resumo, a 5 blocos por execução. Esses tetos são declarados em código e garantidos pela CI.
+
+:::note O número de "requisições por dia" no aplicativo é nominal
+A Saúde da loja deriva sua estimativa de *~N requisições por dia* do intervalo configurado. Trate-a como uma taxa nominal de verificação, não como um teto ou uma previsão: a variação de ±20% move a contagem real em qualquer direção, e um `304` também conta como requisição. O decaimento por ociosidade reduz a contagem apenas nas predefinições mais rápidas que seu piso de 60 segundos; ele não desacelera ainda mais a predefinição Equilibrado padrão.
+:::
+
+## Recuando quando seu servidor tem dificuldades {#server-pressure}
+
+Cada resposta que o motor recebe alimenta um monitor de pressão por loja. Ele reage a:
+
+- um `429` HTTP (imediatamente),
+- erros `5xx` repetidos ou falhas de transporte (três dentro de um minuto móvel),
+- lentidão sustentada (tempo mediano de resposta acima de 2 segundos),
+- um cabeçalho `Retry-After`, que se torna um piso rígido para a próxima verificação.
+
+Quando qualquer um desses é acionado, o motor **dobra seu intervalo de verificação de alterações** um passo de cada vez, e as faixas de manutenção deixam de executar suas rodadas por completo. Requisições provocadas pelo operador de caixa — buscas, consultas de código de barras, checkout — nunca são limitadas; a ideia é aliviar a carga adiável, não retardar a venda.
+
+A recuperação é deliberadamente assimétrica: o recuo é instantâneo, mas o intervalo só volta a diminuir depois de **dez respostas saudáveis consecutivas**, para que um servidor instável não fique oscilando entre cadências rápidas e lentas. O estado de pressão também sobrevive à escolha de uma predefinição mais rápida pelo lojista — a proteção roda abaixo de qualquer nível configurado, e não há como desativá-la.
+
+## Mantendo a responsividade no dispositivo {#device-responsiveness}
+
+A outra metade do desempenho é o próprio caixa — a sincronização em segundo plano nunca pode fazer a interface travar.
+
+- **As auditorias cedem espaço ao laço de eventos.** A auditoria de integridade divide seu trabalho em blocos e cede entre eles, mantendo seu maior bloco ininterrupto em torno de **30 ms** — abaixo do limiar de ~100 ms em que as pessoas percebem lentidão. Medida em 10.000 produtos locais, uma passagem completa de auditoria custa cerca de **68 ms** de computação distribuídos em mais de 17 cessões; em 50.000 produtos, menos de 300 ms.
+- **O primeiro resultado continua rápido sob carga.** Os contratos de tempo até o primeiro resultado são fixados na CI mesmo enquanto uma aplicação em massa ou uma auditoria completa roda em paralelo — milissegundos de um só dígito em tamanhos típicos de catálogo no ambiente de benchmark.
+- **Apenas a página visível atravessa até o aplicativo.** O trabalho de consulta (filtro, ordenação, paginação) é executado dentro da camada de armazenamento, de modo que uma atualização de tela move dez linhas, não dez mil.
+
+Esses números vêm do conjunto de contratos de desempenho fixados do motor, que roda isolado na CI com orçamentos definidos aproximadamente uma ordem de grandeza acima do regime permanente medido — projetados para detectar regressões de ordem de grandeza, não para falhar em um executor lento.
+
+## Verificado contra uma loja real {#live-verification}
+
+As regras de cortesia não são apenas testadas em unidade. Uma verificação de ponta a ponta ao vivo contra uma loja WordPress real confere as invariantes que mais importam em hospedagem real:
+
+- **Zero** requisições de manutenção (tráfego de integridade ou de resumo) antes de o catálogo de produtos ser renderizado na abertura da loja.
+- Após a espera pós-abertura, no máximo algumas poucas páginas agregadas baratas e não mais que dois detalhamentos.
+
+Esse cenário foi criado a partir de uma regressão real: uma versão anterior de desenvolvimento da auditoria emitia ~41 requisições (1,2 MB) a cada abertura da loja, por dispositivo. O projeto controlado por resumo que a substituiu reduz uma auditoria sem divergências às suas páginas agregadas e nada mais — essa classe de erro agora é protegida por tetos declarados na CI, e não pela vigilância na revisão.
+
+## O que não afirmamos {#honest-limits}
+
+Algumas coisas que esta página deliberadamente não diz, porque não temos números defensáveis para elas (ainda):
+
+- **Nenhum número de ponta a ponta do tipo "a sincronização inicial leva X minutos".** O tempo de download inicial depende esmagadoramente dos tempos de resposta do seu servidor e do tamanho do catálogo. O custo do lado do dispositivo para aplicar registros é pequeno (a aplicação em massa de 10.000 produtos mede menos de 10 ms de computação); a rede e o servidor dominam.
+- **Nenhuma afirmação do tipo "X% mais rápido que a v1.9".** As arquiteturas diferem o bastante para que um único número comparativo enganasse mais do que informasse. As diferenças estruturais estão descritas em [O que mudou na v1.10.0](/reference/sync-engine#what-changed-in-v1100).
+- Os números de benchmark acima vêm do ambiente de testes do motor (armazenamento em memória, executor isolado). Dispositivos reais e lojas reais variam; é exatamente por isso que **Saúde da loja → Desempenho** mostra as contagens de requisições medidas do seu caixa e o tempo típico de resposta das últimas 24 horas, em vez de projeções. Seu número de volume de dados é um limite inferior, porque respostas sem tamanho declarado contribuem com zero.
+
+Para ajustes do lado do servidor — requisitos de hospedagem, HPOS, cache e diagnóstico de respostas lentas —, veja [Desempenho do servidor](/support/performance/server).

@@ -7,6 +7,7 @@ description: "Volledige referentie voor het canonieke gegevenscontract dat besch
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
 De logicaloze HTML-sjablonen en thermische XML-sjablonen van WCPOS renderen vanuit dezelfde canonieke bonpayload. Gebruik Mustache-dotpaden zoals `{{order.number}}`, `{{store.name}}` en `{{totals.total_display}}`. Arrays worden gerenderd met secties:
 
@@ -17,6 +18,148 @@ De logicaloze HTML-sjablonen en thermische XML-sjablonen van WCPOS renderen vanu
 ```
 
 Het canonieke contract wordt geproduceerd door de WCPOS-bongegevensbouwer op de server en gespiegeld door de offline-bonrenderer in de app. Bonnen openen onmiddellijk vanuit lokale gegevens en upgraden vervolgens naar de serverreactie wanneer deze beschikbaar is, dus aangepaste sjablonen moeten de onderstaande velden gebruiken in plaats van PHP-bestelmethoden.
+
+Bongegevens v1.1 voegt per productregel vastgelegde velden toe voor de reguliere prijs, de verkoopprijs vóór kortingsbonnen en de besparing. Het levert ook besparingstotalen op bestelniveau, waaronder een waarde **Totaal bespaard** die besparingen ten opzichte van de reguliere prijs combineert met WooCommerce-kortingen, zonder de besteltotalen of rapporten te wijzigen.
+
+## De bon, in kaart gebracht {#receipt-map}
+
+Elk onderdeel van een afgedrukte bon komt uit één sectie van het gegevenscontract. Beweeg over beide zijden om de koppeling te zien; klik om naar de velden van die sectie te springen. Alle voorbeelden op deze pagina gebruiken dezelfde voorbeeldbestelling.
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "Btw: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "Bon #1042", right: "13 jul 2026" },
+        { left: "Kassamedewerker: Ada", right: "Klant: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Espresso Beans", right: "29.00" },
+        { left: "~34.00~ · Besparing −5.00", sub: true },
+        { left: "1 × Ceramic Mug", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "Subtotaal", right: "52.75" },
+        { left: "Kortingsbon SUMMER10", right: "−5.28" },
+        { left: "Cadeauverpakking", right: "2.50" },
+        { left: "Verzending", right: "10.00" },
+        { left: "TOTAAL", right: "59.97", bold: true },
+        { left: "Totaal bespaard", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "Kaart", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "Bedankt voor je aankoop!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      label: "Winkelkop",
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      label: "Bestelling en personen",
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      label: "Regelitems",
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      label: "Totalenblok",
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      label: "Betalingen",
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      label: "Voettekst",
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## Veelvoorkomende recepten {#common-recipes}
+
+De meeste sjabloonwijzigingen zijn een van deze drie. Elke kaart toont eerst het afgedrukte resultaat en daarna de exacte opmaak — kopieer die naar elk logicaloos HTML- of thermisch XML-sjabloon. De derde kaart toont een oude bestelling van vóór v1.9 in plaats van de voorbeeldbestelling hierboven.
+
+<Recipes>
+  <Recipe
+    title="De reguliere prijs doorstrepen"
+    why="De sectie-guard verbergt alles op bestellingen zonder vastgelegde prijsgeschiedenis."
+    preview={[
+      { left: "2 × Espresso Beans", right: "29.00" },
+      { left: "~34.00~ · Besparing −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="Een regel Totaal bespaard toevoegen"
+    why="Twee guards: de regel verdwijnt wanneer de prijsgeschiedenis onvolledig is of er niets is bespaard."
+    preview={[
+      { left: "TOTAAL", right: "59.97", bold: true },
+      { left: "Totaal bespaard", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+  <Recipe
+    title="Een bestelling van vóór v1.9 veilig opnieuw afdrukken"
+    why="Oude bestellingen dragen de besparing binnen de korting — dit voorkomt dat die twee keer wordt afgedrukt."
+    preview={[
+      { left: "1 × Espresso Beans", right: "14.50" },
+      { left: "~17.00~  Korting −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+</Recipes>
 
 ## Renderregels {#rendering-rules}
 
@@ -39,6 +182,12 @@ Verschillende velden hebben varianten inclusief en exclusief btw plus een weerga
 
 | Gemaksveld | Veld inclusief | Veld exclusief |
 |-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
 | `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
 | `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
 | `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
@@ -49,6 +198,8 @@ Verschillende velden hebben varianten inclusief en exclusief btw plus een weerga
 | `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
 | `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
 | `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
 | `totals.total` | `totals.total_incl` | `totals.total_excl` |
 
 ### Datumobjecten {#date-objects}
@@ -87,6 +238,32 @@ Beschikbare datumobjecten: `order.created`, `order.paid`, `order.completed`, `or
 | `fiscal` | object | Fiscale-snapshotvelden die worden gevuld door fiscale integraties |
 | `presentation_hints` | object | Opmaak- en renderer-hints |
 | `i18n` | object | Vertaalde labels voor meegeleverde en aangepaste sjablonen |
+
+## Hoe de prijzen samenhangen {#price-model}
+
+Eén productregel draagt meerdere prijzen, en de namen worden logisch zodra je ze op het bedrag zelf ziet. Dit is de espressoregel uit de voorbeeldbestelling — een product van $17,00 dat in de aanbieding is voor $14,50, met daarbovenop een kortingsbon van 10%:
+
+<PriceFlow
+  caption="Espresso Beans — één eenheid (de bestelling bevat er twee)"
+  scaleLabel="reguliere prijs 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 betaald" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  keys={[
+    { kind: 'paid', title: "Wat de klant betaalt", fields: 'unit_price → 13.05 · line_total → 26.10' },
+    { kind: 'coupon', title: "Kortingsbonkorting (SUMMER10)", fields: 'lines[].discounts → 2.90 op deze regel' },
+    { kind: 'savings', title: "Besparing ten opzichte van de reguliere prijs", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+  ]}
+  summary={[
+    { label: "Aanbiedingsbesparing over de hele bestelling", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Alle kortingsbonkortingen over de hele bestelling", value: '`totals.discount_total` = 5.28' },
+    { label: "Besparingen + kortingen, oude overlap verwijderd", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Aanbiedingsbesparingen en kortingsbonkortingen zijn verschillende dingen: aanbiedingsbesparingen vergelijken de verkoopprijs met de vastgelegde reguliere prijs, terwijl `discounts` de eigen kortingsbonberekening van WooCommerce is. De besteltotalen en rapporten van WooCommerce bevatten altijd alleen het kortingsbondeel — en daarom bestaat `total_saved` als het ene klantgerichte cijfer dat beide combineert.
 
 ## Veldreferentie {#field-reference}
 
@@ -194,26 +371,135 @@ Veelvoorkomende adressleutels zijn `first_name`, `last_name`, `company`, `addres
 
 ### lines {#lines}
 
-Loop met `{{#lines}}...{{/lines}}`.
+Loop met `{{#lines}}...{{/lines}}`. De voorbeeldwaarden zijn de espressoregel uit [de voorbeeldbestelling](#receipt-map).
 
-| Veld | Type | Beschrijving |
-|-------|------|-------------|
-| `key` | string | Stabiele regelsleutel/bestelitem-ID |
-| `sku` | string | Product-SKU |
-| `name` | string | Weergavenaam van product of regel |
-| `qty` | number | Verkochte hoeveelheid |
-| `qty_refunded` | number | Terugbetaalde hoeveelheid voor deze regel |
-| `unit_subtotal` / `_incl` / `_excl` | number | Eenheidsprijs vóór korting |
-| `unit_price` / `_incl` / `_excl` | number | Eenheidsprijs na korting |
-| `line_subtotal` / `_incl` / `_excl` | number | Regelsubtotaal vóór korting |
-| `discounts` / `_incl` / `_excl` | number | Kortingsbedrag als positieve waarde |
-| `line_total` / `_incl` / `_excl` | number | Definitief regeltotaal |
-| `total_refunded` | number | Totaal terugbetaald voor deze regel als positieve waarde |
-| `taxes` | array | Btw-regels per tarief voor deze regel |
-| `meta` | array | Metadata van bestelitem als `{key, value}`-paren |
-| `attributes` | array | Product-/variatieattributen als `{key, value}`-paren |
+<FieldIndex
+  note="Elk geldveld komt als paar: het getal (gebruik dat in `{{#…}}`-guards — nul en `null` verbergen de sectie, en een `null`-veld heeft helemaal geen `_display`-tegenhanger) en de bijbehorende `_display`-string (gebruik die om af te drukken). Velden met de markering incl/excl leveren ook `_incl`- en `_excl`-varianten, elk met een eigen `_display`."
+  placeholder="Velden filteren… probeer “savings”"
+  emptyText="Geen velden komen overeen — wis het filter om alles van `lines[]` te zien."
+  fields={[
+    { name: 'key', type: 'string', desc: "Stabiele regelsleutel / bestelitem-ID.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "Product-SKU.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Weergavenaam van product of regel.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Verkochte hoeveelheid.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Terugbetaalde hoeveelheid voor deze regel.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Vastgelegde reguliere eenheidsprijs. `null` op bestellingen zonder POS-prijsgeschiedenis — plaats dit in een sectie.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Verkoopprijs per eenheid vóór kortingsbonnen — de vastgelegde POS-prijs indien beschikbaar, anders afgeleid uit het opgeslagen regelsubtotaal.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Regulier min verkoop, vastgezet op nul. Nul is falsy, dus regels met een guard verbergen zichzelf.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Vastgelegde reguliere prijs vermenigvuldigd met de hoeveelheid.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Verkoopprijs vóór kortingsbonnen vermenigvuldigd met de hoeveelheid.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Totale besparing van regulier naar verkoopprijs voor deze regel.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "True op bestellingen van vóór v1.9.0 waarvan de besparing al in `discounts` zit — de vlag tegen dubbeltellen.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Eenheidswaarde vóór korting volgens WooCommerce. Gebruik dit niet als reguliere prijs.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Definitieve eenheidswaarde na WooCommerce-kortingen.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Regelsubtotaal vóór korting volgens WooCommerce.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "Native WooCommerce-regelkorting als positieve waarde — op huidige bestellingen alleen kortingsbonnen.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Definitief regeltotaal na kortingsbonnen — wat in de bedragkolom wordt afgedrukt.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Totaal terugbetaald voor deze regel als positieve waarde.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Btw-regels per tarief voor deze regel." },
+    { name: 'meta', type: 'array', desc: "Metadata van bestelitem als `{key, value}`-paren." },
+    { name: 'attributes', type: 'array', desc: "Product-/variatieattributen als `{key, value}`-paren." },
+  ]}
+/>
 
-Opgemaakte varianten zijn onder andere `unit_subtotal_display`, `unit_price_display`, `line_subtotal_display`, `discounts_display`, `line_total_display` en inclusief/exclusief `_display`-varianten.
+### Reguliere prijs en besparing weergeven {#displaying-regular-price-and-savings}
+
+Toon voor een lay-out met eenheidsprijzen de vastgelegde reguliere prijs, de verkoopprijs en de besparing zo:
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+Gebruik de velden met regeltotalen wanneer de hoeveelheid van belang is:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` is de prijs vóór kortingsbonnen. Gebruik `unit_price` of `line_total` voor het eindbedrag na WooCommerce-kortingen.
+
+:::note Bestellingen van vóór v1.9.0 opnieuw afdrukken
+Oudere WCPOS-bestellingen kunnen de verlaging van regulier naar verkoopprijs al in `discounts` bevatten. Als je aangepaste sjabloon zowel regelbesparingen als regelkortingen afdrukt, gebruik dan `savings_in_discounts` om te voorkomen dat dezelfde verlaging twee keer wordt getoond:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+Als het sjabloon geen `discounts`-regel op regelniveau afdrukt, blijf dan `line_savings` tonen, ook wanneer `savings_in_discounts` true is. De meegeleverde sjablonen verwerken dit onderscheid automatisch.
+:::
 
   </AccordionItem>
 
@@ -245,7 +531,6 @@ Loop met `{{#discounts}}...{{/discounts}}`.
 |-------|------|-------------|
 | `label` | string | Couponbeschrijving of code-fallback |
 | `code` | string | Couponcode |
-| `codes` | string | Legacy-/weergave-fallback voor samengevoegde codes |
 | `total` / `_incl` / `_excl` | number | Kortingsbedrag als positieve waarde |
 
 Opgemaakte varianten: `total_display`, `total_incl_display` en `total_excl_display`. Voeg je eigen minteken toe in het sjabloon als je kortingen als negatieve regels wilt tonen.
@@ -256,20 +541,86 @@ Opgemaakte varianten: `total_display`, `total_incl_display` en `total_excl_displ
 
 ### totals {#totals}
 
-| Veld | Type | Beschrijving |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | number | Bestelsubtotaal vóór kortingen |
-| `totals.discount_total` / `_incl` / `_excl` | number | Totale bestelkorting als positieve waarde |
-| `totals.tax_total` | number | Totaal btw-bedrag |
-| `totals.total` / `_incl` / `_excl` | number | Eindtotaal van de bestelling |
-| `totals.paid_total` | number | Betaald/toegepast bedrag |
-| `totals.change_total` | number | Wisselgeld dat aan de klant wordt teruggegeven |
-| `totals.refund_total` | number | Totaal terugbetaald als positieve waarde |
-| `totals.net_total` | number | `total - refund_total`, vastgezet op nul |
-| `totals.total_qty` | number | Som van de hoeveelheden van regelitems |
-| `totals.line_count` | number | Aantal productregels |
+De voorbeeldwaarden komen uit [de voorbeeldbestelling](#receipt-map), waarop later een gedeeltelijke terugbetaling van $7,25 is gedaan.
 
-Opgemaakte varianten zijn onder andere `subtotal_display`, `discount_total_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` en `net_total_display`, plus inclusief/exclusief varianten waar van toepassing.
+<FieldIndex
+  note="Geldvelden volgen dezelfde koppeling als regelitems: een kaal getal voor guards en een `_display`-string om af te drukken, met `_incl`-/`_excl`-varianten waar dat is aangegeven."
+  placeholder="Velden filteren… probeer “saved”"
+  emptyText="Geen velden komen overeen — wis het filter om alles van `totals` te zien."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Bestelsubtotaal vóór kortingen.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Totale bestelkorting als positieve waarde — op huidige bestellingen alleen kortingsbonnen.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Totaal vastgelegde besparing van regulier naar verkoopprijs over alle productregels, inclusief catalogusaanbiedingen en prijswijzigingen aan de kassa.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "WooCommerce-kortingen en besparingen op de reguliere prijs gecombineerd, met de oude overlap verwijderd. Het ene klantgerichte cijfer voor alles wat is bespaard.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Of de bon genoeg vastgelegde prijsgegevens heeft om de volledige besparingstotalen te berekenen.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Totaal btw-bedrag.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Eindtotaal van de bestelling.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Betaald/toegepast bedrag.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "Wisselgeld dat aan de klant wordt teruggegeven.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Totaal terugbetaald als positieve waarde.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Totaal min terugbetalingen, vastgezet op nul.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Som van de hoeveelheden van regelitems.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Aantal productregels.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+Gebruik `total_saved` wanneer je één klantgericht cijfer wilt voor alles wat is bespaard. Bereken het niet door in het sjabloon `discount_total` en `sale_savings_total` bij elkaar op te tellen: bestellingen van vóór v1.9.0 kunnen hun POS-prijsbesparing al in het kortingstotaal van WooCommerce hebben zitten. Het canonieke veld `total_saved` detecteert die overlap en verwijdert die.
+
+Besparingstotalen zijn `null` en `total_saved_complete` is false wanneer een productregel niet genoeg vastgelegde prijsgegevens heeft voor een betrouwbaar totaal. Bescherm de regel met `total_saved_complete` en gebruik daarna `total_saved` om een nulwaarde te verbergen:
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+De meegeleverde sjablonen met prijzen gebruiken dezelfde guard-structuur met de varianten inclusief btw (`total_saved_incl` en `total_saved_incl_display`) en tonen **Totaal bespaard** alleen wanneer de volledige waarde groter is dan nul.
 
   </AccordionItem>
 
@@ -414,7 +765,7 @@ Gebruik waar mogelijk `i18n`-labels in plaats van tekst hard te coderen:
 {{i18n.total}}: {{totals.total_display}}
 ```
 
-Veelvoorkomende sleutels zijn `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `discount`, `subtotal`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, en de fiscale-labelsleutels zoals `store_tax_id_label_eu_vat` en `customer_tax_id_label_other`. Extra sleutels kunnen door extensies worden toegevoegd.
+Veelvoorkomende sleutels zijn `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, en de fiscale-labelsleutels zoals `store_tax_id_label_eu_vat` en `customer_tax_id_label_other`. Extra sleutels kunnen door extensies worden toegevoegd.
 
   </AccordionItem>
 </Accordion>

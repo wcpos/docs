@@ -1,0 +1,121 @@
+---
+title: Fonctionnement du moteur de synchronisation
+sidebar_label: Moteur de synchronisation
+sidebar_position: 3
+description: "Référence développeur du moteur de synchronisation WCPOS introduit en v1.10.0 : périmètres, voies de synchronisation, détection des changements, demande déclarée, rapport de couverture et file d’écriture hors ligne."
+---
+
+:::info Nouveauté de la v1.10.0
+Cette page décrit le moteur de synchronisation introduit dans **WCPOS v1.10.0**. Les versions antérieures utilisent un autre modèle de réplication, par écran — voir [Ce qui a changé en v1.10.0](#what-changed-in-v1100) à la fin de cette page.
+:::
+
+WCPOS fonctionne en local d’abord : chaque écran lit et écrit dans une base de données présente sur l’appareil, et un **moteur de synchronisation** maintient la convergence entre cette base et votre boutique WooCommerce en arrière-plan. Cette page explique comment le moteur décide de ce qu’il télécharge, à quel moment il le fait, et comment vos ventes remontent jusqu’au serveur — au niveau de détail utile aux développeurs, aux intégrateurs et aux commerçants qui veulent comprendre ce que le POS fait subir à leur hébergement.
+
+## Un moteur par boutique et par caissier {#one-engine-per-scope}
+
+Le POS exécute **un moteur de synchronisation par combinaison site + boutique + caissier** sur chaque appareil. Ce moteur possède sa propre base de données locale : changer de boutique ou de caissier change donc tout le plan de données, plutôt que de filtrer un même ensemble d’enregistrements partagé. L’isolation par caissier est délibérée : deux caissiers utilisant le même appareil ne partagent jamais leurs données locales.
+
+Lors des mises à niveau, les bases de données locales ne sont jamais migrées sur place — l’application démarre une nouvelle base et retélécharge depuis le serveur, qui détient toujours la copie de référence (voir [Migration depuis la v1.9](#upgrading-from-v19)).
+
+Sur les installations multiboutiques Pro, chaque requête de synchronisation identifie sa boutique : un prix modifié à la caisse met donc à jour le prix de cette boutique, et non celui de la boutique en ligne.
+
+## Ce qui s’exécute en arrière-plan {#sync-lanes}
+
+Tout ce que le moteur fait selon une cadence programmée constitue une **voie** — une unité de travail d’arrière-plan nommée et bornée. Les voies se répartissent en trois groupes :
+
+| Groupe | Voies | Cadence par défaut |
+| --- | --- | --- |
+| **Réception** | Contrôle des changements (signal de changement) | 10 s – 5 min, selon votre [préréglage de synchronisation](/support/store-health#sync-presets) |
+| | Commandes récentes, amorçage du catalogue produits, amorçage des données de référence | ~5 min |
+| | Filet de clients (uniquement en période d’inactivité) | ~5 min |
+| **Envoi** | Vidage des écritures — envoie les modifications locales en attente | ~10 s |
+| **Maintenance** | Audits d’intégrité et de suppression, actualisation des totaux serveur | de quelques minutes à ~17 min |
+
+Deux propriétés valent pour chaque voie :
+
+- **Chaque voie déclare un plafond de requêtes par exécution.** Aucune voie ne peut émettre un nombre illimité de requêtes en une seule exécution ; les travaux plus lourds s’exécutent par lots bornés avec des curseurs reprenables. Il s’agit d’un invariant de conception fondamental, détaillé dans [Performances de synchronisation](/reference/sync-performance).
+- **La maintenance cède la priorité au caissier.** Les audits et les préchargements d’arrière-plan s’exécutent après le travail interactif qui rend une caisse prête à vendre, jamais avant, et ce sont les premières tâches suspendues dès que votre serveur montre des signes de tension.
+
+Les cadences ci-dessus sont des valeurs par défaut. L’intervalle de contrôle et le nombre d’enregistrements par requête sont réglables par le commerçant, appareil par appareil, depuis **État de la boutique → Performance** dans le POS — voir [État de la boutique](/support/store-health).
+
+## Comment le POS apprend qu’il y a eu des changements {#change-signal}
+
+Le moteur ne retélécharge pas les données pour savoir si elles ont changé. Le serveur tient un journal des changements, et le POS interroge un **contrôle des changements** léger qui répond à une seule question : quelque chose a-t-il bougé depuis ma dernière position ?
+
+- **Un seul contrôle couvre huit collections** — produits, variations, taux de taxe, clients, codes promo, catégories, marques et étiquettes. Les commandes sont délibérément absentes du contrôle des changements ; leur fraîcheur provient de leur propre voie « commandes récentes », ce qui explique que les mises à jour de produits et de commandes puissent arriver à des rythmes différents.
+- **Une caisse inactive ne coûte presque rien.** Le moteur envoie des requêtes conditionnelles : lorsque rien n’a changé, le serveur répond par un unique `304 Not Modified` sans corps. Une boutique calme se stabilise à une minuscule réponse par contrôle.
+- **Les contrôles sont décalés de ±20 %** afin que plusieurs caisses d’un même site se désynchronisent au lieu de solliciter le serveur par rafales simultanées.
+- **Décroissance en cas d’inactivité :** après 10 minutes sans interaction, les contrôles s’espacent (jusqu’à un plancher de 60 secondes). La moindre activité réelle — un toucher, une frappe, un scan de code-barres accepté — rétablit immédiatement la cadence complète et déclenche un contrôle de rattrapage immédiat. La décroissance ne fait jamais qu’allonger l’intervalle ; elle n’interroge jamais plus vite que le réglage configuré.
+- **Une caisse restée fermée plusieurs jours repart d’une nouvelle référence plutôt que de rejouer l’historique.** Si le journal des changements a trop avancé au-delà de la dernière position de la caisse, rejouer chaque ligne coûterait des centaines de requêtes. Le moteur place plutôt son curseur en tête et revérifie l’état serveur actuel de ce que l’appareil détient déjà — le coût est donc proportionnel à la taille de la copie locale, et non à la durée d’absence de la caisse.
+
+## Comment les écrans obtiennent leurs données {#declared-demand}
+
+En v1.10.0, les écrans n’exécutent pas leur propre synchronisation. **Un écran déclare ce qu’il affiche — terme de recherche, filtres, tri, page — et le moteur décide si cela nécessite ou non une requête.** Chaque déclaration se résout de trois façons possibles :
+
+- **Récupérée** — le moteur a effectué un travail réseau pour la satisfaire.
+- **Servie localement** — l’appareil disposait déjà de la réponse, ou une récupération récente identique la couvre.
+- **Remplacée** — l’écran est passé à autre chose (vous avez fait défiler, changé un filtre) et une déclaration plus récente a pris le relais. C’est un fonctionnement normal, pas une erreur.
+
+Un filtre auquel seule la base locale peut répondre ne remonte jamais jusqu’au serveur. Et une déclaration réussie ne signifie pas qu’une collection est intégralement téléchargée — l’exhaustivité est suivie séparément (section suivante).
+
+Tout n’est pas téléchargé de façon anticipée, et ce qui se trouve sur l’appareil au démarrage varie selon la collection :
+
+1. **Amorcées** — les produits arrivent via un amorçage borné du catalogue ; les taux de taxe sont récupérés au démarrage (un POS ne peut pas calculer un panier sans eux).
+2. **À la demande, plus un filet en période d’inactivité** — les clients ne font l’objet d’aucun amorçage anticipé. Le filet de clients télécharge un petit lot par intervalle d’inactivité, en s’effaçant totalement dès que le caissier est actif, et les clients nouveaux ou modifiés arrivent par le contrôle des changements.
+3. **Récupérées à la première ouverture** — les catégories, étiquettes, marques et codes promo sont téléchargés lorsqu’un caissier les ouvre pour la première fois. Une collection que personne n’ouvre ne génère jamais aucune requête.
+
+Les sélecteurs de variations actualisent en outre le prix et le stock à chaque ouverture : une variation déjà présente s’affiche donc instantanément, sans jamais montrer un stock vieux de plusieurs jours.
+
+## « Tout est-il téléchargé ? » — une couverture honnête {#coverage}
+
+Un affichage du type *« 1 240 produits sur 5 000 »* a besoin d’un total **côté serveur** comme dénominateur. Le moteur en tient un par collection (actualisé environ toutes les 15 minutes, généralement sans coût — les réponses de synchronisation réelles transportent déjà le total, une requête dédiée est donc rarement nécessaire) et respecte un contrat d’honnêteté strict :
+
+- Un total serveur périmé ou manquant est affiché comme *vérification…* — jamais remplacé en silence par un décompte local. Un dénominateur local afficherait toujours 100 % et masquerait précisément l’écart que ce chiffre existe pour révéler.
+- Lorsque le moteur ne peut pas garantir l’exhaustivité, le verdict est *inconnu* et l’interface signale le chiffre comme un décompte local.
+- La barre de couverture des commandes se mesure par rapport à l’**intégralité** de l’historique des commandes du serveur, alors que la caisse ne conserve délibérément que les commandes ouvertes et récentes — une caisse en bonne santé y apparaît donc comme partielle, par conception.
+
+Ces chiffres apparaissent dans **État de la boutique → Base de données**, aux côtés d’un jalon *Prêt à vendre* qui bascule dès que le premier produit est présent sur l’appareil — être hors ligne ne l’empêche pas, puisque vendre hors ligne est précisément le but. Voir [État de la boutique](/support/store-health).
+
+## Comment les modifications remontent vers votre boutique {#write-path}
+
+Chaque écriture locale — une vente, une modification de produit, une mise à jour de client — atterrit d’abord dans une **file sortante durable** sur l’appareil, et une voie de vidage pousse cette file vers WooCommerce toutes les quelques secondes. C’est ce qui rend la vente hors ligne sûre : une vente encaissée sans connexion reste dans la file et se vide au retour de la connexion.
+
+Des détails qui comptent :
+
+- **Les écritures du panier sont sérialisées par commande.** Les rafales rapides du scanner s’appliquent une à une, et un ajout répété fusionne avec la ligne qu’il duplique au lieu de mettre en file une seconde ligne.
+- **Les accusés de réception de commande adoptent la copie du serveur.** WooCommerce attribue des identifiants aux lignes de commande lors de la création ; le moteur adopte la commande acquittée afin que les mises à jour ultérieures correspondent à ces lignes au lieu d’en ajouter des doublons. Cette adoption est prudente — elle n’écrase jamais une modification locale que le serveur n’a pas encore vue, et ne s’applique qu’aux commandes.
+- **Une écriture définitivement refusée par le serveur n’est jamais réessayée en silence.** Elle est mise de côté avec le motif fourni par le serveur et présentée dans **État de la boutique → Base de données** sous l’intitulé *« modifications qui n’ont jamais atteint votre serveur »*, avec deux actions explicites : **Renvoyer** (reconstruit la requête à partir de l’enregistrement dans son état actuel, afin que les corrections ultérieures s’appliquent) et **Abandonner**. Il n’y a aucune boucle de nouvelle tentative automatique — la récupération est toujours une action visible et délibérée. Voir [État de la boutique](/support/store-health#database) pour la présentation destinée aux commerçants.
+
+### Plusieurs onglets de navigateur {#multi-tab}
+
+L’utilisation du POS web dans plusieurs onglets de la même boutique est prise en charge. Chaque onglet peut encaisser une vente — les écritures s’ajoutent à la file partagée — mais **un seul onglet élu se charge de l’envoi** pour chaque périmètre boutique + caissier. Si cet onglet est fermé, le navigateur promeut automatiquement le suivant. Deux onglets connectés avec des caissiers différents constituent des périmètres distincts et gèrent chacun leur propre file.
+
+## Stockage local {#local-storage}
+
+Les applications web et bureau stockent les données via un **worker OPFS (Origin Private File System)** ; les applications iOS et Android utilisent le même format sur disque via un moteur de système de fichiers. Les quatre plateformes partagent un format de stockage unique et les mêmes outils de récupération après corruption. (Les versions antérieures utilisaient IndexedDB sur le web et SQLite en natif.)
+
+Les requêtes s’exécutent à l’intérieur de la couche base de données — sélecteur, tri et pagination — de sorte que seule la page de lignes visible passe dans l’application. Sur un jeu de test synthétique de 10 000 commandes, cette délégation a fait passer le coût de mise à jour par écriture sous un abonnement actif d’environ 27 ms à environ 0,06 ms.
+
+## Migration depuis la v1.9 {#upgrading-from-v19}
+
+La v1.10.0 ne migre pas les bases de données locales — elle effectue une **resynchronisation à froid** :
+
+1. Au premier lancement, l’application ouvre une nouvelle base de données locale et retélécharge depuis votre boutique. Attendez-vous à un retéléchargement complet unique sur chaque appareil.
+2. Rien n’est perdu : votre serveur WooCommerce est la copie de référence de toutes les données synchronisées. Les modifications en attente d’envoi sont vidées ou signalées **avant** que les anciennes données ne soient nettoyées — la mise à niveau ne peut pas détruire une vente non envoyée.
+3. **L’application et l’extension évoluent de pair.** Les clients v1.10.0 parlent l’API de synchronisation v2 de l’extension. Si une seule des deux moitiés est mise à niveau, les requêtes échouent avec des erreurs `rest_no_route` — cette signature signifie « mettez à jour l’autre moitié », et non que l’installation est cassée.
+
+## Ce qui a changé en v1.10.0 {#what-changed-in-v1100}
+
+| | v1.9.x | v1.10.0 |
+| --- | --- | --- |
+| Unité de synchronisation | Un flux de réplication par requête d’écran monté | Un moteur par site + boutique + caissier |
+| Ce qui déclenche une récupération | Le montage d’un écran | Un écran qui déclare ce dont il a besoin |
+| Détection des changements | Interrogations périodiques + audit complet horaire | Curseur sur le journal des changements avec réponses conditionnelles `304` |
+| Totaux serveur | Non suivis | Totaux par collection avec états *vérification…* honnêtes |
+| Écritures en échec | Réessayées de façon opaque | File durable, panneau de récupération visible, aucune nouvelle tentative silencieuse |
+| Web multi-onglets | Non coordonné | Un seul émetteur élu par périmètre |
+| Recherche locale | Correspondance par préfixe de mot | Correspondance par sous-chaîne (3 caractères minimum) |
+| Stockage | IndexedDB (web), SQLite (natif) | Stockage au format OPFS sur toutes les plateformes |
+| Réglage de la synchronisation | Fixe | Préréglages et curseurs par appareil dans État de la boutique |
+
+Pour la philosophie de performance qui sous-tend le moteur — plafonds de requêtes, ralentissement en cas de tension serveur et chiffres mesurés — voir [Performances de synchronisation](/reference/sync-performance).
