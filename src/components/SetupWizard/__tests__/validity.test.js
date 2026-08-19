@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validity } from '../validity';
+import { validity } from '../printerValidity';
 
 describe('validity precedence', () => {
   it('iOS + USB is invalid regardless of vendor', () => {

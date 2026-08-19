@@ -12,6 +12,7 @@ describe('summarize', () => {
         selftestCert: 'none', selftest9100: 'enabled', selftestDhcp: 'on',
       },
     });
+    expect(text).toContain('WCPOS printer setup — support summary');
     expect(text).toContain('Platform: web');
     expect(text).toContain('Version: 1.9.6');
     expect(text).toContain('Connection: network');
@@ -38,5 +39,39 @@ describe('summarize', () => {
     expect(text).toContain('Stuck at: support');
     // local-only fields stay omitted for a cloud user
     expect(text).not.toContain('Connection:');
+  });
+
+  it('renders scanner setup diagnostics with scanner labels', () => {
+    const text = summarize({
+      currentId: 'support',
+      answers: {
+        start: 'setup',
+        'platform-setup': 'web',
+        'browser-setup': 'chromium',
+        conn: 'bt',
+        brand: 'netum',
+      },
+    });
+    expect(text).toContain('WCPOS scanner setup — support summary');
+    expect(text).toContain('Goal: setup');
+    expect(text).toContain('Platform: web');
+    expect(text).toContain('Browser: chromium');
+    expect(text).toContain('Connection: bt');
+    expect(text).toContain('Brand: netum');
+  });
+
+  it('captures scanner troubleshooting selections', () => {
+    const text = summarize({
+      currentId: 'support',
+      answers: {
+        start: 'trouble',
+        'platform-trouble': 'ios',
+        'browser-trouble': 'other',
+        'symptom-i': 'osk',
+      },
+    });
+    expect(text).toContain('Platform: ios');
+    expect(text).toContain('Browser: other');
+    expect(text).toContain('Symptom: osk');
   });
 });
