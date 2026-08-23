@@ -6,7 +6,7 @@ import { KIND } from '../kinds';
 
 const scannerPage = path.resolve(
   process.cwd(),
-  'versioned_docs/version-1.x/hardware/scanner-setup-wizard.mdx',
+  'versioned_docs/version-1.x/hardware/scanners/setup-wizard.mdx',
 );
 
 const kindByTag = {
