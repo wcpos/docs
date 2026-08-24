@@ -1,0 +1,125 @@
+---
+title: Sua loja e o POS divergem nos totais
+sidebar_label: Divergência de totais
+sidebar_position: 5
+description: "O que significa quando o WCPOS informa que sua loja alterou os totais de um pedido e como encontrar a causa."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
+
+O POS exibe um aviso em uma venda dizendo **"Sua loja alterou os totais deste pedido"**, listando os valores
+que diferem entre os dois.
+
+## O que o aviso significa {#what-the-notice-means}
+
+O WooCommerce calcula os totais de cada pedido por conta própria. O POS reproduz esse cálculo localmente para que um
+caixa possa totalizar uma venda e receber o pagamento instantaneamente — e para que continue funcionando quando a internet cai.
+
+Os dois deveriam concordar exatamente. Quando o POS salva uma venda e sua loja responde com
+valores diferentes, essa reprodução estava errada, e o aviso informa isso ao operador de caixa **antes que a mercadoria
+saia do balcão**.
+
+:::info Os valores da sua loja são os que valem
+A venda não é bloqueada, e nada é perdido. Os números da sua loja são o que foi registrado e o que
+aparece nos relatórios do WooCommerce e no pedido do cliente. O aviso existe para que o operador de caixa confira
+o total antes de entregar qualquer coisa.
+:::
+
+:::warning Não faça vendas offline até que isso seja resolvido
+Os valores que o POS calcula localmente são os mesmos valores que ele usa quando não tem conexão — e
+offline não há servidor para corrigi-los. Portanto, enquanto uma venda estiver divergindo por **qualquer** motivo, as vendas
+offline nesta loja podem estar erradas e não podem ser detectadas até que você reconecte.
+
+Isso se aplica a todas as causas abaixo, não apenas ao caso do plugin.
+:::
+
+## Primeiro, ressincronize o POS {#first-resync-the-pos}
+
+O POS mantém sua própria cópia da configuração fiscal da sua loja, e ela não é atualizada automaticamente
+quando você altera o WooCommerce. Uma cópia desatualizada é o motivo mais comum para os dois divergirem, e tem uma
+solução com um único clique.
+
+Abra **Configurações de Imposto** no POS e use **Restaurar Configurações do Servidor** para puxar a configuração
+atual da sua loja e, em seguida, faça uma nova venda de teste.
+
+Se isso resolver, pronto — lembre-se de fazer isso sempre que alterar qualquer coisa em
+**WooCommerce → Configurações → Imposto**. Consulte [Configurações de Imposto](/settings/store/tax) para saber o que cada campo significa
+e o único caso em que restaurar não é o que você quer.
+
+Se o aviso ainda aparecer com o POS recém-sincronizado, as causas abaixo são o que investigar.
+
+## O que causa isso {#what-causes-it}
+
+Há três possibilidades, e o aviso parece igual para todas elas.
+
+### Uma configuração de imposto ou arredondamento que o POS lê de forma diferente {#a-tax-or-rounding-setting}
+
+De longe a causa mais comum. Verifique, em **WooCommerce → Configurações → Imposto**:
+
+- **Preços inseridos com imposto** — se os preços do seu catálogo já incluem imposto
+- **Arredondamento** — "Arredondar imposto no nível do subtotal" muda os resultados em vendas com várias linhas
+- **Alíquotas de imposto** — uma alíquota cuja configuração de *Prioridade* ou *Composto* difere do que você espera
+- **Número de casas decimais** — em **Geral**, uma loja com 3+ casas decimais arredonda de forma diferente de uma com 2
+
+Uma loja que alterou recentemente qualquer uma dessas opções, ou que tem alíquotas definidas por código postal ou por cidade, é
+a primeira coisa a investigar.
+
+### Um plugin que reescreve os totais do pedido {#a-plugin-that-rewrites-totals}
+
+Plugins de sobretaxa, taxa, conversão de moeda, fidelidade e "preços por função" comumente recalculam
+os totais no servidor, depois que o POS já fez sua própria aritmética. O POS não consegue enxergar essas regras, então
+ele divergirá em todas as vendas que elas tocarem.
+
+Se isso for intencional e você aceitar, nada está quebrado — as vendas são registradas corretamente por
+sua loja. Mas o aviso aparecerá em todas as vendas afetadas, e esta é a única causa que não
+desaparece: essas regras vivem no servidor e o POS não consegue reproduzi-las, então uma loja que
+calcula os totais dessa forma **não consegue vender offline corretamente de forma alguma**, e não apenas até que algo seja
+corrigido.
+
+Consulte [Conflitos de plugins](/support/troubleshooting/plugin-conflicts) para saber como identificar qual plugin
+é o responsável.
+
+### Um bug no POS {#a-bug-in-the-pos}
+
+Se sua loja é uma instalação padrão do WooCommerce sem plugins que alteram totais, e os valores
+ainda divergem, isso é um bug nosso e queremos saber a respeito.
+
+## Quando acontece em várias vendas {#when-it-happens-on-several-sales}
+
+Uma única venda divergente vale a pena verificar. O POS eleva o aviso quando **várias vendas
+diferentes** já divergiram, porque nesse ponto deixa de ser uma propriedade de um pedido — é uma
+propriedade da instalação, e continuará acontecendo até que a causa seja encontrada.
+
+## O que nos enviar {#what-to-send-us}
+
+O aviso nomeia cada valor que difere e mostra ambas as cifras. Isso, mais o que segue, é
+geralmente suficiente para identificar a causa sem um compartilhamento de tela:
+
+1. Uma captura de tela do aviso, mostrando os valores.
+2. Confirmação de que você executou **Restaurar Configurações do Servidor** no POS e o aviso persistiu.
+3. Suas configurações de imposto: **WooCommerce → Configurações → Imposto** (todos os campos) e **Geral → Número de
+   casas decimais**.
+4. Se "Arredondar imposto no nível do subtotal" está ativado.
+5. **A própria tabela de alíquotas de imposto**, não apenas a página de configurações — as linhas sob cada classe de
+   alíquota, incluindo *País/Estado/Código postal/Cidade*, *% da alíquota*, *Prioridade*, *Composto* e *Envio*. A maior parte
+   das causas acima está nessas linhas, e não nas configurações acima delas, e sem elas
+   teremos que voltar e perguntar.
+6. Uma lista de plugins ativos que tocam em preços, impostos, taxas ou moeda.
+7. O número do pedido de uma venda afetada.
+
+<SupportContact />
+
+<LinkCards>
+  <LinkCard
+    title="Conflitos de plugins"
+    description="Identifique sistematicamente qual plugin está interferindo."
+    to="/support/troubleshooting/plugin-conflicts"
+  />
+  <LinkCard
+    title="Logs"
+    description="Encontre e exporte os logs do POS para enviar com um relatório."
+    to="/support/logs"
+  />
+</LinkCards>

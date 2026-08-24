@@ -26,8 +26,8 @@ Você pode pensar nisso como dois mundos separados:
 
 ## Sincronização de Dados {#data-synchronization}
 
-:::info Alterado na versão 1.10.0
-A versão 1.10.0 substitui a antiga camada de replicação por um **motor de sincronização** dedicado. O resumo abaixo é a versão curta — a explicação completa está em [Como funciona o motor de sincronização](/reference/sync-engine).
+:::info Alterado na v1.10.0
+A v1.10.0 substitui a antiga camada de replicação por um **motor de sincronização** dedicado. O resumo abaixo é a versão curta — a explicação completa está em [Como funciona o motor de sincronização](/reference/sync-engine).
 :::
 
 O cliente é local-first: cada tela lê e grava no banco de dados local do dispositivo, e um motor de sincronização em segundo plano mantém esse banco de dados e o WooCommerce convergentes. O motor **não** espelha cegamente sua loja inteira — ele trabalha a partir do que suas telas realmente precisam:
@@ -67,4 +67,21 @@ O processo de checkout usa um iframe/webview que carrega a página de Pagamento 
 
 ## Extensões da API {#api-extensions}
 
-O plugin PHP estende a API REST do WooCommerce com endpoints adicionais para funcionalidades específicas do POS, registrados sob os namespaces dedicados `wcpos/v1` e `wcpos/v2` — o `wcpos/v2` carrega a superfície de sincronização da versão 1.10.0, e é por isso que as versões do aplicativo e do plugin são lançadas em conjunto. Veja [API REST do WooCommerce](/reference/wc-rest-api) para uma introdução.
+O plugin PHP estende a API REST do WooCommerce com endpoints adicionais para funcionalidades específicas do POS, registrados sob os namespaces dedicados `wcpos/v1` e `wcpos/v2` — o `wcpos/v2` carrega a superfície de sincronização da v1.10.0, e é por isso que as versões do aplicativo e do plugin são lançadas em conjunto. Veja [API REST do WooCommerce](/reference/wc-rest-api) para uma introdução.
+
+### O namespace `wcpos/v2` {#wcpos-v2-namespace}
+
+A v1.10 introduz o namespace REST `wcpos/v2`. A sincronização vive aqui, e os serviços POS compartilhados que antes eram servidos por `wcpos/v1` agora são servidos por `wcpos/v2` (as rotas de serviço `wcpos/v1` são pass-throughs para suas implementações v2). As rotas `wcpos/v1` ainda são registradas para compatibilidade retroativa, mas estão **congeladas** — o cliente atual não as chama mais.
+
+Pontos que importam se você integra com esses endpoints:
+
+- **As rotas v2 sempre são registradas.** A antiga opção `woocommerce_pos_sync_api_enabled` foi removida; não existe mais uma flag que liga ou desliga a API.
+- **Endpoints públicos.** `wcpos/v2/site`, `wcpos/v2/ping` e `wcpos/v2/echo` são públicos (usados para sondagem de capacidade e conectividade, incluindo os [fallbacks de transporte](/error-codes) para hosts restritivos).
+- **Pedidos têm o UUID como chave primária.** A identidade do pedido na comunicação é o UUID; o campo legado `wooOrderId` foi aposentado do envelope de recuperação de pedidos. Os metadados do pedido são tipados na comunicação por meio de um único normalizador.
+- **O armazenamento de preços por item de linha está documentado** para compatibilidade de sincronização com terceiros — veja [Como as substituições de preço do POS são armazenadas](/reference/pos-discounts#how-pos-price-overrides-are-stored).
+- **A ordenação padrão de produtos** no POS agora é **nome ascendente** (anteriormente `menu_order, id`).
+- **Métodos legados removidos.** Vários métodos legados do controlador `API\Settings` (por exemplo `get_general_settings()`, `update_access_settings()`, `get_general_endpoint_args()`, `remove_license_transient()`) foram removidos; o alias da classe permanece, mas esses métodos não.
+
+:::note O Pro espelha a divisão
+O WCPOS Pro segue a mesma divisão V1/V2 — seus serviços compartilhados são promovidos para `wcpos/v2`, enquanto seus dados de pedido permanecem congelados na v1. A precificação de produtos por loja roda na faixa v2, e o escopo de loja do caixa é carregado nas gravações de pedidos, para que pedidos de várias lojas sejam precificados e tributados pela loja correta. Veja [Pro](/getting-started/free-vs-pro).
+:::
