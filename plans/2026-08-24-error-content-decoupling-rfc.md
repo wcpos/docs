@@ -89,7 +89,23 @@ AFTER   registry(thin) ──gen──▶ error-catalogue.json ──bot PR─�
 - Sync-bot auth must actually work, or the manifest silently stalls (known bot-app 404 history).
 - One-time migration cost (P0–P3).
 
-## 8. Open items
+## 8. Authoring rubric & logic-review gate (binding for P1)
+
+Hand-authoring restores editorial freedom — and the freedom to write instructions that don't hold up when the reader is actually in the failure state. Author self-review is weak (you read what you intended). So every migrated page passes a **logic-review gate** before commit: an independent adversarial reviewer (a subagent with fresh context, or a person) checks the page against this taxonomy, assuming the reader is in the exact state the error describes.
+
+**Failure taxonomy** (name the class → it becomes checkable):
+1. **False premise / unreachable precondition** — an instruction requiring something the error itself prevents (e.g. "open Store health → Logs" when the error blocks getting into the app).
+2. **Wrong audience** — a cashier-facing instruction for an admin/host-only fix (or vice-versa) without saying whose step it is. Split steps by audience.
+3. **Stale hardcode** — a version number, count, or date in prose that goes out of date. Use "the latest version"; delegate version facts to `<ErrorMeta>` / the manifest.
+4. **Circular / contradictory guidance** — a step that contradicts another step or the stated cause.
+5. **Unverified specific** — a concrete UI path / screen / label asserted without confirming it exists.
+6. **Redundant boilerplate** — generic filler re-imported from the old template that doesn't apply to *this* error.
+
+**Mechanization:** classes 1/2/4/5/6 are semantic → the adversarial subagent gate. Class 3 is lintable → add a CI check flagging `\d+\.\d+\.\d+` in error-page prose bodies (outside frontmatter and `<ErrorMeta>`). Candidate: package this as a reusable `/doc-logic-review` command so it applies to all docs, not just error codes.
+
+*Provenance: the gate caught a real wrong-audience defect (class 2) on AUTH331's own Troubleshoot list during P0 review — the pattern page proved the pattern.*
+
+## 9. Open items
 
 - Confirm nothing besides the guidance text reads `safeAction` before retiring it.
 - `actionHint` for the plugin-update family (AUTH331, LICENSE201) + real content for SYNC311 / CLIENT101 — need product steps.
