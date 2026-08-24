@@ -8,9 +8,10 @@
  * stale pages). Help prose lives in the .mdx; only the facts manifest crosses
  * the boundary (src/data/error-catalogue.json, bot-synced from the monorepo).
  *
- * The reverse check is scoped to the registry's own DOMAINS. Older namespaced
- * families (API, DB, PY, SY) are a separate, pre-registry scheme and are not
- * governed by this manifest, so they are ignored here rather than flagged.
+ * The reverse check excludes only the older namespaced families (API, DB, PY,
+ * SY), which belong to a separate, pre-registry scheme. All other domains stay
+ * governed even if their final manifest entry is removed, so retired-domain
+ * pages cannot silently become stale.
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,6 +22,7 @@ const DEFAULT_PAGES_DIR = path.join(
   REPO_ROOT,
   'versioned_docs/version-1.x/error-codes'
 );
+const LEGACY_DOMAINS = new Set(['API', 'DB', 'PY', 'SY']);
 
 /** Leading uppercase-letter run of a code, e.g. AUTH331 -> "AUTH", SY01001 -> "SY". */
 function domainPrefix(code) {
@@ -44,9 +46,10 @@ function loadPageCodes(pagesDir = DEFAULT_PAGES_DIR) {
 }
 
 /**
- * @returns {{ missing: string[], stale: string[], checked: number }}
+ * @returns {{ missing: string[], stale: string[], metaMismatches: string[], checked: number }}
  *   missing — manifest codes with no page (dead "Learn more" links)
- *   stale   — pages in a registry domain that no manifest code backs
+ *   stale   — non-legacy pages that no manifest code backs
+ *   metaMismatches — ErrorMeta props that do not match their page filename
  */
 function checkCoverage({
   manifestPath = DEFAULT_MANIFEST,
@@ -54,27 +57,45 @@ function checkCoverage({
 } = {}) {
   const codes = loadManifestCodes(manifestPath);
   const manifestCodes = new Set(Object.keys(codes));
-  const registryDomains = new Set(
-    Object.values(codes).map((c) => c.domain)
-  );
   const pageCodes = loadPageCodes(pagesDir);
 
   const missing = [...manifestCodes].filter((c) => !pageCodes.has(c)).sort();
   const stale = [...pageCodes]
     .filter(
-      (c) => registryDomains.has(domainPrefix(c)) && !manifestCodes.has(c)
+      (c) => !LEGACY_DOMAINS.has(domainPrefix(c)) && !manifestCodes.has(c)
     )
     .sort();
+  const metaMismatches = [];
+  for (const pageCode of pageCodes) {
+    const source = fs.readFileSync(
+      path.join(pagesDir, `${pageCode}.mdx`),
+      'utf8'
+    );
+    const metaPattern = /<ErrorMeta\b[^>]*\bcode\s*=\s*["']([^"']+)["'][^>]*>/g;
+    for (const match of source.matchAll(metaPattern)) {
+      const metaCode = match[1];
+      if (metaCode !== pageCode || !manifestCodes.has(metaCode)) {
+        metaMismatches.push(
+          `${pageCode}.mdx: ErrorMeta code "${metaCode}" must match "${pageCode}"`
+        );
+      }
+    }
+  }
+  metaMismatches.sort();
 
-  return { missing, stale, checked: manifestCodes.size };
+  return { missing, stale, metaMismatches, checked: manifestCodes.size };
 }
 
 module.exports = { checkCoverage, domainPrefix };
 
 // CLI: `node scripts/check-error-code-coverage.js` — exit 1 on any gap.
 if (require.main === module) {
-  const { missing, stale, checked } = checkCoverage();
-  if (missing.length === 0 && stale.length === 0) {
+  const { missing, stale, metaMismatches, checked } = checkCoverage();
+  if (
+    missing.length === 0 &&
+    stale.length === 0 &&
+    metaMismatches.length === 0
+  ) {
     console.log(`error-code coverage OK — ${checked} codes, all have pages.`);
     process.exit(0);
   }
@@ -86,6 +107,11 @@ if (require.main === module) {
   if (stale.length) {
     console.error(
       `Stale error-code pages with no backing registry code:\n  ${stale.join('\n  ')}`
+    );
+  }
+  if (metaMismatches.length) {
+    console.error(
+      `ErrorMeta code props that do not match their page:\n  ${metaMismatches.join('\n  ')}`
     );
   }
   process.exit(1);
