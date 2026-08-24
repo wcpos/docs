@@ -15,6 +15,8 @@ WCPOS is local-first: every screen reads and writes a database on the device, an
 
 The POS runs **one sync engine per site + store + cashier combination** on each device. That engine owns its own local database, so switching store or cashier switches the whole data plane rather than filtering one shared pile of records. Per-cashier isolation is deliberate: two cashiers on the same device never share local data.
 
+Switching scope is **transactional**: the new store or cashier hydrates its data plane and only commits once it's ready, and any error is surfaced instead of leaving you half-switched between two stores.
+
 On upgrades, local databases are never migrated in place — the app starts a fresh database and re-downloads from the server, which always holds the authoritative copy (see [Upgrading from v1.9](#upgrading-from-v19)).
 
 On Pro multi-store installs, every sync request identifies its store, so a price edited at the till updates that store's price rather than the web store's.
@@ -84,6 +86,7 @@ Details that matter:
 
 - **Cart writes are serialised per order.** Rapid-fire scanner bursts apply one at a time, and a repeated add merges into the line it duplicates rather than queueing a second line.
 - **Order acknowledgements adopt the server's copy.** WooCommerce assigns IDs to order line items on create; the engine adopts the acknowledged order so later updates match those lines instead of appending duplicates. Adoption is conservative — it never overwrites a local edit the server hasn't seen, and only applies to orders.
+- **An order write conflict recovers itself once.** If an order write collides with a newer server copy, the engine reconciles and retries a single time; if it still can't, the conflict is surfaced for you to resolve rather than looping silently.
 - **A write the server permanently refuses is never silently retried.** It's parked with the server's own reason and surfaced on **Store health → Database** as *"changes never reached your server"*, with two explicit actions: **Send again** (rebuilds the request from the record as it stands now, so later fixes apply) and **Discard**. There is no automatic retry loop — recovery is always a visible, deliberate action. See [Store Health](/support/store-health#database) for the merchant-facing walkthrough.
 
 ### Multiple browser tabs {#multi-tab}
@@ -93,6 +96,8 @@ Running the web POS in several tabs of the same store is supported. Every tab ca
 ## Local storage {#local-storage}
 
 The web and desktop apps store data through an **OPFS (Origin Private File System) worker**; the iOS and Android apps use the same on-disk format through a filesystem engine. All four platforms share one storage format and the same corruption-recovery tooling. (Earlier versions used IndexedDB on web and SQLite on native.)
+
+If the local store becomes **unreadable**, WCPOS blocks checkout and prompts for a reload rather than letting a sale run against broken data and lose it, and barcode scans in that state fail loudly instead of going quiet — so a corrupted store can't silently swallow a sale before the recovery tooling rebuilds it.
 
 Queries execute inside the database layer — selector, sort, and page — so only the visible page of rows crosses into the app. On a synthetic 10,000-order fixture, that pushdown took per-write update cost under a live subscription from ~27 ms to ~0.06 ms.
 
