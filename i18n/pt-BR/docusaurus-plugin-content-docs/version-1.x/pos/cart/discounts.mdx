@@ -9,8 +9,8 @@ import Icon from '@site/src/components/Icon';
 
 O WCPOS oferece várias maneiras de um operador aplicar descontos em um pedido na hora: botões de porcentagem rápida, edições diretas de preço por item e taxas de desconto no pedido. Para promoções pré-configuradas com regras de uso, consulte [Cupons](/coupons) (Pro).
 
-:::info Alterado na v1.9.0
-A forma como as alterações de preço do POS aparecem nos totais de desconto do WooCommerce mudou na v1.9.0. Os modelos de recibo atuais podem mostrar o preço original e a economia do POS separadamente, enquanto o total nativo de **Desconto** continua reservado para cupons. Consulte [O que mudou na v1.9.0](#what-changed-in-v190) abaixo para obter detalhes.
+:::info Procurando pelo total de Desconto?
+Um preço reduzido no caixa é registrado como o preço promocional do item, e não como um desconto do WooCommerce — o total nativo de **Desconto** fica reservado para cupons. [Por que as alterações de preço e os cupons são registrados de forma diferente](#why-tracked-differently) explica o modelo; se seus totais mudaram após atualizar para a v1.9.0, consulte [O que mudou na v1.9.0](#what-changed-in-v190).
 :::
 
 ## Descontos rápidos {#quick-discounts}
@@ -45,7 +45,19 @@ Para aplicar um desconto fixo ao pedido inteiro (em vez de a itens individuais),
 2. Insira um nome (por exemplo, "Desconto para funcionários")
 3. Insira o valor do desconto como um número negativo (por exemplo, `-5.00`)
 
-A taxa é exibida como um item de linha separado e reduz o total do pedido. Se necessário, é possível editar o status fiscal da taxa usando o menu de três pontos.
+A taxa é exibida como um item de linha separado e reduz o total do pedido. Se necessário, é possível editar o status fiscal e a classe fiscal da taxa usando o menu de três pontos.
+
+### Como o imposto é calculado sobre uma taxa de desconto {#discount-fee-tax}
+
+O WCPOS tributa uma taxa negativa a partir das **próprias configurações fiscais da taxa**: defina seu status fiscal como **Nenhum** e nenhum imposto é aplicado a ela; deixe-a **Tributável** e ela é tributada por sua própria classe fiscal. O valor que você digita é o valor descontado — informe `-10.00` e o cliente paga 10 a menos.
+
+O núcleo do WooCommerce faz isso de forma diferente. Por conta própria, o WooCommerce trata uma taxa negativa como um desconto sobre a cesta inteira e distribui seu imposto entre as classes fiscais de todos os outros itens do pedido, ignorando o status fiscal que você definiu na taxa. Ele também não considera preços com imposto incluído, então em uma loja em que **Preços inseridos com imposto** está definido como *Sim*, uma taxa de `-10.00` descontaria **12.00** a uma alíquota de 20%. O WCPOS substitui esse comportamento para que o caixa desconte exatamente o que o operador informou.
+
+Esse tratamento pertence ao pedido, não ao aplicativo que você por acaso está usando — recalcular um pedido do POS em **WP Admin → Pedidos** não o alterará. Pedidos que não são do POS mantêm o comportamento padrão do WooCommerce.
+
+:::note Limitação conhecida em lojas com imposto incluído
+Se seus preços incluem imposto, uma taxa de desconto dá ao cliente o total correto, mas deixa o **imposto registrado no pedido inalterado** — então a cifra do imposto fica ligeiramente maior do que o valor reduzido estritamente justificaria. Ela erra a favor da autoridade fiscal, nunca ao contrário. Se o imposto registrado importa para sua contabilidade, use um [cupom](/coupons) para o desconto: os cupons reduzem o valor tributável e recalculam o imposto sobre ele corretamente. Vamos migrar os descontos no pedido do POS para cupons em uma versão futura exatamente por esse motivo.
+:::
 
 ## Descontos do POS vs. cupons do WooCommerce {#pos-discounts-vs-woocommerce-coupons}
 
@@ -55,13 +67,23 @@ Os descontos nesta página são ajustes pontuais aplicados pelos caixas no balc�
 |---|---|---|
 | **Como é aplicado** | Desconto rápido, edição do preço da linha ou taxa negativa | Insira um código de cupom no carrinho |
 | **Onde é configurado** | Pelo caixa no momento da venda | Pré-configurado em **WP Admin → Marketing → Cupons** |
-| **Acompanhamento** | Registrado como o preço da linha (consulte a [alteração da v1.9.0](#what-changed-in-v190)) | Acompanhado como desconto de cupom nos relatórios do WooCommerce |
+| **Acompanhamento** | Registrado como o preço da linha, como um preço promocional (veja [por quê](#why-tracked-differently)) | Acompanhado como desconto de cupom nos relatórios do WooCommerce |
 | **Restrições** | Nenhuma — o caixa define qualquer preço | Limites de uso, restrições de produto/categoria, gasto mínimo, validade e regras de e-mail |
 | **Ideal para** | Ajustes pontuais, equiparação de preços | Promoções estruturadas, descontos rastreáveis |
 
 :::tip Qual devo usar?
 Para ajustes pontuais de preço, os descontos nesta página são mais simples. Se for necessário acompanhar o uso de descontos nos relatórios do WooCommerce ou aplicar regras como limites de uso, utilize [Cupons](/coupons).
 :::
+
+## Por que as alterações de preço e os cupons são registrados de forma diferente {#why-tracked-differently}
+
+O WooCommerce tem exatamente um conceito integrado de desconto: o **cupom**. Um cupom pertence ao pedido — é registrado em seu próprio campo, contabilizado na coluna **Desconto** dos relatórios e carrega suas próprias regras, como limites de uso e datas de validade.
+
+Um **preço promocional** não é um desconto para o WooCommerce. É simplesmente o preço do produto neste momento: quando um item em promoção é vendido, o pedido registra o preço pago e nada mais. O preço regular nunca aparece no pedido, e os relatórios contabilizam a venda como receita comum — o próprio WooCommerce não mantém registro de que o cliente economizou algo.
+
+Os descontos rápidos e as edições de preço por item seguem o modelo de preço promocional: o item é vendido "em promoção" pelo preço que o operador define. Essa única regra explica o restante desta página — o total de **Desconto** do WooCommerce permanece em zero, os cupons são calculados sobre o preço reduzido e os cupons de "excluir itens em promoção" ignoram os itens reduzidos no caixa. (Uma taxa negativa no pedido é diferente novamente: ela é registrada como uma linha de taxa, e não como uma alteração de preço.)
+
+Os recibos são o único lugar em que os clientes esperam ver o que economizaram, então o WCPOS registra o preço regular ao lado do novo preço em cada linha. Isso permite que um recibo mostre as economias de promoção e os descontos de cupom como cifras separadas, sem contabilizar nenhuma delas duas vezes — e sem alterar os totais dos pedidos ou os relatórios do WooCommerce.
 
 ## Como as alterações de preço do POS interagem com cupons {#how-pos-price-changes-interact-with-coupons}
 
@@ -76,17 +98,9 @@ Para detalhes técnicos sobre como as substituições de preço do POS são arma
 
 ## O que mudou na v1.9.0 {#what-changed-in-v190}
 
-Se houve uma atualização da v1.8 e foi observado que o total de **Desconto** nos recibos e relatórios agora mostra **0**, esta seção explica o motivo e as opções disponíveis.
+Se você atualizou da v1.8 e o total de **Desconto** nos recibos e relatórios agora mostra **0**, este é o motivo: as versões anteriores registravam uma alteração de preço no caixa como um desconto do WooCommerce, o que quebrava o cálculo dos cupons — um cupom aplicado por cima era calculado sobre o preço original, dando desconto excessivo ao pedido e cobrando a menos do cliente. A partir da v1.9.0, o preço definido no caixa **é** o preço da linha, exatamente como o WooCommerce registra um produto em promoção, e apenas os cupons contam como descontos. Consulte [Por que as alterações de preço e os cupons são registrados de forma diferente](#why-tracked-differently) acima.
 
-### A alteração {#the-change}
-
-Antes da v1.9.0, quando um operador reduzia o preço de um item (por exemplo, $18 → $16), o POS registrava o pedido com `subtotal = $18` e `total = $16`. O WooCommerce então calculava `discount_total = $2`, e isso aparecia no recibo e nos relatórios como um desconto.
-
-Isso causava totais incorretos sempre que um cupom era aplicado em seguida — o cupom era calculado sobre os $18 originais, resultando em desconto excessivo e cobrança insuficiente do cliente.
-
-A partir da v1.9.0, o WCPOS segue a forma como o WooCommerce trata preços promocionais: o preço definido no caixa **é** o subtotal do item. O WooCommerce considera apenas códigos de cupom como "descontos" (isso corresponde ao comportamento do WC para produtos em promoção, cujo preço promocional também já está incluído no subtotal, sem uma linha de desconto separada).
-
-### O que isso significa {#what-this-means-for-you}
+### O que isso significa para você {#what-this-means-for-you}
 
 - Os **recibos** podem mostrar o preço regular registrado, a economia entre o preço regular e o preço de venda e um valor combinado de **Total economizado** para essas economias mais os cupons. As economias de preço permanecem separadas do campo **Desconto** do WooCommerce.
 - Os **relatórios** mostram `discount_total = 0` quando foram usadas apenas alterações de preço de itens do POS. Apenas descontos por cupom são contabilizados.
@@ -97,7 +111,7 @@ A partir da v1.9.0, o WCPOS segue a forma como o WooCommerce trata preços promo
 
 Os modelos incluídos atuais que exibem preços mostram o preço regular registrado e a economia quando um produto está em promoção ou tem o preço alterado no caixa. Eles também mostram **Total economizado** quando o WCPOS pode calcular um valor completo para o pedido. Esse total combina as economias do preço regular com os descontos por cupom, sem contabilizar nenhum deles duas vezes.
 
-Os modelos copiados da galeria são cópias editáveis e não são substituídos pelas atualizações do WCPOS. Se o recibo foi criado antes dessa alteração, faça uma das opções a seguir:
+Os modelos copiados da galeria são cópias editáveis e não são substituídos pelas atualizações do WCPOS. Se você criou seu recibo antes dessa alteração, faça uma das opções a seguir:
 
 1. clique em **Usar modelo** em uma cópia nova do modelo incluído; ou
 2. atualize seu modelo existente com os campos na [Referência de dados do recibo](/receipts/receipt-data#displaying-regular-price-and-savings).
@@ -124,3 +138,4 @@ Os relatórios do WooCommerce permanecem inalterados: os totais de desconto nati
 
 - **Sem regras de desconto automáticas** — o POS não oferece suporte a descontos automáticos do tipo "compre 2 e leve 1 grátis". Use cupons do WooCommerce para promoções estruturadas.
 - **Os descontos rápidos são apenas percentuais** — não há um botão rápido integrado para descontos de valor fixo. Use uma taxa negativa ou edite os preços individuais.
+- **Taxas de desconto e preços com imposto incluído** — uma taxa de desconto no pedido cobra o total correto, mas não reduz o imposto registrado no pedido. Consulte [Como o imposto é calculado sobre uma taxa de desconto](#discount-fee-tax).

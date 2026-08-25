@@ -11,9 +11,9 @@ Diese Seite erklärt die technische Architektur von WCPOS für Entwickler und fo
 
 ## Zweiteiliges System {#two-part-system}
 
-WCPOS ist als zweigeteiltes System konzipiert:
+WCPOS ist als zweiteiliges System konzipiert:
 
-1. **PHP-Plugin:** Auf Ihrem Server gehostet, ist dies ein relativ kleines Plugin, welches die [WooCommerce REST API](/reference/wc-rest-api) um POS-spezifische Endpunkte erweitert.
+1. **PHP-Plugin:** Auf Ihrem Server gehostet, ist dies ein relativ kleines Plugin, das die [WooCommerce REST API](/reference/wc-rest-api) um POS-spezifische Endpunkte erweitert.
 
 2. **JavaScript-Client:** Dieser läuft lokal in Ihrem Browser, in der Desktop-App oder in den iOS-/Android-Apps.
 
@@ -44,8 +44,8 @@ Was synchronisiert wird: Produkte und Variationen, Kategorien/Schlagwörter/Mark
 | Gut 😊 | Schlecht 😟 |
 | ------------------------------------------------------------------ | -------------------------------------------------------- |
 | Das Suchen lokaler Daten erfolgt sofort | Die Daten synchron zu halten ist herausfordernd |
-| Zwischengespeicherte Daten sind offline verfügbar | Begrenzungen durch die WooCommerce REST API |
-| Möglichkeit zur Erstellung besserer nativer Apps für Desktop, iOS und Android | WordPress-Themen und Hooks können die POS-App nicht anpassen |
+| Zwischengespeicherte Daten sind offline verfügbar | Begrenzt durch die WooCommerce REST API |
+| Möglichkeit, bessere native Apps für Desktop, iOS und Android zu erstellen | WordPress-Themen und Hooks können die POS-App nicht anpassen |
 
 ## Lokale Datenbank {#local-database}
 
@@ -61,10 +61,27 @@ Jede Kombination aus Website, Shop und Kassierer erhält ihre eigene lokale Date
 
 Der Checkout-Prozess verwendet ein iframe/webview, das die WooCommerce Order Pay-Seite lädt. Dieser Ansatz:
 
-- **Nutzen bestehender Zahlungs-Gateways:** Jedes WooCommerce-Zahlungs-Gateway kann im POS verwendet werden
-- **Sichert die Sicherheit:** Die Zahlungsabwicklung erfolgt über die sichere Infrastruktur von WooCommerce
+- **Nutzt bestehende Zahlungs-Gateways:** Jedes WooCommerce-Zahlungs-Gateway kann im POS verwendet werden
+- **Wahrt die Sicherheit:** Die Zahlungsabwicklung erfolgt über die sichere Infrastruktur von WooCommerce
 - **Reduziert die Komplexität:** Keine Notwendigkeit, Integrationen von Zahlungs-Gateways neu zu implementieren
 
 ## API-Erweiterungen {#api-extensions}
 
-Das PHP-Plugin erweitert die WooCommerce REST API mit zusätzlichen Endpunkten für POS-spezifische Funktionen, registriert unter den eigenen Namensräumen `wcpos/v1` und `wcpos/v2` — `wcpos/v2` trägt die Sync-Oberfläche von v1.10.0, weshalb App- und Plugin-Version im Gleichschritt ausgeliefert werden. Eine Einführung finden Sie in der [WooCommerce REST API](/reference/wc-rest-api).
+Das PHP-Plugin erweitert die WooCommerce REST API um zusätzliche Endpunkte für POS-spezifische Funktionen, registriert unter den eigenen Namensräumen `wcpos/v1` und `wcpos/v2` — `wcpos/v2` trägt die Sync-Oberfläche von v1.10.0, weshalb App- und Plugin-Version im Gleichschritt ausgeliefert werden. Eine Einführung finden Sie in der [WooCommerce REST API](/reference/wc-rest-api).
+
+### Der Namensraum `wcpos/v2` {#wcpos-v2-namespace}
+
+v1.10 führt den REST-Namensraum `wcpos/v2` ein. Sync ist hier angesiedelt, und die gemeinsam genutzten POS-Dienste, die zuvor von `wcpos/v1` bereitgestellt wurden, werden nun von `wcpos/v2` bereitgestellt (die `wcpos/v1`-Dienstrouten sind Weiterleitungen zu ihren v2-Implementierungen). Die `wcpos/v1`-Routen registrieren sich weiterhin aus Gründen der Abwärtskompatibilität, sind aber **eingefroren** — der aktuelle Client ruft sie nicht mehr auf.
+
+Punkte, die wichtig sind, wenn Sie gegen diese Endpunkte integrieren:
+
+- **Die v2-Routen registrieren sich immer.** Die alte Option `woocommerce_pos_sync_api_enabled` wurde entfernt; es gibt kein Flag mehr, das die API ein- oder ausschaltet.
+- **Öffentliche Endpunkte.** `wcpos/v2/site`, `wcpos/v2/ping` und `wcpos/v2/echo` sind öffentlich (verwendet für Fähigkeits- und Konnektivitätsprüfungen, einschließlich der [Transport-Ausweichlösungen](/error-codes) für restriktive Hosts).
+- **Bestellungen sind UUID-primär.** Die Bestellidentität auf der Leitung ist die UUID; das veraltete Feld `wooOrderId` wurde aus dem Order-Pull-Envelope entfernt. Bestell-Metadaten werden auf der Leitung über einen einzigen Normalisierer typisiert.
+- **Die Speicherung der Positionspreise ist dokumentiert** — für die Kompatibilität von Drittanbieter-Sync, siehe [Wie POS-Preisüberschreibungen gespeichert werden](/reference/pos-discounts#how-pos-price-overrides-are-stored).
+- **Die Standard-Produktsortierung** im POS ist jetzt **Name aufsteigend** (zuvor `menu_order, id`).
+- **Entfernte veraltete Methoden.** Mehrere veraltete Methoden des `API\Settings`-Controllers (zum Beispiel `get_general_settings()`, `update_access_settings()`, `get_general_endpoint_args()`, `remove_license_transient()`) wurden entfernt; der Klassenalias bleibt bestehen, diese Methoden jedoch nicht.
+
+:::note Pro spiegelt die Aufteilung
+WCPOS Pro folgt derselben V1/V2-Aufteilung — seine gemeinsam genutzten Dienste werden auf `wcpos/v2` hochgestuft, während seine Bestelldaten bei v1 eingefroren bleiben. Die shop-bezogene Produktpreisgestaltung läuft auf der v2-Bahn, und der Shop-Bereich der Kasse wird auf Bestellschreibvorgänge übertragen, sodass Bestellungen über mehrere Shops gegen den richtigen Shop bepreist und besteuert werden. Siehe [Pro](/getting-started/free-vs-pro).
+:::

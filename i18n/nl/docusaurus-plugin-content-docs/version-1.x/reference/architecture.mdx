@@ -37,7 +37,7 @@ De client werkt local-first: elk scherm leest en schrijft in de lokale database 
 - **Aanvullingen en banen:** een begrensde catalogusaanvulling, een venster met recente bestellingen en onderhoudsbanen tijdens inactiviteit vullen en verifiëren de lokale gegevens volgens schema's die je per apparaat kunt afstemmen.
 - **Duurzame schrijfacties:** verkopen en bewerkingen komen lokaal in de wachtrij en worden naar WooCommerce verzonden, met zichtbaar herstel voor alles wat de server weigert.
 
-Wat wordt er gesynchroniseerd: producten en variaties, categorieën/tags/merken, klanten, belastingtarieven, kortingsbonnen (Pro) en bestellingen. Betaalgateways worden bij het afrekenen opgehaald.
+Wat wordt er gesynchroniseerd: producten en variaties, categorieën/tags/merken, klanten, belastingtarieven, coupons (Pro) en bestellingen. Betaalgateways worden bij het afrekenen opgehaald.
 
 ## Voor- en nadelen van de architectuur {#architecture-pros-and-cons}
 
@@ -68,3 +68,20 @@ Het afrekenproces gebruikt een iframe/webview die de WooCommerce Order Pay-pagin
 ## API-uitbreidingen {#api-extensions}
 
 De PHP-plug-in breidt de WooCommerce REST API uit met extra endpoints voor POS-specifieke functionaliteit, geregistreerd onder de eigen naamruimten `wcpos/v1` en `wcpos/v2` — `wcpos/v2` bevat het synchronisatie-oppervlak van v1.10.0, en daarom worden de app- en plug-inversies gelijk opgeleverd. Zie [WooCommerce REST API](/reference/wc-rest-api) voor een introductie.
+
+### De naamruimte `wcpos/v2` {#wcpos-v2-namespace}
+
+v1.10 introduceert de REST-naamruimte `wcpos/v2`. Synchronisatie leeft hier, en de gedeelde POS-services die voorheen vanuit `wcpos/v1` werden geserveerd, worden nu vanuit `wcpos/v2` geserveerd (de serviceroutes van `wcpos/v1` zijn doorgeefluiken naar hun v2-implementaties). De routes van `wcpos/v1` registreren nog steeds voor achterwaartse compatibiliteit, maar zijn **bevroren** — de huidige client roept ze niet meer aan.
+
+Punten die van belang zijn als je tegen deze endpoints integreert:
+
+- **De v2-routes registreren altijd.** De oude optie `woocommerce_pos_sync_api_enabled` is verwijderd; er is niet langer een schakelaar die de API aan- of uitzet.
+- **Publieke endpoints.** `wcpos/v2/site`, `wcpos/v2/ping` en `wcpos/v2/echo` zijn publiek (gebruikt voor het testen van mogelijkheden en connectiviteit, waaronder de [transport-terugvalopties](/error-codes) voor restrictieve hosts).
+- **Bestellingen zijn UUID-primair.** De bestellingsidentiteit op de lijn is de UUID; het verouderde veld `wooOrderId` is uit de order-pull-envelop verwijderd. Bestellingsmetadata is op de lijn getypeerd via één enkele normaliser.
+- **Opslag van prijzen per regelitem is gedocumenteerd** voor synchronisatiecompatibiliteit met derden — zie [Hoe POS-prijsoverschrijvingen worden opgeslagen](/reference/pos-discounts#how-pos-price-overrides-are-stored).
+- **Standaard productsortering** in de POS is nu **naam oplopend** (voorheen `menu_order, id`).
+- **Verwijderde verouderde methoden.** Verschillende verouderde methoden van de `API\Settings`-controller (bijvoorbeeld `get_general_settings()`, `update_access_settings()`, `get_general_endpoint_args()`, `remove_license_transient()`) zijn verwijderd; de klasse-alias blijft bestaan, maar die methoden niet.
+
+:::note Pro spiegelt de splitsing
+WCPOS Pro volgt dezelfde V1/V2-splitsing — de gedeelde services worden gepromoveerd naar `wcpos/v2` terwijl de bestelgegevens bevroren blijven op v1. Winkelgebonden productprijzen draaien op de v2-baan, en de winkelscope van de kassa wordt meegedragen op bestelschrijfacties zodat bestellingen voor meerdere winkels tegen de juiste winkel worden geprijsd en belast. Zie [Pro](/getting-started/free-vs-pro).
+:::
