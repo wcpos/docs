@@ -7,9 +7,11 @@ import styles from './styles.module.css';
 /**
  * ErrorMeta — renders the factual "Details" box of an error-code help page
  * (code + symbol, severity, introduced-in) from the data-only facts manifest
- * (`src/data/error-catalogue.json`), which is bot-synced from the monorepo
- * registry. The facts are IMPORTED, never hand-copied into the page, so they
- * cannot drift from the runtime catalogue. The page owns everything else — the
+ * (`src/data/error-catalogue.json`), which mirrors the monorepo registry. The
+ * facts are IMPORTED, never hand-copied into the page, so a page and its
+ * Details box cannot drift from each other. (The manifest itself is mirrored
+ * by hand — see its `note` — so it CAN lag the monorepo registry; that is what
+ * scripts/check-error-code-coverage.js is for.) The page owns everything else — the
  * prose, images, wizards — and is free to be as rich as it needs to be.
  *
  * Usage in an error-code .mdx:  <ErrorMeta code="AUTH331" />

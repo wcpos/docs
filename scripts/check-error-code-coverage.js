@@ -6,7 +6,10 @@
  * content: every code the app can emit must have a page (no dead "Learn more"
  * links), and no page may claim a registry code that no longer exists (no
  * stale pages). Help prose lives in the .mdx; only the facts manifest crosses
- * the boundary (src/data/error-catalogue.json, bot-synced from the monorepo).
+ * the boundary (src/data/error-catalogue.json), and it is mirrored BY HAND —
+ * there is no sync bot, so this check is the only thing standing between a new
+ * registry code and a 404 behind the app's "Learn more" link. Both halves must
+ * land in the same commit; see that file's `note` for the procedure.
  *
  * The reverse check excludes only the older namespaced families (API, DB, PY,
  * SY), which belong to a separate, pre-registry scheme. All other domains stay
