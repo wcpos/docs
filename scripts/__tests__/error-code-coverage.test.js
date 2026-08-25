@@ -15,6 +15,29 @@ describe('error-code coverage contract', () => {
     expect(stale).toEqual([]);
   });
 
+  it('lists every error-code help page in the versioned sidebar', () => {
+    const sidebar = require('../../versioned_sidebars/version-1.x-sidebars.json');
+    const docIds = new Set();
+    const visit = (value) => {
+      if (typeof value === 'string') docIds.add(value);
+      else if (Array.isArray(value)) value.forEach(visit);
+      else if (value) Object.values(value).forEach(visit);
+    };
+    visit(sidebar);
+
+    const pagesDir = path.join(
+      __dirname,
+      '../../versioned_docs/version-1.x/error-codes'
+    );
+    const missing = fs
+      .readdirSync(pagesDir)
+      .filter((file) => /^[A-Z]+[0-9]+\.mdx$/.test(file))
+      .map((file) => `error-codes/${file.slice(0, -4)}`)
+      .filter((docId) => !docIds.has(docId));
+
+    expect(missing).toEqual([]);
+  });
+
   it('checks the whole manifest', () => {
     const { checked } = checkCoverage();
     expect(checked).toBeGreaterThan(0);
