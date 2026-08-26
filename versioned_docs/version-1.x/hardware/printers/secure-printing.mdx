@@ -1,0 +1,61 @@
+---
+title: "Epson Secure Printing (printer prints nothing)"
+sidebar_label: Epson Secure Printing
+sidebar_position: 3
+description: "New Epson receipt printers ship with Secure Printing enabled — jobs are silently discarded until it's disabled. What it is, why it exists, and how to fix it in two minutes."
+---
+
+# Epson Secure Printing
+
+**Symptom:** you add a new Epson receipt printer, WCPOS finds it on the network, the test print says it was sent — and nothing comes out. No error, no flashing light, and the printer's own status page says "Available". Panel self-tests print fine.
+
+If that's you, your printer almost certainly has **Secure Printing** turned on, and it ships that way from the factory on recent Epson models.
+
+## What's happening {#whats-happening}
+
+Since **August 1, 2025**, an EU cybersecurity regulation (the Radio Equipment Directive, "RED") requires network-connected devices sold in the EU, UK, and EFTA to be **secure by default**. Epson's response on TM-series receipt printers is a setting called **Secure Printing**: while it's enabled, the printer **silently holds and then discards** print jobs that arrive over the traditional unencrypted channels — the raw TCP port (9100) that most POS software uses, and plain-HTTP ePOS. The job isn't rejected with an error; it just quietly never prints, which is why everything *looks* fine.
+
+This affects every POS product, not just WCPOS — Epson's own guidance for legacy systems is to re-enable the classic ports, and other POS vendors document the same fix.
+
+:::info Outside the EU?
+The regulation applies to printers *sold in* the EU/UK/EFTA, but units elsewhere can arrive with the same firmware and defaults. If a brand-new Epson anywhere in the world shows this exact symptom, check the setting — it takes two minutes and settles the question.
+:::
+
+## The fix {#the-fix}
+
+You need the printer's web configuration page and its **admin password**. On recent Epson printers the factory admin password is unique per device — typically the printer's **serial number**, printed on the label on the base of the printer (older models shipped with the password `epson`). If someone set up the printer before you, they may have changed it.
+
+1. Find the printer's IP address (it's on the self-test sheet, or use **Scan Network** in WCPOS printer settings).
+2. In a browser, open `https://<printer-ip>` — for example `https://192.168.1.131`. Accept the certificate warning (the printer uses a self-signed certificate; that's normal).
+3. Click **Administrator Login** and sign in with the admin password.
+4. Go to the **Print** tab → **Secure Printing**.
+5. Set **Secure Printing** to **Disable** and confirm.
+6. **Power-cycle the printer** — unplug it for ten seconds. Some settings only take effect after a restart.
+7. Back in WCPOS, run **Test Print** again. It should print immediately.
+
+:::tip Change the admin password while you're in there
+The factory password is printed on a label anyone can read, and the printer's admin page is reachable by every device on your network. If your printer is on a shared network (an office, a coworking space, a mall), set your own admin password — and ideally put the printer on your own network segment. Anyone who can reach an open receipt printer can print to it, tie it up, or pop an attached cash drawer.
+:::
+
+## Why the regulation exists {#why-the-regulation-exists}
+
+It isn't arbitrary. A receipt printer with an open, unauthenticated network port accepts commands from **anyone on the network** — including the command that kicks open an attached cash drawer. Internet-exposed receipt printers have been mass-hijacked to print spam, and embedded devices with factory passwords have been conscripted into botnets. The rule — [Delegated Regulation (EU) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030), in force for products placed on the market from 1 August 2025 per [Regulation (EU) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) — requires devices to ship without those open doors.
+
+Disabling Secure Printing is legitimate — the regulation requires secure *defaults*, not secure *always*, and turning the classic ports back on is the device owner's deliberate choice. Make it an informed one: prefer a private network for the till, and set your own admin password.
+
+## Ports, for the technically curious {#ports}
+
+Verified against a live TM-m30III (firmware 13.21):
+
+| State | Raw TCP 9100 | ePOS-Print (HTTP :80) | ePOS-Print (HTTPS :443) |
+|---|---|---|---|
+| Secure Printing **enabled** | accepted, silently discarded | not served | works |
+| Secure Printing **disabled** | works | works | works |
+
+Two details worth knowing. First, with Secure Printing enabled the discard isn't instant — the printer holds the job for a few minutes, and **while it holds one, it won't print from any channel**, so one stray job can make a healthy printer look completely dead. Second, on this printer generation the classic ePOS ports `8008`/`8043` do **not** serve ePOS-Print (8008 is closed; 8043 carries a different Epson service) — so on the **web app**, if your store runs over HTTP set the printer's **Port to 80**, and if it runs over HTTPS set it to **443**.
+
+## References {#references}
+
+- [Epson: Radio Equipment Directive FAQ](https://www.epson.co.uk/en_GB/faq/KA-01896/contents?loc=en-us) — Epson's statement on RED compliance and legacy systems
+- [Epson security portal](https://support.epson.net/security/en/index.html)
+- [Delegated Regulation (EU) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030) and [(EU) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) (application date) on EUR-Lex
