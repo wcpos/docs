@@ -1,0 +1,70 @@
+---
+title: "Epson Sicheres Drucken (Drucker druckt nichts)"
+sidebar_label: Epson Sicheres Drucken
+sidebar_position: 3
+description: "Neue Epson-Bondrucker werden mit aktiviertem sicheren Drucken ausgeliefert — Druckaufträge werden unbemerkt verworfen, bis die Einstellung deaktiviert wird. Was das ist, warum es existiert und wie es in zwei Minuten behoben wird."
+---
+
+# Epson Sicheres Drucken {#epson-secure-printing}
+
+**Symptom:** Ein neuer Epson-Bondrucker wird hinzugefügt, WCPOS findet ihn im Netzwerk, der Testdruck zeigt an, dass er gesendet wurde — doch es wird nichts gedruckt. Kein Fehler, keine blinkende Leuchte, und auf der Statusseite des Druckers steht „Verfügbar“. Selbsttests über das Bedienfeld werden problemlos gedruckt.
+
+In diesem Fall ist auf dem Drucker mit hoher Wahrscheinlichkeit **Sicheres Drucken** aktiviert. Bei aktuellen Epson-Modellen ist diese Einstellung ab Werk aktiviert.
+
+## Was passiert {#whats-happening}
+
+Seit dem **1. August 2025** schreibt eine EU-Cybersicherheitsverordnung (die Funkanlagenrichtlinie, „RED“) vor, dass vernetzte Geräte, die auf dem EU-Markt bereitgestellt werden, **standardmäßig sicher** sein müssen. Epsons Antwort für Bondrucker der TM-Serie ist eine Einstellung namens **Sicheres Drucken**: Solange sie aktiviert ist, hält der Drucker Druckaufträge, die über die herkömmlichen unverschlüsselten Kanäle eingehen, **unbemerkt zurück und verwirft sie anschließend** — über den von den meisten POS-Anwendungen verwendeten Raw-TCP-Port (9100) und über unverschlüsseltes HTTP ePOS. Der Auftrag wird nicht mit einem Fehler abgelehnt; er wird einfach stillschweigend nie gedruckt. Deshalb *scheint* alles in Ordnung zu sein.
+
+Dies betrifft jedes POS-Produkt, nicht nur WCPOS — Epson empfiehlt für Altsysteme selbst, die klassischen Ports wieder zu aktivieren, und auch andere POS-Anbieter dokumentieren dieselbe Lösung.
+
+:::info Außerhalb der EU?
+Die EU-Verordnung gilt selbst nicht außerhalb der EU, aber andernorts verkaufte Geräte können mit derselben Firmware und denselben Standardeinstellungen ausgeliefert werden. Wenn ein brandneuer Epson irgendwo auf der Welt genau dieses Symptom zeigt, sollte die Einstellung überprüft werden — das dauert zwei Minuten und klärt die Ursache.
+:::
+
+## Die Lösung {#the-fix}
+
+Sie benötigen die Web-Konfigurationsseite des Druckers und dessen **Administratorpasswort**. Bei aktuellen Epson-Druckern ist das werksseitige Administratorpasswort für jedes Gerät individuell – üblicherweise die **Seriennummer** des Druckers, die auf dem Etikett an der Unterseite des Druckers aufgedruckt ist (bei älteren Modellen war das Passwort `epson`). Wenn der Drucker bereits eingerichtet wurde, wurde es möglicherweise geändert.
+
+1. Ermitteln Sie die IP-Adresse des Druckers (sie steht auf dem Selbsttestblatt, oder verwenden Sie **Netzwerk scannen** in den WCPOS-Druckereinstellungen).
+2. Öffnen Sie in einem Browser `https://<printer-ip>` – zum Beispiel `https://192.168.1.131`. Akzeptieren Sie die Zertifikatswarnung (der Drucker verwendet ein selbstsigniertes Zertifikat; das ist normal).
+3. Klicken Sie auf **Administrator-Anmeldung** und melden Sie sich mit dem Administratorpasswort an.
+4. Öffnen Sie den Tab **Drucken** → **Sicheres Drucken**.
+5. Setzen Sie **Sicheres Drucken** auf **Deaktivieren** und bestätigen Sie.
+6. **Starten Sie den Drucker vollständig neu** – ziehen Sie für zehn Sekunden den Netzstecker. Einige Einstellungen werden erst nach einem Neustart wirksam.
+7. Wenn Sie die **Web-App** mit einem aktuellen Modell verwenden, bearbeiten Sie den Drucker unter **POS > Einstellungen > Drucken** und setzen Sie den **Port** auf `80`, wenn Ihre Filiale HTTP verwendet, oder auf `443`, wenn sie HTTPS verwendet. Akzeptieren Sie für HTTPS zunächst die Zertifikatswarnung des Druckers auf diesem Gerät, wie in Schritt 2 beschrieben.
+8. Führen Sie zurück in WCPOS erneut **Testdruck** aus. Der Ausdruck sollte sofort erfolgen.
+
+:::warning Firmware-Updates aktivieren es wieder
+Die Hinweise von Epson besagen, dass ein Firmware-Update die Sicherheitskonfiguration auf die konformen Standardeinstellungen zurücksetzt — das bedeutet: **Sicheres Drucken wird nach einem Firmware-Update des Druckers wieder aktiviert**. Wenn ein Drucker, der monatelang funktioniert hat, direkt nach einem Firmware-Update plötzlich nicht mehr druckt, führen Sie die obigen Schritte erneut aus.
+:::
+
+**Sie sind nicht sicher, ob Ihr Drucker betroffen ist?** Drucken Sie das Netzwerkstatusblatt aus (bei geöffneter Rollenabdeckung die FEED-Taste eine Sekunde lang gedrückt halten — oder bei Modellen mit entsprechender Taste die Statusblatt-Taste drei Sekunden lang gedrückt halten) und suchen Sie nach der Zeile `Security Mode`: `RED` bedeutet, dass Sicheres Drucken ab Werk aktiviert ist; `Normal` (oder keine solche Zeile) bedeutet, dass dies nicht der Fall ist.
+
+:::tip Ändern Sie das Admin-Passwort, solange Sie dort sind
+Das werkseitige Passwort steht auf einem Etikett, das jeder lesen kann, und die Admin-Seite des Druckers ist von jedem Gerät in Ihrem Netzwerk erreichbar. Wenn sich Ihr Drucker in einem gemeinsam genutzten Netzwerk befindet (etwa in einem Büro, Coworking-Space oder Einkaufszentrum), legen Sie ein eigenes Admin-Passwort fest — und ordnen Sie den Drucker idealerweise Ihrem eigenen Netzwerksegment zu. Jeder, der einen offenen Bondrucker erreichen kann, kann darauf drucken, ihn blockieren oder eine angeschlossene Kassenschublade öffnen.
+:::
+
+## Warum die Vorschrift besteht {#why-the-regulation-exists}
+
+Sie ist nicht willkürlich. Ein Bondrucker mit einem offenen, nicht authentifizierten Netzwerkport akzeptiert Befehle von **jedem im Netzwerk** — einschließlich des Befehls, der eine angeschlossene Kassenschublade öffnet. Dem Internet ausgesetzte Bondrucker wurden massenhaft übernommen, um Spam zu drucken, und eingebettete Geräte mit werkseitigen Passwörtern wurden in Botnetze eingegliedert. Die Vorschrift — [Delegierte Verordnung (EU) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030), die gemäß [Verordnung (EU) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) für ab dem 1. August 2025 in Verkehr gebrachte Produkte gilt — verlangt, dass Geräte ohne diese offenen Zugänge ausgeliefert werden.
+
+Das Deaktivieren von Sicherem Drucken ist legitim — die Vorschrift verlangt sichere *Standardeinstellungen*, nicht dauerhafte *Sicherheit*, und das erneute Aktivieren der klassischen Ports ist eine bewusste Entscheidung des Geräteinhabers. Treffen Sie diese Entscheidung informiert: Bevorzugen Sie ein privates Netzwerk für die Kasse und legen Sie ein eigenes Admin-Passwort fest.
+
+## Ports für technisch Interessierte {#ports}
+
+Verifiziert an einem laufenden TM-m30III (Firmware 13.21):
+
+| Status | Rohes TCP 9100 | ePOS-Print (HTTP :80) | ePOS-Print (HTTPS :443) |
+|---|---|---|---|
+| Sicheres Drucken **aktiviert** | akzeptiert, stillschweigend verworfen | nicht verfügbar | funktioniert |
+| Sicheres Drucken **deaktiviert** | funktioniert | funktioniert | funktioniert |
+
+Zwei wichtige Details. Erstens erfolgt das Verwerfen bei aktiviertem sicheren Drucken nicht sofort — der Drucker hält den Auftrag einige Minuten lang, und **solange er einen Auftrag hält, druckt er über keinen Kanal**, sodass ein einzelner fehlgeleiteter Auftrag einen funktionierenden Drucker vollständig ausgefallen erscheinen lassen kann. Zweitens stellen bei dieser Druckergeneration die klassischen ePOS-Ports `8008`/`8043` **kein** ePOS-Print bereit (8008 ist geschlossen; 8043 wird für einen anderen Epson-Dienst verwendet) — daher muss in der **Web-App** bei einer Filiale über HTTP der **Port auf 80** und bei HTTPS auf **443** gesetzt werden.
+
+Epsons eigener Kompatibilitätsleitfaden bestätigt diese Matrix und ergänzt die verschlüsselten Varianten: Bei aktiviertem sicheren Drucken funktionieren die TLS-Ports — `9143` (verschlüsseltes Raw), `443` (HTTPS ePOS) und `8043`/`8143` (SDK) — weiterhin. Dadurch kann RED-kompatible Software drucken, ohne etwas deaktivieren zu müssen. Bei RED-Firmware sind LPR (Port 515) und TLS 1.0/1.1 unabhängig von der Einstellung für sicheres Drucken vollständig deaktiviert.
+
+## Referenzen {#references}
+
+- [Epson: FAQ zur Funkanlagenrichtlinie](https://www.epson.co.uk/en_GB/faq/KA-01896/contents?loc=en-us) — Erklärung von Epson zur RED-Konformität und zu Altsystemen
+- [Epson-Sicherheitsportal](https://support.epson.net/security/en/index.html)
+- [Delegierte Verordnung (EU) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030) und [(EU) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) (Geltungsbeginn) auf EUR-Lex
