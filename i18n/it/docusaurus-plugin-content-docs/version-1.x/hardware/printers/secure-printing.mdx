@@ -1,0 +1,70 @@
+---
+title: "Stampa sicura Epson (la stampante non stampa nulla)"
+sidebar_label: Stampa sicura Epson
+sidebar_position: 3
+description: "Le nuove stampanti per ricevute Epson vengono fornite con Stampa sicura abilitata: i lavori vengono eliminati silenziosamente finché non viene disabilitata. Cos'è, perché esiste e come risolvere il problema in due minuti."
+---
+
+# Stampa sicura Epson {#epson-secure-printing}
+
+**Sintomo:** viene aggiunta una nuova stampante per ricevute Epson, WCPOS la trova nella rete, la stampa di prova indica che è stata inviata — ma non viene stampato nulla. Nessun errore, nessuna spia lampeggiante e la pagina di stato della stampante indica "Disponibile". Gli autotest dal pannello vengono stampati correttamente.
+
+In questo caso, la stampante ha quasi certamente **Stampa sicura** attivata: nei recenti modelli Epson viene fornita così dalla fabbrica.
+
+## Cosa sta succedendo {#whats-happening}
+
+Dal **1º agosto 2025**, una normativa europea sulla cybersicurezza (la direttiva sulle apparecchiature radio, "RED") richiede che i dispositivi connessi alla rete immessi sul mercato dell'UE siano **sicuri per impostazione predefinita**. Per le stampanti per ricevute della serie TM, Epson ha introdotto un'impostazione denominata **Stampa sicura**: quando è abilitata, la stampante **trattiene e poi elimina silenziosamente** i lavori di stampa ricevuti tramite i tradizionali canali non cifrati — la porta TCP raw (9100) utilizzata dalla maggior parte dei software POS e ePOS tramite HTTP non cifrato. Il lavoro non viene rifiutato con un errore; semplicemente non viene stampato, ed è per questo che tutto *sembra* funzionare correttamente.
+
+Questo problema riguarda tutti i prodotti POS, non solo WCPOS: per i sistemi legacy Epson consiglia di riattivare le porte classiche e altri fornitori POS documentano la stessa soluzione.
+
+:::info Fuori dall'UE?
+La normativa UE non si applica direttamente al di fuori dell'UE, ma le unità vendute altrove possono includere lo stesso firmware e le stesse impostazioni predefinite. Se una Epson nuova di zecca, in qualsiasi parte del mondo, presenta esattamente questo sintomo, controllare l'impostazione: richiede due minuti e permette di chiarire il problema.
+:::
+
+## La soluzione {#the-fix}
+
+Sono necessari la pagina di configurazione web della stampante e la relativa **password amministratore**. Nelle stampanti Epson recenti, la password amministratore predefinita è univoca per ogni dispositivo, in genere il **numero di serie** della stampante, riportato sull'etichetta alla base della stampante (i modelli meno recenti venivano forniti con la password `epson`). Se la stampante è stata configurata in precedenza, la password potrebbe essere stata modificata.
+
+1. Individuare l'indirizzo IP della stampante (è riportato sul foglio di autodiagnosi oppure usare **Scansiona rete** nelle impostazioni della stampante di WCPOS).
+2. In un browser, aprire `https://<printer-ip>` — ad esempio `https://192.168.1.131`. Accettare l'avviso relativo al certificato (la stampante utilizza un certificato autofirmato; è normale).
+3. Fare clic su **Accesso amministratore** e accedere con la password amministratore.
+4. Aprire la scheda **Stampa** → **Stampa protetta**.
+5. Impostare **Stampa protetta** su **Disattiva** e confermare.
+6. **Spegnere e riaccendere la stampante** — scollegarla per dieci secondi. Alcune impostazioni diventano effettive solo dopo il riavvio.
+7. Se si utilizza l'**app web** con un modello recente, modificare la stampante in **POS > Impostazioni > Stampa** e impostare la relativa **Porta** su `80` quando il negozio utilizza HTTP oppure su `443` quando utilizza HTTPS. Per HTTPS, accettare prima l'avviso relativo al certificato della stampante su quel dispositivo, come descritto nel passaggio 2.
+8. Tornare in WCPOS ed eseguire nuovamente **Stampa di prova**. La stampa dovrebbe iniziare immediatamente.
+
+:::warning Gli aggiornamenti del firmware la riattivano
+Le indicazioni di Epson affermano che un aggiornamento del firmware ripristina la configurazione di sicurezza ai valori predefiniti conformi, ovvero **la Stampa protetta viene riattivata dopo l'aggiornamento del firmware della stampante**. Se una stampante che ha funzionato per mesi smette improvvisamente di stampare subito dopo un aggiornamento del firmware, ripetere i passaggi precedenti.
+:::
+
+**Non si è certi che la stampante sia interessata?** Stampare il foglio di stato della rete (con il coperchio del rotolo aperto, tenere premuto il pulsante FEED per un secondo — oppure il pulsante del foglio di stato per tre secondi sui modelli che ne sono dotati) e cercare la riga `Security Mode`: `RED` indica che viene fornita con la Stampa protetta; `Normal` (o l'assenza di tale riga) indica che non viene fornita con la Stampa protetta.
+
+:::tip Modificare la password dell'amministratore già che ci si trova
+La password di fabbrica è stampata su un'etichetta leggibile da chiunque e la pagina di amministrazione della stampante è raggiungibile da ogni dispositivo della rete. Se la stampante si trova su una rete condivisa (un ufficio, uno spazio di coworking, un centro commerciale), impostare una password di amministratore personale e, idealmente, collocare la stampante nel proprio segmento di rete. Chiunque possa raggiungere una stampante per ricevute aperta può stamparvi, bloccarla o aprire un cassetto portamonete collegato.
+:::
+
+## Perché esiste questa normativa {#why-the-regulation-exists}
+
+Non è arbitraria. Una stampante per ricevute con una porta di rete aperta e non autenticata accetta comandi da **chiunque nella rete**, incluso il comando che apre un cassetto portamonete collegato. Le stampanti per ricevute esposte a Internet sono state dirottate in massa per stampare spam e i dispositivi integrati con password di fabbrica sono stati arruolati nelle botnet. La norma — il [regolamento delegato (UE) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030), in vigore per i prodotti immessi sul mercato dal 1° agosto 2025 ai sensi del [regolamento (UE) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) — richiede che i dispositivi siano forniti senza queste porte aperte.
+
+Disabilitare la Stampa protetta è legittimo: la normativa richiede impostazioni predefinite sicure, non una sicurezza *permanente*, e riattivare le porte classiche è una scelta consapevole del proprietario del dispositivo. Occorre compiere una scelta informata: preferire una rete privata per la cassa e impostare una password di amministratore personale.
+
+## Porte, per chi desidera approfondire {#ports}
+
+Verificato su una TM-m30III in uso (firmware 13.21):
+
+| Stato | TCP raw 9100 | ePOS-Print (HTTP :80) | ePOS-Print (HTTPS :443) |
+|---|---|---|---|
+| Stampa sicura **abilitata** | accettato, eliminato silenziosamente | non disponibile | funziona |
+| Stampa sicura **disabilitata** | funziona | funziona | funziona |
+
+Due dettagli importanti. Innanzitutto, con la Stampa sicura abilitata l'eliminazione non è istantanea: la stampante conserva il processo per alcuni minuti e, **finché ne conserva uno, non stampa da alcun canale**, quindi un singolo processo inviato per errore può far sembrare completamente inutilizzabile una stampante perfettamente funzionante. In secondo luogo, su questa generazione di stampanti le classiche porte ePOS `8008`/`8043` **non** supportano ePOS-Print (la porta 8008 è chiusa; la 8043 utilizza un altro servizio Epson); pertanto, nell'**applicazione web**, se il negozio utilizza HTTP impostare la **Porta su 80** nella stampante, mentre se utilizza HTTPS impostarla su **443**.
+
+La guida di compatibilità di Epson conferma questa matrice e aggiunge le varianti crittografate: con la Stampa sicura abilitata, le porte TLS — `9143` (raw crittografato), `443` (ePOS HTTPS) e `8043`/`8143` (SDK) — continuano a funzionare, consentendo al software compatibile con RED di stampare senza disabilitare nulla. Sul firmware RED, LPR (porta 515) e TLS 1.0/1.1 sono disabilitati completamente, indipendentemente dall'impostazione della Stampa sicura.
+
+## Riferimenti {#references}
+
+- [Epson: FAQ sulla direttiva sulle apparecchiature radio](https://www.epson.co.uk/en_GB/faq/KA-01896/contents?loc=en-us) — dichiarazione di Epson sulla conformità RED e sui sistemi legacy
+- [Portale di sicurezza Epson](https://support.epson.net/security/en/index.html)
+- [Regolamento delegato (UE) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030) e [(UE) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) (data di applicazione) su EUR-Lex
