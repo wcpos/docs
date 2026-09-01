@@ -1,0 +1,70 @@
+---
+title: "Impressão segura da Epson (a impressora não imprime nada)"
+sidebar_label: Impressão segura da Epson
+sidebar_position: 3
+description: "Novas impressoras de recibos Epson são fornecidas com a Impressão segura ativada — os trabalhos são descartados silenciosamente até que ela seja desativada. Saiba o que é, por que existe e como corrigir isso em dois minutos."
+---
+
+# Impressão segura da Epson {#epson-secure-printing}
+
+**Sintoma:** uma nova impressora de recibos Epson é adicionada, o WCPOS a encontra na rede, a impressão de teste informa que foi enviada — e nada é impresso. Não há erro, luz piscando, e a própria página de status da impressora informa "Disponível". Os autotestes pelo painel são impressos normalmente.
+
+Nesse caso, é quase certo que a **Impressão segura** esteja ativada na impressora, pois os modelos Epson recentes saem de fábrica dessa forma.
+
+## O que está acontecendo {#whats-happening}
+
+Desde **1º de agosto de 2025**, uma regulamentação de cibersegurança da UE (a Diretiva de Equipamentos de Rádio, "RED") exige que dispositivos conectados à rede comercializados no mercado da UE sejam **seguros por padrão**. A resposta da Epson nas impressoras de recibos da série TM é uma configuração chamada **Impressão segura**: enquanto está ativada, a impressora **retém e depois descarta silenciosamente** os trabalhos de impressão que chegam pelos canais tradicionais não criptografados — a porta TCP bruta (9100), usada pela maioria dos softwares de POS, e o ePOS por HTTP simples. O trabalho não é rejeitado com um erro; ele simplesmente não é impresso, por isso tudo *parece* estar funcionando normalmente.
+
+Isso afeta todos os produtos de POS, não apenas o WCPOS — a própria orientação da Epson para sistemas legados é reativar as portas clássicas, e outros fornecedores de POS documentam a mesma correção.
+
+:::info Fora da UE?
+A regulamentação da UE não se aplica diretamente fora da UE, mas unidades vendidas em outros lugares podem chegar com o mesmo firmware e as mesmas configurações padrão. Se uma Epson nova em qualquer lugar do mundo apresentar exatamente esse sintoma, verifique a configuração — isso leva dois minutos e esclarece a questão.
+:::
+
+## A correção {#the-fix}
+
+É necessário acessar a página de configuração web da impressora e ter a **senha de administrador**. Nas impressoras Epson recentes, a senha de administrador de fábrica é exclusiva para cada dispositivo — normalmente o **número de série** da impressora, impresso na etiqueta na base da impressora (os modelos mais antigos eram fornecidos com a senha `epson`). Se outra pessoa configurou a impressora anteriormente, essa senha pode ter sido alterada.
+
+1. Localize o endereço IP da impressora (ele está na folha de autoteste ou use **Escanear rede** nas configurações da impressora do WCPOS).
+2. Em um navegador, abra `https://<printer-ip>` — por exemplo `https://192.168.1.131`. Aceite o aviso de certificado (a impressora usa um certificado autoassinado; isso é normal).
+3. Clique em **Login do administrador** e entre com a senha de administrador.
+4. Acesse a guia **Imprimir** → **Impressão segura**.
+5. Defina **Impressão segura** como **Desativar** e confirme.
+6. **Desligue e ligue novamente a impressora** — desconecte-a da tomada por dez segundos. Algumas configurações só entram em vigor após a reinicialização.
+7. Se usar o **aplicativo web** com um modelo recente, edite a impressora em **POS > Configurações > Impressão** e defina sua **Porta** como `80` quando a loja usar HTTP ou `443` quando usar HTTPS. Para HTTPS, primeiro aceite o aviso de certificado da impressora nesse dispositivo, conforme descrito na etapa 2.
+8. De volta ao WCPOS, execute novamente **Impressão de teste**. A impressão deverá sair imediatamente.
+
+:::warning Atualizações de firmware reativam o recurso
+As orientações da Epson informam que uma atualização de firmware redefine a configuração de segurança para os padrões compatíveis — isto é, **a Impressão Segura é reativada depois que o firmware da impressora é atualizado**. Se uma impressora que funcionava há meses parar de imprimir logo após uma atualização de firmware, refaça as etapas acima.
+:::
+
+**Não tem certeza se a impressora é afetada?** Imprima a folha de status da rede (com a tampa do rolo aberta, mantenha o botão FEED pressionado por um segundo — ou mantenha o botão da folha de status pressionado por três segundos nos modelos que o possuem) e procure a linha `Security Mode`: `RED` significa que ela vem com Impressão Segura; `Normal` (ou a ausência dessa linha) significa que não.
+
+:::tip Altere a senha de administrador enquanto estiver nessa página
+A senha de fábrica é impressa em uma etiqueta que qualquer pessoa pode ler, e a página de administração da impressora pode ser acessada por todos os dispositivos da rede. Se a impressora estiver em uma rede compartilhada (um escritório, espaço de coworking ou shopping), defina uma senha de administrador própria — e, de preferência, coloque a impressora em seu próprio segmento de rede. Qualquer pessoa que consiga acessar uma impressora de recibos aberta pode imprimir nela, bloqueá-la ou abrir uma gaveta de dinheiro conectada.
+:::
+
+## Por que a regulamentação existe {#why-the-regulation-exists}
+
+Não é arbitrário. Uma impressora de recibos com uma porta de rede aberta e sem autenticação aceita comandos de **qualquer pessoa na rede** — inclusive o comando que abre uma gaveta de dinheiro conectada. Impressoras de recibos expostas à Internet já foram sequestradas em massa para imprimir spam, e dispositivos embarcados com senhas de fábrica foram recrutados para botnets. A regra — [Regulamento Delegado (UE) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030), em vigor para produtos colocados no mercado a partir de 1º de agosto de 2025, conforme o [Regulamento (UE) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) — exige que os dispositivos sejam fornecidos sem essas portas abertas.
+
+Desativar a Impressão Segura é legítimo — a regulamentação exige *padrões* seguros, não segurança *sempre*, e reativar as portas clássicas é uma escolha deliberada do proprietário do dispositivo. Tome uma decisão informada: prefira uma rede privada para o caixa e defina uma senha de administrador própria.
+
+## Portas, para quem tem curiosidade técnica {#ports}
+
+Verificado em uma TM-m30III em funcionamento (firmware 13.21):
+
+| Estado | TCP bruto 9100 | ePOS-Print (HTTP :80) | ePOS-Print (HTTPS :443) |
+|---|---|---|---|
+| Impressão segura **ativada** | aceito, descartado silenciosamente | não disponível | funciona |
+| Impressão segura **desativada** | funciona | funciona | funciona |
+
+Há dois detalhes importantes. Primeiro, com a Impressão segura ativada, o descarte não é instantâneo — a impressora mantém o trabalho por alguns minutos e, **enquanto mantém um trabalho, não imprime por nenhum canal**, portanto, um único trabalho enviado por engano pode fazer uma impressora em perfeito funcionamento parecer totalmente inoperante. Segundo, nesta geração de impressoras, as portas ePOS clássicas `8008`/`8043` **não** disponibilizam ePOS-Print (a 8008 está fechada; a 8043 executa um serviço Epson diferente) — portanto, no **aplicativo web**, se a loja usar HTTP, defina a **Porta como 80** na impressora; se usar HTTPS, defina-a como **443**.
+
+O próprio guia de compatibilidade da Epson confirma essa matriz e adiciona as variantes criptografadas: com a Impressão segura ativada, as portas TLS — `9143` (bruta criptografada), `443` (ePOS HTTPS) e `8043`/`8143` (SDK) — continuam funcionando, permitindo que softwares compatíveis com RED imprimam sem desativar nada. No firmware RED, LPR (porta 515) e TLS 1.0/1.1 são desativados completamente, independentemente da opção Impressão segura.
+
+## Referências {#references}
+
+- [Epson: FAQ da Diretiva de Equipamentos de Rádio](https://www.epson.co.uk/en_GB/faq/KA-01896/contents?loc=en-us) — declaração da Epson sobre conformidade com RED e sistemas legados
+- [Portal de segurança da Epson](https://support.epson.net/security/en/index.html)
+- [Regulamento Delegado (UE) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030) e [(UE) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) (data de aplicação) no EUR-Lex
