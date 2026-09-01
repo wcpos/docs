@@ -25,6 +25,10 @@ const DEFAULT_PAGES_DIR = path.join(
   REPO_ROOT,
   'versioned_docs/version-1.x/error-codes'
 );
+const DEFAULT_SIDEBAR = path.join(
+  REPO_ROOT,
+  'versioned_sidebars/version-1.x-sidebars.json'
+);
 const LEGACY_DOMAINS = new Set(['API', 'DB', 'PY', 'SY']);
 
 /** Leading uppercase-letter run of a code, e.g. AUTH331 -> "AUTH", SY01001 -> "SY". */
@@ -48,19 +52,39 @@ function loadPageCodes(pagesDir = DEFAULT_PAGES_DIR) {
   );
 }
 
+/** Every doc id ("error-codes/SYNC341") reachable anywhere in the sidebar tree. */
+function loadSidebarDocIds(sidebarPath = DEFAULT_SIDEBAR) {
+  const docIds = new Set();
+  const visit = (value) => {
+    if (typeof value === 'string') docIds.add(value);
+    else if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') {
+      Object.values(value).forEach(visit);
+    }
+  };
+  visit(JSON.parse(fs.readFileSync(sidebarPath, 'utf8')));
+  return docIds;
+}
+
 /**
- * @returns {{ missing: string[], stale: string[], metaMismatches: string[], checked: number }}
+ * @returns {{ missing: string[], stale: string[], metaMismatches: string[], unreachable: string[], checked: number }}
  *   missing — manifest codes with no page (dead "Learn more" links)
  *   stale   — non-legacy pages that no manifest code backs
  *   metaMismatches — ErrorMeta props that do not match their page filename
+ *   unreachable — manifest codes whose page is absent from the versioned
+ *   sidebar. A page missing from the sidebar builds and serves fine at its
+ *   direct URL, so nothing else fails — SYNC341 shipped exactly this way —
+ *   but nobody browsing the docs can find it.
  */
 function checkCoverage({
   manifestPath = DEFAULT_MANIFEST,
   pagesDir = DEFAULT_PAGES_DIR,
+  sidebarPath = DEFAULT_SIDEBAR,
 } = {}) {
   const codes = loadManifestCodes(manifestPath);
   const manifestCodes = new Set(Object.keys(codes));
   const pageCodes = loadPageCodes(pagesDir);
+  const sidebarDocIds = loadSidebarDocIds(sidebarPath);
 
   const missing = [...manifestCodes].filter((c) => !pageCodes.has(c)).sort();
   const stale = [...pageCodes]
@@ -86,20 +110,34 @@ function checkCoverage({
   }
   metaMismatches.sort();
 
-  return { missing, stale, metaMismatches, checked: manifestCodes.size };
+  const unreachable = [...manifestCodes]
+    .filter((c) => !sidebarDocIds.has(`error-codes/${c}`))
+    .sort();
+
+  return {
+    missing,
+    stale,
+    metaMismatches,
+    unreachable,
+    checked: manifestCodes.size,
+  };
 }
 
 module.exports = { checkCoverage, domainPrefix };
 
 // CLI: `node scripts/check-error-code-coverage.js` — exit 1 on any gap.
 if (require.main === module) {
-  const { missing, stale, metaMismatches, checked } = checkCoverage();
+  const { missing, stale, metaMismatches, unreachable, checked } =
+    checkCoverage();
   if (
     missing.length === 0 &&
     stale.length === 0 &&
-    metaMismatches.length === 0
+    metaMismatches.length === 0 &&
+    unreachable.length === 0
   ) {
-    console.log(`error-code coverage OK — ${checked} codes, all have pages.`);
+    console.log(
+      `error-code coverage OK — ${checked} codes, all have pages and sidebar entries.`
+    );
     process.exit(0);
   }
   if (missing.length) {
@@ -115,6 +153,11 @@ if (require.main === module) {
   if (metaMismatches.length) {
     console.error(
       `ErrorMeta code props that do not match their page:\n  ${metaMismatches.join('\n  ')}`
+    );
+  }
+  if (unreachable.length) {
+    console.error(
+      `Pages missing from the versioned sidebar (unreachable by navigation):\n  ${unreachable.join('\n  ')}`
     );
   }
   process.exit(1);

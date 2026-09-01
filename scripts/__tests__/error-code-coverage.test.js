@@ -43,6 +43,47 @@ describe('error-code coverage contract', () => {
     expect(checked).toBeGreaterThan(0);
   });
 
+  it('every manifest code is reachable through the versioned sidebar', () => {
+    const { unreachable } = checkCoverage();
+    expect(unreachable).toEqual([]);
+  });
+
+  it('flags a manifest code missing from the sidebar as unreachable', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'error-code-sidebar-'));
+    const pagesDir = path.join(root, 'pages');
+    const manifestPath = path.join(root, 'manifest.json');
+    const sidebarPath = path.join(root, 'sidebars.json');
+    fs.mkdirSync(pagesDir);
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        codes: { AUTH331: { domain: 'AUTH' }, SYNC341: { domain: 'SYNC' } },
+      })
+    );
+    fs.writeFileSync(
+      path.join(pagesDir, 'AUTH331.mdx'),
+      '<ErrorMeta code="AUTH331" />'
+    );
+    fs.writeFileSync(
+      path.join(pagesDir, 'SYNC341.mdx'),
+      '<ErrorMeta code="SYNC341" />'
+    );
+    // SYNC341 has a page and a manifest entry but no sidebar entry — the exact
+    // shape that shipped unreachable on 2026-09-01.
+    fs.writeFileSync(
+      sidebarPath,
+      JSON.stringify({ sidebar: [{ items: ['error-codes/AUTH331'] }] })
+    );
+
+    try {
+      expect(
+        checkCoverage({ manifestPath, pagesDir, sidebarPath })
+      ).toMatchObject({ unreachable: ['SYNC341'] });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('domainPrefix isolates the domain namespace', () => {
     expect(domainPrefix('AUTH331')).toBe('AUTH');
     expect(domainPrefix('SYNC101')).toBe('SYNC');
