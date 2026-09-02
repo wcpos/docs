@@ -1,0 +1,70 @@
+---
+title: "Epson Secure Printing (printer drukt niets af)"
+sidebar_label: Epson Secure Printing
+sidebar_position: 3
+description: "Nieuwe Epson-bonprinters worden geleverd met Secure Printing ingeschakeld — afdruktaken worden stilzwijgend verwijderd totdat deze functie is uitgeschakeld. Wat het is, waarom het bestaat en hoe dit in twee minuten kan worden opgelost."
+---
+
+# Epson Secure Printing {#epson-secure-printing}
+
+**Symptoom:** er wordt een nieuwe Epson-bonprinter toegevoegd, WCPOS vindt deze op het netwerk, de testafdruk meldt dat deze is verzonden — maar er wordt niets afgedrukt. Geen foutmelding, geen knipperend lampje, en op de eigen statuspagina van de printer staat "Beschikbaar". Zelftests via het bedieningspaneel worden wel correct afgedrukt.
+
+In dat geval is **Secure Printing** op de printer vrijwel zeker ingeschakeld; op recente Epson-modellen is dit de fabrieksinstelling.
+
+## Wat er gebeurt {#whats-happening}
+
+Sinds **1 augustus 2025** vereist een EU-cyberbeveiligingsverordening (de richtlijn radioapparatuur, "RED") dat apparaten met een netwerkverbinding die op de EU-markt worden gebracht, **standaard beveiligd** zijn. Epsons reactie voor bonprinters uit de TM-serie is een instelling genaamd **Secure Printing**: zolang deze is ingeschakeld, houdt de printer afdruktaken die via de traditionele niet-versleutelde kanalen binnenkomen **stilzwijgend vast en verwijdert ze vervolgens** — de onbewerkte TCP-poort (9100) die de meeste POS-software gebruikt, en gewone HTTP ePOS. De taak wordt niet met een foutmelding geweigerd; hij wordt gewoon stilletjes nooit afgedrukt, waardoor alles er *normaal* uitziet.
+
+Dit heeft gevolgen voor elk POS-product, niet alleen voor WCPOS — Epsons eigen richtlijn voor verouderde systemen is om de klassieke poorten opnieuw in te schakelen, en andere POS-leveranciers documenteren dezelfde oplossing.
+
+:::info Buiten de EU?
+De EU-verordening is zelf niet van toepassing buiten de EU, maar exemplaren die elders worden verkocht kunnen met dezelfde firmware en standaardinstellingen worden geleverd. Als een gloednieuwe Epson ergens ter wereld precies dit symptoom vertoont, controleer dan de instelling — dit kost twee minuten en geeft uitsluitsel.
+:::
+
+## De oplossing {#the-fix}
+
+De webconfiguratiepagina van de printer en het **beheerderswachtwoord** zijn nodig. Bij recente Epson-printers is het fabriekswachtwoord voor de beheerder uniek per apparaat — doorgaans het **serienummer** van de printer, afgedrukt op het etiket aan de onderkant van de printer (oudere modellen werden geleverd met het wachtwoord `epson`). Als iemand de printer eerder heeft ingesteld, kan dit zijn gewijzigd.
+
+1. Zoek het IP-adres van de printer op (dit staat op het zelftestvel, of gebruik **Netwerk scannen** in de printerinstellingen van WCPOS).
+2. Open in een browser `https://<printer-ip>` — bijvoorbeeld `https://192.168.1.131`. Accepteer de certificaatwaarschuwing (de printer gebruikt een zelfondertekend certificaat; dat is normaal).
+3. Klik op **Beheerdersaanmelding** en meld u aan met het beheerderswachtwoord.
+4. Ga naar het tabblad **Afdrukken** → **Beveiligd afdrukken**.
+5. Stel **Beveiligd afdrukken** in op **Uitschakelen** en bevestig.
+6. **Schakel de printer volledig uit en weer in** — haal de stekker er tien seconden uit. Sommige instellingen worden pas na een herstart van kracht.
+7. Als u de **webapp** met een recent model gebruikt, bewerk dan de printer in **POS > Instellingen > Afdrukken** en stel de **Poort** in op `80` wanneer uw winkel HTTP gebruikt, of op `443` wanneer deze HTTPS gebruikt. Accepteer voor HTTPS eerst de certificaatwaarschuwing van de printer op dat apparaat, zoals beschreven in stap 2.
+8. Ga terug naar WCPOS en voer **Testafdruk** opnieuw uit. De printer zou onmiddellijk moeten afdrukken.
+
+:::warning Firmware-updates schakelen dit weer in
+Volgens Epson wordt de beveiligingsconfiguratie door een firmware-update teruggezet naar de conforme standaardinstellingen — wat betekent dat **Secure Printing weer wordt ingeschakeld nadat de firmware van de printer is bijgewerkt**. Als een printer die maandenlang heeft gewerkt plotseling direct na een firmware-update niet meer afdrukt, voer de bovenstaande stappen dan opnieuw uit.
+:::
+
+**Weet u niet zeker of uw printer is getroffen?** Druk het netwerkstatusblad af (houd met het klepje van de rol open de knop FEED één seconde ingedrukt — of houd bij modellen met zo'n knop de knop voor het statusblad drie seconden ingedrukt) en zoek naar de regel `Security Mode`: `RED` betekent dat de printer wordt geleverd met Secure Printing; `Normal` (of geen dergelijke regel) betekent dat dit niet zo is.
+
+:::tip Wijzig het beheerderswachtwoord terwijl u hier bent
+Het fabriekswachtwoord staat op een label dat iedereen kan lezen, en de beheerpagina van de printer is bereikbaar vanaf elk apparaat in uw netwerk. Als uw printer zich in een gedeeld netwerk bevindt (een kantoor, een coworkingruimte, een winkelcentrum), stel dan een eigen beheerderswachtwoord in — en plaats de printer bij voorkeur in een eigen netwerksegment. Iedereen die een onbeveiligde bonnenprinter kan bereiken, kan ernaar afdrukken, deze bezet houden of een aangesloten kassalade openen.
+:::
+
+## Waarom de regelgeving bestaat {#why-the-regulation-exists}
+
+Dit is niet willekeurig. Een bonnenprinter met een open, niet-geverifieerde netwerkpoort accepteert opdrachten van **iedereen in het netwerk** — waaronder de opdracht om een aangesloten kassalade te openen. Bonnenprinters die aan internet zijn blootgesteld, zijn op grote schaal gekaapt om spam af te drukken, en ingebedde apparaten met fabriekswachtwoorden zijn ingezet in botnets. De regel — [Gedelegeerde Verordening (EU) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030), van kracht voor producten die vanaf 1 augustus 2025 in de handel worden gebracht volgens [Verordening (EU) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) — vereist dat apparaten zonder die open toegangen worden geleverd.
+
+Het uitschakelen van Secure Printing is legitiem — de regelgeving vereist veilige *standaardinstellingen*, niet dat het *altijd* veilig is, en het opnieuw inschakelen van de klassieke poorten is een bewuste keuze van de eigenaar van het apparaat. Maak een geïnformeerde keuze: geef de voorkeur aan een privénetwerk voor de kassa en stel een eigen beheerderswachtwoord in.
+
+## Poorten, voor de technisch geïnteresseerden {#ports}
+
+Geverifieerd met een actieve TM-m30III (firmware 13.21):
+
+| Status | Ruwe TCP 9100 | ePOS-Print (HTTP :80) | ePOS-Print (HTTPS :443) |
+|---|---|---|---|
+| Beveiligd afdrukken **ingeschakeld** | geaccepteerd, stilzwijgend verwijderd | niet beschikbaar | werkt |
+| Beveiligd afdrukken **uitgeschakeld** | werkt | werkt | werkt |
+
+Twee belangrijke details. Ten eerste wordt de taak bij ingeschakeld beveiligd afdrukken niet onmiddellijk verwijderd — de printer bewaart de taak enkele minuten en **zolang deze een taak bewaart, drukt deze via geen enkel kanaal af**, waardoor één verdwaalde taak een goed werkende printer volledig defect kan laten lijken. Ten tweede bieden de klassieke ePOS-poorten `8008`/`8043` op deze printergeneratie **geen** ePOS-Print (8008 is gesloten; 8043 gebruikt een andere Epson-service) — stel daarom in de **webapp**, als uw winkel via HTTP werkt, de **Poort in op 80**, en als deze via HTTPS werkt, op **443**.
+
+Epsons eigen compatibiliteitsgids bevestigt deze matrix en voegt de versleutelde varianten toe: bij ingeschakeld beveiligd afdrukken blijven de TLS-poorten — `9143` (versleuteld raw), `443` (HTTPS ePOS) en `8043`/`8143` (SDK) — werken. Zo kan RED-compatibele software afdrukken zonder iets uit te schakelen. Op RED-firmware zijn LPR (poort 515) en TLS 1.0/1.1 volledig uitgeschakeld, ongeacht de instelling voor beveiligd afdrukken.
+
+## Referenties {#references}
+
+- [Epson: veelgestelde vragen over de richtlijn radioapparatuur](https://www.epson.co.uk/en_GB/faq/KA-01896/contents?loc=en-us) — Epsons verklaring over RED-conformiteit en oudere systemen
+- [Epson-beveiligingsportaal](https://support.epson.net/security/en/index.html)
+- [Gedelegeerde Verordening (EU) 2022/30](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0030) en [(EU) 2023/2444](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R2444) (toepassingsdatum) op EUR-Lex
