@@ -1,0 +1,79 @@
+---
+title: WooCommerce 税费
+sidebar_label: WooCommerce 税费
+description: "在 WCPOS 中使用 WooCommerce Tax 自动税费（TaxJar）：了解 POS 订单如何获取税率、设置步骤以及收银台的预期行为。"
+---
+
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# WooCommerce 税费 {#woocommerce-tax}
+
+[WooCommerce Tax](https://woocommerce.com/document/woocommerce-tax/) 是一款 WooCommerce 插件，可通过 TaxJar 自动查询销售税，无需手动维护税率表。WCPOS 与其兼容：POS 销售使用与在线订单相同的辖区税率，且无需在 WCPOS 中启用任何设置。
+
+## 工作原理 {#how-it-works}
+
+WooCommerce Tax 仅在订单通过在线结账流程提交或在 WooCommerce 订单页面编辑时向 TaxJar 请求税率。POS 订单不会经过这两种流程，因此 WCPOS 会代为请求：
+
+1. 当 POS 保存未结订单时，WCPOS 会向 WooCommerce Tax 请求订单税务所在地的税率。该地点遵循 POS 的 **计算税费依据** 设置：店铺基准地址，或客户的账单地址或配送地址。
+2. WooCommerce Tax 会将这些税率写入店铺的常规税率表，每个辖区对应一行，与处理在线订单时完全相同。可在 `WP Admin > WooCommerce > 设置 > Tax > Standard rates` 中查看，并按邮政编码和城市区分。
+3. WooCommerce 会将这些行应用于订单。订单中每个辖区都有一条税费行，并使用 WooCommerce Tax 自己的名称，例如 *CA STATE TAX*、*CA COUNTY TAX*。
+4. POS 会在下次检查更改时下载这些新行，通常在一分钟内完成，此后其本地总计将与店铺保持一致。若要立即获取，请在 [店铺健康 → 数据库](/support/store-health#clear-and-redownload) 中的 **税率** 行使用 **清除并重新下载**。
+
+在未结 POS 订单中添加或移除项目时，会根据当前项目重新计算税费。订单付款后，WCPOS 不会再作处理，WooCommerce Tax 的行为与处理任何其他订单时相同。
+
+关闭自动税费后，WCPOS 不会执行特殊处理，POS 会照常使用店铺的税率表。
+
+## 设置 {#setup}
+
+<Steps>
+  <StepCard number="1" title="连接 WooCommerce Tax">
+
+安装并启用 WooCommerce Tax，然后将其连接到 WordPress.com。`WP Admin > WooCommerce > Status > WooCommerce Tax` 应显示为 **已连接到 WordPress.com**。
+
+  </StepCard>
+  <StepCard number="2" title="启用自动税费">
+
+在 `WP Admin > WooCommerce > 设置 > Tax` 中，将 **自动税费** 设为 **启用自动税费**。店铺必须位于 WooCommerce Tax 支持的国家或地区。
+
+启用此选项会将手动输入的所有税率备份到 CSV 文件，并从表格中移除这些税率。如果之后可能需要这些税率，请从 `WP Admin > WooCommerce > Status > WooCommerce Tax` 下载备份。
+
+  </StepCard>
+  <StepCard number="3" title="在 POS 中同步设置">
+
+在 POS 中，打开[税务设置](/settings/store/tax)，然后点击 **恢复服务器设置**。启用自动税费后，WooCommerce Tax 会锁定 WooCommerce，使其根据客户的配送地址计算税费，价格以*不含税*方式输入和显示，POS 必须同步这些设置。
+
+如果针对到店销售有意让 POS 保持使用店铺基础地址，WCPOS 也会将其用作店铺中 POS 订单的依据，因此两者仍会保持一致。
+
+  </StepCard>
+  <StepCard number="4" title="进行测试销售" isLast>
+
+为采用 **标准** 税类的应税商品创建订单，并等待订单保存。请在 WP Admin 中检查：订单应包含以税务管辖区命名的税费行，且 **标准税率** 下应显示相应的行。其他税类的商品会在首次包含该商品的销售中，于相应税类下生成税率行。
+
+  </StepCard>
+</Steps>
+
+## 预期情况 {#what-to-expect}
+
+- **新地点的第一笔销售可能会有一次不一致。** POS 会根据已下载的税率行计算销售总额。如果店铺此前从未对某个地址征税，则尚不存在对应的税率行，因此 POS 可能会在该笔销售中显示[总额提示](/support/troubleshooting/totals-disagree)。以店铺中记录的数据为准。税率行到达 POS 后（通常在一分钟内），该地点后续的销售总额将保持一致。若税额基于客户地址计算，每个新邮政编码都可能发生一次；若基于店铺基准地址计算，通常只会在第一笔销售时发生。某个司法管辖区变更税率时，也可能再次发生一次。
+- **请勿手动添加税率行。** 某地点的税率行会在该地点的第一笔销售时出现。如果 POS 中的 **查看所有税率** 对某个地点显示为空，说明该地点尚未产生销售。
+- **费用不会发送到 TaxJar。** 应税费用会使用税率表中已为该费用税类设置的税率征税，这也与 WooCommerce Tax 在其订单页面中处理费用的方式一致。
+- **查找失败不会阻止销售。** 如果无法连接 TaxJar，或 WooCommerce Tax 拒绝查找订单税率（地址中没有邮政编码、客户免税，或店铺在该地点没有税务关联），订单仍会使用税率表中已有的税率保存。服务器上的 POS 日志会记录具体情况：服务中断时显示 *WooCommerce Tax rate priming failed*，请求被拒绝时显示 *WooCommerce Tax returned no rates for the POS order*。请参阅[日志](/support/logs)。
+- **Stripe Tax 的情况不同。** Stripe Tax 完全不适用于 POS 订单。请参阅[插件冲突](/support/troubleshooting/plugin-conflicts)。
+
+## 要求 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WooCommerce Tax">已安装并连接至 WordPress.com，且已启用自动税费</RequirementItem>
+  <RequirementItem label="店铺所在国家/地区">WooCommerce Tax 支持自动税费的国家/地区</RequirementItem>
+  <RequirementItem label="WooCommerce">7.6 或更高版本。在较旧版本的 WooCommerce 中，WCPOS 不会向 WooCommerce Tax 请求税率，POS 订单会使用表中已有的行。</RequirementItem>
+  <RequirementItem label="WCPOS">免费版和专业版</RequirementItem>
+</RequirementsList>
+
+## 相关内容 {#related}
+
+- [税务设置](/settings/store/tax)
+- [您的店铺与 POS 的总计金额不一致](/support/troubleshooting/totals-disagree)
+- [插件冲突](/support/troubleshooting/plugin-conflicts)

@@ -1,0 +1,79 @@
+---
+title: WooCommerce Tax
+sidebar_label: WooCommerce Tax
+description: "Usa le imposte automatiche di WooCommerce Tax (TaxJar) con WCPOS: come gli ordini POS ottengono le aliquote, i passaggi di configurazione e cosa aspettarsi alla cassa."
+---
+
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# WooCommerce Tax {#woocommerce-tax}
+
+[WooCommerce Tax](https://woocommerce.com/document/woocommerce-tax/) è il plugin WooCommerce che recupera automaticamente l'imposta sulle vendite tramite TaxJar, invece di richiedere la gestione manuale di una tabella delle aliquote. WCPOS funziona con questo plugin: le vendite POS ricevono le stesse aliquote per giurisdizione degli ordini online e non occorre attivare nulla in WCPOS.
+
+## Come funziona {#how-it-works}
+
+WooCommerce Tax richiede le aliquote a TaxJar solo quando un ordine passa attraverso il checkout online o viene modificato nella schermata degli ordini WooCommerce. Gli ordini POS non seguono nessuno dei due percorsi, quindi WCPOS effettua la richiesta per loro conto:
+
+1. Quando il POS salva un ordine aperto, WCPOS richiede a WooCommerce Tax le aliquote relative alla posizione fiscale dell'ordine. La posizione segue l'impostazione POS **Calcola le imposte in base a**: l'indirizzo base del negozio oppure l'indirizzo di fatturazione o spedizione del cliente.
+2. WooCommerce Tax scrive tali aliquote nella normale tabella delle aliquote fiscali del negozio, con una riga per ogni giurisdizione, esattamente come avviene per un ordine online. Sono disponibili in `WP Admin > WooCommerce > Impostazioni > Tax > Standard rates`, identificate da CAP e città.
+3. WooCommerce applica le righe all'ordine. L'ordine contiene una riga d'imposta per ogni giurisdizione, con i nomi propri di WooCommerce Tax (ad esempio *CA STATE TAX*, *CA COUNTY TAX*).
+4. Il POS scarica le nuove righe al successivo controllo delle modifiche, in genere entro un minuto, così da allineare da quel momento i totali locali a quelli del negozio. Per recuperarle subito, usa **Cancella e riscarica** nella riga **Aliquote fiscali** in [Stato del negozio → Database](/support/store-health#clear-and-redownload).
+
+L'aggiunta o la rimozione di righe in un ordine POS aperto ricalcola le imposte in base alle righe correnti. Una volta pagato un ordine, WCPOS non lo modifica e WooCommerce Tax si comporta come per qualsiasi altro ordine.
+
+Con le imposte automatiche disattivate, WCPOS non esegue alcuna operazione speciale e il POS utilizza come di consueto la tabella delle aliquote fiscali del negozio.
+
+## Configurazione {#setup}
+
+<Steps>
+  <StepCard number="1" title="Connettere WooCommerce Tax">
+
+Installare e attivare WooCommerce Tax, quindi collegarlo a WordPress.com. `WP Admin > WooCommerce > Status > WooCommerce Tax` dovrebbe indicare **Connesso a WordPress.com**.
+
+  </StepCard>
+  <StepCard number="2" title="Abilitare le imposte automatiche">
+
+In `WP Admin > WooCommerce > Impostazioni > Tax`, impostare **Calcolo automatico delle imposte** su **Abilita calcolo automatico delle imposte**. Il negozio deve trovarsi in un Paese supportato da WooCommerce Tax.
+
+L'attivazione di questa opzione esegue il backup in un file CSV delle aliquote inserite manualmente e le rimuove dalla tabella. Scaricare il backup da `WP Admin > WooCommerce > Status > WooCommerce Tax` qualora fosse necessario utilizzarle di nuovo.
+
+  </StepCard>
+  <StepCard number="3" title="Rispecchiare le impostazioni nel POS">
+
+Nel POS, aprire [Impostazioni imposte](/settings/store/tax) e fare clic su **Ripristina impostazioni del server**. Quando le imposte automatiche sono attive, WooCommerce Tax imposta WooCommerce affinché calcoli l'imposta in base all'indirizzo di spedizione del cliente, con prezzi inseriti e visualizzati *al netto* delle imposte; anche il POS deve rispecchiare queste impostazioni.
+
+Se si mantiene intenzionalmente il POS sull'indirizzo base del negozio per le vendite ai clienti in negozio, WCPOS utilizza la stessa base anche per gli ordini POS del negozio, mantenendo così la coerenza tra i due.
+
+  </StepCard>
+  <StepCard number="4" title="Effettuare una vendita di prova" isLast>
+
+Registrare un prodotto imponibile nella classe fiscale **Standard** e consentire il salvataggio dell'ordine. Verificarlo in WP Admin: dovrebbe contenere righe fiscali denominate in base alla giurisdizione e le righe corrispondenti dovrebbero essere state aggiunte in **Aliquote standard**. I prodotti in un'altra classe fiscale ricevono righe in quella classe la prima volta che una vendita ne include uno.
+
+  </StepCard>
+</Steps>
+
+## Cosa aspettarsi {#what-to-expect}
+
+- **La prima vendita in una nuova località può presentare una discrepanza una volta.** Il POS calcola il totale di una vendita in base alle righe delle aliquote già scaricate. Se il negozio non ha mai applicato imposte a un indirizzo in precedenza, non esiste ancora alcuna riga per quell'indirizzo, quindi il POS potrebbe mostrare l'[avviso sui totali](/support/troubleshooting/totals-disagree) per quella vendita. Vengono registrati i dati del negozio. Quando la riga raggiunge il POS, di solito entro un minuto, le vendite successive in quella località coincidono. Con l'imposta basata sull'indirizzo del cliente, può verificarsi una volta per ogni nuovo CAP; con l'indirizzo della sede del negozio, normalmente solo per la primissima vendita. Una giurisdizione che modifica la propria aliquota può causare nuovamente questa situazione.
+- **Non aggiungere manualmente le righe delle aliquote.** Le righe di una località vengono visualizzate alla prima vendita effettuata lì. Se **Visualizza tutte le aliquote fiscali** nel POS appare vuoto per una località, significa che non è stata ancora effettuata alcuna vendita in quella località.
+- **Le commissioni non vengono inviate a TaxJar.** Una commissione imponibile viene tassata con l'aliquota già presente nella tabella per la relativa classe fiscale, proprio come WooCommerce Tax gestisce le commissioni nella propria schermata degli ordini.
+- **Una ricerca non riuscita non blocca mai una vendita.** Se TaxJar non è raggiungibile oppure WooCommerce Tax rifiuta di cercare l'ordine (nessun CAP nell'indirizzo, cliente esente da imposte o località in cui il negozio non ha alcun nesso fiscale), l'ordine viene comunque salvato con le aliquote già presenti nella tabella. I registri sul server indicano quale caso si è verificato: *WooCommerce Tax rate priming failed* in caso di interruzione del servizio, *WooCommerce Tax returned no rates for the POS order* in caso di rifiuto. Consulta [Registri](/support/logs).
+- **Stripe Tax è diverso.** Stripe Tax non funziona affatto con gli ordini POS. Consulta [Conflitti tra plugin](/support/troubleshooting/plugin-conflicts).
+
+## Requisiti {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WooCommerce Tax">Installato, connesso a WordPress.com e con le imposte automatiche abilitate</RequirementItem>
+  <RequirementItem label="Paese del negozio">Un paese supportato da WooCommerce Tax per le imposte automatiche</RequirementItem>
+  <RequirementItem label="WooCommerce">7.6 o versioni successive. Nelle versioni precedenti di WooCommerce, WCPOS non richiede le aliquote a WooCommerce Tax e gli ordini POS usano le righe già presenti nella tabella</RequirementItem>
+  <RequirementItem label="WCPOS">Gratuito e Pro</RequirementItem>
+</RequirementsList>
+
+## Correlati {#related}
+
+- [Impostazioni fiscali](/settings/store/tax)
+- [Il tuo negozio e il POS non concordano sui totali](/support/troubleshooting/totals-disagree)
+- [Conflitti tra plugin](/support/troubleshooting/plugin-conflicts)
