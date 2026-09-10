@@ -1,0 +1,79 @@
+---
+title: WooCommerce Tax
+sidebar_label: WooCommerce Tax
+description: "WooCommerce Tax の自動税計算（TaxJar）を WCPOS で使用する方法を説明します。POS 注文での税率の取得方法、設定手順、レジでの動作をご確認ください。"
+---
+
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# WooCommerce Tax {#woocommerce-tax}
+
+[WooCommerce Tax](https://woocommerce.com/document/woocommerce-tax/) は、税率表を手動で管理する代わりに TaxJar を通じて売上税を自動的に検索する WooCommerce プラグインです。WCPOS はこれに対応しており、POS での販売にもオンライン注文と同じ管轄区域の税率が適用されます。WCPOS 側で有効化する必要はありません。
+
+## 仕組み {#how-it-works}
+
+WooCommerce Tax が TaxJar に税率を問い合わせるのは、注文がオンラインのチェックアウトを通過する場合、または WooCommerce の注文画面で編集される場合のみです。POS 注文はいずれの経路も通らないため、WCPOS が代わりに問い合わせます。
+
+1. POS で未確定注文を保存すると、WCPOS は注文の課税所在地における税率を WooCommerce Tax に問い合わせます。所在地は POS の **税計算の基準** 設定に従い、店舗の基本住所、または顧客の請求先住所・配送先住所となります。
+2. WooCommerce Tax は、オンライン注文の場合と同様に、管轄区域ごとに 1 行としてこれらの税率を店舗の通常の税率表へ書き込みます。郵便番号と市区町村をキーとして、`WP Admin > WooCommerce > 設定 > Tax > Standard rates` で確認できます。
+3. WooCommerce はその行を注文に適用します。注文には管轄区域ごとに 1 つの税金行が追加され、WooCommerce Tax 独自の名称（例: *CA STATE TAX*、*CA COUNTY TAX*）が使用されます。
+4. POS は次回の変更確認時（通常は 1 分以内）に新しい行をダウンロードするため、それ以降はローカルの合計額が店舗の合計額と一致します。すぐに取得するには、[店舗の健全性 → データベース](/support/store-health#clear-and-redownload) の **税率** 行にある **消去して再ダウンロード** を使用します。
+
+未確定の POS 注文で行を追加または削除すると、現在の行に基づいて税額が再計算されます。注文の支払い完了後は、WCPOS は変更を加えず、WooCommerce Tax は他の注文と同様に動作します。
+
+自動税計算をオフにすると、WCPOS は特別な処理を行わず、POS は通常どおり店舗の税率テーブルを使用します。
+
+## 設定 {#setup}
+
+<Steps>
+  <StepCard number="1" title="WooCommerce Tax を接続する">
+
+WooCommerce Tax をインストールして有効化し、WordPress.com に接続します。`WP Admin > WooCommerce > Status > WooCommerce Tax` に **WordPress.com に接続済み** と表示されていることを確認してください。
+
+  </StepCard>
+  <StepCard number="2" title="自動税計算を有効にする">
+
+`WP Admin > WooCommerce > 設定 > Tax` で、**自動税計算** を **自動税計算を有効化** に設定します。店舗は WooCommerce Tax がサポートする国に所在している必要があります。
+
+これを有効にすると、手動で入力した税率は CSV ファイルにバックアップされ、テーブルから削除されます。再度必要になる可能性がある場合は、`WP Admin > WooCommerce > Status > WooCommerce Tax` からバックアップをダウンロードしてください。
+
+  </StepCard>
+  <StepCard number="3" title="POS の設定を同期する">
+
+POS で[税設定](/settings/store/tax)を開き、**サーバー設定を復元** をクリックします。自動税計算が有効な間、WooCommerce Tax は顧客の配送先住所に基づく税計算、税抜きでの価格入力および表示を WooCommerce に強制するため、POS でもこれらの設定を同期する必要があります。
+
+店頭販売用に POS で店舗の拠点住所を意図的に使用し続ける場合、WCPOS は店舗上の POS 注文にもその基準を使用するため、両者の設定は引き続き一致します。
+
+  </StepCard>
+  <StepCard number="4" title="テスト販売を行う" isLast>
+
+**標準** 税クラスの課税対象商品を登録し、注文を保存します。WP Admin で確認してください。管轄区域名を含む税項目が表示され、対応する行が **標準税率** に追加されているはずです。別の税クラスの商品では、そのクラスを含む販売が初めて行われたときに、そのクラスの税率行が追加されます。
+
+  </StepCard>
+</Steps>
+
+## 想定される動作 {#what-to-expect}
+
+- **新しい地域での最初の販売では、一度だけ差異が生じることがあります。** POS は、すでにダウンロード済みの税率行を使用して販売合計を計算します。店舗でこれまでにその住所へ課税したことがない場合、その税率行はまだ存在しないため、その販売で POS に [合計に関する通知](/support/troubleshooting/totals-disagree) が表示されることがあります。記録されるのは店舗側の金額です。通常は1分以内に税率行が POS に届き、その地域での以降の販売では金額が一致します。顧客住所に基づく課税では、新しい郵便番号ごとに一度発生する可能性があります。店舗所在地住所に基づく場合は、通常、最初の販売時にのみ発生します。管轄区域で税率が変更された場合にも、もう一度発生することがあります。
+- **税率行を手動で追加しないでください。** 地域の税率行は、その地域で最初の販売が行われたときに表示されます。POS の **すべての税率を表示** が特定の地域で空に見える場合、その地域への販売はまだ行われていません。
+- **手数料は TaxJar に送信されません。** 課税対象の手数料には、手数料の税クラスに対してテーブルにすでにある税率が適用されます。これは、WooCommerce Tax が独自の注文画面で手数料を扱う方法と同じです。
+- **検索に失敗しても販売はブロックされません。** TaxJar に接続できない場合、または WooCommerce Tax が注文の検索を拒否する場合（住所に郵便番号がない、顧客が免税対象、店舗にネクサスがない地域）、注文はテーブルにすでにある税率で保存されます。サーバー上の POS ログには、障害の場合は *WooCommerce Tax rate priming failed*、拒否の場合は *WooCommerce Tax returned no rates for the POS order* として記録されます。[ログ](/support/logs)を参照してください。
+- **Stripe Tax は異なります。** Stripe Tax は POS 注文ではまったく機能しません。[プラグインの競合](/support/troubleshooting/plugin-conflicts)を参照してください。
+
+## 要件 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WooCommerce Tax">インストール済みで WordPress.com に接続され、自動税計算が有効になっていること</RequirementItem>
+  <RequirementItem label="店舗の国">WooCommerce Tax が自動税計算に対応している国</RequirementItem>
+  <RequirementItem label="WooCommerce">7.6 以降。古いバージョンの WooCommerce では、WCPOS は WooCommerce Tax に税率を問い合わせず、POS 注文ではテーブルにすでに保存されている行が使用されます</RequirementItem>
+  <RequirementItem label="WCPOS">無料版とPro版</RequirementItem>
+</RequirementsList>
+
+## 関連情報 {#related}
+
+- [税設定](/settings/store/tax)
+- [店舗とPOSの合計金額が一致しない](/support/troubleshooting/totals-disagree)
+- [プラグインの競合](/support/troubleshooting/plugin-conflicts)
