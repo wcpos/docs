@@ -1,0 +1,78 @@
+---
+title: Cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Impeça que as verificações de segurança do Cloudflare bloqueiem a conexão do app WCPOS com sua loja."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+
+O Cloudflare protege seu site pedindo que os visitantes passem por uma verificação de segurança antes de permitir o acesso. Um navegador passa por essa verificação silenciosamente. O app WCPOS não é um navegador: ele se comunica com a API REST da sua loja e, quando o Cloudflare responde a essas chamadas com uma página de verificação de segurança em vez de dados, o app não consegue se conectar.
+
+Esta página explica como identificar o problema e como instruir o Cloudflare a permitir o acesso do app. Todas as etapas são destinadas ao proprietário da loja ou à pessoa que gerencia a conta do Cloudflare do site.
+
+## Como identificar {#how-to-recognise-it}
+
+- A tela de conexão mostra **"A configuração de hospedagem desta loja está bloqueando o app"** com o código de erro [HOST121](/error-codes/HOST121).
+- O app para desktop abre uma pequena janela **"Verificação de segurança para your-store.com"** durante a conexão ou a sincronização.
+- Versões anteriores exibiam **"O site não parece ser um site WordPress"** ou **"O site demorou muito para responder"** em um site que está claramente online.
+- A impressão na nuvem é interrompida com uma mensagem informando que "um serviço de segurança está bloqueando o WCPOS Cloud Print".
+
+Para confirmar, abra um terminal e execute:
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+Uma loja bloqueada responde com o status `403` e o cabeçalho `cf-mitigated: challenge`. Uma loja em funcionamento responde com `200` e `content-type: application/json`. Se receber `404`, seu site não usa links permanentes amigáveis; execute a mesma verificação em `'https://your-store.com/?rest_route=/'` em vez disso. Se o WordPress estiver em uma subpasta, inclua-a: `https://example.com/shop/wp-json/`.
+
+:::note O aplicativo para desktop pode concluir uma verificação pontual
+As versões recentes do aplicativo para desktop concluem a verificação da Cloudflare em uma pequena janela quando possível. Isso permite continuar realizando vendas, mas a autorização emitida pela Cloudflare expira (30 minutos por padrão) e a verificação volta a ser exibida. Considere essa janela uma solução temporária e aplique a correção abaixo.
+:::
+
+## Qual recurso da Cloudflare está causando isso {#which-feature}
+
+A correção depende de qual recurso está desafiando o aplicativo. Verifique estas opções no painel da Cloudflare para o site. A Cloudflare vem movendo seus menus; a localização anterior está entre parênteses.
+
+| Recurso | Local | Pode isentar a API? |
+| --- | --- | --- |
+| **Modo de combate a bots** (plano gratuito) | Segurança → Configurações → Tráfego de bots (painel antigo: Segurança → Bots) | **Não.** A Cloudflare não permite que regras de ignorar ou permitir o contornem. Desative-o ou faça upgrade para o Pro e use o Super Bot Fight Mode, que pode ser isentado pela regra de ignorar abaixo. |
+| **Modo sob ataque** | A opção "Modo sob ataque" na visão geral do site ou Segurança → Configurações | Sim. A regra de ignorar abaixo ignora o Nível de segurança, que é o que o Modo sob ataque aumenta. Ou desative o Modo sob ataque quando o ataque terminar. |
+| **Super Bot Fight Mode** (Pro e superior) | Segurança → Configurações → Tráfego de bots (painel antigo: Segurança → Bots) | Sim, com a regra de ignorar abaixo. |
+| **Regras personalizadas ou gerenciadas do WAF** definidas como _Desafio gerenciado_ | Segurança → Regras de segurança (painel antigo: Segurança → WAF) | Sim, com a regra de ignorar abaixo, posicionada acima de qualquer regra personalizada que apresente um desafio. As regras gerenciadas sempre são executadas após as regras personalizadas, portanto a ordem não importa para elas. |
+
+O plugin oficial da Cloudflare para WordPress pode ativar o Modo sob ataque e habilitar o WAF, mas não pode criar regras de ignorar. Elas ficam no painel da Cloudflare.
+
+## Adicione uma regra de ignorar para a REST API {#add-a-skip-rule}
+
+Esta é a solução para todos os casos, exceto o Bot Fight Mode. Ela informa ao Cloudflare para não aplicar desafios às solicitações para a API REST da sua loja. As próprias verificações de login e permissões do WordPress continuam protegendo esses endpoints.
+
+1. No painel do Cloudflare, abra seu site, depois **Segurança → Regras de segurança** (painel antigo: **Segurança → WAF → Regras personalizadas**) e escolha **Criar regra → Regras personalizadas**.
+2. Nomeie-a como `WCPOS REST API`.
+3. Em **Quando as solicitações recebidas corresponderem**, escolha **Editar expressão** e cole:
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   A segunda parte corresponde ao endereço alternativo do WordPress, `/?rest_route=/...`, e apenas na raiz do site, portanto, uma string `rest_route=` inserida na consulta de alguma outra página não desativa a proteção dessa página. Se o WordPress estiver em uma subpasta, como `https://example.com/shop`, use `/shop/wp-json/` e `/shop/` no lugar de `/wp-json/` e `/`.
+
+4. Em **Em seguida, executar ação**, escolha **Ignorar**.
+5. Marque **Todas as regras personalizadas restantes**. Na lista de componentes a ignorar, marque **Todas as regras do Super Bot Fight Mode** e **Nível de segurança**. Marque **Todas as regras gerenciadas** somente se uma regra gerenciada for a que está aplicando o desafio e deixe inalterada qualquer entrada marcada como "(Versão anterior)".
+6. Implante a regra. Se houver outras regras personalizadas que aplicam desafios ou bloqueiam, verifique se esta está posicionada acima delas.
+
+Execute novamente a verificação com `curl`. O cabeçalho `cf-mitigated` deve desaparecer, e a resposta deve ser JSON.
+
+:::tip Plano gratuito e Bot Fight Mode
+Se a verificação com `curl` ainda mostrar um desafio após a regra de Ignorar e o **Bot Fight Mode** estiver ativado, o Bot Fight Mode é a causa. No plano gratuito, a única solução é desativá-lo em Segurança → Configurações → Tráfego de bots. A própria documentação do Cloudflare confirma que nenhuma regra pode ignorá-lo. Se o Bot Fight Mode já estiver desativado, consulte [Ainda bloqueado?](#still-blocked).
+:::
+
+## Armazenamento em cache {#caching}
+
+O Cloudflare também pode armazenar em cache respostas da REST API, fazendo com que o aplicativo exiba produtos e pedidos desatualizados. A regra Skip acima não altera o armazenamento em cache. Se você usa o cache do Cloudflare para páginas HTML ou a Otimização Automática da Plataforma, adicione uma **Regra de Cache** que defina **Ignorar cache** para a mesma expressão.
+
+## Ainda está bloqueado? {#still-blocked}
+
+Verifique se a regra Skip foi implantada, em vez de estar salva como rascunho, e se nenhuma regra de Acesso por IP bloqueia a rede do caixa. Outros serviços à frente do seu site se comportam da mesma forma que o Cloudflare: consulte [Conflitos de plugins](/support/troubleshooting/plugin-conflicts) para plugins de segurança e as [notas de hospedagem](/support/performance/server#hosting-specific-notes) para GoDaddy, WP Engine e outros.
+
+<SupportContact />
