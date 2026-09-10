@@ -1,0 +1,79 @@
+---
+title: WooCommerce Tax
+sidebar_label: WooCommerce Tax
+description: "Use WooCommerce Tax automated taxes (TaxJar) with WCPOS: how POS orders get their rates, setup steps, and what to expect at the till."
+---
+
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# WooCommerce Tax
+
+[WooCommerce Tax](https://woocommerce.com/document/woocommerce-tax/) is the WooCommerce plugin that looks up sales tax automatically through TaxJar instead of you maintaining a rate table by hand. WCPOS works with it: POS sales get the same jurisdiction rates as your online orders, and nothing needs to be switched on in WCPOS.
+
+## How it works {#how-it-works}
+
+WooCommerce Tax only asks TaxJar for rates when an order goes through the online checkout or is edited on the WooCommerce order screen. POS orders take neither path, so WCPOS asks on their behalf:
+
+1. When the POS saves an open order, WCPOS asks WooCommerce Tax for the rates at the order's tax location. The location follows the POS **Calculate Tax Based On** setting: the shop base address, or the customer's billing or shipping address.
+2. WooCommerce Tax writes those rates into your store's normal tax rate table as one row per jurisdiction, exactly as it does for an online order. You will see them under `WP Admin > WooCommerce > Settings > Tax > Standard rates`, keyed by postcode and city.
+3. WooCommerce applies the rows to the order. The order carries one tax line per jurisdiction, with WooCommerce Tax's own names (for example *CA STATE TAX*, *CA COUNTY TAX*).
+4. The POS downloads the new rows on its next change check, usually within a minute, so its local totals agree with your store from then on. To fetch them straight away, use **Clear & re-download** on the **Tax rates** row under [Store health → Database](/support/store-health#clear-and-redownload).
+
+Adding or removing lines on an open POS order recalculates its tax from the current lines. Once an order is paid, WCPOS leaves it alone and WooCommerce Tax behaves as it does for any other order.
+
+With automated taxes off, WCPOS does nothing special and the POS uses your store's tax rate table as usual.
+
+## Setup {#setup}
+
+<Steps>
+  <StepCard number="1" title="Connect WooCommerce Tax">
+
+Install and activate WooCommerce Tax and connect it to WordPress.com. `WP Admin > WooCommerce > Status > WooCommerce Tax` should say **Connected to WordPress.com**.
+
+  </StepCard>
+  <StepCard number="2" title="Enable automated taxes">
+
+Under `WP Admin > WooCommerce > Settings > Tax`, set **Automated taxes** to **Enable automated taxes**. Your store must be in a country WooCommerce Tax supports.
+
+Turning this on backs up any rates you entered by hand to a CSV file and removes them from the table. Download the backup from `WP Admin > WooCommerce > Status > WooCommerce Tax` if you might need them again.
+
+  </StepCard>
+  <StepCard number="3" title="Mirror the settings in the POS">
+
+In the POS, open [Tax Settings](/settings/store/tax) and click **Restore Server Settings**. While automated taxes are on, WooCommerce Tax locks WooCommerce to calculating tax from the customer's shipping address, with prices entered and displayed *excluding* tax, and the POS has to mirror those.
+
+If you deliberately keep the POS on the shop base address for walk-in sales, WCPOS uses that basis for POS orders on your store as well, so the two still agree.
+
+  </StepCard>
+  <StepCard number="4" title="Make a test sale" isLast>
+
+Ring up a taxable product in the **Standard** tax class and let the order save. Check it in WP Admin: it should carry jurisdiction-named tax lines, and the matching rows should have appeared under **Standard rates**. Products in another tax class get rows under that class the first time a sale includes one.
+
+  </StepCard>
+</Steps>
+
+## What to expect {#what-to-expect}
+
+- **The first sale at a new location can disagree once.** The POS totals a sale from the rate rows it has already downloaded. If your store has never taxed an address before, there is no row for it yet, so the POS may show the [totals notice](/support/troubleshooting/totals-disagree) on that one sale. Your store's figures are what is recorded. Once the row reaches the POS, usually within a minute, later sales at that location agree. With tax based on a customer address it can happen once per new postcode; with the shop base address, normally only on the very first sale. A jurisdiction changing its rate can cause it once more.
+- **Do not add rate rows by hand.** A location's rows appear on the first sale there. If **View all tax rates** in the POS looks empty for a location, that location has not been sold to yet.
+- **Fees are not sent to TaxJar.** A taxable fee is taxed with whatever rate your table already holds for the fee's tax class, which is how WooCommerce Tax treats fees on its own order screen too.
+- **A failed lookup never blocks a sale.** If TaxJar cannot be reached, or WooCommerce Tax declines to look the order up (no postcode on the address, a tax-exempt customer, a location where your store has no nexus), the order still saves with the rates already in your table. The POS logs on your server record which it was: *WooCommerce Tax rate priming failed* for an outage, *WooCommerce Tax returned no rates for the POS order* for a decline. See [Logs](/support/logs).
+- **Stripe Tax is different.** Stripe Tax does not work with POS orders at all. See [Plugin Conflicts](/support/troubleshooting/plugin-conflicts).
+
+## Requirements {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WooCommerce Tax">Installed, connected to WordPress.com, with automated taxes enabled</RequirementItem>
+  <RequirementItem label="Store country">A country WooCommerce Tax supports for automated taxes</RequirementItem>
+  <RequirementItem label="WooCommerce">7.6 or newer. On older WooCommerce, WCPOS does not ask WooCommerce Tax for rates and POS orders use whatever rows the table already holds</RequirementItem>
+  <RequirementItem label="WCPOS">Free and Pro</RequirementItem>
+</RequirementsList>
+
+## Related {#related}
+
+- [Tax Settings](/settings/store/tax)
+- [Your Store and the POS Disagree on Totals](/support/troubleshooting/totals-disagree)
+- [Plugin Conflicts](/support/troubleshooting/plugin-conflicts)
