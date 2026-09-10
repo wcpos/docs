@@ -1,0 +1,76 @@
+---
+title: Cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Stop Cloudflare's security checks from blocking the WCPOS app's connection to your store."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+
+Cloudflare protects your site by asking visitors to pass a security check before it lets them through. A browser passes that check silently. The WCPOS app is not a browser: it talks to your store's REST API, and when Cloudflare answers those calls with a security-check page instead of data, the app cannot connect.
+
+This page explains how to recognise the problem and how to tell Cloudflare to let the app through. Every step here is for the store owner or whoever manages the site's Cloudflare account.
+
+## How to recognise it {#how-to-recognise-it}
+
+- The connect screen shows **"This store's hosting setup is blocking the app"** with error code [HOST121](/error-codes/HOST121).
+- The desktop app opens a small **"Security check for your-store.com"** window while connecting or syncing.
+- Older versions reported **"Site does not seem to be a WordPress site"** or **"The site took too long to respond"** on a site that is plainly online.
+- Cloud printing stops with a "security service is blocking WCPOS Cloud Print" message.
+
+To confirm, open a terminal and run:
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+A blocked store answers with a `403` status and a `cf-mitigated: challenge` header. A healthy store answers `200` with `content-type: application/json`. If you get `404`, your site does not use pretty permalinks; run the same check against `'https://your-store.com/?rest_route=/'` instead.
+
+:::note The desktop app can pass a one-off check
+Recent versions of the desktop app complete Cloudflare's check in a small window when they can. That keeps you trading, but the clearance Cloudflare issues expires (30 minutes by default) and the check comes back. Treat the window as a stopgap and apply the fix below.
+:::
+
+## Which Cloudflare feature is doing it {#which-feature}
+
+The fix depends on which feature is challenging the app. Check these in the Cloudflare dashboard for your site. Cloudflare has been moving its menus; the older location is in brackets.
+
+| Feature | Where | Can it exempt the API? |
+| --- | --- | --- |
+| **Bot Fight Mode** (Free plan) | Security → Settings → Bot traffic (older dashboard: Security → Bots) | **No.** Cloudflare does not allow Skip or Allow rules to bypass it. Turn it off, or upgrade to Pro and use Super Bot Fight Mode, which the Skip rule below can exempt. |
+| **Under Attack Mode** | The "Under Attack Mode" toggle on the site Overview, or Security → Settings | Yes. The Skip rule below skips Security Level, which is what Under Attack Mode raises. Or turn Under Attack Mode off once the attack has passed. |
+| **Super Bot Fight Mode** (Pro and above) | Security → Settings → Bot traffic (older dashboard: Security → Bots) | Yes, with the Skip rule below. |
+| **WAF custom or managed rules** set to _Managed Challenge_ | Security → Security rules (older dashboard: Security → WAF) | Yes, with the Skip rule below, placed above any custom rule that challenges. Managed rules always run after custom rules, so order does not matter for them. |
+
+The official Cloudflare WordPress plugin can toggle Under Attack Mode and switch the WAF on, but it cannot create Skip rules. Those live in the Cloudflare dashboard.
+
+## Add a Skip rule for the REST API {#add-a-skip-rule}
+
+This is the fix for every case except Bot Fight Mode. It tells Cloudflare not to challenge requests to your store's REST API. WordPress's own login and permission checks still protect those endpoints.
+
+1. In the Cloudflare dashboard, open your site, then **Security → Security rules** (older dashboard: **Security → WAF → Custom rules**) and choose **Create rule → Custom rules**.
+2. Name it `WCPOS REST API`.
+3. Under **When incoming requests match**, choose **Edit expression** and paste:
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.query contains "rest_route=")
+   ```
+
+4. Under **Then take action**, choose **Skip**.
+5. Tick **All remaining custom rules**. In the list of components to skip, tick **All Super Bot Fight Mode rules** and **Security Level**. Tick **All managed rules** only if a managed rule is the one challenging you, and leave any entry marked "(Previous version)" alone.
+6. Deploy the rule. If you have other custom rules that challenge or block, make sure this one is ordered above them.
+
+Run the `curl` check again. The `cf-mitigated` header should be gone and the response should be JSON.
+
+:::tip Free plan and Bot Fight Mode
+If the `curl` check still shows a challenge after the Skip rule and **Bot Fight Mode** is switched on, Bot Fight Mode is the cause. On the Free plan the only fix is to turn it off under Security → Settings → Bot traffic. Cloudflare's own documentation confirms that no rule can bypass it. If Bot Fight Mode is already off, see [Still blocked?](#still-blocked).
+:::
+
+## Caching {#caching}
+
+Cloudflare can also cache REST API responses, which makes the app show stale products and orders. The Skip rule above does not change caching. If you use Cloudflare's cache for HTML pages or Automatic Platform Optimization, add a **Cache Rule** that sets **Bypass cache** for the same expression.
+
+## Still blocked? {#still-blocked}
+
+Check that the Skip rule is deployed rather than saved as a draft, and that no IP Access rule blocks the till's network. Other services in front of your site behave the same way as Cloudflare: see [Plugin Conflicts](/support/troubleshooting/plugin-conflicts) for security plugins, and the [hosting notes](/support/performance/server#hosting-specific-notes) for GoDaddy, WP Engine and others.
+
+<SupportContact />
