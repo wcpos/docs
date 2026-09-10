@@ -1,0 +1,78 @@
+---
+title: Cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Voorkom dat de beveiligingscontroles van Cloudflare de verbinding van de WCPOS-app met je winkel blokkeren."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+
+Cloudflare beschermt je site door bezoekers te vragen een beveiligingscontrole te doorlopen voordat ze toegang krijgen. Een browser doorloopt die controle ongemerkt. De WCPOS-app is geen browser: deze communiceert met de REST API van je winkel. Wanneer Cloudflare op die verzoeken antwoordt met een pagina voor een beveiligingscontrole in plaats van gegevens, kan de app geen verbinding maken.
+
+Op deze pagina wordt uitgelegd hoe je het probleem herkent en hoe je Cloudflare vertelt dat de app toegang mag krijgen. Alle stappen zijn bedoeld voor de eigenaar van de winkel of degene die het Cloudflare-account van de site beheert.
+
+## Zo herken je het {#how-to-recognise-it}
+
+- Het verbindingsscherm toont **"De hostingconfiguratie van deze winkel blokkeert de app"** met foutcode [HOST121](/error-codes/HOST121).
+- De desktop-app opent tijdens het verbinden of synchroniseren een klein venster **"Beveiligingscontrole voor your-store.com"**.
+- Oudere versies meldden **"Site lijkt geen WordPress-site te zijn"** of **"De site reageerde te langzaam"** voor een site die duidelijk online is.
+- Afdrukken via de cloud stopt met de melding "beveiligingsservice blokkeert WCPOS Cloud Print".
+
+Open ter bevestiging een terminal en voer het volgende uit:
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+Een geblokkeerde winkel antwoordt met status `403` en de header `cf-mitigated: challenge`. Een goed functionerende winkel antwoordt met `200` en `content-type: application/json`. Als je `404` krijgt, gebruikt je site geen mooie permalinks; voer dezelfde controle dan uit op `'https://your-store.com/?rest_route=/'`. Als WordPress in een submap staat, neem die dan op: `https://example.com/shop/wp-json/`.
+
+:::note De desktopapp kan een eenmalige controle uitvoeren
+Recente versies van de desktopapp voltooien de controle van Cloudflare indien mogelijk in een klein venster. Zo kunt u blijven verkopen, maar de door Cloudflare afgegeven vrijgave verloopt (standaard na 30 minuten) en de controle keert terug. Beschouw het venster als een tijdelijke oplossing en pas onderstaande oplossing toe.
+:::
+
+## Welke Cloudflare-functie veroorzaakt dit {#which-feature}
+
+De oplossing hangt af van de functie die de app uitdaagt. Controleer deze in het Cloudflare-dashboard van uw site. Cloudflare heeft zijn menu's verplaatst; de oudere locatie staat tussen haakjes.
+
+| Functie | Locatie | Kan de API worden vrijgesteld? |
+| --- | --- | --- |
+| **Bot Fight Mode** (gratis abonnement) | Beveiliging → Instellingen → Botverkeer (ouder dashboard: Beveiliging → Bots) | **Nee.** Cloudflare staat niet toe dat regels voor Overslaan of Toestaan dit omzeilen. Schakel het uit, of upgrade naar Pro en gebruik Super Bot Fight Mode, dat door de onderstaande regel voor Overslaan kan worden vrijgesteld. |
+| **Modus onder aanval** | De schakelaar "Modus onder aanval" in het siteoverzicht, of Beveiliging → Instellingen | Ja. De onderstaande regel voor Overslaan slaat Beveiligingsniveau over, wat door Modus onder aanval wordt verhoogd. Of schakel Modus onder aanval uit zodra de aanval voorbij is. |
+| **Super Bot Fight Mode** (Pro en hoger) | Beveiliging → Instellingen → Botverkeer (ouder dashboard: Beveiliging → Bots) | Ja, met de onderstaande regel voor Overslaan. |
+| **Aangepaste of beheerde WAF-regels** ingesteld op _Managed Challenge_ | Beveiliging → Beveiligingsregels (ouder dashboard: Beveiliging → WAF) | Ja, met de onderstaande regel voor Overslaan, geplaatst boven elke aangepaste regel die een controle uitvoert. Beheerde regels worden altijd na aangepaste regels uitgevoerd, dus de volgorde is daarvoor niet van belang. |
+
+De officiële Cloudflare-plug-in voor WordPress kan Modus onder aanval in- of uitschakelen en de WAF inschakelen, maar kan geen regels voor Overslaan maken. Die bevinden zich in het Cloudflare-dashboard.
+
+## Voeg een regel voor Overslaan toe voor de REST API {#add-a-skip-rule}
+
+Dit is de oplossing voor alle gevallen behalve Bot Fight Mode. Hiermee vertelt u Cloudflare dat verzoeken aan de REST API van uw winkel niet moeten worden gecontroleerd. De eigen aanmeldings- en machtigingscontroles van WordPress beschermen deze eindpunten nog steeds.
+
+1. Open in het Cloudflare-dashboard uw site, ga vervolgens naar **Beveiliging → Beveiligingsregels** (ouder dashboard: **Beveiliging → WAF → Aangepaste regels**) en kies **Regel maken → Aangepaste regels**.
+2. Geef de regel de naam `WCPOS REST API`.
+3. Kies onder **Wanneer inkomende verzoeken overeenkomen** **Expressie bewerken** en plak het volgende:
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   De tweede helft komt overeen met het fallback-adres van WordPress, `/?rest_route=/...`, en alleen op de hoofdmap van de site. Daardoor schakelt een tekenreeks `rest_route=` in de query van een andere pagina de beveiliging voor die pagina niet uit. Als WordPress in een submap staat, zoals `https://example.com/shop`, gebruikt u `/shop/wp-json/` en `/shop/` in plaats van `/wp-json/` en `/`.
+
+4. Kies onder **Voer vervolgens actie uit** **Overslaan**.
+5. Vink **Alle overige aangepaste regels** aan. Vink in de lijst met over te slaan onderdelen **Alle regels voor Super Bot Fight Mode** en **Beveiligingsniveau** aan. Vink **Alle beheerde regels** alleen aan als een beheerde regel de controle uitvoert, en laat vermeldingen met "(Vorige versie)" ongemoeid.
+6. Implementeer de regel. Als er andere aangepaste regels zijn die verzoeken controleren of blokkeren, zorg er dan voor dat deze regel erboven staat.
+
+Voer de `curl`-controle opnieuw uit. De header `cf-mitigated` moet verdwenen zijn en het antwoord moet JSON zijn.
+
+:::tip Gratis abonnement en Bot Fight Mode
+Als de `curl`-controle na de regel Overslaan nog steeds een controle toont en **Bot Fight Mode** is ingeschakeld, is Bot Fight Mode de oorzaak. Bij het gratis abonnement is de enige oplossing om dit uit te schakelen via Beveiliging → Instellingen → Botverkeer. De eigen documentatie van Cloudflare bevestigt dat geen enkele regel dit kan omzeilen. Als Bot Fight Mode al is uitgeschakeld, raadpleeg dan [Nog steeds geblokkeerd?](#still-blocked).
+:::
+
+## Caching {#caching}
+
+Cloudflare kan ook REST API-antwoorden cachen, waardoor de app verouderde producten en bestellingen toont. De bovenstaande overslaanregel wijzigt de caching niet. Als je de cache van Cloudflare gebruikt voor HTML-pagina's of Automatic Platform Optimization, voeg dan een **cacheregel** toe die **cache omzeilen** instelt voor dezelfde expressie.
+
+## Nog steeds geblokkeerd? {#still-blocked}
+
+Controleer of de overslaanregel is geïmplementeerd in plaats van als concept opgeslagen, en of geen IP-toegangsregel het netwerk van de kassa blokkeert. Andere services vóór je site werken op dezelfde manier als Cloudflare: zie [Pluginconflicten](/support/troubleshooting/plugin-conflicts) voor beveiligingsplugins en de [hostingnotities](/support/performance/server#hosting-specific-notes) voor GoDaddy, WP Engine en andere.
+
+<SupportContact />
