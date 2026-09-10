@@ -138,6 +138,9 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'NIF/CIF Spain',
   // WooCommerce REST API: a product/feature name, not prose.
   'WooCommerce REST API',
+  // WooCommerce Tax: the automated-tax plugin's product name, used verbatim as a
+  // LinkCard title and RequirementItem label on integrations/*.
+  'WooCommerce Tax',
   // Cloud-print provider / firmware / service names — brand identifiers a user
   // matches verbatim in printer firmware or a hosted dashboard; translating
   // them would be wrong. Kept English in every locale (see receipts/cloud-printing).
