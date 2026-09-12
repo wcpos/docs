@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 const { execFileSync } = require('node:child_process');
 
+// The unreleased version is authored in English and must NOT be dispatched for
+// translation before launch: it is excluded from the build (see
+// `onlyIncludeVersions` in docusaurus.config.js), so translating its 265 pages
+// into 11 locales would generate thousands of files for pages no reader can
+// reach, and every later edit before launch would re-translate them.
+// AT LAUNCH: delete this constant and the guard below so 2.x translates.
+const UNRELEASED_VERSION =
+  /^(versioned_docs\/version-2\.x\/|versioned_sidebars\/version-2\.x-sidebars\.json$|i18n\/[^/]+\/docusaurus-plugin-content-docs\/version-2\.x)/;
+
 const SOURCE_PATTERNS = [
   /^versioned_docs\/.+\.(md|mdx)$/,
   /^i18n\/en\/.+\.json$/,
@@ -14,8 +23,10 @@ function uniqueStable(paths) {
 }
 
 function filterTranslationSourceFiles(paths) {
-  return uniqueStable(paths).filter((file) =>
-    SOURCE_PATTERNS.some((pattern) => pattern.test(file))
+  return uniqueStable(paths).filter(
+    (file) =>
+      !UNRELEASED_VERSION.test(file) &&
+      SOURCE_PATTERNS.some((pattern) => pattern.test(file))
   );
 }
 
