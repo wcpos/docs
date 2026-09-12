@@ -1,0 +1,363 @@
+---
+title: Server Performance
+sidebar_label: Server Performance
+sidebar_position: 2
+description: "Optimise WordPress server performance for WCPOS including HPOS, caching, database optimisation, and hosting recommendations."
+---
+
+import Image from "@theme/IdealImage";
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+
+Server performance directly impacts the speed and responsiveness of your WCPOS application. The POS makes many REST API calls, so **server response time is the primary bottleneck** — POS speed depends heavily on hosting quality. This guide helps you monitor, diagnose, and optimise server performance using the built-in metrics and troubleshooting techniques.
+
+## Minimum Server Requirements {#minimum-server-requirements}
+
+For a responsive POS in production, we recommend at least:
+
+<RequirementsList>
+  <RequirementItem label="CPU">4+ CPU cores</RequirementItem>
+  <RequirementItem label="RAM">4 GB or more</RequirementItem>
+  <RequirementItem label="PHP">PHP 7.4+ (8.x recommended)</RequirementItem>
+  <RequirementItem label="Database">MySQL 8.0+ or MariaDB 11.x</RequirementItem>
+  <RequirementItem label="Storage">SSD or NVMe</RequirementItem>
+  <RequirementItem label="SSL">HTTPS is required — the WooCommerce REST API will not work without it</RequirementItem>
+</RequirementsList>
+
+:::warning Shared hosting is often not enough
+Shared hosting frequently has too few PHP workers and too little memory for POS workloads, which make many concurrent API calls. For production POS use, a **VPS or managed WordPress host** is strongly recommended. `WordPress.com` managed hosting is also known to have REST API compatibility issues (some users see only 9–10 products from large catalogues) — self-hosted `WordPress.org` is recommended for full compatibility.
+:::
+
+### Community-validated optimisation stack {#community-validated-optimisation-stack}
+
+Users report the best POS performance with this combination:
+
+- **MariaDB 11.4** (faster than MySQL for WooCommerce workloads)
+- **HPOS enabled** (see below)
+- **LiteSpeed or Redis** object caching
+- **NVMe** storage
+- **PHP OPcache** enabled
+
+## 503 Errors {#503-errors}
+
+:::important 503 errors are always server-side
+A `503 Service Unavailable` is **not a POS bug** — it means the server couldn't handle the request. Check:
+
+1. Server load and available resources
+2. PHP workers (they may be exhausted)
+3. PHP memory limit — increase to **256 MB or more**
+4. Your web host's server logs (contact your host; they can see what the application can't)
+:::
+
+## WooCommerce Version Compatibility {#woocommerce-version-compatibility}
+
+A WooCommerce update can occasionally break the POS. Always update WooCommerce on a [staging site](/support/troubleshooting/plugin-conflicts#before-you-start-use-a-staging-site) first, and keep WCPOS up to date so it includes the latest compatibility fixes.
+
+Known issues:
+
+- **WooCommerce 10.5.0** — broke product loading in the POS (symptom: only ~10 products show; barcode scanning and search stop working) and introduced an experimental product cache that can cause **postmeta bloat** and memory exhaustion. **Fix:** update WCPOS to the latest version (it includes the fix and a cleanup migration), or roll WooCommerce back to [10.4.3](https://downloads.wordpress.org/plugin/woocommerce.10.4.3.zip).
+
+If a WooCommerce update breaks the POS, roll WooCommerce back to the previous version (via the **Advanced** tab on the plugin's WordPress.org page) and report it.
+
+## Understanding Server Metrics {#understanding-server-metrics}
+
+WCPOS automatically collects server performance metrics with each data fetch operation (products, orders, customers, etc.).
+
+From **v1.10.0**, the aggregate view lives in **Store health → Performance**: requests made, data transferred, and typical response time for the last 24 hours, plus an hourly uptime strip (see [Store Health](/support/store-health#performance)). Two caveats when reading it: the data-transferred figure is a floor (responses that don't declare a size contribute zero), and the *~N requests per day* estimate beside the sync dial is a nominal rate derived from the configured interval, not a ceiling or actual count. Jitter moves the count in either direction, a `304` still counts as a request, and idle decay lowers it only for presets faster than 60 seconds. Individual request metrics appear in **Store health → Logs**.
+
+### Typical Server Metrics {#typical-server-metrics}
+
+```json
+{
+  "total": "24692",
+  "execution_time": "76.64 ms",
+  "server_load": "[15.20605469,16.16357422,16.76806641]"
+}
+```
+
+**Breakdown:**
+- **`total`** - Number of records processed (24,692 product IDs)
+- **`execution_time`** - Time taken to complete the operation (76.64 milliseconds)
+- **`server_load`** - Server load averages for 1, 5, and 15 minutes
+
+## Server Load Explained {#server-load-explained}
+
+Server load represents the average system load over different time periods:
+
+- **First value** - 1-minute average (15.21)
+- **Second value** - 5-minute average (16.16)
+- **Third value** - 15-minute average (16.77)
+
+### Load Interpretation {#load-interpretation}
+
+Server load values can be misleading and should be interpreted carefully:
+
+:::warning Load Values Can Be Misleading
+Server load averages don't always correlate directly with performance. A server with high load values (15+) can still be very responsive if it has sufficient resources and is well-optimised. **Focus on execution times rather than load values alone.**
+:::
+
+**General Guidelines:**
+- **Load relative to CPU cores** - A load of 8.0 on an 8-core server means full utilization
+- **Sustained vs. temporary** - Brief spikes are normal, sustained high load may indicate issues
+- **Performance matters more** - A responsive server with high load is better than a slow server with low load
+
+**What to watch for:**
+- **Execution times increasing** over time
+- **Load consistently growing** without explanation
+- **Both high load AND slow execution times** together
+
+## Performance Benchmarks {#performance-benchmarks}
+
+### Execution Time Guidelines {#execution-time-guidelines}
+
+| Operation | Good | Acceptable | Poor | Critical |
+|-----------|------|------------|------|----------|
+| **Product fetch** | < 100ms | 100-500ms | 500ms-2s | > 2s |
+| **Order creation** | < 200ms | 200-800ms | 800ms-3s | > 3s |
+
+### Record Count Considerations {#record-count-considerations}
+
+Execution time should scale reasonably with record count:
+
+```json
+// Good scaling examples
+{"total": "100", "execution_time": "15.2 ms"}    // 0.15ms per record
+{"total": "1000", "execution_time": "89.4 ms"}   // 0.09ms per record
+{"total": "10000", "execution_time": "234.1 ms"} // 0.02ms per record
+
+// Poor scaling examples
+{"total": "100", "execution_time": "500.0 ms"}   // 5.0ms per record
+{"total": "1000", "execution_time": "8000.0 ms"} // 8.0ms per record
+```
+
+## Diagnosing Performance Issues {#diagnosing-performance-issues}
+
+### Step 1: Monitor the Logs {#step-1-monitor-the-logs}
+
+1. Open **Store health** from the navigation drawer and check the **Performance** tab for the 24-hour picture (typical response time is the key number)
+2. Perform the slow operation (sync products, create order, etc.)
+3. Look for the corresponding entry in the **Logs** tab
+4. Expand the row to see metrics
+
+### Step 2: Analyse the Metrics {#step-2-analyse-the-metrics}
+
+**High execution time + High server load = Server resource issue**
+```json
+{
+  "total": "5000",
+  "execution_time": "3500.0 ms",
+  "server_load": "[12.45, 11.23, 10.87]"
+}
+```
+*Solution: Increase server resources or optimise server configuration*
+
+**High execution time + Normal server load = Plugin/database issue**
+```json
+{
+  "total": "1000",
+  "execution_time": "2800.0 ms",
+  "server_load": "[1.23, 1.45, 1.67]"
+}
+```
+*Solution: Identify slow plugins or optimise database queries*
+
+**Normal execution time + High server load = General server overload**
+```json
+{
+  "total": "2000",
+  "execution_time": "150.0 ms",
+  "server_load": "[8.90, 9.12, 8.45]"
+}
+```
+*Solution: Reduce server load from other processes or upgrade resources*
+
+## Common Performance Problems {#common-performance-problems}
+
+### 1. Insufficient Server Resources {#1-insufficient-server-resources}
+
+**Symptoms:**
+- Consistently high server load (> 4.0 on most servers)
+- Long execution times across all operations
+- Frequent timeouts
+
+**Solutions:**
+- **Upgrade CPU** - More cores handle concurrent requests better
+- **Increase RAM** - Reduces disk I/O and improves caching
+- **Use SSD storage** - Dramatically improves database performance
+- **Optimise PHP settings** - Increase memory_limit, max_execution_time
+
+### 2. Slow Database Queries {#2-slow-database-queries}
+
+**Symptoms:**
+- High execution times with normal server load
+- Particularly slow product/order fetching
+- Database-related error codes in logs
+
+**Solutions:**
+- **Enable WooCommerce HPOS** - The single biggest database performance improvement
+- **Use object caching** - Redis or Memcached if available from your host
+- **Keep WordPress updated** - Core updates often include database optimisations
+- **Limit post revisions** - Add `define('WP_POST_REVISIONS', 3);` to wp-config.php
+
+### 3. Plugin Interference {#3-plugin-interference}
+
+**Symptoms:**
+- Sudden performance degradation after plugin updates
+- Specific operations much slower than others
+- High execution times with normal server load
+
+**Troubleshooting:**
+1. **Test on staging** - Disable all plugins except WooCommerce and WCPOS
+2. **Measure baseline** - Record execution times with minimal plugins
+3. **Enable gradually** - Add plugins one by one to identify culprits
+4. **Check plugin hooks** - Look for plugins hooking into WooCommerce actions
+
+**Common problematic plugins:**
+- Heavy SEO plugins during product operations
+- Complex inventory management systems
+- Real-time analytics/tracking plugins
+- Poorly coded custom plugins
+
+### 4. WordPress/WooCommerce Configuration {#4-wordpresswoocommerce-configuration}
+
+**Symptoms:**
+- Inconsistent performance
+- Memory-related errors in logs
+- Slow admin dashboard
+
+**Optimisation checklist:**
+- **PHP version** - Use PHP 8.0+ for better performance
+- **WooCommerce HPOS** - Enable High-Performance Order Storage (see below)
+- **WordPress caching** - Enable object caching if available
+- **WooCommerce settings** - Optimise product image sizes
+
+### WooCommerce High-Performance Order Storage (HPOS) {#woocommerce-high-performance-order-storage-hpos}
+
+:::tip Biggest Performance Win
+**HPOS is one of the most significant performance improvements you can make for WooCommerce.** It stores orders in custom database tables instead of the WordPress posts table, dramatically improving performance for stores with many orders.
+:::
+
+**Benefits:**
+- **Faster order queries** - Orders stored in optimised database structure
+- **Reduced database load** - Separates orders from posts/pages
+- **Better scalability** - Handles large numbers of orders efficiently
+- **Improved admin performance** - Faster order management screens
+
+**How to Enable:**
+1. Go to `WooCommerce > Settings > Advanced > Features`
+2. Enable "High-performance order storage"
+3. Follow the migration process
+
+**Learn More:**
+- [WooCommerce HPOS Documentation](https://woocommerce.com/document/high-performance-order-storage/)
+- [HPOS Migration Guide](https://woocommerce.com/document/high-performance-order-storage/#section-3)
+
+## Server Monitoring Best Practices {#server-monitoring-best-practices}
+
+### 1. Regular Performance Checks {#1-regular-performance-checks}
+
+- **Weekly reviews** - Check logs for performance trends
+- **Baseline measurements** - Record normal execution times
+- **Peak time monitoring** - Monitor during high-traffic periods
+
+### 2. Set Performance Alerts {#2-set-performance-alerts}
+
+Monitor for these warning signs:
+- Execution times > 1000ms consistently
+- Server load > 5.0 for extended periods
+- Frequent timeout errors in logs
+
+### 3. Capacity Planning {#3-capacity-planning}
+
+Track growth trends:
+- **Record count growth** - Products, orders, customers
+- **Performance degradation** - How execution time scales
+- **Resource utilization** - CPU, memory, disk usage
+
+## Server Optimisation Strategies {#server-optimisation-strategies}
+
+### 1. WordPress/WooCommerce Best Practices {#1-wordpresswoocommerce-best-practices}
+
+**Enable HPOS:**
+- The single most impactful performance improvement for WooCommerce
+- See the HPOS section above for details
+
+**PHP Configuration (consult your host):**
+```ini
+memory_limit = 512M
+max_execution_time = 300
+max_input_vars = 3000
+```
+
+**WordPress Configuration:**
+```php
+// In wp-config.php - limit post revisions
+define('WP_POST_REVISIONS', 3);
+
+// Enable WordPress debug logging if needed
+define('WP_DEBUG_LOG', true);
+```
+
+### 2. Hosting-Level Optimizations {#2-hosting-level-optimizations}
+
+**Object Caching:**
+- Ask your host about Redis or Memcached availability
+- Many managed WordPress hosts provide this automatically
+
+**PHP Version:**
+- Use PHP 8.0+ for significant performance improvements
+- Most hosts allow easy PHP version switching
+
+**Server Resources:**
+- Ensure adequate RAM (minimum 1GB, preferably 2GB+)
+- SSD storage provides much better database performance than traditional drives
+
+## Hosting-Specific Notes {#hosting-specific-notes}
+
+Some hosts and CDNs need configuration to let the POS reach the WooCommerce REST API:
+
+| Host / service | Issue | Fix |
+| --- | --- | --- |
+| **GoDaddy** | The website firewall blocks `/wp-json/` REST API calls (errors like _"Received 'undefined'"_) | `Website Security > Firewall > Settings > Access Control > Allow URL Paths` → add `/wp-json/` |
+| **WP Engine** | REST API must be explicitly enabled | Enable the REST API; whitelist API endpoints in their firewall if needed |
+| **Cloudflare** | Security checks (Bot Fight Mode, Under Attack Mode, WAF challenges) block REST API requests, and the cache may serve stale API responses | Follow the [Cloudflare guide](/support/troubleshooting/cloudflare): add a WAF **Skip** rule for `/wp-json/` and a cache rule to **bypass cache** for the same paths |
+| **WordPress.com** | REST API / product-loading compatibility issues (only 9–10 products show) | Use self-hosted WordPress.org for full compatibility |
+| **Shared hosting** | Too few PHP workers / low memory for concurrent POS calls | Move to a VPS or managed WordPress host |
+
+Security plugins (Wordfence, etc.) can block the REST API in similar ways — see [Plugin Conflicts](/support/troubleshooting/plugin-conflicts) for the full list and fixes.
+
+### HTTP 414 — URI Too Long {#http-414-uri-too-long}
+
+Large carts, or the access token included in the checkout URL, can exceed the server's URL-length limit (the checkout request uses `GET`). This can be browser-specific and worsened by browser cache.
+
+**Workaround:** clear the browser cache first, then raise the server's URL-length limit:
+
+- **Apache:** `LimitRequestLine 65536` in `httpd.conf`
+- **Nginx:** `large_client_header_buffers 4 65536;` in `nginx.conf`
+- If you don't have config access, ask your hosting provider to adjust it.
+
+## When to Seek Help {#when-to-seek-help}
+
+Contact your hosting provider or a WordPress developer if:
+
+- **Server load consistently > 8.0** despite optimisation efforts
+- **Execution times > 5000ms** for simple operations
+- **Memory errors** appearing frequently in logs
+- **Database queries taking > 2 seconds** consistently
+
+Provide them with:
+- Server metrics from your logs
+- List of active plugins
+- Server specifications (CPU, RAM, storage type)
+- WordPress and WooCommerce versions
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/support/logs" title="Logs" description="How to access and interpret server metrics" />
+  <LinkCard to="/support/performance/checkout" title="Checkout Performance" description="Optimise payment processing" />
+  <LinkCard to="/error-codes" title="Error Codes" description="Understand performance-related error codes" />
+  <LinkCard to="/category/troubleshooting" title="Troubleshooting" description="General troubleshooting guides" />
+</LinkCards>
