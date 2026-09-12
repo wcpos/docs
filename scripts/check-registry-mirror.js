@@ -20,12 +20,29 @@
  * A fetch failure is a hard failure, not a skip — in GitHub Actions a fetch of
  * raw.githubusercontent.com is dependable, and a check that silently skips on
  * error is worse than none: it reads as coverage while enforcing nothing.
+ *
+ * THE LANE MATTERS, and this check read the wrong one until 2026-09-12. It was
+ * pinned to the monorepo's `main`, the STABLE line — but every new error code is
+ * added on `next`, where feature work happens, and only reaches `main` at
+ * release. So the one guard against a 404 behind the merchant's "Learn more"
+ * link could not see the lane the codes were actually written on: it would first
+ * complain at the moment the release shipped, which is too late to be a guard.
+ *
+ * It was not theoretical. On the day this was corrected, `main` carried 84 codes
+ * and `next` carried 86: DISPLAY101 and PAYMENT501 had no page, no catalogue
+ * entry and no sidebar row, and this check was green. Both are added in the same
+ * commit that repoints it.
+ *
+ * Pointing at `next` keeps the one-directional property and makes it useful: the
+ * catalogue may still run AHEAD of the registry, so the ordering stays
+ * docs-first. Land the docs page before the monorepo PR that adds the code and
+ * nothing ever goes red; land the code first and this check is what tells you.
  */
 const path = require('path');
 const fs = require('fs');
 
 const REGISTRY_URL =
-  'https://raw.githubusercontent.com/wcpos/monorepo/main/packages/utils/src/logger/error-registry.json';
+  'https://raw.githubusercontent.com/wcpos/monorepo/next/packages/utils/src/logger/error-registry.json';
 const MANIFEST = path.join(__dirname, '../src/data/error-catalogue.json');
 /** The facts ErrorMeta renders — the only fields the catalogue mirrors. */
 const MIRRORED_FIELDS = ['symbol', 'domain', 'severity', 'introducedIn'];
