@@ -1,0 +1,80 @@
+---
+title: Product Synchronisation
+sidebar_label: Download & Sync
+sidebar_position: 1
+description: "How WCPOS downloads and synchronises products from WooCommerce, including sync presets, coverage, and keeping the catalogue fresh."
+---
+
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+
+WCPOS keeps a local copy of your products on each device, so the catalogue browses and searches instantly and keeps working offline. This guide explains how products get onto the device and how they stay up to date.
+
+:::info Changed in v1.10.0
+v1.10.0 introduces a new sync engine. If your POS predates v1.10.0, see [What changed in v1.10.0](#what-changed-in-v1100) below.
+:::
+
+## How products arrive on the device {#how-products-arrive}
+
+- **A catalogue seed runs in the background.** From first launch, the POS downloads your catalogue in small batches on a schedule, without you doing anything. You can start selling as soon as the first products land — checkout doesn't wait for a complete download.
+- **What you're looking at downloads on demand.** Searching, filtering by category, or scanning a barcode fetches the matching products directly if they aren't local yet. A search no longer pulls unrelated products along with it — it fetches what you asked for.
+- **Updates arrive through change checks.** Once a product is local, the POS doesn't re-download it to see if it changed. It polls a lightweight change log (every 60 seconds on the default preset) and fetches only what actually changed — an idle store answers with a single, nearly free "nothing changed" response.
+
+## How big are the batches? {#batch-size}
+
+By default the POS requests **50 products at a time**. This is no longer a fixed constant — it's one of two dials set by your sync preset in **Store health → Performance**:
+
+| Preset | Check interval | Records per request |
+| --- | --- | --- |
+| Eco | 5 min | 25 |
+| Balanced (default) | 60 s | 50 |
+| Realtime | 10 s | 75 |
+
+Small batches exist to protect your server: large pages take real server time to build, and on shared hosting they can slow the storefront or trip rate limits. Choose Eco for modest hosting, Realtime for multi-till shops on strong hosting. See [Store Health](/support/store-health#sync-presets) for details.
+
+## Checking download progress {#checking-progress}
+
+Open **Store health → Database** to see, per collection, how many records are on this device versus on your server, with a coverage bar. The *on server* number is a real server-reported total — while the POS is still confirming it, the row shows *checking…* rather than a guess.
+
+A partial products bar simply means the seed hasn't finished; it will keep filling in the background. If a specific product seems missing, search for it — that fetches it directly.
+
+:::tip
+If a collection seems stuck, use **Clear & re-download** on its row in Store health → Database before reaching for the full [clear all local data](/support/troubleshooting/clear-local-data) reset.
+:::
+
+## What changed in v1.10.0 {#what-changed-in-v1100}
+
+Earlier versions downloaded the catalogue *progressively through use*: each search or scroll pulled another batch of products, and a full poll ran every 5 minutes. That model is retired. In v1.10.0:
+
+- The catalogue fills through a scheduled background seed — you don't need to search or scroll to make products download.
+- A search fetches the products that match it, not an arbitrary next batch.
+- Change checks run on your chosen preset interval (default 60 seconds) using conditional requests, instead of a fixed 5-minute full poll.
+- Download progress is visible per collection in **Store health → Database**.
+
+Developers can find the full mechanics in [How the Sync Engine Works](/reference/sync-engine).
+
+## F.A.Q. {#faq}
+
+<Accordion>
+  <AccordionItem question="Do I need to do anything to download my products?">
+
+  No. The catalogue seed downloads your products in the background automatically. Searching or filtering fetches specific products immediately if they aren't local yet, but ordinary browsing is not what completes the download — the background seed is.
+
+  </AccordionItem>
+
+  <AccordionItem question="How quickly do product changes reach the POS?">
+
+  On the default Balanced preset, the POS checks for changes every 60 seconds (checks are slightly randomised so multiple tills don't hit the server together). Only changed products are fetched. If several tills need to see each other's changes faster, use the Realtime preset.
+
+  </AccordionItem>
+
+  <AccordionItem question="I can't see all my products in the POS">
+
+  A few possibilities:
+
+  - The background seed may simply not have finished — check the products row in **Store health → Database**.
+  - The POS hides out-of-stock items by default. This can be changed in the product display settings.
+  - The WooCommerce REST API only supports the standard product types (simple, variable, grouped, external). Custom product types might not display in the POS.
+
+  </AccordionItem>
+</Accordion>
