@@ -1,0 +1,535 @@
+---
+title: Printer Setup Wizard
+sidebar_label: Setup Wizard
+sidebar_position: 1
+description: "Answer a few questions and we'll walk you through connecting your receipt printer step by step — and help you fix it if the test print doesn't work."
+---
+
+import PrinterWizard from '@site/src/components/PrinterWizard';
+import { WizardQuestion, WizardChoice, WizardStep, WizardGate, WizardFix, WizardInvalid, WizardFigure, WizardTerminal } from '@site/src/components/PrinterWizard/nodes';
+
+Not sure how to connect your printer? Answer a few questions and we'll guide you. For full reference, see [Printer Setup](/hardware/printers).
+
+<PrinterWizard>
+
+  <WizardQuestion id="where" title="Where is the printer?">
+    <WizardChoice value="here" label="Right here — plugged into or on the same wifi/network as this till" goTo="what-print" />
+    <WizardChoice value="elsewhere" label="Somewhere else — on another wifi/network, or connected to another computer" goTo="cloud-provider" />
+  </WizardQuestion>
+
+  <WizardQuestion id="what-print" title="What do you want to print?">
+    <WizardChoice value="receipts" label="Receipts for the sales I ring up at this till" goTo="platform" />
+    <WizardChoice value="auto" label="Print orders automatically — online-store orders, or to a kitchen or back-office printer" goTo="cloud-provider" />
+  </WizardQuestion>
+
+  <WizardQuestion id="platform" title="Which app are you using WCPOS in?">
+    <WizardChoice value="web" label="Web browser" goTo="conn-web" />
+    <WizardChoice value="desktop" label="Desktop app (Windows or Mac)" goTo="conn-full" />
+    <WizardChoice value="ios" label="iPhone or iPad" goTo="conn-ios" />
+    <WizardChoice value="android" label="Android" goTo="conn-full" />
+  </WizardQuestion>
+
+  <WizardQuestion id="conn-full" title="How does the printer connect?">
+    <WizardChoice value="network" label="Network / Wi-Fi (it has an IP address)" goTo="vendor" />
+    <WizardChoice value="bluetooth" label="Bluetooth" goTo="bt-setup" />
+    <WizardChoice value="usb" label="USB cable" goTo="usb-setup" />
+  </WizardQuestion>
+
+  <WizardQuestion id="conn-ios" title="How does the printer connect?">
+    <WizardChoice value="network" label="Network / Wi-Fi (it has an IP address)" goTo="vendor" />
+    <WizardChoice value="bluetooth" label="Bluetooth" goTo="bt-setup" />
+  </WizardQuestion>
+
+  <WizardQuestion id="conn-web" title="How does the printer connect?">
+    <WizardChoice value="network" label="Network / Wi-Fi (it has an IP address)" goTo="web-vendor" />
+    <WizardChoice value="bluetooth" label="Bluetooth" goTo="web-btusb" />
+    <WizardChoice value="usb" label="USB cable" goTo="web-btusb" />
+  </WizardQuestion>
+
+  <WizardQuestion id="vendor" title="What brand is the printer?">
+    <WizardChoice value="star" label="Star" goTo="network-setup" />
+    <WizardChoice value="epson" label="Epson" goTo="network-setup" />
+    <WizardChoice value="generic" label="Generic / other ESC/POS" goTo="network-setup" />
+  </WizardQuestion>
+
+  <WizardStep id="network-setup" title="Connect a network printer">
+
+Go to **POS &gt; Settings &gt; Printing &gt; Add Printer**. Enter the printer's **IP address**, then Save.
+
+To find the IP address, print the printer's network self-test:
+
+- **Star:** hold the **FEED** button for about 5 seconds while the printer is already powered on.
+- **Epson:** hold the **FEED** button while you switch the printer on.
+
+We strongly recommend giving the printer a **fixed address** (a DHCP reservation on your router) so it doesn't change and break printing later.
+
+<WizardFigure src="/img/printer-wizard/star-selftest.png" alt="Printer network self-test printout with the IP address and open ports highlighted" summary="The self-test shows the printer's current IP address and which network ports are open." />
+
+    <WizardGate id="g-testprint" question="Click Save — did the test print come out?">
+      <WizardChoice value="yes" label="Yes, it printed" goTo="g-width" />
+      <WizardChoice value="no" label="No, nothing printed or it errored" goTo="fix-not-printing" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="fix-not-printing" title="When the test print doesn't come out">
+
+First, the quick checks: is there paper, is the cover closed, and is the paper loaded the right way? Thermal paper only prints on one side — if it's in upside-down the printer feeds blank. Do the scratch test: scratch the paper with a fingernail; the side that marks is the side that must face the print head.
+
+Then confirm the printer is reachable: open `http://<printer-ip>/` in a web browser (if that doesn't load, try `https://<printer-ip>/`). If you see the printer's own configuration page, it's on the network and the problem is in the settings; if neither loads, it's a network/IP problem (wrong address, or the printer isn't connected).
+
+    <WizardGate id="g-retry-1" question="Try the test print again — did it work now?">
+      <WizardChoice value="yes" label="Yes, fixed" goTo="g-width" />
+      <WizardChoice value="no" label="Still not printing" goTo="net-deep" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardFix id="net-deep" title="Deeper network checks">
+If the basics are right and it still won't print, one of these network issues is usually the cause:
+
+**Wrong IP, or it changed.** Confirm the IP on the printer's self-test matches what you entered — it's easy to use another printer's address. Printers on DHCP can change address on reboot; set a **DHCP reservation** on your router so it stays put. An address starting `169.254` means the printer never got onto the network at all.
+
+**It worked, then the first print of the day fails.** The printer's network card went to sleep; the first job wakes it and is lost. Send a second test, and consider a wired **Ethernet** connection for a fixed till.
+
+**Two tills, one printer.** Many Star network printers accept only one connection at a time by default — a second register times out. Enable **9100 multi-session** in the printer's web configuration.
+
+**The printer's network settings use the wrong protocol.** WCPOS sends jobs over **raw TCP on port 9100**. Open the printer's configuration page in a browser (`http://<printer-ip>/`, or `https://<printer-ip>/` if that doesn't load) and make sure **raw / port 9100** printing is enabled — if the printer is set only to LPR, IPP, or WSD, the job never arrives.
+
+**Wi-Fi won't join, or keeps dropping.** Receipt printers are usually **2.4GHz only** — put them on a 2.4GHz network, not a 5GHz-only or band-steered one. For an unstable connection, wired Ethernet is the reliable fix.
+
+    <WizardGate id="g-net-deep" question="Printing now?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="Still not printing" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  {/* ── Web network path ── */}
+
+  <WizardQuestion id="web-vendor" title="What brand is the printer?">
+    <WizardChoice value="star" label="Star" goTo="web-net-setup" />
+    <WizardChoice value="epson" label="Epson" goTo="web-net-setup" />
+    <WizardChoice value="generic" label="Generic / other ESC/POS" goTo="web-generic-invalid" />
+  </WizardQuestion>
+
+  <WizardInvalid id="web-generic-invalid" title="Generic printers need the desktop app">
+
+A web browser can't open a raw network connection, so it can only reach **Epson** and **Star** printers that have a built-in print server. For a generic ESC/POS network printer, use the **desktop app**, which connects directly over the network (port 9100) — download it from the [Printer Setup](/hardware/printers) page.
+
+  </WizardInvalid>
+
+  <WizardStep id="web-net-setup" title="Connect a network printer from the web app">
+
+Printing to a network printer **from a web browser** is the trickiest setup, because the browser can only talk to the printer's built-in web server over HTTP/HTTPS — and a secure (HTTPS) POS forces a secure connection to the printer too.
+
+First, confirm the printer is reachable: open `http://<printer-ip>/` in a new browser tab (if that doesn't load, try `https://<printer-ip>/`). If you see the printer's own configuration page, it's on the network; if neither loads, fix the network/IP first.
+
+Then add the printer in **POS &gt; Settings &gt; Printing** with its IP address. If your POS runs over **HTTPS**, the connection to the printer is forced to HTTPS (Epson port 8043, Star 443) — which only works if the printer has a trusted **SSL certificate**.
+
+    <WizardGate id="g-web-net" question="Did the test print succeed?">
+      <WizardChoice value="yes" label="Yes, it printed" goTo="g-width" />
+      <WizardChoice value="no" label="No, it errored or said sent but nothing printed" goTo="web-net-fix" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="web-net-fix" title="When web network printing won't work">
+
+This is the most common dead-end, and it usually isn't fixable from the browser. Here's why and what to do:
+
+Print the printer's **self-test** and look at the SSL/TLS section. If it says the certificate does **not exist**, HTTPS printing can't work until you generate one — and the browser won't trust a self-signed certificate without you visiting `https://<printer-ip>` once and accepting it on every device.
+
+A "sent successfully" message that prints nothing means the browser silently blocked the request (the printer speaks HTTP but your POS is HTTPS — a "mixed content" block), or the HTTPS port (8043 for Epson, 443 for Star) was forced with no certificate.
+
+The web app can also only reach a printer through its **built-in web server** — Epson's **ePOS-Print** or Star's **WebPRNT** — so make sure that service is switched **on** in the printer's configuration. Only Epson "intelligent" / **-NT** models and Star **WebPRNT** models have one at all; if yours doesn't, a browser can't reach it.
+
+**The reliable fix is the desktop app**, which connects straight to the printer over the network (port 9100) with none of the browser's HTTPS restrictions. Download it from [Printer Setup](/hardware/printers) and add the same printer there.
+
+    <WizardGate id="g-web-net-retry" question="Did you get it working (on the web, or by switching to the desktop app)?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="Still not printing" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  {/* ── Bluetooth path ── */}
+
+  <WizardStep id="bt-setup" title="Connect over Bluetooth">
+
+Bluetooth receipt printing uses the printer maker's own software, so the printer must be an **Epson** or **Star** model — generic Bluetooth printers aren't supported over Bluetooth on any platform.
+
+First, **pair the printer in your computer's or device's system Bluetooth settings** — not in WCPOS. Bluetooth printers only remember one device at a time, so if it was paired to another till, "forget" it there first. On **iPhone/iPad**, also allow WCPOS both **Bluetooth** and **Local Network** permission when prompted. On **Android**, set WCPOS to **unrestricted** battery use so the system doesn't drop the connection. On a **Windows or Mac desktop**, pair it in the operating system's Bluetooth settings first, then scan in WCPOS.
+
+Then in **POS &gt; Settings &gt; Printing**, tap **Scan for printers** and pick yours — its name and brand fill in automatically.
+
+    <WizardGate id="g-bt" question="Did the test print succeed?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="No / it won't pair or connect" goTo="bt-fix" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="bt-fix" title="Bluetooth won't pair or keeps dropping">
+
+Pair the printer in the device's **system Bluetooth settings first**, then scan again in WCPOS. If it paired before and won't reconnect, "forget" it on the other device (and reset the printer's Bluetooth) so it isn't still bound there. Make sure it's powered on and in range. On iPhone/iPad, confirm WCPOS has both Bluetooth and Local Network permission; on Android, set the app to unrestricted battery use. Remember Bluetooth supports **Epson and Star only** — a generic Bluetooth printer won't connect.
+
+    <WizardGate id="g-bt-retry" question="Connected now?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="Still won't connect" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  {/* ── USB path ── */}
+
+  <WizardStep id="usb-setup" title="Connect over USB">
+
+Plug the printer in by USB. On **Android**, approve the USB permission prompt when it appears, then pick the printer in **POS &gt; Settings &gt; Printing**. On a **Mac**, USB usually works with no extra setup. On **Windows**, a generic printer may need its driver installed **before** you plug it in.
+
+    <WizardGate id="g-usb" question="Did the test print succeed?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="No / it errored" goTo="usb-fix" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="usb-fix" title="USB won't connect">
+
+On **Android**, re-plug the cable and approve the USB permission prompt. On the **desktop app (Windows)**, a `LIBUSB_ERROR_NOT_SUPPORTED` error means Windows has locked the device to its own print driver — the simplest fix is to **connect the printer over the network (port 9100) instead**, which avoids USB drivers entirely. (Advanced users can replace the driver with a WinUSB tool, but that disables the normal Windows print queue for the device — only do this if you know what you're doing.)
+
+    <WizardGate id="g-usb-retry" question="Working now?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="Still not printing" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  {/* ── Web Bluetooth/USB path ── */}
+
+  <WizardStep id="web-btusb" title="Bluetooth &amp; USB from a web browser">
+
+Connecting a printer to the **web app** over Bluetooth or USB works only in **Google Chrome or Microsoft Edge** (Safari and Firefox can't do it). Click **Connect** in **POS &gt; Settings &gt; Printing** and choose the printer in the browser's device chooser.
+
+**USB** works with Epson, Star, and most generic ESC/POS printers — if your printer appears in the browser's chooser, it should print. On **Windows**, the printer's own driver can block the browser from talking to it; if connecting fails there, the desktop app is the way to go.
+
+**Bluetooth** depends on the printer's Bluetooth type, not the brand: the browser can only reach **Bluetooth Low Energy (BLE)** printers. Many small portable printers are BLE and work fine, but printers with classic Bluetooth — including most Bluetooth Epson and Star models — never appear in the browser's chooser. If yours doesn't show up, that's why: use the desktop or mobile app for it instead.
+
+If it won't connect either way, the **desktop app** is the most reliable option for Bluetooth and USB. Download it from [Printer Setup](/hardware/printers).
+
+    <WizardGate id="g-web-btusb" question="Did the test print succeed?">
+      <WizardChoice value="yes" label="Yes" goTo="g-width" />
+      <WizardChoice value="no" label="No" goTo="support" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardStep id="g-width" title="Check the width">
+
+Look at the test print. There's a numbered **column ruler** across the top.
+
+<WizardFigure src="/img/printer-wizard/column-ruler.png" alt="Receipt test print showing a numbered column ruler that ends flush with the right edge" summary="The ruler should reach the right edge without wrapping to a second line." />
+
+    <WizardGate id="g-width-gate" question="Does the ruler end flush with the right edge, without wrapping?">
+      <WizardChoice value="yes" label="Yes, it lines up" goTo="g-crisp" />
+      <WizardChoice value="no" label="No, it wraps or is cut off" goTo="fix-width" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="fix-width" title="Fix the paper width">
+
+The **Printer text width** setting doesn't match your paper. In **Advanced Settings**, set it to match: **58mm = 32 characters**, **80mm = 42**, or **80mm wide = 48**. Most 80mm printers are 42.
+
+    <WizardGate id="g-retry-width" question="Re-print and check the ruler — does it line up now?">
+      <WizardChoice value="yes" label="Yes" goTo="g-crisp" />
+      <WizardChoice value="no" label="Still wrong" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardStep id="g-crisp" title="Check the print quality">
+
+Look at the text quality on the receipt.
+
+<WizardFigure src="/img/printer-wizard/crisp-vs-blurry.png" alt="Two receipts side by side: crisp ESC/POS text on the left, soft blurry print-dialog text on the right" summary="Crisp, sharp text (left) means ESC/POS is working. Soft, photocopy-like text (right) means it's printing through the system print dialog." />
+
+    <WizardGate id="g-crisp-gate" question="Is the text crisp and sharp?">
+      <WizardChoice value="yes" label="Yes, it's clear" goTo="g-chars" />
+      <WizardChoice value="no" label="No, it's blurry / faint" goTo="fix-crisp" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="fix-crisp" title="Blurry text means the wrong print path">
+
+Soft, photocopy-like text means the receipt is going through the **system print dialog** instead of being sent as **ESC/POS** commands. Route the thermal receipt template to your thermal printer profile (not the system dialog) under **POS &gt; Settings &gt; Printing &gt; Receipt templates** — choose your printer's name, not **System Print Dialog**.
+
+    <WizardGate id="g-retry-crisp" question="Re-print — is it crisp now?">
+      <WizardChoice value="yes" label="Yes" goTo="done" />
+      <WizardChoice value="no" label="Still blurry" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardStep id="g-chars" title="Check the characters">
+Look at the words and numbers on the test print.
+
+    <WizardGate id="g-chars-gate" question="Are all the characters correct — no random symbols, boxes, or wrong letters?">
+      <WizardChoice value="yes" label="Yes, the text is correct" goTo="g-drawer" />
+      <WizardChoice value="no" label="No, it's garbled / has boxes / wrong characters" goTo="garbled-which" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardQuestion id="garbled-which" title="What does the garbled text look like?">
+    <WizardChoice value="symbols" label="Random letters/symbols on a normal (Latin) receipt" goTo="garbled-language" />
+    <WizardChoice value="boxes" label="Boxes or missing letters in a non-Latin script (Arabic, Chinese, Thai, etc.)" goTo="garbled-raster" />
+    <WizardChoice value="after-first" label="First receipt is fine, then later ones turn to gibberish" goTo="garbled-buffer" />
+  </WizardQuestion>
+
+  <WizardFix id="garbled-language" title="Wrong command language">
+The printer is being sent the wrong command language. In **POS &gt; Settings &gt; Printing &gt; Advanced Settings**, change the **Language** to match your printer and try again: **ESC/POS** for Epson, and **StarPRNT** or **Star Line Mode** for Star (try both Star options). A mismatch makes the printer interpret the commands as random characters.
+
+    <WizardGate id="g-garbled-lang" question="Correct now?">
+      <WizardChoice value="yes" label="Yes" goTo="g-drawer" />
+      <WizardChoice value="no" label="Still garbled" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardFix id="garbled-raster" title="Non-Latin script — print as an image">
+Thermal printers have a limited built-in font, so scripts they don't include (Arabic, Hebrew, many CJK and Thai characters) come out as boxes. Turn on **Full receipt raster** in **Advanced Settings** — it renders the whole receipt as an image, so any language prints exactly as it looks on screen. It's a little slower, so only use it when you need it.
+
+    <WizardGate id="g-garbled-raster" question="Does the script print correctly now?">
+      <WizardChoice value="yes" label="Yes" goTo="g-drawer" />
+      <WizardChoice value="no" label="Still wrong" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardFix id="garbled-buffer" title="Gibberish after the first receipt">
+When the first receipt is perfect but later ones are garbled until you power-cycle the printer, the printer is usually being driven in an image/graphics mode its memory can't keep up with — common on inexpensive generic printers. Switch the printer profile to plain **text (ESC/POS)** mode rather than full-image printing, and turn **Full receipt raster** off if it's on. If you print a logo, storing it in the printer instead of sending it every receipt also helps.
+
+    <WizardGate id="g-garbled-buffer" question="Do later receipts print correctly now?">
+      <WizardChoice value="yes" label="Yes" goTo="g-drawer" />
+      <WizardChoice value="no" label="Still turns to gibberish" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardStep id="g-drawer" title="Cash drawer">
+If you have a cash drawer plugged into the printer, turn on **Auto-open cash drawer** in the printer's options and run a test sale to check it kicks open.
+
+    <WizardGate id="g-drawer-gate" question="Do you have a cash drawer, and does it open?">
+      <WizardChoice value="works" label="It opens / I don't use a drawer" goTo="done" />
+      <WizardChoice value="no" label="It's connected but won't open" goTo="drawer-fix" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="drawer-fix" title="Cash drawer won't open">
+Work through these — the drawer kicks off the printer, so it needs a thermal printer profile (the system print dialog can't open a drawer):
+
+The drawer cable must be in the printer's **DK / cash-drawer port** — not a phone or network jack that looks the same. Make sure **Auto-open cash drawer** is enabled. On **Epson** printers, an enabled **buzzer** disables the drawer entirely — turn the buzzer off. The drawer also won't fire while the printer has an error (out of paper, cover open) — clear those first. Finally, the drawer's voltage (12V vs 24V) must match the printer; a mismatch won't fire it.
+
+    <WizardGate id="g-drawer-retry" question="Does the drawer open now?">
+      <WizardChoice value="yes" label="Yes" goTo="done" />
+      <WizardChoice value="no" label="Still won't open" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardTerminal id="done" kind="success" title="You're all set">
+
+Your printer is connected and printing correctly.
+
+**Want receipts to print automatically?** Turn on **Auto-print receipt** in the POS cart settings, so a receipt prints the moment you complete a sale.
+
+If it's a **network** printer, give it a **DHCP reservation** on your router so its address never changes and breaks printing later — Bluetooth and USB printers don't need this. And if you use more than one template, see [print routing](/hardware/printers#print-routing).
+
+  </WizardTerminal>
+
+  <WizardTerminal id="support" kind="support" title="Let's get you help">
+
+We couldn't get it working from here. Copy the summary below and send it to support — it tells us exactly what you've already tried, so we can help fast.
+
+  </WizardTerminal>
+
+  {/* ── Cloud branch ── */}
+
+  <WizardQuestion id="cloud-provider" title="Which cloud printing service does your printer use?">
+    <WizardChoice value="star-cloudprnt" label="Star CloudPRNT (Star printer, polls for jobs)" goTo="cloud-star-cloudprnt" />
+    <WizardChoice value="epson-sdp" label="Epson Server Direct Print" goTo="cloud-epson-sdp" />
+    <WizardChoice value="printnode" label="PrintNode (any printer, via a desktop client)" goTo="cloud-printnode" />
+    <WizardChoice value="star-online" label="Star Online (stario.online account)" goTo="cloud-star-online" />
+    <WizardChoice value="unsure" label="I'm not sure" goTo="cloud-which" />
+  </WizardQuestion>
+
+  <WizardInvalid id="cloud-which" title="Which provider is right for you?">
+
+Pick the one that matches your hardware: a **Star** thermal printer that polls for jobs is **Star CloudPRNT**; a Star printer registered at stario.online is **Star Online**; an **Epson** ePOS printer is **Server Direct Print**; and **any** printer attached to a computer can use **PrintNode**. Full comparison: [Cloud Printing](/receipts/cloud-printing#providers).
+
+  </WizardInvalid>
+
+  <WizardStep id="cloud-star-cloudprnt" title="Set up Star CloudPRNT">
+
+Cloud printers are configured once in **WP Admin &gt; POS &gt; Settings &gt; Cloud Print** and shared across every device.
+
+1. Add a printer and choose **Star CloudPRNT** as the provider. WCPOS generates a **poll URL** and a **one-time token**.
+2. Copy them — the **token is shown only once** (regenerate from the printer card if you lose it).
+3. Open the printer's **CloudPRNT** settings, paste in the poll URL and token, set a poll interval (a few seconds), then save and reboot the printer.
+
+Star CloudPRNT needs a **thermal** template — see [Thermal Templates](/receipts/thermal-templates).
+
+    <WizardGate id="g-cloud-cp-status" question="Within a poll cycle, did the printer's status in WCPOS change from Waiting to Connected?">
+      <WizardChoice value="yes" label="Yes, it shows Connected" goTo="cloud-cp-test" />
+      <WizardChoice value="no" label="No, it's stuck on Waiting" goTo="fix-cloud-waiting" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="fix-cloud-waiting" title="Printer stuck on Waiting">
+
+A polling printer stuck on **Waiting** has never reached WCPOS. Check that the **poll URL and token** in the printer match WCPOS exactly — one wrong character rejects every poll (regenerate the token and re-enter it if unsure). The printer must be able to reach your site over the internet: correct DNS, no firewall blocking outbound HTTPS, and a valid SSL certificate on your store. Finally, confirm **polling is enabled** in the printer's **CloudPRNT** settings (for Star) or **Server Direct Print** settings (for Epson) with a sensible interval, then reboot the printer after changing settings.
+
+    <WizardGate id="g-cloud-cp-retry" question="After re-checking and rebooting, does it show Connected now?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-cp-test" />
+      <WizardChoice value="no" label="Still stuck on Waiting" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardStep id="cloud-cp-test" title="Send a test print">
+
+On the printer's card in **Cloud Print**, click **Test print**.
+
+    <WizardGate id="g-cloud-cp-test" question="Did the test print come out of the printer?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-done" />
+      <WizardChoice value="no" label="No" goTo="fix-cloud-template" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="fix-cloud-template" title="Connected, but the test print didn't arrive">
+
+If the status is Connected but nothing prints, the most common cause is the **template**. Star and Epson cloud printers can only use **thermal** templates (the job is rendered to the printer's native commands). If your template isn't selectable or nothing prints, assign a [thermal template](/receipts/thermal-templates), or use a **PrintNode** printer, which prints any template via PDF.
+
+    <WizardGate id="g-cloud-template-retry" question="With a thermal template assigned, did the test print work?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-done" />
+      <WizardChoice value="no" label="Still nothing" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardTerminal id="cloud-done" kind="success" title="Cloud printer ready">
+
+Your cloud printer is connected and printing. It appears automatically in every device's printer list — you don't add it per device.
+
+Set up an [auto-print rule](/receipts/cloud-printing#auto-print) so orders print automatically. With [WCPOS Pro](/getting-started/pro-license), each store can have its own rules and choose exactly what prints — **POS orders only**, **online orders only**, or **every order** — see [per-store printers](/receipts/cloud-printing#per-store-printers).
+
+  </WizardTerminal>
+
+  {/* ── Epson Server Direct Print ── */}
+
+  <WizardStep id="cloud-epson-sdp" title="Set up Epson Server Direct Print">
+
+Cloud printers are configured once in **WP Admin &gt; POS &gt; Settings &gt; Cloud Print** and shared across every device.
+
+1. Add a printer and choose **Epson Server Direct Print** as the provider. WCPOS generates a **poll URL** and a **one-time token**.
+2. Copy them — the **token is shown only once** (regenerate from the printer card if you lose it).
+3. Open the printer's **Server Direct Print** settings, paste in the poll URL and token, set a poll interval (a few seconds), then save and reboot the printer.
+
+Jobs are delivered as ePOS-Print XML. Epson Server Direct Print needs a **thermal** template — see [Thermal Templates](/receipts/thermal-templates).
+
+    <WizardGate id="g-cloud-sdp-status" question="Within a poll cycle, did the printer's status in WCPOS change from Waiting to Connected?">
+      <WizardChoice value="yes" label="Yes, it shows Connected" goTo="cloud-epson-test" />
+      <WizardChoice value="no" label="No, it's stuck on Waiting" goTo="fix-cloud-waiting" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardStep id="cloud-epson-test" title="Send a test print">
+
+On the printer's card in **Cloud Print**, click **Test print**.
+
+    <WizardGate id="g-cloud-sdp-test" question="Did the test print come out of the printer?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-done" />
+      <WizardChoice value="no" label="No" goTo="fix-cloud-template" />
+    </WizardGate>
+  </WizardStep>
+
+  {/* ── PrintNode ── */}
+
+  <WizardStep id="cloud-printnode" title="Set up PrintNode">
+
+PrintNode works with virtually any printer your computer can already print to.
+
+1. On a computer that can print to your target printer, install the **PrintNode desktop client** and sign in. The client must stay running and online for jobs to print.
+2. In your PrintNode account, create an **API key**.
+3. In **WP Admin &gt; POS &gt; Settings &gt; Cloud Print**, add a printer and choose **PrintNode** as the provider. Paste in the API key. WCPOS fetches the list of printers registered to your PrintNode account.
+4. Select the target printer from the list, then save.
+
+PrintNode renders receipts as **PDF**, so it works with any template — including full-page HTML invoices.
+
+    <WizardGate id="g-cloud-pn-status" question="Does the printer card now show Online?">
+      <WizardChoice value="yes" label="Yes, it shows Online" goTo="cloud-pn-test" />
+      <WizardChoice value="no" label="No, it shows Offline or nothing" goTo="fix-cloud-printnode" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="fix-cloud-printnode" title="PrintNode printer shows Offline">
+
+A PrintNode printer showing Offline means the service can't reach the printer through the desktop client. Make sure the **PrintNode desktop client is running and online** on the computer connected to the printer — if it's asleep or the client is closed, nothing prints. Also confirm you selected the **correct printer** in WCPOS (the name must match what the client reports) and that the **API key is valid** and hasn't been revoked (re-enter it in WCPOS if needed).
+
+    <WizardGate id="g-cloud-pn-retry" question="After checking the client and key, does it show Online now?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-pn-test" />
+      <WizardChoice value="no" label="Still Offline" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardStep id="cloud-pn-test" title="Send a test print">
+
+On the printer's card in **Cloud Print**, click **Test print**.
+
+    <WizardGate id="g-cloud-pn-test" question="Did the test print come out of the printer?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-done" />
+      <WizardChoice value="no" label="No" goTo="fix-cloud-printnode-job" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="fix-cloud-printnode-job" title="PrintNode job sent but nothing printed">
+
+The job reached PrintNode but didn't come out. The most common causes: the **PrintNode desktop client isn't running or online** (if the computer went to sleep after you set up the printer, wake it and try again); you selected the **wrong printer** (the name in WCPOS must match what the PrintNode client reports — select the correct one and save); or the **API key has been revoked** in your PrintNode account (re-enter it if the card shows Offline).
+
+    <WizardGate id="g-cloud-pn-job-retry" question="After re-checking, did the test print work?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-done" />
+      <WizardChoice value="no" label="Still nothing" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  {/* ── Star Online ── */}
+
+  <WizardStep id="cloud-star-online" title="Set up Star Online">
+
+Star Online uses your stario.online account to deliver jobs to a Star printer already registered there.
+
+1. In stario.online, open **Device Groups** and copy the group's **CloudPRNT URL**. It will look like `https://device.stario.online/cloudprnt/...` (US) or `https://eu-device.stario.online/cloudprnt/...` (EU) — note the region, as using the wrong one causes a 401 error.
+2. In stario.online, create an **API key** with these permissions: **EnumDevices**, **ViewDevice**, **PrintToDevice**, **ViewDeviceGroups**.
+3. In **WP Admin &gt; POS &gt; Settings &gt; Cloud Print**, add a printer and choose **Star Online** as the provider. Paste the CloudPRNT URL and API key, then click **Fetch my devices**.
+4. Select the device from the list, then save.
+
+Star Online needs a **thermal** template — see [Thermal Templates](/receipts/thermal-templates).
+
+    <WizardGate id="g-cloud-so-fetch" question="Did Fetch my devices return a list of devices?">
+      <WizardChoice value="yes" label="Yes, I could select a device" goTo="cloud-so-test" />
+      <WizardChoice value="no" label="No — error or empty list" goTo="fix-cloud-star-online" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="fix-cloud-star-online" title="Fetch my devices failed or returned nothing">
+
+Star Online separates authentication from permissions. A **401 / authentication failed** error means the API key was not accepted — check it was copied correctly, hasn't been revoked, belongs to the right stario.online account, and matches the **region** in the CloudPRNT URL (`device.stario.online` for US, `eu-device.stario.online` for EU; the wrong region always gives a 401). A **403 / forbidden** error means the key was accepted but lacks permissions — edit the key in stario.online and enable **EnumDevices** (needed for Fetch my devices) and **PrintToDevice** (needed to print). If the **list is empty**, the key and URL are valid but the Device Group has no connected device, or the URL points to a different group — check the Device Groups page in stario.online and confirm the correct device is present and connected.
+
+    <WizardGate id="g-cloud-so-retry" question="After fixing the key or URL, did Fetch my devices return devices?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-so-test" />
+      <WizardChoice value="no" label="Still failing" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+  <WizardStep id="cloud-so-test" title="Send a test print">
+
+On the printer's card in **Cloud Print**, click **Test print**.
+
+    <WizardGate id="g-cloud-so-test" question="Did the test print come out of the printer?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-done" />
+      <WizardChoice value="no" label="No" goTo="fix-cloud-so-job" />
+    </WizardGate>
+  </WizardStep>
+
+  <WizardFix id="fix-cloud-so-job" title="Star Online connected but nothing printed">
+
+If the device was fetched successfully but nothing printed, check the printer's **status** on the Star Online card — **Offline** or **Unknown** means Star Online can't reach the printer (confirm it's powered on and connected to the network). Also make sure a **thermal template** is assigned, since only thermal templates work with Star Online (if none appears in the options, assign one and try again). Finally confirm the **CloudPRNT URL** in WCPOS points to the correct Device Group and region.
+
+    <WizardGate id="g-cloud-so-job-retry" question="After checking the template and status, did the test print work?">
+      <WizardChoice value="yes" label="Yes" goTo="cloud-done" />
+      <WizardChoice value="no" label="Still nothing" goTo="support" />
+    </WizardGate>
+  </WizardFix>
+
+</PrinterWizard>

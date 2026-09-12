@@ -293,6 +293,18 @@ module.exports = {
           routeBasePath: '/',
           lastVersion: '1.x',
           includeCurrentVersion: false,
+          // 2.x is CUT BUT NOT BUILT. The next release renumbers 1.11 to 2.0 and
+          // rewrites large parts of the UI, so its pages are authored now, in
+          // versioned_docs/version-2.x, and must not reach the public site before
+          // launch. Omitting '2.x' here means Docusaurus emits no /2.x/ route at
+          // all: nothing to crawl, nothing in the sitemap, nothing in llms.txt,
+          // and no entry in the version dropdown. This is a stronger guarantee
+          // than hiding the dropdown item, which would still ship the HTML.
+          //
+          // AT LAUNCH: add '2.x' to this array and set lastVersion to '2.x'.
+          // `pnpm build:preview-2x` builds WITH 2.x so the unbuilt tree cannot
+          // rot unseen in the meantime.
+          onlyIncludeVersions: ['1.x', '0.4.x'],
           // versions: {
           //   '1.0.x': {
           //     label: '1.0.x',

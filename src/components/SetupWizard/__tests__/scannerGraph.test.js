@@ -1,13 +1,31 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildGraph } from '../buildGraph';
 import { KIND } from '../kinds';
 
-const scannerPage = path.resolve(
-  process.cwd(),
-  'versioned_docs/version-1.x/hardware/scanners/setup-wizard.mdx',
-);
+const SCANNER_PAGE = 'hardware/scanners/setup-wizard.mdx';
+
+/**
+ * Every version that authors the scanner wizard, not just one.
+ *
+ * This was pinned to version-1.x. Once a new version is cut and becomes the
+ * authoring tree, a pinned test silently stops covering the pages people edit:
+ * duplicate ids and dangling goTo targets are reported by a non-production
+ * useEffect, so a broken graph still COMPILES and a build-only check cannot see
+ * it. Discovering the versions keeps every authored copy covered, including an
+ * unreleased one that is excluded from the production build.
+ */
+function scannerPages() {
+  const root = path.resolve(process.cwd(), 'versioned_docs');
+  return readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('version-'))
+    .map((entry) => [entry.name, path.join(root, entry.name, SCANNER_PAGE)])
+    .filter(([, file]) => existsSync(file))
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+const pages = scannerPages();
 
 const kindByTag = {
   WizardQuestion: KIND.QUESTION,
@@ -28,7 +46,7 @@ function element(kind, props, children = []) {
   return { type: Component, props: { ...props, children } };
 }
 
-function authoredGraph() {
+function authoredGraph(scannerPage) {
   const mdx = readFileSync(scannerPage, 'utf8');
   const nodes = [];
   const choicesByNode = new Map();
@@ -76,19 +94,23 @@ function goTo(choicesByNode, nodeId, value) {
   return choice.goTo;
 }
 
-describe('scanner wizard authored graph', () => {
+it('finds at least one authored scanner page', () => {
+  expect(pages.length).toBeGreaterThan(0);
+});
+
+describe.each(pages)('scanner wizard authored graph (%s)', (version, scannerPage) => {
   it('has an authored scanner page', () => {
     expect(existsSync(scannerPage)).toBe(true);
   });
 
   it('has no duplicate ids or unresolved goTo targets', () => {
-    const { graph } = authoredGraph();
+    const { graph } = authoredGraph(scannerPage);
     expect(graph.startId).toBe('start');
     expect(graph.errors).toEqual([]);
   });
 
   it('keeps Safari/Firefox keyboard setup and iOS away from direct connections', () => {
-    const { graph, choicesByNode } = authoredGraph();
+    const { graph, choicesByNode } = authoredGraph(scannerPage);
     const browser = goTo(choicesByNode, 'platform-setup', 'web');
     const keyboardOnly = goTo(choicesByNode, browser, 'other');
     const webLane = goTo(choicesByNode, keyboardOnly, 'continue');
@@ -102,7 +124,7 @@ describe('scanner wizard authored graph', () => {
   });
 
   it('gives every fix node a route to support', () => {
-    const { graph } = authoredGraph();
+    const { graph } = authoredGraph(scannerPage);
     for (const id of graph.idList.filter((nodeId) => nodeId.startsWith('fix-'))) {
       expect(reachableFrom(graph, id), `${id} cannot reach support`).toContain('support');
     }

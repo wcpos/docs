@@ -21,13 +21,19 @@ const path = require('path');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEFAULT_MANIFEST = path.join(REPO_ROOT, 'src/data/error-catalogue.json');
+// The AUTHORING version — where new error-code pages are written. 2.x is cut but
+// not yet built (see `onlyIncludeVersions` in docusaurus.config.js); new codes for
+// the upcoming release land there and never in 1.x, which is frozen on the shipped
+// line. Checking 1.x here would fail the moment a manifest entry had a 2.x-only
+// page, which is the normal case from now until launch.
+const AUTHORING_VERSION = 'version-2.x';
 const DEFAULT_PAGES_DIR = path.join(
   REPO_ROOT,
-  'versioned_docs/version-1.x/error-codes'
+  `versioned_docs/${AUTHORING_VERSION}/error-codes`
 );
 const DEFAULT_SIDEBAR = path.join(
   REPO_ROOT,
-  'versioned_sidebars/version-1.x-sidebars.json'
+  `versioned_sidebars/${AUTHORING_VERSION}-sidebars.json`
 );
 const LEGACY_DOMAINS = new Set(['API', 'DB', 'PY', 'SY']);
 
