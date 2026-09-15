@@ -1,0 +1,78 @@
+---
+title: Cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "防止 Cloudflare 的安全检查阻止 WCPOS 应用连接到您的店铺。"
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+
+Cloudflare 会要求访客通过安全检查后才能访问，从而保护您的网站。浏览器会在后台通过该检查。WCPOS 应用不是浏览器：它会与您店铺的 REST API 通信；当 Cloudflare 以安全检查页面而非数据响应这些调用时，应用将无法连接。
+
+本页说明如何识别此问题，以及如何让 Cloudflare 允许应用通过。此处的每个步骤均适用于店铺所有者或管理网站 Cloudflare 帐户的人员。
+
+## 如何识别此问题 {#how-to-recognise-it}
+
+- 连接界面显示 **“此店铺的托管设置正在阻止应用”**，并附带错误代码 [HOST121](/error-codes/HOST121)。
+- 桌面应用在连接或同步时会打开一个小型 **“your-store.com 的安全检查”** 窗口。
+- 旧版本会在明显处于在线状态的网站上报告 **“网站似乎不是 WordPress 网站”** 或 **“网站响应时间过长”**。
+- 云打印停止运行，并显示“安全服务正在阻止 WCPOS Cloud Print”的消息。
+
+如需确认，请打开终端并运行：
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+被阻止的店铺会返回 `403` 状态和 `cf-mitigated: challenge` 标头。正常的店铺会返回 `200`，并带有 `content-type: application/json`。如果返回 `404`，则您的网站未使用固定链接；请改为对 `'https://your-store.com/?rest_route=/'` 运行相同检查。如果 WordPress 位于子文件夹中，请将其包含在内：`https://example.com/shop/wp-json/`。
+
+:::note 桌面应用可通过一次性检查
+新版桌面应用会在可能的情况下通过一个小窗口完成 Cloudflare 的检查。这样可继续进行交易，但 Cloudflare 签发的放行凭据会过期（默认 30 分钟），并且检查会再次出现。请将此窗口视为临时措施，并应用下方的修复方案。
+:::
+
+## 导致此问题的是哪项 Cloudflare 功能 {#which-feature}
+
+修复方法取决于对应用发起质询的是哪项功能。请在站点的 Cloudflare 控制台中检查以下项目。Cloudflare 一直在调整其菜单位置；旧版位置标注在括号中。
+
+| 功能 | 位置 | 能否豁免 API？ |
+| --- | --- | --- |
+| **机器人对抗模式**（免费套餐） | 安全性 → 设置 → 机器人流量（旧版控制台：安全性 → 机器人） | **否。** Cloudflare 不允许使用跳过或允许规则绕过此功能。请将其关闭，或升级到 Pro 并使用超级机器人对抗模式；下方的跳过规则可将其豁免。 |
+| **遭受攻击模式** | 站点概览中的“遭受攻击模式”开关，或安全性 → 设置 | 可以。下方的跳过规则会跳过安全级别，而遭受攻击模式会提高此级别。或者，在攻击结束后关闭遭受攻击模式。 |
+| **超级机器人对抗模式**（Pro 及更高套餐） | 安全性 → 设置 → 机器人流量（旧版控制台：安全性 → 机器人） | 可以，使用下方的跳过规则。 |
+| 设置为 _托管质询_ 的 **WAF 自定义规则或托管规则** | 安全性 → 安全规则（旧版控制台：安全性 → WAF） | 可以，使用下方的跳过规则，并将其置于任何发起质询的自定义规则之前。托管规则始终在自定义规则之后运行，因此对托管规则而言顺序无关紧要。 |
+
+官方 Cloudflare WordPress 插件可切换遭受攻击模式并启用 WAF，但无法创建跳过规则。这些规则需在 Cloudflare 控制台中创建。
+
+## 为 REST API 添加跳过规则 {#add-a-skip-rule}
+
+除 Bot Fight Mode 外，此方法适用于所有情况。它会告知 Cloudflare 不要质询对店铺 REST API 的请求。WordPress 自身的登录和权限检查仍会保护这些端点。
+
+1. 在 Cloudflare 控制面板中，打开站点，然后依次选择 **安全性 → 安全性规则**（旧版控制面板：**安全性 → WAF → 自定义规则**），再选择 **创建规则 → 自定义规则**。
+2. 将其命名为 `WCPOS REST API`。
+3. 在 **当传入请求匹配** 下，选择 **编辑表达式**，然后粘贴：
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   后半部分匹配 WordPress 的备用地址 `/?rest_route=/...`，且仅在站点根目录匹配，因此不会因为其他页面查询参数中包含 `rest_route=` 字符串，就关闭该页面的保护。如果 WordPress 安装在子文件夹中，例如 `https://example.com/shop`，请使用 `/shop/wp-json/` 和 `/shop/` 替代 `/wp-json/` 和 `/`。
+
+4. 在 **然后执行操作** 下，选择 **跳过**。
+5. 勾选 **所有剩余自定义规则**。在要跳过的组件列表中，勾选 **所有 Super Bot Fight Mode 规则** 和 **安全级别**。仅当托管规则正在质询请求时，才勾选 **所有托管规则**；不要选择任何标记为“(Previous version)”的条目。
+6. 部署该规则。如果还有其他会质询或阻止请求的自定义规则，请确保此规则排在它们之前。
+
+再次运行 `curl` 检查。`cf-mitigated` 标头应已消失，响应应为 JSON。
+
+:::tip 免费套餐和 Bot Fight Mode
+如果在配置跳过规则后，`curl` 检查仍显示质询，且 **Bot Fight Mode** 已开启，则原因是 Bot Fight Mode。对于免费套餐，唯一的解决方法是在安全性 → 设置 → 机器人流量中将其关闭。Cloudflare 的文档确认，没有任何规则可以绕过它。如果 Bot Fight Mode 已关闭，请参阅[仍被阻止？](#still-blocked)。
+:::
+
+## 缓存 {#caching}
+
+Cloudflare 还可能缓存 REST API 响应，导致应用显示过期的产品和订单。上述跳过规则不会更改缓存行为。如果使用 Cloudflare 缓存 HTML 页面或启用了自动平台优化，请添加一条 **缓存规则**，为相同的表达式设置 **绕过缓存**。
+
+## 仍然被拦截？ {#still-blocked}
+
+请确认跳过规则已部署，而非仅保存为草稿，并确认没有 IP 访问规则拦截收银终端所在的网络。网站前的其他服务与 Cloudflare 的行为相同：有关安全插件，请参阅[插件冲突](/support/troubleshooting/plugin-conflicts)；有关 GoDaddy、WP Engine 等服务，请参阅[托管说明](/support/performance/server#hosting-specific-notes)。
+
+<SupportContact />
