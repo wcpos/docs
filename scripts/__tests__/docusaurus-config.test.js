@@ -72,3 +72,50 @@ describe('robots.txt sitemap declarations', () => {
     expect(declared.length).toBe(new Set(declared).size);
   });
 });
+
+describe('published versions are translated for every locale', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  // A locale with no translation for a published version does not fail the
+  // build: Docusaurus serves the English body inside the localized shell, under
+  // hreflang-tagged URLs, and the per-file completeness gate cannot see a gap
+  // that has no translated files at all. This is the gate for the AT LAUNCH flip:
+  // adding '2.x' to onlyIncludeVersions fails here until it is translated.
+  // 0.5 catches a wholesale gap while tolerating an old version's partial
+  // coverage (0.4.x nl is at 23 of 35 pages); per-file drops are
+  // check-translation-completeness.js's job.
+  const MIN_LOCALE_COVERAGE = 0.5;
+
+  const root = path.join(__dirname, '../..');
+  const docsOptions = config.presets.find(
+    ([name]) => name === '@docusaurus/preset-classic'
+  )[1].docs;
+  const locales = config.i18n.locales.filter(
+    (locale) => locale !== config.i18n.defaultLocale
+  );
+
+  // Relative paths of every page under dir. Only translations whose path is also
+  // a source page count, so orphaned files left by a deleted source can't mask a gap.
+  const listPages = (dir, prefix = '') => {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const rel = path.join(prefix, entry.name);
+      if (entry.isDirectory()) return listPages(path.join(dir, entry.name), rel);
+      return /\.mdx?$/.test(entry.name) ? [rel] : [];
+    });
+  };
+
+  for (const version of docsOptions.onlyIncludeVersions) {
+    const sourcePages = new Set(
+      listPages(path.join(root, 'versioned_docs', `version-${version}`))
+    );
+
+    it.each(locales)(`${version} is translated for %s`, (locale) => {
+      const translatedPages = listPages(
+        path.join(root, 'i18n', locale, 'docusaurus-plugin-content-docs', `version-${version}`)
+      ).filter((page) => sourcePages.has(page)).length;
+      expect(translatedPages / sourcePages.size).toBeGreaterThanOrEqual(MIN_LOCALE_COVERAGE);
+    });
+  }
+});
