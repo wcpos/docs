@@ -95,22 +95,27 @@ describe('published versions are translated for every locale', () => {
     (locale) => locale !== config.i18n.defaultLocale
   );
 
-  const countPages = (dir) => {
-    if (!fs.existsSync(dir)) return 0;
-    return fs.readdirSync(dir, { withFileTypes: true }).reduce((count, entry) => {
-      if (entry.isDirectory()) return count + countPages(path.join(dir, entry.name));
-      return count + (/\.mdx?$/.test(entry.name) ? 1 : 0);
-    }, 0);
+  // Relative paths of every page under dir. Only translations whose path is also
+  // a source page count, so orphaned files left by a deleted source can't mask a gap.
+  const listPages = (dir, prefix = '') => {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const rel = path.join(prefix, entry.name);
+      if (entry.isDirectory()) return listPages(path.join(dir, entry.name), rel);
+      return /\.mdx?$/.test(entry.name) ? [rel] : [];
+    });
   };
 
   for (const version of docsOptions.onlyIncludeVersions) {
-    const sourcePages = countPages(path.join(root, 'versioned_docs', `version-${version}`));
+    const sourcePages = new Set(
+      listPages(path.join(root, 'versioned_docs', `version-${version}`))
+    );
 
     it.each(locales)(`${version} is translated for %s`, (locale) => {
-      const translatedPages = countPages(
+      const translatedPages = listPages(
         path.join(root, 'i18n', locale, 'docusaurus-plugin-content-docs', `version-${version}`)
-      );
-      expect(translatedPages / sourcePages).toBeGreaterThanOrEqual(MIN_LOCALE_COVERAGE);
+      ).filter((page) => sourcePages.has(page)).length;
+      expect(translatedPages / sourcePages.size).toBeGreaterThanOrEqual(MIN_LOCALE_COVERAGE);
     });
   }
 });
