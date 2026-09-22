@@ -40,3 +40,35 @@ Contenido`,
     );
   });
 });
+
+describe('robots.txt sitemap declarations', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  const robots = fs.readFileSync(
+    path.join(__dirname, '../../static/robots.txt'),
+    'utf8'
+  );
+
+  const declared = robots
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.toLowerCase().startsWith('sitemap:'))
+    .map((line) => line.slice('sitemap:'.length).trim());
+
+  // Docusaurus emits one sitemap per built locale: the default locale's at the
+  // site root, every other locale's under its own prefix.
+  const expected = config.i18n.locales.map((locale) =>
+    locale === config.i18n.defaultLocale
+      ? `${config.url}${config.baseUrl}sitemap.xml`
+      : `${config.url}${config.baseUrl}${locale}/sitemap.xml`
+  );
+
+  it('declares a sitemap for every configured locale', () => {
+    expect([...declared].sort()).toEqual([...expected].sort());
+  });
+
+  it('declares each sitemap exactly once', () => {
+    expect(declared.length).toBe(new Set(declared).size);
+  });
+});
