@@ -303,7 +303,9 @@ module.exports = {
           //
           // AT LAUNCH: add '2.x' to this array and set lastVersion to '2.x'.
           // `pnpm build:preview-2x` builds WITH 2.x so the unbuilt tree cannot
-          // rot unseen in the meantime.
+          // rot unseen in the meantime. The locale-coverage test in
+          // scripts/__tests__/docusaurus-config.test.js fails this change until
+          // every locale has 2.x translated.
           onlyIncludeVersions: ['1.x', '0.4.x'],
           // versions: {
           //   '1.0.x': {

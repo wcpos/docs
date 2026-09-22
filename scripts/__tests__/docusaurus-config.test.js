@@ -72,3 +72,45 @@ describe('robots.txt sitemap declarations', () => {
     expect(declared.length).toBe(new Set(declared).size);
   });
 });
+
+describe('published versions are translated for every locale', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  // A locale with no translation for a published version does not fail the
+  // build: Docusaurus serves the English body inside the localized shell, under
+  // hreflang-tagged URLs, and the per-file completeness gate cannot see a gap
+  // that has no translated files at all. This is the gate for the AT LAUNCH flip:
+  // adding '2.x' to onlyIncludeVersions fails here until it is translated.
+  // 0.5 catches a wholesale gap while tolerating an old version's partial
+  // coverage (0.4.x nl is at 23 of 35 pages); per-file drops are
+  // check-translation-completeness.js's job.
+  const MIN_LOCALE_COVERAGE = 0.5;
+
+  const root = path.join(__dirname, '../..');
+  const docsOptions = config.presets.find(
+    ([name]) => name === '@docusaurus/preset-classic'
+  )[1].docs;
+  const locales = config.i18n.locales.filter(
+    (locale) => locale !== config.i18n.defaultLocale
+  );
+
+  const countPages = (dir) => {
+    if (!fs.existsSync(dir)) return 0;
+    return fs.readdirSync(dir, { withFileTypes: true }).reduce((count, entry) => {
+      if (entry.isDirectory()) return count + countPages(path.join(dir, entry.name));
+      return count + (/\.mdx?$/.test(entry.name) ? 1 : 0);
+    }, 0);
+  };
+
+  for (const version of docsOptions.onlyIncludeVersions) {
+    const sourcePages = countPages(path.join(root, 'versioned_docs', `version-${version}`));
+
+    it.each(locales)(`${version} is translated for %s`, (locale) => {
+      const translatedPages = countPages(
+        path.join(root, 'i18n', locale, 'docusaurus-plugin-content-docs', `version-${version}`)
+      );
+      expect(translatedPages / sourcePages).toBeGreaterThanOrEqual(MIN_LOCALE_COVERAGE);
+    });
+  }
+});
