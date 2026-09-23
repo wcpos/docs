@@ -53,11 +53,11 @@ fi
 git -C "$REPO_ROOT" fetch --quiet --prune origin
 if [ -z "${TRANSLATE_LOCAL_REEXEC+x}" ]; then
   UPDATE=$(mktemp)
-  if git -C "$REPO_ROOT" show "origin/$BASE:scripts/translate-docs-local.sh" >"$UPDATE" 2>/dev/null &&
-      ! cmp -s "$0" "$UPDATE"; then
-    TRANSLATE_LOCAL_REEXEC=1 TRANSLATE_REPO_ROOT="$REPO_ROOT" exec /bin/bash "$UPDATE" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
+  if ! git -C "$REPO_ROOT" show "origin/$BASE:scripts/translate-docs-local.sh" >"$UPDATE" 2>/dev/null; then
+    cp "$0" "$UPDATE"
   fi
-  rm -f "$UPDATE"
+  # Always use a private copy so mid-run edits cannot corrupt Bash's incremental reads.
+  TRANSLATE_LOCAL_REEXEC=1 TRANSLATE_REPO_ROOT="$REPO_ROOT" exec /bin/bash "$UPDATE" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
 fi
 mkdir -p "$REPO_ROOT/.claude"
 LOCK="$REPO_ROOT/.claude/docs-translate.lock"

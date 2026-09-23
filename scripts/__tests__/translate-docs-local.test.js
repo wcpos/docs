@@ -20,6 +20,7 @@ const gates = ['validate-frontmatter.js', 'check-translation-completeness.js', '
 function run(config = {}, args = [], overrides = {}) {
   fs.writeFileSync(path.join(root, 'config.json'), JSON.stringify(config));
   fs.writeFileSync(callsFile, '');
+  fs.writeFileSync(path.join(root, 'executions.txt'), '');
   const result = spawnSync('/bin/bash', [copy, ...args], { env: { ...env, ...overrides }, encoding: 'utf8', timeout: 20000 });
   assert.ifError(result.error);
   return { ...result, calls: readCalls() };
@@ -37,8 +38,9 @@ beforeAll(() => {
   for (const dir of [bin, path.join(wt, 'scripts/docs-translation')]) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(wt, 'scripts/docs-translation/translate-prompt.md'), 'TRANSLATE\n## Packets for this run\n');
   fs.writeFileSync(path.join(wt, 'scripts/docs-translation/review-prompt.md'), 'REVIEW\n## Packets for this run\n');
-  // Only redirect command lookup and shorten the timeout in this isolated copy.
-  fs.writeFileSync(copy, source.replace(/^PATH=.*$/m, 'PATH=' + JSON.stringify(bin) + ':$PATH').replace('CALL_TIMEOUT=1800', 'CALL_TIMEOUT=1'));
+  // Redirect command lookup, shorten the timeout, and record executed paths in this isolated copy.
+  fs.writeFileSync(copy, source.replace(/^PATH=.*$/m, 'PATH=' + JSON.stringify(bin) + ':$PATH').replace('CALL_TIMEOUT=1800', 'CALL_TIMEOUT=1')
+    .replace('set -euo pipefail\n', 'set -euo pipefail\nprintf \'%s\\n\' "$0" >> ' + JSON.stringify(path.join(root, 'executions.txt')) + '\n'));
   const stub = String.raw`#!@NODE@
 const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process');
 const root = path.dirname(__dirname), tool = path.basename(process.argv[1]), args = process.argv.slice(2);
@@ -48,7 +50,7 @@ fs.appendFileSync(path.join(root, 'calls.jsonl'), JSON.stringify({ tool, args, c
 if (tool === 'git') {
   if (args.includes('show')) {
     if (!config.reexec) process.exit(1);
-    process.stdout.write(fs.readFileSync(path.join(root, 'translate-docs-local.sh'), 'utf8') + '\n# updated\n');
+    process.stdout.write(fs.readFileSync(path.join(root, 'translate-docs-local.sh'), 'utf8') + (config.reexec === 'updated' ? '\n# updated\n' : ''));
   }
   if (args.includes('list') && !config.newWorktree) console.log('worktree ' + wt);
   if (args.includes('status') && fs.existsSync('.translate/accepted')) console.log(' M i18n/translation-state.json');
@@ -127,9 +129,15 @@ it('applies an empty plan and exits 0 without any model, commit, or push', () =>
   assert.ok(!result.calls.some(c => isCall(c, 'git', 'commit') || isCall(c, 'git', 'push')));
 });
 
-it.each([{ counts: [] }, { counts: [2, 1] }])('prints a dry-run summary, preserving arguments across exactly one self-update: %j', ({ counts }) => {
-  const result = run({ counts, reexec: true }, ['--dry-run', '--base', 'stack', '--locale', 'de', '--locale', 'fr', '--max-units', '7']);
+it.each(['updated', 'identical', false].flatMap(reexec => [[], [2, 1]].map(counts => ({ counts, reexec }))))('prints a dry-run summary, preserving arguments across exactly one self-update: %j', ({ counts, reexec }) => {
+  const result = run({ counts, reexec }, ['--dry-run', '--base', 'stack', '--locale', 'de', '--locale', 'fr', '--max-units', '7']);
   assert.equal(result.status, 0, result.stderr);
+  const executions = fs.readFileSync(path.join(root, 'executions.txt'), 'utf8').trim().split('\n');
+  assert.equal(executions.length, 2);
+  assert.equal(executions[0], copy);
+  assert.notEqual(executions[1], copy);
+  assert.equal(path.dirname(executions[1]), root);
+  assert.equal(fs.readFileSync(executions[1], 'utf8'), fs.readFileSync(copy, 'utf8') + (reexec === 'updated' ? '\n# updated\n' : ''));
   assert.equal(JSON.parse(result.stdout).total, counts.reduce((a, b) => a + b, 0));
   assert.equal(result.calls.filter(c => isCall(c, 'git', 'show', 'origin/stack:scripts/translate-docs-local.sh')).length, 1);
   assert.equal(result.calls.filter(c => isCall(c, 'git', 'fetch')).length, 2);
