@@ -61,6 +61,7 @@ const wt = path.join(root, '.claude/worktrees/docs-translate');
 fs.appendFileSync(path.join(root, 'calls.jsonl'), JSON.stringify({ tool, args, cwd: process.cwd(), base: process.env.BASE_REF }) + '\n');
 if (tool === 'git') {
   if (args.includes('fetch') && config.fetchFails) process.exit(1);
+  if (args.includes('push') && config.pushFails) process.exit(1);
   if (args.includes('rev-parse')) {
     if (config.revParseFails) process.exit(1);
     if (args.includes('--short')) console.log('abc1234');
@@ -80,6 +81,8 @@ if (tool === 'git') {
     process.stdout.write(filtered.stdout);
     process.exit(filtered.status);
   }
+  if (args[0] === 'pr' && args[1] === 'comment' && config.commentFails) process.exit(1);
+  if (args[0] === 'pr' && args[1] === 'create' && config.createFails) process.exit(1);
   if (args[1] === 'create' && args[0] === 'pr') console.log('https://example.test/pr/1');
   if (args[0] === 'label' && config.labelExists) process.exit(1);
 } else if (tool === 'pnpm') {
@@ -283,6 +286,17 @@ it('uses Claude Sonnet for both passes and merges into and comments on the open 
   assert.ok(!result.calls.some(c => isCall(c, 'gh', 'create')));
   assert.match(result.stdout, /review de-01 failed or timed out; continuing/);
   assert.match(result.stdout, /https:\/\/example.test\/pr\/42/);
+});
+
+it.each(['pushFails', 'commentFails', 'createFails'])('reports failed publishing for %s', failure => {
+  const result = run({ [failure]: true, pr: failure === 'commentFails' ? pr : undefined });
+  const branch = result.calls.find(c => isCall(c, 'git', 'push')).args.at(-1);
+  const reasons = {
+    pushFails: `push to ${branch} failed`,
+    commentFails: `comment on PR ${pr.number} failed`,
+    createFails: `opening a PR for ${branch} failed`,
+  };
+  assertFailed(result, reasons[failure]);
 });
 
 it.each(['codex', 'claude'])('retains environment model overrides for %s', translator => {

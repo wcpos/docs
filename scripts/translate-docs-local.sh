@@ -161,12 +161,12 @@ LOCALES=$(git diff --cached --name-only -- i18n | jq -Rsr '[split("\n")[] | spli
 git commit -m "docs(i18n): translate $APPLIED units in $N_FILES files"
 publish() {
   if [ "$BRANCH" = main ] || [ "$BRANCH" = "$BASE" ]; then fail "refusing to push to $BRANCH"; fi
-  git push --quiet -u origin "$BRANCH"
+  git push --quiet -u origin "$BRANCH" || fail "push to $BRANCH failed"
   if [ -n "$PR" ]; then
-    gh pr comment "$PR_NUMBER" --body-file .translate/pr-body.md > /dev/null
+    gh pr comment "$PR_NUMBER" --body-file .translate/pr-body.md > /dev/null || fail "comment on PR $PR_NUMBER failed"
   else
     gh label create docs-translate --color 1d76db --description "Automated local docs translation run" 2>/dev/null || true
-    PR_URL=$(gh pr create -R wcpos/docs --base "$BASE" --head "$BRANCH" --label docs-translate --title "docs(i18n): automated docs translations $(date -u +%Y-%m-%d)" --body-file .translate/pr-body.md)
+    PR_URL=$(gh pr create -R wcpos/docs --base "$BASE" --head "$BRANCH" --label docs-translate --title "docs(i18n): automated docs translations $(date -u +%Y-%m-%d)" --body-file .translate/pr-body.md) || fail "opening a PR for $BRANCH failed"
   fi
 }
 if ! BASE_REF="origin/$BASE" node scripts/validate-frontmatter.js --check --changed ||
