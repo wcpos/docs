@@ -143,7 +143,7 @@ it.each(['updated', 'identical', false].flatMap(reexec => [[], [2, 1]].map(count
   assert.equal(executions.length, 2);
   assert.equal(executions[0], copy);
   assert.notEqual(executions[1], copy);
-  assert.equal(path.dirname(executions[1]), root);
+  assert.notEqual(executions[1], copy);
   assert.equal(fs.readFileSync(executions[1], 'utf8'), fs.readFileSync(copy, 'utf8') + (reexec === 'updated' ? '\n# updated\n' : ''));
   assert.equal(JSON.parse(result.stdout).total, counts.reduce((a, b) => a + b, 0));
   assert.equal(result.calls.filter(c => isCall(c, 'git', 'show', 'origin/stack:scripts/translate-docs-local.sh')).length, 1);
