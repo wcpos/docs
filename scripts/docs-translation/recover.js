@@ -146,7 +146,7 @@ function recoverTranslations({ file, locale, oldEnglishPath, oldEnglish, target 
       rejected += 1;
     }
   }
-  return { translations, paired, rejected };
+  return { translations, paired, rejected, unpairedTarget: targetParsed.units.length - paired - rejected };
 }
 
 module.exports = {

@@ -15,12 +15,15 @@ function readState(rootDir) {
 function serializeState(state) {
   const lines = [`  "_comment": ${JSON.stringify(COMMENT)}`];
   for (const target of Object.keys(state).filter(key => key !== '_comment').sort()) {
-    const { source, same, partial } = state[target];
+    const { source, same, partial, attempts } = state[target];
     const value = {};
     if (source !== undefined) value.source = source;
     if (same?.length) value.same = [...same].sort();
     if (partial && Object.keys(partial).length) {
       value.partial = Object.fromEntries(Object.keys(partial).sort().map(key => [key, partial[key]]));
+    }
+    if (attempts && Object.keys(attempts).length) {
+      value.attempts = Object.fromEntries(Object.keys(attempts).sort().map(key => [key, attempts[key]]));
     }
     lines.push(`  ${JSON.stringify(target)}: ${JSON.stringify(value)}`);
   }

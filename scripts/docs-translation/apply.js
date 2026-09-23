@@ -41,15 +41,18 @@ function applyResults({ rootDir, plan, results }) {
     const accepted = {};
     for (const index of pending) {
       const id = `u${index}`;
+      const unit = units[index];
+      const decoded = kind === 'mdx' ? decodeDocsUnitSource(parsed, unit) : unit.source;
+      const key = kind === 'mdx' ? unitKey(unit, decoded) : ['json', unit.key, '', decoded].join('\u0000');
+      const hash = unitHash(key);
+      // Count pending attempts now; clear accepted ones after whole-file checks.
+      (saved.attempts ??= {})[hash] = (saved.attempts[hash] ?? 0) + 1;
       let text = results.filter(result => result?.locale === locale)
         .map(result => result.files?.[target]?.[id]).find(value => value !== undefined);
       if (typeof text !== 'string') {
         report.missing += 1;
         continue;
       }
-      const unit = units[index];
-      const decoded = kind === 'mdx' ? decodeDocsUnitSource(parsed, unit) : unit.source;
-      const key = kind === 'mdx' ? unitKey(unit, decoded) : ['json', unit.key, '', decoded].join('\u0000');
       let issues = [];
       const reasons = [];
       if (kind === 'mdx') {
@@ -89,7 +92,6 @@ function applyResults({ rootDir, plan, results }) {
         report.warning_details.push({ target, unit: id, codes });
       }
       translations.set(index, text);
-      const hash = unitHash(key);
       accepted[hash] = text;
       if (text === decoded && !saved.same?.includes(hash)) (saved.same ??= []).push(hash);
       report.applied += 1;
@@ -145,6 +147,8 @@ function applyResults({ rootDir, plan, results }) {
   const writes = [];
   for (const { entry, out, existing, complete, accepted, fileRejected } of candidates) {
     const saved = state[entry.target];
+    if (!fileRejected) for (const hash of Object.keys(accepted)) delete saved.attempts[hash];
+    if (!Object.keys(saved.attempts ?? {}).length) delete saved.attempts;
     const held = proposed.has(entry.target) && report.sources_held_back.includes(entry.source);
     if (complete && !held) {
       saved.source = entry.source_blob;
@@ -158,7 +162,8 @@ function applyResults({ rootDir, plan, results }) {
   }
   for (const [target, saved] of Object.entries(state)) {
     if (!previousTargets.has(target) && saved.source === undefined
-      && !saved.same?.length && !Object.keys(saved.partial ?? {}).length) delete state[target];
+      && !saved.same?.length && !Object.keys(saved.partial ?? {}).length
+      && !Object.keys(saved.attempts ?? {}).length) delete state[target];
   }
   report.files_written = writes.map(write => write.path);
   return { writes, state, report };
@@ -199,13 +204,15 @@ function runCli(argv) {
     counts.set(locale, (counts.get(locale) ?? 0) + 1);
   }
   const markdown = [
-    `Applied: ${applied}; rejected: ${rejected}; warnings: ${warnings}; missing: ${missing}; files written: ${writes.length}; incomplete: ${report.files_incomplete.length}.`,
+    `Applied: ${applied}; rejected: ${rejected}; warnings: ${warnings}; missing: ${missing}; files written: ${writes.length}; incomplete: ${report.files_incomplete.length}; quarantined: ${plan.quarantined?.length ?? 0}.`,
     '', '| Locale | Files written |', '| --- | --- |',
     ...[...counts].map(([locale, count]) => `| ${locale} | ${count} |`),
     '', '## Rejected units', '', '| Target | Unit | Reason |', '| --- | --- | --- |',
     ...report.rejected_details.slice(0, 50).map(item => `| ${item.target} | ${item.unit ?? 'file'} | ${item.reason} |`),
     '', '## Warnings', '', '| Target | Unit | Codes |', '| --- | --- | --- |',
     ...report.warning_details.slice(0, 50).map(item => `| ${item.target} | ${item.unit} | ${item.codes.join(', ')} |`),
+    '', '## Quarantined units', '', '| Target | Unit | Attempts | English |', '| --- | --- | --- | --- |',
+    ...(plan.quarantined ?? []).slice(0, 50).map(item => `| ${item.target} | ${item.unit} | ${item.attempts} | ${item.source.slice(0, 120).replaceAll('|', '\\|').replaceAll('\n', ' ')} |`),
     '', '## Held-back sources', '', ...report.sources_held_back.map(source => `- ${source}`), '',
   ].join('\n');
   for (const [file, content] of [[options['--report'], JSON.stringify(report, null, 2) + '\n'], [options['--report-md'], markdown]]) {

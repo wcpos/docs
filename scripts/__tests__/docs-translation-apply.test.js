@@ -208,27 +208,38 @@ describe('applyResults MDX', () => {
     expect(output.writes).toEqual([]);
     expect(output.report).toMatchObject({ applied: 6, rejected: 1, warnings: 6 });
     expect(output.report.rejected_details).toContainEqual({ target: TARGET, unit: null, reason: expect.stringContaining('leftover_prose') });
+    expect(output.state[TARGET].attempts).toEqual(Object.fromEntries(ENTRY.pending.map(index => [mdxHash(index), 1])));
   });
 
-  it.each([undefined, {}, { source: 'old' }, { same: ['hash'] }, { partial: { previous: 'Früher' } }])(
-    'removes a new empty entry but keeps prior state %j when no units are accepted', previous => {
+  it.each([undefined, {}, { source: 'old' }, { same: ['hash'] }, { partial: { previous: 'Früher' } }, { attempts: { [mdxHash(0)]: 2 } }])(
+    'keeps attempts and prior state %j when no units are accepted', previous => {
       if (previous !== undefined) writeState(rootDir, { [TARGET]: previous });
       const output = apply(ENTRY, [result(TEXTS.map(() => ''))]);
       expect(output.writes).toEqual([]);
       expect(output.report).toMatchObject({ applied: 0, rejected: 6, files_incomplete: [TARGET] });
-      if (previous === undefined) expect(output.state).not.toHaveProperty(TARGET);
-      else expect(output.state[TARGET]).toMatchObject(previous);
+      const attempts = Object.fromEntries(ENTRY.pending.map(index => [mdxHash(index), (previous?.attempts?.[mdxHash(index)] ?? 0) + 1]));
+      expect(output.state[TARGET]).toMatchObject({ ...previous, attempts });
       writeState(rootDir, output.state);
-      expect(readState(rootDir)).toEqual(previous === undefined ? {} : { [TARGET]: previous });
+      expect(readState(rootDir)).toEqual({ [TARGET]: { ...previous, attempts } });
     },
   );
 
   it('counts absent or non-string results as missing and uses all matching locale packets', () => {
+    writeState(rootDir, { [TARGET]: { attempts: { [mdxHash(0)]: 1, [mdxHash(1)]: 2, [mdxHash(4)]: 1 } } });
     const output = apply(ENTRY, [result(['Falsch'], TARGET, 'fr'),
       { locale: 'de', files: { [TARGET]: { u1: TEXTS[1], u2: null, u3: 7 } } },
       { locale: 'de', files: { [TARGET]: { u4: TEXTS[4] } } }, { locale: 'de' }, null]);
     expect(output.report).toMatchObject({ applied: 2, missing: 4, rejected: 0, files_incomplete: [TARGET] });
     expect(output.state[TARGET].partial).toEqual({ [mdxHash(1)]: TEXTS[1], [mdxHash(4)]: TEXTS[4] });
+    expect(output.state[TARGET].attempts).toEqual({ [mdxHash(0)]: 2, [mdxHash(2)]: 1, [mdxHash(3)]: 1, [mdxHash(5)]: 1 });
+  });
+
+  it('clears accepted attempts when the page is written, preserving other hashes', () => {
+    siblings();
+    writeState(rootDir, { [TARGET]: { attempts: { [mdxHash(0)]: 2, [mdxHash(3)]: 1, old: 3 } } });
+    const output = apply();
+    expect(output.writes).toEqual([{ path: TARGET, content: GERMAN }]);
+    expect(output.state[TARGET]).toEqual({ source: 'new-blob', attempts: { old: 3 } });
   });
 
   it('record only sets source and preserves same and partial, without reading the source', () => {
@@ -262,7 +273,7 @@ describe('applyResults MDX', () => {
     expect(output.state[TARGET]).toEqual({ source: 'new-blob' });
   });
 
-  it.each([undefined, { source: 'old', partial: { previous: 'Früher' } }])('clears partials when a complete file fails the CI untranslated-prop gate: %j', previous => {
+  it.each([undefined, { source: 'old', partial: { previous: 'Früher' }, attempts: { [mdxHash(0)]: 2 } }])('clears partials when a complete file fails the CI untranslated-prop gate: %j', previous => {
     const source = ENGLISH + '\n<Image alt="Receipt preview" />\n';
     write(SOURCE, source);
     siblings();
@@ -274,6 +285,7 @@ describe('applyResults MDX', () => {
     expect(output.report.rejected_details).toContainEqual({ target: TARGET, unit: null, reason: expect.stringContaining('untranslated_props') });
     expect(output.state[TARGET]?.partial).toBeUndefined();
     expect(output.state[TARGET]?.source).toBe(previous?.source);
+    expect(output.state[TARGET].attempts).toEqual(Object.fromEntries(ENTRY.pending.map(index => [mdxHash(index), (previous?.attempts?.[mdxHash(index)] ?? 0) + 1])));
   });
 
   it.each(['missing', 'stub'])('holds back all writes for a source with a %s locale', mode => {
@@ -352,7 +364,18 @@ describe('applyResults JSON', () => {
     const output = apply(entry, [result([text, 'API', 'Nächste Seite'], target)]);
     expect(output.writes).toEqual([]);
     expect(output.report.rejected_details).toEqual([{ target, unit: 'u0', reason: expect.stringContaining(reason) }]);
-    expect(output.state[target]).toEqual({ same: [hash('short')], partial: { [hash('short')]: 'API', [hash('next')]: 'Nächste Seite' } });
+    expect(output.state[target]).toEqual({ same: [hash('short')], partial: { [hash('short')]: 'API', [hash('next')]: 'Nächste Seite' }, attempts: { [hash('label')]: 1 } });
+  });
+
+  it('counts missing JSON units and clears accepted attempts across runs', () => {
+    write(source, english);
+    writeState(rootDir, { [target]: { attempts: { [hash('label')]: 1, [hash('short')]: 2 } } });
+    const first = apply(entry, [result([undefined, 'API', 'Nächste Seite'], target)]);
+    expect(first.state[target].attempts).toEqual({ [hash('label')]: 2 });
+    writeState(rootDir, first.state);
+    const second = apply({ ...entry, pending: [0], reused: { 1: 'API', 2: 'Nächste Seite' } }, [result(['Hallo {name}, {name}: {count}'], target)]);
+    expect(second.writes).toHaveLength(1);
+    expect(second.state[target].attempts).toBeUndefined();
   });
 });
 
@@ -382,7 +405,21 @@ describe('apply CLI', () => {
     runCli(['--root', rootDir, '--plan', path.join(rootDir, 'plan.json'), '--results', path.join(rootDir, 'results'),
       '--report', path.join(rootDir, 'report.json'), '--report-md', path.join(rootDir, 'report.md')]);
     expect(JSON.parse(read('report.json'))).toMatchObject({ applied: 0, missing: 6, files_written: [], files_incomplete: [TARGET] });
-    expect(readState(rootDir)).toEqual({});
+    expect(readState(rootDir)).toEqual({ [TARGET]: { attempts: Object.fromEntries(ENTRY.pending.map(index => [mdxHash(index), 1])) } });
+  });
+
+  it('lists up to 50 quarantined units with truncated English and the full count', () => {
+    const quarantined = Array.from({ length: 51 }, (_, index) => ({ target: TARGET, unit: `u${index}`, attempts: 3, source: 'x'.repeat(125) }));
+    write('plan.json', { targets: [], quarantined });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    runCli(['--root', rootDir, '--plan', path.join(rootDir, 'plan.json'), '--results', path.join(rootDir, 'results'),
+      '--report', path.join(rootDir, 'report.json'), '--report-md', path.join(rootDir, 'report.md')]);
+    const markdown = read('report.md');
+    expect(markdown).toContain('quarantined: 51');
+    expect(markdown).toContain('## Quarantined units');
+    expect(markdown).toContain(`| ${TARGET} | u49 | 3 | ${'x'.repeat(120)} |`);
+    expect(markdown).not.toContain('u50');
+    expect(markdown).not.toContain('x'.repeat(121));
   });
 
   it.each([

@@ -185,7 +185,7 @@ describe('recoverTranslations', () => {
     });
     expect(result).toEqual({
       translations: new Map(isRow ? [[unitKey({ type: 'paragraph' }, source), row]] : []),
-      paired: isRow ? 1 : 0, rejected: 0,
+      paired: isRow ? 1 : 0, rejected: 0, unpairedTarget: isRow ? 0 : 1,
     });
   });
 
@@ -217,6 +217,7 @@ Espere 20 días.
     const result = recoverTranslations({ file: 'es.mdx', locale: 'es', oldEnglishPath: 'en.mdx', oldEnglish, target });
     expect(result.paired).toBe(6);
     expect(result.rejected).toBe(1);
+    expect(result.unpairedTarget).toBe(0);
     const parsed = parseDocsMdxUnits('en.mdx', oldEnglish);
     const expected = ['Arreglar "X"', 'Guía de instalación', 'Inicio', 'Ejecute `start` en 30 días.', 'Diga "hola"', 'Está listo'];
     expect(result.translations).toEqual(new Map(parsed.units.slice(0, 6).map((unit, index) => [
@@ -231,7 +232,7 @@ Espere 20 días.
       file: 'es.mdx', locale: 'es', oldEnglishPath: 'en.mdx',
       oldEnglish: 'Hello.\n\nHello.\n', target: 'Hola.\n\nSaludos.\n',
     });
-    expect(result).toEqual({ translations: new Map([['paragraph\0\0\0Hello.', 'Hola.']]), paired: 2, rejected: 0 });
+    expect(result).toEqual({ translations: new Map([['paragraph\0\0\0Hello.', 'Hola.']]), paired: 2, rejected: 0, unpairedTarget: 0 });
   });
 
   it('does not count unaligned units as rejected pairs', () => {
@@ -239,6 +240,14 @@ Espere 20 días.
       file: 'es.mdx', locale: 'es', oldEnglishPath: 'en.mdx',
       oldEnglish: 'One.\n\nTwo.\n\nThree.\n', target: 'Uno.\n\nTres.\n',
     });
-    expect(result).toEqual({ translations: new Map(), paired: 0, rejected: 0 });
+    expect(result).toEqual({ translations: new Map(), paired: 0, rejected: 0, unpairedTarget: 2 });
+  });
+
+  it('counts an extra translated paragraph independently of accepted and rejected pairs', () => {
+    const result = recoverTranslations({
+      file: 'es.mdx', locale: 'es', oldEnglishPath: 'en.mdx',
+      oldEnglish: '# Start\n\nRead [help](/help).\n', target: '# Inicio\n\nLea [ayuda](/help).\n\nTexto adicional.\n',
+    });
+    expect(result).toMatchObject({ paired: 2, rejected: 0, unpairedTarget: 1 });
   });
 });

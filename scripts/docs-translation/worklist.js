@@ -13,6 +13,8 @@ const {
 } = require('../check-translation-completeness');
 
 const PACKET_MAX_CHARS = 30000;
+// Stop spending model budget on units that fail three runs for the same English hash.
+const QUARANTINE_AFTER = 3;
 const LOCALE_NAMES = {
   es: 'Spanish', fr: 'French', de: 'German', nl: 'Dutch', ja: 'Japanese',
   'pt-BR': 'Portuguese (Brazil)', ko: 'Korean', it: 'Italian', ar: 'Arabic',
@@ -60,11 +62,11 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
   ].filter(file => !exclude.test(file)).sort();
   const selectedLocales = LOCALES.filter(locale => locales.includes(locale));
   const groups = [];
-  const plan = { targets: [] };
+  const plan = { targets: [], quarantined: [] };
   const summary = {
     total: 0, packets: 0,
     targets: { translate: 0, refresh: 0, record: 0, unchanged: 0, deferred: 0 },
-    deferred_units: 0, locales: {},
+    deferred_units: 0, locales: {}, quarantined: 0,
   };
 
   for (const source of sources) {
@@ -86,15 +88,23 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
         try { targetJson = JSON.parse(targetText); } catch { targetJson = undefined; }
       }
       const oldJson = kind === 'json' && old.text !== null ? JSON.parse(old.text) : null;
-      const recovered = kind === 'mdx' && old.text !== null ? recoverTranslations({
+      const { translations: recovered = new Map(), unpairedTarget = 0 } = kind === 'mdx' && old.text !== null ? recoverTranslations({
         file: target, locale, oldEnglishPath: source, oldEnglish: old.text, target: targetText,
-      }).translations : new Map();
+      }) : {};
       const pending = [];
       const reused = {};
-      const reasons = { missing: 0, changed: 0, english: 0 };
+      const reasons = { missing: 0, changed: 0, english: 0, unpaired: 0 };
+      let quarantined = 0;
       for (const unit of units) {
         const key = kind === 'json' ? ['json', unit.key, '', unit.source].join('\u0000') : unitKey(unit, unit.source);
         const hash = unitHash(key);
+        const attempts = saved.attempts?.[hash] ?? 0;
+        if (attempts >= QUARANTINE_AFTER) {
+          plan.quarantined.push({ target, unit: `u${unit.index}`, source: unit.source, attempts });
+          quarantined += 1;
+          summary.quarantined += 1;
+          continue;
+        }
         let translation;
         let reason;
         if (!exists || (kind === 'json' && targetJson === undefined)) {
@@ -120,13 +130,19 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
           reasons[reason] += 1;
         } else reused[unit.index] = translation;
       }
-      const status = pending.length ? 'translate' : old.blob !== currentBlob || !exists ? 'refresh'
+      let status = pending.length ? 'translate' : quarantined ? 'unchanged' : old.blob !== currentBlob || !exists ? 'refresh'
         : saved.source !== currentBlob ? 'record' : 'unchanged';
+      if (status === 'refresh' && unpairedTarget > 0) {
+        status = 'translate';
+        pending.push(...units.map(unit => unit.index));
+        for (const index of Object.keys(reused)) delete reused[index];
+        reasons.unpaired = pending.length;
+      }
       const entry = { target, source, locale, kind, status, source_blob: currentBlob, pending };
       if (status !== 'record') entry.reused = reused;
       entry.reasons = reasons;
       if (status === 'translate') {
-        const priority = kind === 'json' ? 0 : reasons.changed ? 1 : reasons.missing ? 3 : 2;
+        const priority = kind === 'json' ? 0 : reasons.unpaired ? 4 : reasons.changed ? 1 : reasons.missing ? 3 : 2;
         group.priority = Math.min(group.priority, priority);
         group.count += pending.length;
         group.targets.push({ entry, units: units.filter(unit => pending.includes(unit.index)), exists });
@@ -246,4 +262,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { buildWorklist, runCli, PACKET_MAX_CHARS };
+module.exports = { buildWorklist, runCli, PACKET_MAX_CHARS, QUARANTINE_AFTER };

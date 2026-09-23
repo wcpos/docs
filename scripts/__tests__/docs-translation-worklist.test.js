@@ -2,7 +2,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
-const { buildWorklist, runCli, PACKET_MAX_CHARS } = require('../docs-translation/worklist');
+const { buildWorklist, runCli, PACKET_MAX_CHARS, QUARANTINE_AFTER } = require('../docs-translation/worklist');
+const { applyResults } = require('../docs-translation/apply');
+const { recoverTranslations } = require('../docs-translation/recover');
 const { parseJsonUnits, applyJsonTranslations } = require('../docs-translation/json-units');
 const { STATE_PATH, readState, serializeState, writeState, unitHash } = require('../docs-translation/state');
 const { LOCALES, sourceToTranslatedPath, jsonSourceToTranslatedPath } = require('../check-translation-completeness');
@@ -65,12 +67,12 @@ describe('translation state and JSON units', () => {
   it('reads missing state, serializes canonically, and writes without mutating input', () => {
     expect(STATE_PATH).toBe('i18n/translation-state.json');
     expect(readState(rootDir)).toEqual({});
-    const state = { z: { partial: { z: 'Z', a: 'A' }, same: ['z', 'a'], source: 'sha' }, a: { same: [], partial: {} } };
-    const expected = '{\n  "_comment": "Written by scripts/docs-translation; do not edit by hand.",\n  "a": {},\n  "z": {"source":"sha","same":["a","z"],"partial":{"a":"A","z":"Z"}}\n}\n';
+    const state = { z: { partial: { z: 'Z', a: 'A' }, same: ['z', 'a'], source: 'sha', attempts: { z: 3, a: 1 } }, a: { same: [], partial: {}, attempts: {} } };
+    const expected = '{\n  "_comment": "Written by scripts/docs-translation; do not edit by hand.",\n  "a": {},\n  "z": {"source":"sha","same":["a","z"],"partial":{"a":"A","z":"Z"},"attempts":{"a":1,"z":3}}\n}\n';
     expect(serializeState({ _comment: 'Old comment', ...state })).toBe(expected);
     writeState(rootDir, state);
     expect(fs.readFileSync(path.join(rootDir, STATE_PATH), 'utf8')).toBe(expected);
-    expect(readState(rootDir)).toEqual({ a: {}, z: { source: 'sha', same: ['a', 'z'], partial: { a: 'A', z: 'Z' } } });
+    expect(readState(rootDir)).toEqual({ a: {}, z: { source: 'sha', same: ['a', 'z'], partial: { a: 'A', z: 'Z' }, attempts: { a: 1, z: 3 } } });
     expect(state.z.same).toEqual(['z', 'a']);
     expect(unitHash('abc')).toBe('ba7816bf8f01cfea');
   });
@@ -97,9 +99,9 @@ describe('MDX worklist', () => {
     commitFixtures();
     writeState(rootDir, { [TARGET]: { source: git('hash-object', DOC) } });
     const before = git('status', '--porcelain');
-    expect(schedule()).toEqual({ packets: [], plan: { targets: [] }, summary: {
+    expect(schedule()).toEqual({ packets: [], plan: { targets: [], quarantined: [] }, summary: {
       total: 0, packets: 0, targets: { translate: 0, refresh: 0, record: 0, unchanged: 1, deferred: 0 },
-      deferred_units: 0, locales: {},
+      deferred_units: 0, locales: {}, quarantined: 0,
     } });
     expect(git('status', '--porcelain')).toBe(before);
   });
@@ -112,7 +114,7 @@ describe('MDX worklist', () => {
     expect(summary.targets.record).toBe(1);
     expect(packets).toEqual([]);
     expect(plan.targets).toEqual([{ target: TARGET, source: DOC, locale: 'de', kind: 'mdx', status: 'record',
-      source_blob: git('hash-object', DOC), pending: [], reasons: { missing: 0, changed: 0, english: 0 } }]);
+      source_blob: git('hash-object', DOC), pending: [], reasons: { missing: 0, changed: 0, english: 0, unpaired: 0 } }]);
   });
 
   it('schedules only the edited paragraph using positions across mixed MDX unit types', () => {
@@ -199,6 +201,84 @@ describe('MDX worklist', () => {
     expect(result.packets).toEqual([]);
     expect(result.plan.targets[0]).toMatchObject({ status: 'refresh', pending: [], reused: REUSED });
     expect(result.summary).toMatchObject({ total: 0, targets: { refresh: 1 } });
+  });
+
+  it('retranslates unpaired text after missing pages and keeps the file when results are absent', () => {
+    const english = '# Guide\n\nRead [help](/help).\n';
+    const target = '# Anleitung\n\nLesen Sie die [Hilfe](/help).\n\nZusätzlicher Text.\n';
+    const missing = 'versioned_docs/version-1.x/z-missing.mdx';
+    addDoc(DOC, english, target);
+    addDoc(missing, PARAGRAPH, null);
+    commitFixtures();
+    const blob = git('hash-object', DOC);
+    writeState(rootDir, { [TARGET]: { source: blob } });
+    write(DOC, english + '\n```js\nconst x = 1;\n```\n');
+    const { plan, packets } = schedule();
+    expect(Object.values(packets[0].files).map(file => file.source_path)).toEqual([missing, DOC]);
+    expect(plan.targets.find(entry => entry.target === TARGET)).toMatchObject({
+      status: 'translate', pending: [0, 1], reused: {}, reasons: { unpaired: 2 },
+    });
+    expect(schedule({ maxUnits: 1 }).plan.targets.map(entry => entry.source)).toEqual([missing]);
+    const output = applyResults({ rootDir, plan, results: [] });
+    expect(output.writes).toEqual([]);
+    expect(output.state[TARGET].source).toBe(blob);
+    expect(fs.readFileSync(path.join(rootDir, TARGET), 'utf8')).toBe(target);
+  });
+
+  it('allows refresh to remove text paired with deleted English', () => {
+    const english = '# Guide\n\nRead [help](/help).\n';
+    const target = '# Anleitung\n\nLesen Sie die [Hilfe](/help).\n';
+    addDoc(DOC, english, target);
+    commitFixtures();
+    write(DOC, '# Guide\n');
+    expect(recoverTranslations({ file: TARGET, locale: 'de', oldEnglishPath: DOC, oldEnglish: english, target }).unpairedTarget).toBe(0);
+    expect(schedule().plan.targets[0]).toMatchObject({ status: 'refresh', pending: [], reused: { 0: 'Anleitung' } });
+  });
+});
+
+describe('quarantine', () => {
+  it.each(['mdx', 'json'])('excludes quarantined %s units from pending, reuse, packets, and budget', kind => {
+    const source = kind === 'mdx' ? DOC : JSON_SOURCE;
+    const target = kind === 'mdx' ? TARGET : JSON_TARGET;
+    const hash = kind === 'mdx' ? unitHash(['paragraph', '', '', PARAGRAPH].join('\0')) : jsonHash('first', PARAGRAPH);
+    if (kind === 'mdx') addDoc(DOC, PARAGRAPH + '\n\n' + EDITED, null);
+    else write(source, { first: PARAGRAPH, second: EDITED });
+    commitFixtures();
+    expect(QUARANTINE_AFTER).toBe(3);
+    writeState(rootDir, { [target]: { attempts: { [hash]: 3 }, partial: { [hash]: REUSED[3] } } });
+    const { plan, summary, packets } = schedule({ maxUnits: 1 });
+    expect(plan.quarantined).toEqual([{ target, unit: 'u0', source: PARAGRAPH, attempts: 3 }]);
+    expect(plan.targets[0]).toMatchObject({ status: 'translate', pending: [1], reused: {}, reasons: { missing: 1 } });
+    expect(Object.keys(packets[0].files[target].units)).toEqual(['u1']);
+    expect(packets[0].counts.units).toBe(1);
+    expect(summary).toMatchObject({ total: 1, quarantined: 1, deferred_units: 0, locales: { de: { units: 1, files: 1 } } });
+    if (kind === 'mdx') write(source, PARAGRAPH);
+    else write(source, { first: PARAGRAPH });
+    const only = schedule();
+    expect(only.plan.targets).toEqual([]);
+    expect(only.packets).toEqual([]);
+    expect(only.summary).toMatchObject({ total: 0, quarantined: 1, targets: { translate: 0, refresh: 0, record: 0 } });
+    expect(applyResults({ rootDir, plan: only.plan, results: [] }).state).toEqual(readState(rootDir));
+    if (kind === 'mdx') write(source, EDITED);
+    else write(source, { first: EDITED });
+    const changed = schedule();
+    expect(changed.plan.quarantined).toEqual([]);
+    expect(changed.plan.targets[0].pending).toEqual([0]);
+    expect(changed.summary).toMatchObject({ total: 1, quarantined: 0 });
+  });
+
+  it('does not let quarantined changed text raise a page ahead of English backlog', () => {
+    addDoc();
+    const backlog = 'versioned_docs/version-1.x/a-backlog.mdx';
+    addDoc(backlog, PARAGRAPH, PARAGRAPH);
+    commitFixtures();
+    write(DOC, ENGLISH.replace(PARAGRAPH, EDITED));
+    write(TARGET, GERMAN.replace(REUSED[4], 'Print a receipt for your customers.'));
+    writeState(rootDir, { [TARGET]: { attempts: { [unitHash(['paragraph', '', '', EDITED].join('\0'))]: 3 } } });
+    const { plan, summary } = schedule({ maxUnits: 1 });
+    expect(plan.targets.map(entry => entry.source)).toEqual([backlog]);
+    expect(schedule().plan.targets.find(entry => entry.source === DOC)).toMatchObject({ pending: [4], reasons: { changed: 0, english: 1 } });
+    expect(summary).toMatchObject({ total: 1, quarantined: 1, deferred_units: 1 });
   });
 });
 
@@ -356,7 +436,7 @@ describe('worklist CLI', () => {
     runCli(args);
     expect(JSON.parse(stdout.mock.calls[1][0]).total).toBe(0);
     expect(fs.readdirSync(out)).toEqual(['keep.txt']);
-    expect(JSON.parse(fs.readFileSync(planFile, 'utf8'))).toEqual({ targets: [] });
+    expect(JSON.parse(fs.readFileSync(planFile, 'utf8'))).toEqual({ targets: [], quarantined: [] });
   });
 
   it.each([
