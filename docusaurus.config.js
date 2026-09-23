@@ -301,7 +301,11 @@ module.exports = {
           // and no entry in the version dropdown. This is a stronger guarantee
           // than hiding the dropdown item, which would still ship the HTML.
           //
-          // AT LAUNCH: add '2.x' to this array and set lastVersion to '2.x'.
+          // AT LAUNCH: add '2.x' to this array and set lastVersion to '2.x', and
+          // redirect /error-codes/(API|DB|PY|SY)* and the group pages
+          // /error-codes/(api|db|py|sy) to their /1.x/error-codes/ equivalents in
+          // vercel.json: 2.x drops the pre-1.10 codes, and shipped 1.9 apps link
+          // to those root URLs.
           // `pnpm build:preview-2x` builds WITH 2.x so the unbuilt tree cannot
           // rot unseen in the meantime. The locale-coverage test in
           // scripts/__tests__/docusaurus-config.test.js fails this change until
