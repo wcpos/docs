@@ -14,13 +14,14 @@ const {
   normalizeAdminBreadcrumbInlineCode, validateDocsMdxStructure, validateProtectedTermsInText,
 } = require('./docs-qa');
 const {
-  LOCALES, sourceToTranslatedPath, isSignificantProse, lineToProse,
+  LOCALES, sourceToTranslatedPath, isSignificantProse, lineToProse, UNTRANSLATED_PROP_ALLOWLIST,
   findUntranslatedProps, findLeftoverProse, isStub, findMissingSections,
 } = require('../check-translation-completeness');
 const { canonicalizeDescriptionQuoting, validateFrontmatter } = require('../validate-frontmatter');
 
 function applyResults({ rootDir, plan, results }) {
   const state = readState(rootDir);
+  const previousTargets = new Set(Object.keys(state));
   const report = { applied: 0, rejected: 0, warnings: 0, missing: 0,
     files_written: [], files_incomplete: [], sources_held_back: [], rejected_details: [], warning_details: [] };
   const candidates = [];
@@ -65,7 +66,8 @@ function applyResults({ rootDir, plan, results }) {
       }
       if (text.trim() === '') reasons.push('empty');
       if (text.includes('WooCommerce POS')) reasons.push('WooCommerce POS');
-      if (text === decoded && isSignificantProse(kind === 'mdx' ? lineToProse(decoded) : decoded)) reasons.push('english');
+      if (text === decoded && isSignificantProse(kind === 'mdx' ? lineToProse(decoded) : decoded)
+        && !(kind === 'mdx' && UNTRANSLATED_PROP_ALLOWLIST.has(decoded.trim()))) reasons.push('english');
       if (reasons.length) {
         report.rejected += 1;
         report.rejected_details.push({ target, unit: id, reason: reasons.join(', ') });
@@ -95,7 +97,8 @@ function applyResults({ rootDir, plan, results }) {
         if (!validateFrontmatter(out).valid) reasons.push('frontmatter');
         reasons.push(...new Set(validateDocsMdxStructure(english, out, target, locale)
           .filter(issue => STRUCTURAL_ISSUE_CODES.has(issue.code)).map(issue => issue.code)));
-        if (existing && missingPreservedHeadingAnchors(english, out, existing).length) reasons.push('missing_preserved_anchors');
+        if (existing && missingPreservedHeadingAnchors(english, out, existing)
+          .filter(anchor => english.includes(anchor)).length) reasons.push('missing_preserved_anchors');
         if (findUntranslatedProps(english, out).length > 0) reasons.push('untranslated_props');
         if (isStub(english, out, locale)) reasons.push('stub');
         if (findLeftoverProse(english, out).length >= 3) reasons.push('leftover_prose');
@@ -139,6 +142,10 @@ function applyResults({ rootDir, plan, results }) {
       Object.assign(saved.partial ??= {}, accepted);
       report.files_incomplete.push(entry.target);
     }
+  }
+  for (const [target, saved] of Object.entries(state)) {
+    if (!previousTargets.has(target) && saved.source === undefined
+      && !saved.same?.length && !Object.keys(saved.partial ?? {}).length) delete state[target];
   }
   report.files_written = writes.map(write => write.path);
   return { writes, state, report };

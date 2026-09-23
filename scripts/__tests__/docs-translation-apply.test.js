@@ -130,6 +130,30 @@ describe('applyResults MDX', () => {
     expect(apply({ ...ENTRY, pending: [0] }, [result(['API'])]).state[TARGET].same).toEqual([hash]);
   });
 
+  it('accepts an allowlisted English-identical MDX unit and records its hash in same', () => {
+    const name = 'Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil';
+    const source = ENGLISH + `\n<Image alt="${name}" />\n`;
+    write(SOURCE, source);
+    siblings();
+    const output = apply({ ...ENTRY, pending: [...ENTRY.pending, 6] }, [result([...TEXTS, name])]);
+    expect(output.writes).toEqual([{ path: TARGET, content: GERMAN + `\n<Image alt="${name}" />\n` }]);
+    expect(output.report).toMatchObject({ applied: 7, rejected: 0, files_incomplete: [] });
+    expect(output.state[TARGET]).toEqual({ source: 'new-blob', same: [mdxHash(6, source)] });
+  });
+
+  it.each([undefined, {}, { source: 'old' }, { same: ['hash'] }, { partial: { previous: 'Früher' } }])(
+    'removes a new empty entry but keeps prior state %j when no units are accepted', previous => {
+      if (previous !== undefined) writeState(rootDir, { [TARGET]: previous });
+      const output = apply(ENTRY, [result(TEXTS.map(() => ''))]);
+      expect(output.writes).toEqual([]);
+      expect(output.report).toMatchObject({ applied: 0, rejected: 6, files_incomplete: [TARGET] });
+      if (previous === undefined) expect(output.state).not.toHaveProperty(TARGET);
+      else expect(output.state[TARGET]).toMatchObject(previous);
+      writeState(rootDir, output.state);
+      expect(readState(rootDir)).toEqual(previous === undefined ? {} : { [TARGET]: previous });
+    },
+  );
+
   it('counts absent or non-string results as missing and uses all matching locale packets', () => {
     const output = apply(ENTRY, [result(['Falsch'], TARGET, 'fr'),
       { locale: 'de', files: { [TARGET]: { u1: TEXTS[1], u2: null, u3: 7 } } },
@@ -155,6 +179,18 @@ describe('applyResults MDX', () => {
     expect(output.state[TARGET]).toEqual({ source: 'new-blob' });
     expect(output.report.files_incomplete).toEqual([]);
     expect(output.report.sources_held_back).toEqual([]);
+  });
+
+  it('refreshes a translation after English deletes a section and its anchor', () => {
+    write(TARGET, GERMAN + '\n## Was zu tun ist {#what-to-do}\n\nVeraltete Anweisungen.\n');
+    writeState(rootDir, { [TARGET]: { source: 'old' } });
+    siblings();
+    const output = apply({ ...ENTRY, status: 'refresh', pending: [], reused: { ...TEXTS } }, []);
+    expect(output.writes).toEqual([{ path: TARGET, content: GERMAN }]);
+    expect(output.writes[0].content).not.toContain('{#what-to-do}');
+    expect(output.writes[0].content).not.toContain('Veraltete Anweisungen.');
+    expect(output.report).toMatchObject({ rejected: 0, files_incomplete: [], sources_held_back: [] });
+    expect(output.state[TARGET]).toEqual({ source: 'new-blob' });
   });
 
   it('rejects a complete file that fails the CI untranslated-prop gate', () => {
@@ -203,6 +239,14 @@ describe('applyResults JSON', () => {
   const entry = { ...ENTRY, target, source, kind: 'json', pending: [0, 1, 2] };
   const hash = key => unitHash(['json', key, '', typeof english[key] === 'string' ? english[key] : english[key].message].join('\0'));
 
+  it('still rejects allowlisted English-identical JSON units', () => {
+    const name = 'Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil';
+    write(source, { name });
+    const output = apply({ ...entry, pending: [0] }, [result([name], target)]);
+    expect(output.writes).toEqual([]);
+    expect(output.report.rejected_details).toEqual([{ target, unit: 'u0', reason: 'english' }]);
+  });
+
   it('rebuilds messages, keeps descriptions, and accepts reordered placeholder multisets', () => {
     write(source, english);
     const output = apply(entry, [result(['{count}: Hallo {name}, {name}', 'API', 'Nächste Seite'], target)]);
@@ -250,6 +294,7 @@ describe('apply CLI', () => {
     runCli(['--root', rootDir, '--plan', path.join(rootDir, 'plan.json'), '--results', path.join(rootDir, 'results'),
       '--report', path.join(rootDir, 'report.json'), '--report-md', path.join(rootDir, 'report.md')]);
     expect(JSON.parse(read('report.json'))).toMatchObject({ applied: 0, missing: 6, files_written: [], files_incomplete: [TARGET] });
+    expect(readState(rootDir)).toEqual({});
   });
 
   it.each([
