@@ -1,6 +1,6 @@
 const { parseDocsMdxUnits, applyDocsMdxTranslations } = require('../docs-translation/mdx-units');
 const {
-  decodeDocsUnitSource, unitKey, unitFingerprint, alignUnits, pairLooksRight,
+  decodeDocsUnitSource, unitKey, unitFingerprint, alignUnits, pairLooksRight, tableCellCount,
   recoverTranslations, STRUCTURAL_ISSUE_CODES, CJK_LOCALES,
 } = require('../docs-translation/recover');
 
@@ -45,6 +45,22 @@ description: "Line\nTab\tSlash\/Unicode\u00e9 Literal\\n"
   });
 });
 
+describe('tableCellCount', () => {
+  it.each([
+    ['Plain text | with a pipe', 0],
+    ['| First | Second | Third |', 4],
+    ['  | First | Second | Third |  ', 4],
+    ['| `a|b` | escaped \\| pipe | Third |', 4],
+    ['| ``a`|b`` | escaped \\| pipe | Third |', 4],
+    ['| ```a``|b``` | escaped \\| pipe | Third |', 4],
+    ['| ````a```|b```` | escaped \\| pipe | Third |', 4],
+    ['| unmatched ` code | Second | Third |', 4],
+    ['| escaped \\\\| Second | Third |', 4],
+  ])('counts structural pipes in %s', (text, count) => {
+    expect(tableCellCount(text)).toBe(count);
+  });
+});
+
 describe('unit identity', () => {
   it('keys decoded text by type, frontmatter key and attribute', () => {
     expect(unitKey({ type: 'paragraph' }, 'Hello')).toBe('paragraph\0\0\0Hello');
@@ -55,13 +71,13 @@ describe('unit identity', () => {
   it('fingerprints ordered markdown and HTML destinations, retaining duplicates', () => {
     const source = '[One](/one "title") <a href="/two">Two</a> ![Image](/image) <img src="/four" /> [Again](/one)';
     expect(unitFingerprint({ type: 'paragraph', source })).toBe(
-      JSON.stringify(['paragraph', '', '', ['/one', '/two', '/image', '/four', '/one']]),
+      JSON.stringify(['paragraph', '', '', ['/one', '/two', '/image', '/four', '/one'], 0]),
     );
     expect(unitFingerprint({ type: 'frontmatter', key: 'title', source: 'Hello' })).toBe(
-      JSON.stringify(['frontmatter', 'title', '', []]),
+      JSON.stringify(['frontmatter', 'title', '', [], 0]),
     );
     expect(unitFingerprint({ type: 'jsx_attr', attr: 'alt', source: 'Image' })).toBe(
-      JSON.stringify(['jsx_attr', '', 'alt', []]),
+      JSON.stringify(['jsx_attr', '', 'alt', [], 0]),
     );
   });
 });
@@ -158,6 +174,21 @@ describe('pairLooksRight', () => {
 });
 
 describe('recoverTranslations', () => {
+  it.each([false, true])('requires matching table shape even for a unique URL (row: %s)', (isRow) => {
+    const source = "| **Exclude sale items** | Skips items already on sale (and any line where a cashier has lowered the price at the till — see [POS price overrides](/pos/cart/discounts#how-pos-price-changes-interact-with-coupons)) | Clearance items don't get the extra discount |";
+    const prose = '**استثناء المنتجات المخفَّضة** — يتم تخطي المنتجات المعروضة للبيع بسعر مخفَّض (وأي بند قام أمين الصندوق بتخفيض سعره عند نقطة البيع — انظر [تعديلات أسعار نقطة البيع](/pos/cart/discounts#how-pos-price-changes-interact-with-coupons)).';
+    const row = '| **استثناء المنتجات المخفَّضة** | يتم تخطي المنتجات المعروضة للبيع بسعر مخفَّض (وأي بند قام أمين الصندوق بتخفيض سعره عند نقطة البيع — انظر [تعديلات أسعار نقطة البيع](/pos/cart/discounts#how-pos-price-changes-interact-with-coupons)) | لا تحصل منتجات التصفية على الخصم الإضافي |';
+    const translation = isRow ? row : prose;
+    expect(pairLooksRight({ source, translation, locale: 'ar', file: 'ar.mdx' })).toBe(isRow);
+    const result = recoverTranslations({
+      file: 'ar.mdx', locale: 'ar', oldEnglishPath: 'en.mdx', oldEnglish: source, target: translation,
+    });
+    expect(result).toEqual({
+      translations: new Map(isRow ? [[unitKey({ type: 'paragraph' }, source), row]] : []),
+      paired: isRow ? 1 : 0, rejected: 0,
+    });
+  });
+
   it('recovers decoded frontmatter, headings, paragraphs and JSX end to end', () => {
     const oldEnglish = String.raw`---
 title: "Fix \"X\""

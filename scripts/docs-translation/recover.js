@@ -42,9 +42,16 @@ function unitKey(unit, decodedSource) {
   return [unit.type, unit.key ?? '', unit.attr ?? '', decodedSource].join('\u0000');
 }
 
+function tableCellCount(text) {
+  if (!text.trim().startsWith('|')) return 0;
+  // Strip code spans with matching backtick runs and escaped characters before counting pipes.
+  const withoutCode = text.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)|\\[\s\S]/g, '');
+  return (withoutCode.match(/\|/g) ?? []).length;
+}
+
 function unitFingerprint(unit) {
   const urls = Array.from(unit.source.matchAll(/\]\(([^\s)]+)|\b(?:href|src)="([^"]*)"/g), (match) => match[1] ?? match[2]);
-  return JSON.stringify([unit.type, unit.key ?? '', unit.attr ?? '', urls]);
+  return JSON.stringify([unit.type, unit.key ?? '', unit.attr ?? '', urls, tableCellCount(unit.source)]);
 }
 
 function alignUnits(oldUnits, targetUnits) {
@@ -106,6 +113,7 @@ function alignUnits(oldUnits, targetUnits) {
 
 function pairLooksRight({ source, translation, locale, file }) {
   if (translation.trim() === '') return false;
+  if (tableCellCount(source) !== tableCellCount(translation)) return false;
   const issues = [
     ...validateDocsMdxStructure(source, translation, file, locale),
     ...validateProtectedTermsInText(source, translation, file),
@@ -142,6 +150,6 @@ function recoverTranslations({ file, locale, oldEnglishPath, oldEnglish, target 
 }
 
 module.exports = {
-  decodeDocsUnitSource, unitKey, unitFingerprint, alignUnits, pairLooksRight,
+  decodeDocsUnitSource, unitKey, unitFingerprint, alignUnits, pairLooksRight, tableCellCount,
   recoverTranslations, STRUCTURAL_ISSUE_CODES, CJK_LOCALES,
 };

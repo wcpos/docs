@@ -58,6 +58,20 @@ afterEach(() => {
 });
 
 describe('applyResults MDX', () => {
+  it.each([false, true])('requires matching table shape (row: %s)', (isRow) => {
+    const english = '| **Exclude sale items** | Skips items already on sale | No extra discount |';
+    const row = '| **Reduzierte Artikel ausschließen** | Überspringt bereits reduzierte Artikel | Kein zusätzlicher Rabatt |';
+    const prose = '**Reduzierte Artikel ausschließen** — Überspringt bereits reduzierte Artikel ohne zusätzlichen Rabatt.';
+    write(SOURCE, english + '\n');
+    siblings(row + '\n');
+    const output = apply({ ...ENTRY, pending: [0] }, [result([isRow ? row : prose])]);
+    expect(output.report).toMatchObject({ applied: isRow ? 1 : 0, rejected: isRow ? 0 : 1 });
+    expect(output.report.rejected_details).toEqual(isRow ? [] : [
+      { target: TARGET, unit: 'u0', reason: 'table_shape' },
+    ]);
+    expect(output.writes).toEqual(isRow ? [{ path: TARGET, content: row + '\n' }] : []);
+  });
+
   it('rebuilds by unit position with English anchors and a quoted description, without writing', () => {
     siblings();
     const plan = { targets: [ENTRY] };

@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseDocsMdxUnits, applyDocsMdxTranslations } = require('./mdx-units');
 const { parseJsonUnits, applyJsonTranslations } = require('./json-units');
-const { decodeDocsUnitSource, unitKey, STRUCTURAL_ISSUE_CODES } = require('./recover');
+const { decodeDocsUnitSource, unitKey, STRUCTURAL_ISSUE_CODES, tableCellCount } = require('./recover');
 const { readState, writeState, unitHash } = require('./state');
 const {
   applyStableHeadingAnchorsFromSource, missingPreservedHeadingAnchors,
@@ -55,6 +55,7 @@ function applyResults({ rootDir, plan, results }) {
       if (kind === 'mdx') {
         text = text.replace(/（(`[^`\n]+`)）/g, '($1)');
         text = restoreNonBreadcrumbInlineCodeSpans(decoded, normalizeAdminBreadcrumbInlineCode(decoded, text, locale));
+        if (tableCellCount(decoded) !== tableCellCount(text)) reasons.push('table_shape');
         if (text.split('\n').length !== decoded.split('\n').length) reasons.push('line_count');
         if (unit.type !== 'paragraph' && text.includes('\n')) reasons.push('non_paragraph_newline');
         issues = [...validateDocsMdxStructure(decoded, text, target, locale),
