@@ -64,6 +64,7 @@ function applyResults({ rootDir, plan, results }) {
         const translatedPlaceholders = (text.match(/\{[^{}]*\}/g) ?? []).sort();
         if (JSON.stringify(sourcePlaceholders) !== JSON.stringify(translatedPlaceholders)) reasons.push('placeholders');
       }
+      if (JSON.stringify((decoded.match(/\d+/g) ?? []).sort()) !== JSON.stringify((text.match(/\d+/g) ?? []).sort())) reasons.push('numbers');
       if (text.trim() === '') reasons.push('empty');
       if (text.includes('WooCommerce POS')) reasons.push('WooCommerce POS');
       if (text === decoded && isSignificantProse(kind === 'mdx' ? lineToProse(decoded) : decoded)
@@ -86,6 +87,7 @@ function applyResults({ rootDir, plan, results }) {
     }
 
     let complete = units.every((_unit, index) => translations.has(index));
+    let fileRejected = false;
     let out;
     if (complete) {
       if (kind === 'json') out = applyJsonTranslations(english, translations);
@@ -105,12 +107,13 @@ function applyResults({ rootDir, plan, results }) {
         if (findMissingSections(english, out).length >= 1) reasons.push('missing_sections');
         if (reasons.length) {
           complete = false;
+          fileRejected = true;
           report.rejected += 1;
           report.rejected_details.push({ target, unit: null, reason: reasons.join(', ') });
         }
       }
     }
-    candidates.push({ entry, english, existing, out, complete, accepted });
+    candidates.push({ entry, english, existing, out, complete, accepted, fileRejected });
   }
 
   const proposed = new Map(candidates.filter(item => item.complete && item.out !== item.existing)
@@ -131,7 +134,7 @@ function applyResults({ rootDir, plan, results }) {
   }
 
   const writes = [];
-  for (const { entry, out, existing, complete, accepted } of candidates) {
+  for (const { entry, out, existing, complete, accepted, fileRejected } of candidates) {
     const saved = state[entry.target];
     const held = proposed.has(entry.target) && report.sources_held_back.includes(entry.source);
     if (complete && !held) {
@@ -139,7 +142,8 @@ function applyResults({ rootDir, plan, results }) {
       delete saved.partial;
       if (out !== existing) writes.push({ path: entry.target, content: out });
     } else {
-      Object.assign(saved.partial ??= {}, accepted);
+      if (fileRejected) delete saved.partial;
+      else Object.assign(saved.partial ??= {}, accepted);
       report.files_incomplete.push(entry.target);
     }
   }

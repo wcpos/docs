@@ -15,7 +15,7 @@ const readCalls = () => fs.readFileSync(callsFile, 'utf8').trim().split('\n').fi
 const isCall = (call, tool, ...args) => call.tool === tool && args.every(arg => call.args.includes(arg));
 const models = result => result.calls.filter(c => ['codex', 'claude'].includes(c.tool));
 const body = () => fs.readFileSync(path.join(wt, '.translate/pr-body.md'), 'utf8');
-const pr = { number: 42, headRefName: 'docs-translate/existing', url: 'https://example.test/pr/42' };
+const pr = { number: 42, headRefName: 'docs-translate/existing', url: 'https://example.test/pr/42', isCrossRepository: false };
 const gates = ['validate-frontmatter.js', 'check-translation-completeness.js', 'check-translation-safety.js'];
 function run(config = {}, args = [], overrides = {}) {
   fs.writeFileSync(path.join(root, 'config.json'), JSON.stringify(config));
@@ -55,7 +55,11 @@ if (tool === 'git') {
   if (args.includes('diff')) console.log(JSON.parse(fs.readFileSync('.translate/accepted')).join('\n'));
   if (args.includes('merge') && !args.includes('--abort') && config.conflict) process.exit(1);
 } else if (tool === 'gh') {
-  if (args[1] === 'list' && config.pr) console.log(JSON.stringify(config.pr));
+  if (args[1] === 'list') {
+    const filtered = cp.spawnSync('jq', [args[args.indexOf('--jq') + 1]], { input: JSON.stringify(config.prs || (config.pr ? [config.pr] : [])), encoding: 'utf8' });
+    process.stdout.write(filtered.stdout);
+    process.exit(filtered.status);
+  }
   if (args[1] === 'create' && args[0] === 'pr') console.log('https://example.test/pr/1');
   if (args[0] === 'label' && config.labelExists) process.exit(1);
 } else if (tool === 'pnpm') {
@@ -81,6 +85,8 @@ if (tool === 'git') {
     fs.writeFileSync('.translate/report.md', 'REPORT\n');
     if (files.length || config.record) fs.writeFileSync('.translate/accepted', JSON.stringify([...files, 'i18n/en/code.json', 'i18n/translation-state.json']));
     console.log(JSON.stringify(report));
+  } else if (args[0] === 'scripts/sync-translations.js') {
+    process.exit(0);
   } else if (['scripts/validate-frontmatter.js', 'scripts/check-translation-completeness.js', 'scripts/check-translation-safety.js'].includes(args[0])) {
     process.exit(config.invalid === path.basename(args[0]) ? 1 : 0);
   } else process.exit(99);
@@ -175,6 +181,31 @@ it('continues after a failed packet and lets CLI flags override environment mode
   assert.match(body(), /^Applied 2 units in 1 files \(fr\); translator: codex \(chosen\); review: chosen-review;/);
 });
 
+it('cleans orphan translations immediately after English regeneration', () => {
+  const result = run({ counts: [] });
+  assert.equal(result.status, 0, result.stderr);
+  const regeneration = result.calls.findIndex(c => isCall(c, 'pnpm', 'write-translations'));
+  assert.deepEqual(result.calls[regeneration + 1].args, ['scripts/sync-translations.js', '--clean']);
+  assert.equal(result.calls[regeneration + 1].tool, 'node');
+});
+
+it('stages regeneration before models, then discards model edits before apply', () => {
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  const worklist = result.calls.findIndex(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js'));
+  const firstModel = result.calls.indexOf(models(result)[0]);
+  const lastModel = result.calls.indexOf(models(result).at(-1));
+  assert.deepEqual(result.calls[worklist + 1].args, ['add', '-A', 'i18n']);
+  assert.equal(result.calls[worklist + 1].tool, 'git');
+  assert.ok(worklist + 1 < firstModel);
+  const checkout = result.calls.findIndex(c => isCall(c, 'git', 'checkout', '--', '.'));
+  const apply = result.calls.findIndex(c => isCall(c, 'node', 'scripts/docs-translation/apply.js'));
+  assert.ok(checkout > lastModel && checkout + 2 === apply);
+  assert.deepEqual(result.calls[checkout + 1].args, ['clean', '-fdq']);
+  assert.equal(result.calls[checkout + 1].tool, 'git');
+  assert.ok(result.calls.slice(apply + 1).some(c => c.tool === 'git' && JSON.stringify(c.args) === '["add","i18n"]'));
+});
+
 it('uses Claude Sonnet for both passes and merges into and comments on the open PR even after review failure', () => {
   const result = run({ pr, failReview: true }, ['--translator', 'claude']);
   assert.equal(result.status, 0, result.stderr);
@@ -214,8 +245,30 @@ it('aborts a merge conflict and exits before installing or calling a model', () 
   assert.equal(models(result).length, 0);
 });
 
-it.each(['main', 'stack'])('refuses to push to %s and supports skipping review', branch => {
-  const result = run({ pr: { ...pr, headRefName: branch } }, ['--base', 'stack', '--no-review']);
+it.each([
+  { ...pr, headRefName: 'main' }, { ...pr, headRefName: 'stack' },
+  { ...pr, headRefName: 'manual-translation' }, { ...pr, isCrossRepository: true },
+])('ignores an unrelated or fork PR: %j', other => {
+  const result = run({ pr: other }, ['--base', 'stack', '--no-review']);
+  assert.equal(result.status, 0, result.stderr);
+  const list = result.calls.find(c => isCall(c, 'gh', 'pr', 'list'));
+  assert.equal(list.args[list.args.indexOf('--json') + 1], 'number,headRefName,url,isCrossRepository');
+  const push = result.calls.find(c => isCall(c, 'git', 'push'));
+  assert.match(push.args.at(-1), /^docs-translate\/\d{8}-\d{6}$/);
+  assert.ok(!result.calls.some(c => isCall(c, 'git', 'merge') || isCall(c, 'gh', 'pr', 'comment')));
+  assert.ok(result.calls.some(c => isCall(c, 'gh', 'pr', 'create')));
+  assert.match(body(), /review: skipped;/);
+});
+
+it('reuses the first own translation PR after unrelated and fork PRs', () => {
+  const result = run({ prs: [{ ...pr, number: 40, headRefName: 'manual' }, { ...pr, number: 41, isCrossRepository: true }, pr, { ...pr, number: 43 }] });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.calls.some(c => isCall(c, 'gh', 'pr', 'comment', '42')));
+  assert.ok(!result.calls.some(c => isCall(c, 'gh', 'pr', 'create')));
+});
+
+it('refuses to push to the base and supports skipping review', () => {
+  const result = run({ pr }, ['--base', pr.headRefName, '--no-review']);
   assert.equal(result.status, 1, result.stderr);
   assert.equal(models(result).length, 2);
   assert.ok(!result.calls.some(c => isCall(c, 'git', 'push')));

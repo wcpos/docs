@@ -72,7 +72,7 @@ cd "$WT"
 git reset --hard --quiet
 git clean -fdq
 rm -rf .translate
-PR=$(gh pr list -R wcpos/docs --state open --base "$BASE" --label docs-translate --json number,headRefName,url --jq '.[0] // empty')
+PR=$(gh pr list -R wcpos/docs --state open --base "$BASE" --label docs-translate --json number,headRefName,url,isCrossRepository --jq 'map(select(.isCrossRepository == false and (.headRefName | startswith("docs-translate/")))) | .[0] // empty')
 if [ -n "$PR" ]; then
   BRANCH=$(printf '%s' "$PR" | jq -r .headRefName)
   PR_NUMBER=$(printf '%s' "$PR" | jq -r .number)
@@ -89,7 +89,9 @@ else
 fi
 pnpm install --prefer-offline --silent
 pnpm write-translations --locale en >/dev/null
+node scripts/sync-translations.js --clean >/dev/null
 SUMMARY=$(node scripts/docs-translation/worklist.js "${WORKLIST_ARGS[@]}" --max-units "$MAX_UNITS")
+git add -A i18n
 TOTAL=$(printf '%s' "$SUMMARY" | jq -r .total)
 if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' "$SUMMARY"; exit 0; fi
 
@@ -134,6 +136,8 @@ if [ "$TOTAL" -gt 0 ]; then
     fi
   done
 fi
+git checkout -- .
+git clean -fdq
 APPLY_SUMMARY=$(node scripts/docs-translation/apply.js --plan .translate/plan.json --results .translate/results --report .translate/report.json --report-md .translate/report.md)
 log "$APPLY_SUMMARY"
 if [ -z "$(git status --porcelain -- i18n)" ]; then

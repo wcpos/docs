@@ -85,6 +85,16 @@ describe('applyResults MDX', () => {
     expect(apply(ENTRY, [result(texts)]).writes).toEqual([{ path: TARGET, content: GERMAN }]);
   });
 
+  it('rejects an MDX unit that changes 30 to 3', () => {
+    write(SOURCE, ENGLISH.replace('Open the settings page', 'Wait 30 seconds and open the settings page'));
+    const texts = [...TEXTS];
+    texts[3] = 'Warten Sie 3 Sekunden und öffnen Sie die Einstellungen.';
+    const output = apply(ENTRY, [result(texts)]);
+    expect(output.writes).toEqual([]);
+    expect(output.report.rejected_details).toEqual([{ target: TARGET, unit: 'u3', reason: 'numbers' }]);
+    expect(output.report).toMatchObject({ applied: 5, rejected: 1 });
+  });
+
   it.each([
     [4, 'Aktualisieren Sie Ihren Shop.', 'inline_code_changed'],
     [5, 'Besuchen Sie den [Support](https://example.test/wrong).', 'link_url_changed'],
@@ -193,16 +203,18 @@ describe('applyResults MDX', () => {
     expect(output.state[TARGET]).toEqual({ source: 'new-blob' });
   });
 
-  it('rejects a complete file that fails the CI untranslated-prop gate', () => {
+  it.each([undefined, { source: 'old', partial: { previous: 'Früher' } }])('clears partials when a complete file fails the CI untranslated-prop gate: %j', previous => {
     const source = ENGLISH + '\n<Image alt="Receipt preview" />\n';
     write(SOURCE, source);
     siblings();
+    if (previous) writeState(rootDir, { [TARGET]: previous });
     const output = apply({ ...ENTRY, reused: { 6: 'Receipt preview' } });
     expect(output.writes).toEqual([]);
     expect(output.report.files_incomplete).toEqual([TARGET]);
+    expect(output.report).toMatchObject({ applied: 6, missing: 0, rejected: 1 });
     expect(output.report.rejected_details).toContainEqual({ target: TARGET, unit: null, reason: expect.stringContaining('untranslated_props') });
-    expect(output.state[TARGET].source).toBeUndefined();
-    expect(Object.keys(output.state[TARGET].partial)).toHaveLength(6);
+    expect(output.state[TARGET]?.partial).toBeUndefined();
+    expect(output.state[TARGET]?.source).toBe(previous?.source);
   });
 
   it.each(['missing', 'stub'])('holds back all writes for a source with a %s locale', mode => {
@@ -238,6 +250,13 @@ describe('applyResults JSON', () => {
   const english = { label: { message: 'Hello {name}, {name}: {count}', description: 'Greeting' }, short: 'API', next: 'Next page', ignored: { description: 'Keep' } };
   const entry = { ...ENTRY, target, source, kind: 'json', pending: [0, 1, 2] };
   const hash = key => unitHash(['json', key, '', typeof english[key] === 'string' ? english[key] : english[key].message].join('\0'));
+
+  it.each([['3, 2, 2', true], ['30, 2', true], ['2, 30, 2', false]])('checks the digit-run multiset in JSON: %s', (numbers, rejected) => {
+    write(source, { label: 'Wait 30 seconds, then 2 seconds, then 2 seconds.' });
+    const output = apply({ ...entry, pending: [0] }, [result([`Warten Sie jeweils ${numbers} Sekunden.`], target)]);
+    expect(output.report.rejected_details).toEqual(rejected ? [{ target, unit: 'u0', reason: 'numbers' }] : []);
+    expect(output.writes).toHaveLength(rejected ? 0 : 1);
+  });
 
   it('still rejects allowlisted English-identical JSON units', () => {
     const name = 'Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil';
