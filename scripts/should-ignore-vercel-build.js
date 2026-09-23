@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-const AIDE_DOCS_TRANSLATION_BRANCH_PREFIX = 'aide/docs-translations-';
+const DOCS_TRANSLATION_BRANCH_PREFIX = 'docs-translate/';
 
 function shouldIgnoreVercelBuild(env = process.env) {
   const branch = env.VERCEL_GIT_COMMIT_REF || '';
-  return branch.startsWith(AIDE_DOCS_TRANSLATION_BRANCH_PREFIX);
+  return branch.startsWith(DOCS_TRANSLATION_BRANCH_PREFIX);
 }
 
 function main() {

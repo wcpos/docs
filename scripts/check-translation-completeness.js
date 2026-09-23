@@ -51,7 +51,7 @@ const PROSE_FAIL_THRESHOLD = 3;
 // explicit {#slug} that is preserved verbatim across locales, so a missing slug
 // is a missing section, not a translation artifact.
 const STALE_FAIL_THRESHOLD = 1;
-// Sweep queue shaping (--audit-json only; see buildTranslationAudit). Env-
+// Audit queue shaping (--audit-json only; see buildTranslationAudit). Env-
 // overridable so a one-off run can widen scope, e.g. AUDIT_EXCLUDE='(?!)' to
 // translate everything including the deprecated version.
 //
@@ -112,8 +112,8 @@ function isSignificantProse(text) {
 // Prop/title values that are correctly identical across every locale — product,
 // platform and distribution-channel names, and literal runtime error strings the
 // app shows verbatim — so an exact match is NOT a translation leak. Without this,
-// the gate flags them and the self-healing sweep re-forwards the file every run
-// (Aide can't "translate" a proper noun), looping forever and drifting the rest of
+// the gate flags them and a translation run repeatedly re-translates the file
+// (a proper noun can't be "translated"), looping forever and drifting the rest of
 // the file. Keep tight and exact-match so genuine leaks still surface.
 const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'iOS (TestFlight)',
@@ -335,7 +335,7 @@ function headingAnchors(text) {
 // legitimately differ between locales when it is auto-derived from heading text
 // rather than preserved verbatim (EN `## F.A.Q. {#faq}` vs a translation that
 // slugs to {#f-a-q}; apostrophes and slashes do the same). A pure rename keeps the
-// count equal (deficit 0) and must NOT be flagged, or the sweep would loop forever
+// count equal (deficit 0) and must NOT be flagged, or a translation run would loop forever
 // re-translating a page that is actually current. Only a genuinely dropped section
 // lowers the count. A translation may also legitimately ADD anchors (e.g. an
 // explicit slug on its title); those make the deficit negative and are ignored.
@@ -436,8 +436,7 @@ function allTranslationFiles() {
 }
 
 // All English source docs that are in scope for translation. Scoped to
-// `versioned_docs/**` to match the forward-on-push workflow's path filter
-// (forward-docs-translations-to-aide.yml) — `docs/` holds unversioned/internal
+// `versioned_docs/**` — `docs/` holds unversioned/internal
 // material (e.g. superpowers specs) that is not part of the published, translated corpus.
 function allSourceDocs(
   listFiles = (dirs) =>
@@ -450,8 +449,8 @@ function allSourceDocs(
 }
 
 // Source docs that are missing, stubbed, or stale in at least one locale — the
-// input for the self-healing translation sweep. Uses the same missing/stub/stale
-// definition as the completeness gate, so the sweep and the PR gate never
+// input for a translation run. Uses the same missing/stub/stale
+// definition as the completeness gate, so a translation run and the PR gate never
 // disagree about what "incomplete" means.
 function listIncompleteSources({
   readFile = (p) => fs.readFileSync(p, 'utf8'),
@@ -546,9 +545,8 @@ function auditSeverityRank(entry) {
   return rank;
 }
 
-// buildTranslationAudit feeds the self-healing sweep, which forwards the first
-// `batch_size` entries to Aide. Two knobs shape that queue (the audit is the
-// sweep's ONLY consumer, so these do not affect the PR gate):
+// buildTranslationAudit feeds --audit-json, consumed by translation-audit-report.yml.
+// Two knobs shape the audit's queue (these do not affect the PR gate):
 //   - excludeSource(source): drop a source entirely. Default skips the deprecated
 //     version-0.4.x docs — not worth re-translating a superseded version.
 //   - priority(source): lower sorts first within the otherwise-alphabetical queue.
@@ -642,8 +640,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
     return 0;
   }
 
-  // Self-healing sweep input: print the source docs that have a gap in any
-  // locale as a JSON array on stdout (consumed by sweep-docs-translations.yml).
+  // Print the source docs that have a gap in any locale as a JSON array on stdout.
   // Always exits 0 — this mode reports, it does not gate.
   if (argv.includes('--list-incomplete-sources')) {
     const incomplete = listIncompleteSources();
