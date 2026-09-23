@@ -134,10 +134,12 @@ function recoverTranslations({ file, locale, oldEnglishPath, oldEnglish, target 
   const translations = new Map();
   let paired = 0;
   let rejected = 0;
+  let unpairedTarget = targetParsed.units.filter(unit => /\p{L}/u.test(decodeDocsUnitSource(targetParsed, unit))).length;
   for (const [oldIndex, targetIndex] of alignUnits(oldParsed.units, targetParsed.units)) {
     const oldUnit = oldParsed.units[oldIndex];
     const source = decodeDocsUnitSource(oldParsed, oldUnit);
     const translation = decodeDocsUnitSource(targetParsed, targetParsed.units[targetIndex]);
+    unpairedTarget -= Number(/\p{L}/u.test(translation));
     if (pairLooksRight({ source, translation, locale, file })) {
       const key = unitKey(oldUnit, source);
       if (!translations.has(key)) translations.set(key, translation);
@@ -146,7 +148,7 @@ function recoverTranslations({ file, locale, oldEnglishPath, oldEnglish, target 
       rejected += 1;
     }
   }
-  return { translations, paired, rejected, unpairedTarget: targetParsed.units.length - paired - rejected };
+  return { translations, paired, rejected, unpairedTarget };
 }
 
 module.exports = {

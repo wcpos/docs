@@ -243,11 +243,15 @@ Espere 20 días.
     expect(result).toEqual({ translations: new Map(), paired: 0, rejected: 0, unpairedTarget: 2 });
   });
 
-  it('counts an extra translated paragraph independently of accepted and rejected pairs', () => {
+  it.each([
+    ['---', 0],
+    ['Texto adicional.', 1],
+    ['追加の文。', 1],
+  ])('counts extra paragraphs only when they contain letters: %s', (extra, unpairedTarget) => {
     const result = recoverTranslations({
       file: 'es.mdx', locale: 'es', oldEnglishPath: 'en.mdx',
-      oldEnglish: '# Start\n\nRead [help](/help).\n', target: '# Inicio\n\nLea [ayuda](/help).\n\nTexto adicional.\n',
+      oldEnglish: '# Start\n\nRead [help](/help).\n', target: `# Inicio\n\nLea [ayuda](/help).\n\n${extra}\n`,
     });
-    expect(result).toMatchObject({ paired: 2, rejected: 0, unpairedTarget: 1 });
+    expect(result).toMatchObject({ paired: 2, rejected: 0, unpairedTarget });
   });
 });
