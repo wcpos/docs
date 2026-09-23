@@ -23,7 +23,14 @@ function run(config = {}, args = [], overrides = {}) {
   fs.writeFileSync(path.join(root, 'executions.txt'), '');
   const result = spawnSync('/bin/bash', [copy, ...args], { env: { ...env, ...overrides }, encoding: 'utf8', timeout: 20000 });
   assert.ifError(result.error);
-  return { ...result, calls: readCalls() };
+  const calls = readCalls();
+  const apply = calls.findIndex(c => isCall(c, 'node', 'scripts/docs-translation/apply.js', '--results'));
+  if (apply >= 0) {
+    assert.deepEqual(calls[apply - 1].args, ['scripts/docs-translation/apply.js', '--plan', '.translate/plan.json', '--failed-state', '.translate/failed-state.json']);
+    assert.equal(calls[apply - 1].tool, 'node');
+    assert.ok(calls.findLastIndex(c => ['codex', 'claude'].includes(c.tool)) < apply - 1);
+  }
+  return { ...result, calls };
 }
 function assertFailed(result, reason, withWorktree = true) {
   assert.equal(result.status, 1, result.stderr);
@@ -40,7 +47,7 @@ beforeAll(() => {
   callsFile = path.join(root, 'calls.jsonl');
   env = { ...process.env, TMPDIR: root, TRANSLATE_REPO_ROOT: root };
   for (const key of ['TRANSLATE_LOCAL_REEXEC', 'TRANSLATE_TRANSLATOR', 'TRANSLATE_MODEL', 'TRANSLATE_REVIEW_MODEL', 'TRANSLATE_EFFORT']) delete env[key];
-  for (const dir of [bin, path.join(wt, 'scripts/docs-translation')]) fs.mkdirSync(dir, { recursive: true });
+  for (const dir of [bin, path.join(wt, 'scripts/docs-translation'), path.join(wt, 'i18n')]) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(wt, 'scripts/docs-translation/translate-prompt.md'), 'TRANSLATE\n## Packets for this run\n');
   fs.writeFileSync(path.join(wt, 'scripts/docs-translation/review-prompt.md'), 'REVIEW\n## Packets for this run\n');
   // Redirect command lookup, shorten the timeout, and record executed paths in this isolated copy.
@@ -53,12 +60,18 @@ const config = JSON.parse(fs.readFileSync(path.join(root, 'config.json')));
 const wt = path.join(root, '.claude/worktrees/docs-translate');
 fs.appendFileSync(path.join(root, 'calls.jsonl'), JSON.stringify({ tool, args, cwd: process.cwd(), base: process.env.BASE_REF }) + '\n');
 if (tool === 'git') {
+  if (args.includes('fetch') && config.fetchFails) process.exit(1);
+  if (args.includes('rev-parse')) {
+    if (config.revParseFails) process.exit(1);
+    if (args.includes('--short')) console.log('abc1234');
+  }
   if (args.includes('show')) {
     if (!config.reexec) process.exit(1);
     process.stdout.write(fs.readFileSync(path.join(root, 'translate-docs-local.sh'), 'utf8') + (config.reexec === 'updated' ? '\n# updated\n' : ''));
   }
   if (args.includes('list') && !config.newWorktree) console.log('worktree ' + wt);
   if (args.includes('status') && fs.existsSync('.translate/accepted')) console.log(' M i18n/translation-state.json');
+  if (args.includes('diff') && args.includes('--quiet')) process.exit(config.noAttempts ? 0 : 1);
   if (args.includes('diff')) console.log(JSON.parse(fs.readFileSync('.translate/accepted')).join('\n'));
   if (args.includes('merge') && !args.includes('--abort') && config.conflict) process.exit(1);
 } else if (tool === 'gh') {
@@ -84,6 +97,10 @@ if (tool === 'git') {
     const total = counts.reduce((a, b) => a + b, 0);
     console.log(JSON.stringify({ total, packets: counts.length, targets: { translate: counts.length, refresh: 0, record: 0, unchanged: 0, deferred: 0 }, deferred_units: config.deferred || 0, locales }));
   } else if (args[0] === 'scripts/docs-translation/apply.js') {
+    if (args.includes('--failed-state')) {
+      fs.writeFileSync(args[args.indexOf('--failed-state') + 1], '{"failed":true}');
+      process.exit(0);
+    }
     const results = fs.readdirSync('.translate/results').filter(f => f.endsWith('.json'));
     const packets = results.map(f => JSON.parse(fs.readFileSync('.translate/work/' + f)));
     const files = results.map((f, i) => 'i18n/' + packets[i].locale + '/' + f);
@@ -166,7 +183,7 @@ it('translates and reviews each sorted packet with the reference CLI arguments a
   assert.deepEqual(result.calls.filter(c => c.tool === 'pnpm').map(c => c.args), [['install', '--prefer-offline', '--silent'], ['write-translations', '--locale', 'en']]);
   assert.ok(result.calls.findIndex(c => isCall(c, 'pnpm', 'write-translations')) < result.calls.findIndex(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')));
   assert.ok(result.calls.some(c => isCall(c, 'node', '--max-units', '1500')));
-  assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/apply.js')).args, ['scripts/docs-translation/apply.js', '--plan', '.translate/plan.json', '--results', '.translate/results', '--report', '.translate/report.json', '--report-md', '.translate/report.md']);
+  assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/apply.js', '--results')).args, ['scripts/docs-translation/apply.js', '--plan', '.translate/plan.json', '--results', '.translate/results', '--report', '.translate/report.json', '--report-md', '.translate/report.md']);
   assert.ok(result.calls.some(c => isCall(c, 'git', 'worktree', 'add', '--detach', wt, 'origin/main')));
   assert.ok(result.calls.some(c => isCall(c, 'git', 'add', 'i18n')));
   const commit = result.calls.findIndex(c => isCall(c, 'git', 'commit', 'docs(i18n): translate 3 units in 2 files'));
@@ -204,7 +221,7 @@ it('cleans orphan translations immediately after English regeneration', () => {
   assert.equal(result.calls[regeneration + 1].tool, 'node');
 });
 
-it('stages regeneration before models, then discards model edits before apply', () => {
+it('stages regeneration before models, then discards model edits before failed-state and real apply', () => {
   const result = run();
   assert.equal(result.status, 0, result.stderr);
   const worklist = result.calls.findIndex(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js'));
@@ -214,8 +231,8 @@ it('stages regeneration before models, then discards model edits before apply', 
   assert.equal(result.calls[worklist + 1].tool, 'git');
   assert.ok(worklist + 1 < firstModel);
   const checkout = result.calls.findIndex(c => isCall(c, 'git', 'checkout', '--', '.'));
-  const apply = result.calls.findIndex(c => isCall(c, 'node', 'scripts/docs-translation/apply.js'));
-  assert.ok(checkout > lastModel && checkout + 2 === apply);
+  const apply = result.calls.findIndex(c => isCall(c, 'node', 'scripts/docs-translation/apply.js', '--results'));
+  assert.ok(checkout > lastModel && checkout + 3 === apply);
   assert.deepEqual(result.calls[checkout + 1].args, ['clean', '-fdq']);
   assert.equal(result.calls[checkout + 1].tool, 'git');
   assert.ok(result.calls.slice(apply + 1).some(c => c.tool === 'git' && JSON.stringify(c.args) === '["add","i18n"]'));
@@ -234,6 +251,13 @@ it('reports an unexpected worklist failure on both streams', () => {
   assertFailed(result, result.stdout.match(/unexpected error at line \d+/)[0]);
   assert.equal(models(result).length, 0);
   assert.ok(!result.calls.some(c => isCall(c, 'node', 'scripts/docs-translation/apply.js')));
+});
+
+it.each(['fetchFails', 'revParseFails'])('reports unexpected %s before creating a worktree', failure => {
+  const result = run({ [failure]: true }, [], failure === 'revParseFails' ? { TRANSLATE_REPO_ROOT: '' } : {});
+  assert.match(result.stdout, /FAILED: unexpected error at line \d+/);
+  assertFailed(result, result.stdout.match(/unexpected error at line \d+/)[0], false);
+  assert.ok(!result.calls.some(c => isCall(c, 'git', 'worktree', 'add') || c.tool === 'pnpm'));
 });
 
 it.each([
@@ -267,15 +291,39 @@ it.each(['codex', 'claude'])('retains environment model overrides for %s', trans
   assert.deepEqual(models(result).map(c => c.args[c.args.indexOf(translator === 'codex' ? '-m' : '--model') + 1]), ['env-model', 'env-review']);
 });
 
-it.each(gates)('commits before %s and never pushes when it fails', invalid => {
+it.each(gates)('commits before %s and publishes only attempts recorded when it fails', invalid => {
   const result = run({ invalid }, ['--no-review', '--base', 'stack']);
   assert.equal(result.status, 1, result.stderr);
   assert.equal(models(result).length, 2);
   assert.ok(result.calls.findIndex(c => isCall(c, 'git', 'commit')) < result.calls.findIndex(c => isCall(c, 'node', 'scripts/' + invalid)));
   assert.equal(result.calls.find(c => isCall(c, 'node', 'scripts/' + invalid)).base, 'origin/stack');
-  assert.ok(!result.calls.some(c => isCall(c, 'git', 'push') || isCall(c, 'gh', 'create') || isCall(c, 'gh', 'comment')));
-  assert.ok(result.stdout.includes('validation failed; worktree left at ' + wt));
-  assertFailed(result, 'validation failed; worktree left at ' + wt);
+  const gate = result.calls.findIndex(c => isCall(c, 'node', 'scripts/' + invalid));
+  const reset = result.calls.findIndex(c => isCall(c, 'git', 'reset', '--hard', '--quiet', 'HEAD~1'));
+  const commit = result.calls.findIndex(c => isCall(c, 'git', 'commit', '--quiet', '-m', 'docs(i18n): record failed translation attempts'));
+  const push = result.calls.findIndex(c => isCall(c, 'git', 'push'));
+  const create = result.calls.findIndex(c => isCall(c, 'gh', 'pr', 'create'));
+  assert.ok(gate < reset && reset < commit && commit < push && push < create);
+  assert.deepEqual(result.calls[reset + 1].args, ['add', 'i18n/translation-state.json']);
+  assert.equal(result.calls[reset + 1].tool, 'git');
+  assert.equal(fs.readFileSync(path.join(wt, 'i18n/translation-state.json'), 'utf8'), '{"failed":true}');
+  assert.match(body(), /abc1234/);
+  assertFailed(result, 'validation failed (commit abc1234); attempts recorded on ' + result.calls[push].args.at(-1));
+});
+
+it('comments on the open PR with attempts recorded after a gate failure', () => {
+  const result = run({ pr, invalid: gates[0] });
+  assertFailed(result, 'validation failed (commit abc1234); attempts recorded on ' + pr.headRefName);
+  const push = result.calls.findIndex(c => isCall(c, 'git', 'push', pr.headRefName));
+  const comment = result.calls.findIndex(c => isCall(c, 'gh', 'pr', 'comment', '42'));
+  assert.ok(push >= 0 && comment > push);
+  assert.ok(!result.calls.some(c => isCall(c, 'gh', 'pr', 'create')));
+});
+
+it('does not publish when a failing gate has no attempts recorded', () => {
+  const result = run({ pr, noAttempts: true, invalid: gates[0] });
+  assertFailed(result, 'validation failed (commit abc1234)');
+  assert.ok(!result.calls.some(c => isCall(c, 'git', 'push') || isCall(c, 'gh', 'pr', 'comment') || isCall(c, 'gh', 'pr', 'create')));
+  assert.equal(result.calls.filter(c => isCall(c, 'git', 'commit')).length, 1);
 });
 
 it('aborts a merge conflict and exits before installing or calling a model', () => {
