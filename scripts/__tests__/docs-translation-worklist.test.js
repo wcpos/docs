@@ -222,12 +222,20 @@ describe('JSON worklist', () => {
       reasons: { missing: 0, changed: 1, english: 0 } });
   });
 
-  it.each([null, '{invalid'])('treats a missing or invalid JSON target as missing (%s)', target => {
+  it.each([null, '{invalid'])('reuses partials for a missing or invalid JSON target (%s)', target => {
     write(JSON_SOURCE, { save: 'Save', open: { message: 'Open' } });
     if (target !== null) write(JSON_TARGET, target);
     commitFixtures();
     writeState(rootDir, { [JSON_TARGET]: { partial: { [jsonHash('save', 'Save')]: 'Speichern' } } });
-    expect(schedule().plan.targets[0]).toMatchObject({ pending: [0, 1], reused: {}, reasons: { missing: 2, changed: 0, english: 0 } });
+    expect(schedule().plan.targets[0]).toMatchObject({ pending: [1], reused: { 0: 'Speichern' }, reasons: { missing: 1, changed: 0, english: 0 } });
+  });
+
+  it('reuses accepted partials while an MDX target is missing', () => {
+    addDoc(DOC, ENGLISH, null);
+    commitFixtures();
+    const hash = unitHash(['paragraph', '', '', PARAGRAPH].join('\0'));
+    writeState(rootDir, { [TARGET]: { partial: { [hash]: REUSED[3] } } });
+    expect(schedule().plan.targets[0]).toMatchObject({ pending: [0, 1, 2, 4, 5], reused: { 3: REUSED[3] }, reasons: { missing: 5, changed: 0, english: 0 } });
   });
 
   it('walks untracked English JSON and reuses target messages without a baseline', () => {

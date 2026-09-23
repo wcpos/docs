@@ -98,7 +98,8 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
         let translation;
         let reason;
         if (!exists || (kind === 'json' && targetJson === undefined)) {
-          reason = 'missing';
+          translation = saved.partial?.[hash];
+          if (translation === undefined || translation === null) reason = 'missing';
         } else {
           if (kind === 'mdx') translation = recovered.get(key) ?? saved.partial?.[hash];
           else {
