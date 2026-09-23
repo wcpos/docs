@@ -14,7 +14,7 @@ const {
   normalizeAdminBreadcrumbInlineCode, validateDocsMdxStructure, validateProtectedTermsInText,
 } = require('./docs-qa');
 const {
-  LOCALES, sourceToTranslatedPath, isSignificantProse, lineToProse, UNTRANSLATED_PROP_ALLOWLIST,
+  LOCALES, sourceToTranslatedPath,
   findUntranslatedProps, findLeftoverProse, isStub, findMissingSections,
 } = require('../check-translation-completeness');
 const { canonicalizeDescriptionQuoting, validateFrontmatter } = require('../validate-frontmatter');
@@ -53,6 +53,7 @@ function applyResults({ rootDir, plan, results }) {
       let issues = [];
       const reasons = [];
       if (kind === 'mdx') {
+        text = text.replace(/（(`[^`\n]+`)）/g, '($1)');
         text = restoreNonBreadcrumbInlineCodeSpans(decoded, normalizeAdminBreadcrumbInlineCode(decoded, text, locale));
         if (text.split('\n').length !== decoded.split('\n').length) reasons.push('line_count');
         if (unit.type !== 'paragraph' && text.includes('\n')) reasons.push('non_paragraph_newline');
@@ -64,17 +65,24 @@ function applyResults({ rootDir, plan, results }) {
         const translatedPlaceholders = (text.match(/\{[^{}]*\}/g) ?? []).sort();
         if (JSON.stringify(sourcePlaceholders) !== JSON.stringify(translatedPlaceholders)) reasons.push('placeholders');
       }
-      if (JSON.stringify((decoded.match(/\d+/g) ?? []).sort()) !== JSON.stringify((text.match(/\d+/g) ?? []).sort())) reasons.push('numbers');
+      if (!(kind === 'json' && decoded.includes('|'))) {
+        const numbers = text.match(/\d+/g) ?? [];
+        if ((decoded.match(/\d+/g) ?? []).some(number => {
+          const index = numbers.indexOf(number);
+          if (index === -1) return true;
+          numbers.splice(index, 1);
+          return false;
+        })) reasons.push('numbers');
+      }
       if (text.trim() === '') reasons.push('empty');
       if (text.includes('WooCommerce POS')) reasons.push('WooCommerce POS');
-      if (text === decoded && isSignificantProse(kind === 'mdx' ? lineToProse(decoded) : decoded)
-        && !(kind === 'mdx' && UNTRANSLATED_PROP_ALLOWLIST.has(decoded.trim()))) reasons.push('english');
       if (reasons.length) {
         report.rejected += 1;
         report.rejected_details.push({ target, unit: id, reason: reasons.join(', ') });
         continue;
       }
       const codes = [...new Set(issues.filter(issue => !STRUCTURAL_ISSUE_CODES.has(issue.code)).map(issue => issue.code))];
+      if (text === decoded) codes.push('identical');
       if (codes.length) {
         report.warnings += 1;
         report.warning_details.push({ target, unit: id, codes });

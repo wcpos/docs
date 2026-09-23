@@ -85,14 +85,36 @@ describe('applyResults MDX', () => {
     expect(apply(ENTRY, [result(texts)]).writes).toEqual([{ path: TARGET, content: GERMAN }]);
   });
 
-  it('rejects an MDX unit that changes 30 to 3', () => {
-    write(SOURCE, ENGLISH.replace('Open the settings page', 'Wait 30 seconds and open the settings page'));
+  it.each([['30 days', '3 日'], ['Port 8080', 'Port 80']])('rejects changed MDX numbers: %s', (english, translated) => {
+    write(SOURCE, ENGLISH.replace('Open the settings page to configure your store.', english));
     const texts = [...TEXTS];
-    texts[3] = 'Warten Sie 3 Sekunden und öffnen Sie die Einstellungen.';
+    texts[3] = translated;
     const output = apply(ENTRY, [result(texts)]);
     expect(output.writes).toEqual([]);
     expect(output.report.rejected_details).toEqual([{ target: TARGET, unit: 'u3', reason: 'numbers' }]);
     expect(output.report).toMatchObject({ applied: 5, rejected: 1 });
+  });
+
+  it.each([
+    ['You can apply more than one coupon to an order.', '1つの注文に複数のクーポンを適用できます。'],
+    ['Two 10% coupons stack to 19% off (not 20%).', '10%のクーポンを2つ重ねると19%割引になります（20%ではありません）。'],
+    ['Single-use promo', '1回限りのプロモーション'],
+  ])('accepts added Japanese digit runs: %s', (english, translated) => {
+    write(SOURCE, english + '\n');
+    for (const locale of LOCALES) write(sourceToTranslatedPath(SOURCE, locale), GERMAN);
+    const target = sourceToTranslatedPath(SOURCE, 'ja');
+    const output = apply({ ...ENTRY, target, locale: 'ja', pending: [0] }, [result([translated], target, 'ja')]);
+    expect(output.report).toMatchObject({ applied: 1, rejected: 0 });
+    expect(output.writes).toEqual([{ path: target, content: translated + '\n' }]);
+  });
+
+  it.each(LOCALES)('normalizes full-width parentheses around inline code for %s', locale => {
+    write(SOURCE, 'Your exact domain (`yourstore.com`)\n');
+    for (const sibling of LOCALES) write(sourceToTranslatedPath(SOURCE, sibling), GERMAN);
+    const target = sourceToTranslatedPath(SOURCE, locale);
+    const output = apply({ ...ENTRY, target, locale, pending: [0] }, [result(['正確なドメイン（`yourstore.com`）'], target, locale)]);
+    expect(output.report).toMatchObject({ applied: 1, rejected: 0 });
+    expect(output.writes).toEqual([{ path: target, content: '正確なドメイン(`yourstore.com`)\n' }]);
   });
 
   it.each([
@@ -101,7 +123,6 @@ describe('applyResults MDX', () => {
     [3, 'Öffnen Sie die Einstellungen.\nRichten Sie den Shop ein.', 'line_count'],
     [3, '  ', 'empty'],
     [3, 'WooCommerce POS einrichten.', 'WooCommerce POS'],
-    [3, 'Open the settings page to configure your store.', 'english'],
   ])('rejects invalid unit u%i (%s) and saves other accepted units as partials', (index, text, reason) => {
     const texts = [...TEXTS];
     texts[index] = text;
@@ -135,7 +156,8 @@ describe('applyResults MDX', () => {
     const output = apply({ ...ENTRY, pending: [0] }, [result(['API'])]);
     expect(output.writes).toEqual([{ path: TARGET, content: '# API {#api}\n' }]);
     expect(output.state[TARGET]).toEqual({ source: 'new-blob', same: [hash] });
-    expect(output.report.applied).toBe(1);
+    expect(output.report).toMatchObject({ applied: 1, warnings: 1,
+      warning_details: [{ target: TARGET, unit: 'u0', codes: ['identical'] }] });
     writeState(rootDir, output.state);
     expect(apply({ ...ENTRY, pending: [0] }, [result(['API'])]).state[TARGET].same).toEqual([hash]);
   });
@@ -149,6 +171,29 @@ describe('applyResults MDX', () => {
     expect(output.writes).toEqual([{ path: TARGET, content: GERMAN + `\n<Image alt="${name}" />\n` }]);
     expect(output.report).toMatchObject({ applied: 7, rejected: 0, files_incomplete: [] });
     expect(output.state[TARGET]).toEqual({ source: 'new-blob', same: [mdxHash(6, source)] });
+  });
+
+  it.each(['Open the settings page to configure your store.', '| `rest_cannot_view` | WordPress REST API |'])(
+    'accepts identical MDX with a warning: %s', text => {
+      const source = ENGLISH.replace('Open the settings page to configure your store.', text);
+      write(SOURCE, source);
+      siblings();
+      const texts = TEXTS.map((translated, index) => index === 3 ? text : translated);
+      const output = apply(ENTRY, [result(texts)]);
+      expect(output.writes).toEqual([{ path: TARGET, content: GERMAN.replace(TEXTS[3], text) }]);
+      expect(output.report).toMatchObject({ applied: 6, rejected: 0, warnings: 1,
+        warning_details: [{ target: TARGET, unit: 'u3', codes: ['identical'] }] });
+      expect(output.state[TARGET].same).toEqual([mdxHash(3, source)]);
+    },
+  );
+
+  it('still rejects a complete file with at least three leftover prose lines', () => {
+    siblings();
+    const parsed = parseDocsMdxUnits(SOURCE, ENGLISH);
+    const output = apply(ENTRY, [result(parsed.units.map(unit => decodeDocsUnitSource(parsed, unit)))]);
+    expect(output.writes).toEqual([]);
+    expect(output.report).toMatchObject({ applied: 6, rejected: 1, warnings: 6 });
+    expect(output.report.rejected_details).toContainEqual({ target: TARGET, unit: null, reason: expect.stringContaining('leftover_prose') });
   });
 
   it.each([undefined, {}, { source: 'old' }, { same: ['hash'] }, { partial: { previous: 'Früher' } }])(
@@ -251,19 +296,30 @@ describe('applyResults JSON', () => {
   const entry = { ...ENTRY, target, source, kind: 'json', pending: [0, 1, 2] };
   const hash = key => unitHash(['json', key, '', typeof english[key] === 'string' ? english[key] : english[key].message].join('\0'));
 
-  it.each([['3, 2, 2', true], ['30, 2', true], ['2, 30, 2', false]])('checks the digit-run multiset in JSON: %s', (numbers, rejected) => {
+  it.each([['3, 2, 2', true], ['30, 2', true], ['30, 2, 1', true], ['2, 30, 2', false], ['2, 30, 2, 1', false], ['30, 2, 2, 2', false]])('requires the source digit-run multiset in JSON: %s', (numbers, rejected) => {
     write(source, { label: 'Wait 30 seconds, then 2 seconds, then 2 seconds.' });
     const output = apply({ ...entry, pending: [0] }, [result([`Warten Sie jeweils ${numbers} Sekunden.`], target)]);
     expect(output.report.rejected_details).toEqual(rejected ? [{ target, unit: 'u0', reason: 'numbers' }] : []);
     expect(output.writes).toHaveLength(rejected ? 0 : 1);
   });
 
-  it('still rejects allowlisted English-identical JSON units', () => {
-    const name = 'Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil';
+  it.each(['Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil',
+    'WCPOS Pro', '{authorName} - {nPosts}', 'Version: {versionLabel}', english.label.message])('accepts identical JSON with a warning: %s', name => {
     write(source, { name });
     const output = apply({ ...entry, pending: [0] }, [result([name], target)]);
-    expect(output.writes).toEqual([]);
-    expect(output.report.rejected_details).toEqual([{ target, unit: 'u0', reason: 'english' }]);
+    expect(JSON.parse(output.writes[0].content)).toEqual({ name });
+    expect(output.report).toMatchObject({ applied: 1, rejected: 0, warnings: 1,
+      warning_details: [{ target, unit: 'u0', codes: ['identical'] }] });
+    expect(output.state[target].same).toEqual([unitHash(['json', 'name', '', name].join('\0'))]);
+  });
+
+  it('accepts an Arabic JSON plural without the English digit', () => {
+    write(source, { label: '1 item|{count} items' });
+    const target = 'i18n/ar/strings.json';
+    const text = 'عنصر واحد|{count} عنصر';
+    const output = apply({ ...entry, target, locale: 'ar', pending: [0] }, [result([text], target, 'ar')]);
+    expect(output.report).toMatchObject({ applied: 1, rejected: 0 });
+    expect(JSON.parse(output.writes[0].content)).toEqual({ label: text });
   });
 
   it('rebuilds messages, keeps descriptions, and accepts reordered placeholder multisets', () => {
@@ -277,7 +333,6 @@ describe('applyResults JSON', () => {
   it.each([
     ['Hallo {name}: {count}', 'placeholders'], ['Hallo {other}, {name}: {count}', 'placeholders'],
     [' ', 'empty'], ['WooCommerce POS {name}, {name}: {count}', 'WooCommerce POS'],
-    [english.label.message, 'english'],
   ])('rejects invalid JSON translations (%s) and stores accepted partials', (text, reason) => {
     write(source, english);
     const output = apply(entry, [result([text, 'API', 'Nächste Seite'], target)]);
