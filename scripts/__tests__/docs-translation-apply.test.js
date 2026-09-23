@@ -2,10 +2,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { applyResults, runCli } = require('../docs-translation/apply');
+const { applyResults, failedAttemptsState, runCli } = require('../docs-translation/apply');
 const { parseDocsMdxUnits } = require('../docs-translation/mdx-units');
 const { decodeDocsUnitSource, unitKey } = require('../docs-translation/recover');
-const { readState, writeState, unitHash, STATE_PATH } = require('../docs-translation/state');
+const { readState, serializeState, writeState, unitHash, STATE_PATH } = require('../docs-translation/state');
 const {
   LOCALES, sourceToTranslatedPath, findUntranslatedProps, findLeftoverProse,
   findMissingSections, isStub,
@@ -379,7 +379,46 @@ describe('applyResults JSON', () => {
   });
 });
 
+describe('failedAttemptsState', () => {
+  it.each([false, true])('increments every pending attempt without changing other state or disk (existing: %s)', existing => {
+    siblings();
+    write(TARGET, GERMAN);
+    const other = sourceToTranslatedPath(SOURCE, 'fr');
+    const saved = { source: 'old-blob', same: [mdxHash(2)], partial: { previous: 'Früher' }, attempts: { [mdxHash(0)]: 2, previous: 4 } };
+    const state = { [other]: { source: 'other-blob', same: ['same'], partial: { kept: 'texte' }, attempts: { kept: 3 } }, ...(existing ? { [TARGET]: saved } : {}) };
+    writeState(rootDir, state);
+    const before = read(STATE_PATH);
+    const plan = { targets: [ENTRY, { ...ENTRY, target: other, locale: 'fr', status: 'record', pending: [] }] };
+    expect(apply(ENTRY, [result()]).report.applied).toBe(ENTRY.pending.length);
+    const output = failedAttemptsState({ rootDir, plan });
+    expect(output).toEqual({ ...state, [TARGET]: { ...(existing ? saved : {}), attempts: {
+      ...(existing ? saved.attempts : {}),
+      ...Object.fromEntries(ENTRY.pending.map(index => [mdxHash(index), (existing ? saved.attempts[mdxHash(index)] ?? 0 : 0) + 1])),
+    } } });
+    expect(read(STATE_PATH)).toBe(before);
+    expect(read(TARGET)).toBe(GERMAN);
+  });
+});
+
 describe('apply CLI', () => {
+  it('writes only the serialized failed-state without results or reports and prints nothing', () => {
+    write(TARGET, GERMAN);
+    writeState(rootDir, { [TARGET]: { source: 'old-blob', partial: { previous: 'Früher' }, attempts: { [mdxHash(0)]: 1 } } });
+    const before = read(STATE_PATH);
+    const plan = { targets: [ENTRY] };
+    write('input/plan.json', plan);
+    const output = spawnSync(process.execPath, [path.resolve(__dirname, '../docs-translation/apply.js'),
+      '--root', rootDir, '--plan', path.join(rootDir, 'input/plan.json'), '--failed-state', path.join(rootDir, 'output/failed.json')], { encoding: 'utf8' });
+    expect(output.status).toBe(0);
+    expect(output.stdout).toBe('');
+    expect(output.stderr).toBe('');
+    expect(read('output/failed.json')).toBe(serializeState(failedAttemptsState({ rootDir, plan })));
+    expect(read(STATE_PATH)).toBe(before);
+    expect(read(TARGET)).toBe(GERMAN);
+    expect(fs.readdirSync(rootDir).sort()).toEqual(['i18n', 'input', 'output', 'versioned_docs']);
+    expect(fs.readdirSync(path.join(rootDir, 'output'))).toEqual(['failed.json']);
+  });
+
   it('writes translations, state, JSON and Markdown reports and prints one summary line', () => {
     siblings();
     write('input/plan.json', { targets: [ENTRY] });

@@ -5,7 +5,7 @@ const path = require('path');
 const { parseDocsMdxUnits, applyDocsMdxTranslations } = require('./mdx-units');
 const { parseJsonUnits, applyJsonTranslations } = require('./json-units');
 const { decodeDocsUnitSource, unitKey, STRUCTURAL_ISSUE_CODES, tableCellCount } = require('./recover');
-const { readState, writeState, unitHash } = require('./state');
+const { readState, serializeState, writeState, unitHash } = require('./state');
 const {
   applyStableHeadingAnchorsFromSource, missingPreservedHeadingAnchors,
   restoreNonBreadcrumbInlineCodeSpans,
@@ -169,21 +169,34 @@ function applyResults({ rootDir, plan, results }) {
   return { writes, state, report };
 }
 
+function failedAttemptsState({ rootDir, plan }) {
+  const state = readState(rootDir);
+  for (const [target, saved] of Object.entries(applyResults({ rootDir, plan, results: [] }).state)) {
+    if (saved.attempts) (state[target] ??= {}).attempts = saved.attempts;
+  }
+  return state;
+}
+
 function runCli(argv) {
   const options = { '--root': path.resolve(__dirname, '../..') };
   const required = ['--plan', '--results', '--report', '--report-md'];
   for (let index = 0; index < argv.length; index += 1) {
     const option = argv[index];
-    if (![...required, '--root'].includes(option)) throw new Error(`Unknown argument: ${option}`);
+    if (![...required, '--root', '--failed-state'].includes(option)) throw new Error(`Unknown argument: ${option}`);
     const value = argv[++index];
     if (!value || value.startsWith('-')) throw new Error(`Missing value for ${option}`);
     options[option] = path.resolve(value);
   }
-  for (const option of required) {
+  for (const option of options['--failed-state'] ? ['--plan'] : required) {
     if (!options[option]) throw new Error(`${option} is required`);
   }
   const rootDir = options['--root'];
   const plan = JSON.parse(fs.readFileSync(options['--plan'], 'utf8'));
+  if (options['--failed-state']) {
+    fs.mkdirSync(path.dirname(options['--failed-state']), { recursive: true });
+    fs.writeFileSync(options['--failed-state'], serializeState(failedAttemptsState({ rootDir, plan })));
+    return;
+  }
   const results = [];
   const resultsDir = options['--results'];
   const files = fs.existsSync(resultsDir) ? fs.readdirSync(resultsDir).sort() : [];
@@ -231,4 +244,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { applyResults, runCli };
+module.exports = { applyResults, failedAttemptsState, runCli };
