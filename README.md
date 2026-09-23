@@ -90,7 +90,27 @@ pnpm start      # local dev server with hot reload
 3. Update `versioned_sidebars/version-1.x-sidebars.json` when adding or moving pages. The live `1.x` docs are served with `includeCurrentVersion: false`, so new MDX files under `versioned_docs/version-1.x/` are omitted from navigation until this checked-in sidebar JSON is updated or regenerated.
 4. Reuse the MDX components in `src/components/` (e.g. `<Steps>`, `<LinkCard>`, `<ProBadge>`) for consistent styling.
 
-Translations are **not** edited by hand per page — source (English) content is authored here and the other locales in `i18n/` are produced by the automated translation workflows.
+Source (English) content is authored here; translations in `i18n/` are produced by `scripts/translate-docs-local.sh`, run daily on the Mac mini with local subscription models (no API keys in Actions).
+
+## Translation pipeline
+
+Each run syncs its own `.claude/worktrees/docs-translate` worktree, installs dependencies, regenerates English UI strings, and builds a worklist capped at 1,500 units by default (`--max-units N`). It then:
+
+1. Prints the work summary and exits for `--dry-run`, without calling a model or applying results.
+2. Skips every model call when there are no units to translate; refresh and state-only work still runs through apply.
+3. Translates each packet with Codex `gpt-6-luna` and reviews with `gpt-6-sol` (Claude Sonnet for both with `--translator claude`), continuing after failed or timed-out calls.
+4. Applies results and rebuilds pages; exits 0 if there is nothing to translate, or 1 if no translations were accepted.
+5. Commits changes locally, then runs the frontmatter, completeness, and translation-safety CI gates; any failure prevents pushing.
+6. Builds the PR body with applied units, files, locales, models, deferred units, and the Markdown report.
+7. Pushes a `docs-translate/<UTC timestamp>` branch and opens a PR labelled `docs-translate`, or updates and comments on the open PR; never pushes to `main` or the base branch.
+
+```bash
+scripts/translate-docs-local.sh
+scripts/translate-docs-local.sh --dry-run
+scripts/translate-docs-local.sh --locale de --translator claude
+```
+
+Translation knowledge lives in `scripts/translation-context.md`, `scripts/docs-translation/glossary.json`, `scripts/docs-translation/locale-context/`, and `i18n/translation-state.json`.
 
 ## 🚀 Deployment
 
