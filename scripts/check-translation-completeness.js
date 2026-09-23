@@ -731,6 +731,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
 }
 
 module.exports = {
+  AUDIT_EXCLUDE_DEFAULT,
   AUDIT_DEPRIORITIZE_DEFAULT,
   LOCALES,
   TEXT_PROPS,
