@@ -4,18 +4,13 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+// The script uses macOS /usr/bin/lockf and runs only on the Mac mini.
+describe.skipIf(process.platform !== 'darwin')('translate-docs-local.sh', () => {
 // Each integration case starts many CLI processes on the shared Mac mini.
 vi.setConfig({ testTimeout: 25000 });
 
 const script = path.resolve(__dirname, '../translate-docs-local.sh');
-const source = fs.readFileSync(script, 'utf8');
-const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'translate-docs-local-')));
-const bin = path.join(root, 'bin');
-const wt = path.join(root, '.claude/worktrees/docs-translate');
-const copy = path.join(root, 'translate-docs-local.sh');
-const callsFile = path.join(root, 'calls.jsonl');
-const env = { ...process.env, TMPDIR: root, TRANSLATE_REPO_ROOT: root };
-for (const key of ['TRANSLATE_LOCAL_REEXEC', 'TRANSLATE_TRANSLATOR', 'TRANSLATE_MODEL', 'TRANSLATE_REVIEW_MODEL', 'TRANSLATE_EFFORT']) delete env[key];
+let source, root, bin, wt, copy, callsFile, env;
 const readCalls = () => fs.readFileSync(callsFile, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
 const isCall = (call, tool, ...args) => call.tool === tool && args.every(arg => call.args.includes(arg));
 const models = result => result.calls.filter(c => ['codex', 'claude'].includes(c.tool));
@@ -31,6 +26,14 @@ function run(config = {}, args = [], overrides = {}) {
 }
 
 beforeAll(() => {
+  source = fs.readFileSync(script, 'utf8');
+  root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'translate-docs-local-')));
+  bin = path.join(root, 'bin');
+  wt = path.join(root, '.claude/worktrees/docs-translate');
+  copy = path.join(root, 'translate-docs-local.sh');
+  callsFile = path.join(root, 'calls.jsonl');
+  env = { ...process.env, TMPDIR: root, TRANSLATE_REPO_ROOT: root };
+  for (const key of ['TRANSLATE_LOCAL_REEXEC', 'TRANSLATE_TRANSLATOR', 'TRANSLATE_MODEL', 'TRANSLATE_REVIEW_MODEL', 'TRANSLATE_EFFORT']) delete env[key];
   for (const dir of [bin, path.join(wt, 'scripts/docs-translation')]) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(wt, 'scripts/docs-translation/translate-prompt.md'), 'TRANSLATE\n## Packets for this run\n');
   fs.writeFileSync(path.join(wt, 'scripts/docs-translation/review-prompt.md'), 'REVIEW\n## Packets for this run\n');
@@ -253,4 +256,5 @@ it('exits safely while another run holds the real lock', () => {
   assert.match(locked.stdout, /already running/);
   assert.ok(!readCalls().some(c => isCall(c, 'git', 'reset') || ['codex', 'claude'].includes(c.tool)));
   assert.ok(fs.existsSync(path.join(root, '.claude/docs-translate.lock')));
+});
 });
