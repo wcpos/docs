@@ -2,6 +2,7 @@ import React from 'react';
 import Head from '@docusaurus/Head';
 import {useLocation} from '@docusaurus/router';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+import CopyPageButton from 'docusaurus-plugin-copy-page-button/react';
 import Layout from '@theme-original/DocItem/Layout';
 
 /**
@@ -40,6 +41,12 @@ export default function LayoutWrapper(props) {
       <Head>
         <link rel="alternate" type="text/markdown" href={mdHref} />
       </Head>
+      {/* Plugin auto-injection is off because it raced hydration. */}
+      <div id="copy-page-button-container" className="copy-page-button-row" style={{display: 'flex', justifyContent: 'flex-end'}}>
+        <CopyPageButton
+          enabledActions={['copy', 'view', 'chatgpt', 'claude', 'perplexity', 'gemini']}
+        />
+      </div>
       <Layout {...props} />
     </>
   );

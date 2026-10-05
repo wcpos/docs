@@ -1,8 +1,9 @@
 import React from 'react';
+import clsx from 'clsx';
 
 export default function StepCard({ number, title, children, isLast }) {
   return (
-    <div className={`step-card ${isLast ? 'step-card--last' : ''}`}>
+    <div className={clsx('step-card', isLast && 'step-card--last')}>
       <div className="step-card__timeline">
         <div className="step-card__number">{number}</div>
         {!isLast && <div className="step-card__line" />}

@@ -419,6 +419,8 @@ module.exports = {
       'docusaurus-plugin-copy-page-button',
       {
         enabledActions: ['copy', 'view', 'chatgpt', 'claude', 'perplexity', 'gemini'],
+        // rendered in src/theme/DocItem/Layout: auto-injection raced hydration (React #418)
+        injectButton: false,
       },
     ],
   ],
