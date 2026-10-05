@@ -119,3 +119,19 @@ describe('published versions are translated for every locale', () => {
     });
   }
 });
+
+describe('default social card', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  it('points themeConfig.image at a 1200x630 PNG in static/', () => {
+    expect(config.themeConfig.image).toBe('img/social-card.png');
+    const png = fs.readFileSync(
+      path.join(__dirname, '../../static', config.themeConfig.image)
+    );
+    // PNG signature, then the IHDR width and height (big-endian at bytes 16 and 20).
+    expect(png.subarray(1, 4).toString('ascii')).toBe('PNG');
+    expect(png.readUInt32BE(16)).toBe(1200);
+    expect(png.readUInt32BE(20)).toBe(630);
+  });
+});

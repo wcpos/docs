@@ -31,6 +31,9 @@ module.exports = {
   projectName: 'docs', // Usually your repo name.
   themeConfig: {
      /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
+    // Default og:image / twitter:image for every page (1200x630). Source:
+    // static/img/social-card.svg; regenerate the PNG whenever the SVG changes.
+    image: 'img/social-card.png',
     docs: {
       sidebar: {
         hideable: false,
