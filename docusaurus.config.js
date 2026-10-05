@@ -315,18 +315,21 @@ module.exports = {
           // scripts/__tests__/docusaurus-config.test.js fails this change until
           // every locale has 2.x translated.
           onlyIncludeVersions: ['1.x', '0.4.x'],
-          // versions: {
-          //   '1.0.x': {
-          //     label: '1.0.x',
-          //     path: '1.0.x',
-          //   },
-          // },
+          // 0.4.x is the 2016-era product: kept reachable for old installs, but out of
+          // search (robots noindex) and out of sitemap.xml.
+          versions: {
+            '0.4.x': {noIndex: true},
+          },
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl: 'https://github.com/wcpos/docs/edit/main/',
         },
         blog: false,
         theme: {
           customCss: require.resolve('./src/css/custom.css'),
+        },
+        sitemap: {
+          // Belt and braces with versions['0.4.x'].noIndex: no legacy URLs in sitemap.xml.
+          ignorePatterns: ['/0.4.x/**', '/*/0.4.x/**'],
         },
         // Analytics: PostHog (self-hosted) via ./src/analytics/posthog.js,
         // replacing Google Analytics. See plans/2026-06-16-posthog-docs-analytics.md.
