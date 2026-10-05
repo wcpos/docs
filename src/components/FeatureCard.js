@@ -13,7 +13,7 @@ export default function FeatureCard({ icon, title, children, variant }) {
           <Icon name={icon} size="lg" />
         </div>
       )}
-      <h4 className="feature-card__title">{title}</h4>
+      <h3 className="feature-card__title">{title}</h3>
       <div className="feature-card__description">{children}</div>
     </div>
   );
