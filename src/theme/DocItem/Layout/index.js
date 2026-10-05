@@ -42,7 +42,7 @@ export default function LayoutWrapper(props) {
         <link rel="alternate" type="text/markdown" href={mdHref} />
       </Head>
       {/* Plugin auto-injection is off because it raced hydration. */}
-      <div id="copy-page-button-container" className="copy-page-button-row" style={{display: 'flex', justifyContent: 'flex-end'}}>
+      <div id="copy-page-button-container" className="copy-page-button-row">
         <CopyPageButton
           enabledActions={['copy', 'view', 'chatgpt', 'claude', 'perplexity', 'gemini']}
         />
