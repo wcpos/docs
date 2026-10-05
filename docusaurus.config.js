@@ -14,6 +14,10 @@ module.exports = {
   tagline: '',
   url: 'https://docs.wcpos.com',
   baseUrl: '/',
+  // Matches vercel.json ("trailingSlash": false): hub pages are emitted as
+  // /payment/gateways (not /payment/gateways/), so Vercel serves them without a
+  // 308 and canonical/og:url name the final URL.
+  trailingSlash: false,
   onBrokenLinks: 'throw',
   favicon: 'img/favicon.ico',
   markdown: {
