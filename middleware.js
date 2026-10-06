@@ -121,8 +121,19 @@ function readCookie(cookieHeader, name) {
  * Locale-home path (e.g. "/de") the site root should redirect to, or null to
  * serve the default-locale homepage. Explicit cookie preference beats
  * Accept-Language; an unknown cookie value is ignored.
+ *
+ * Preview deployments build only the English locale (vercel.json
+ * buildCommand), so on them the locale homes do not exist and a redirect
+ * would land a reviewer with a German browser on a 404. Never redirect there.
  */
-export function resolveRootRedirect({ cookieHeader, acceptLanguage }) {
+export function resolveRootRedirect({
+  cookieHeader,
+  acceptLanguage,
+  vercelEnv = process.env.VERCEL_ENV,
+}) {
+  if (vercelEnv === 'preview') {
+    return null;
+  }
   const preferred = readCookie(cookieHeader, LOCALE_PREFERENCE_COOKIE);
   if (preferred && LOCALES.includes(preferred)) {
     return preferred === DEFAULT_LOCALE ? null : `/${preferred}`;
