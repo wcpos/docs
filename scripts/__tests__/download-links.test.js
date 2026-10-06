@@ -45,7 +45,7 @@ describe('Desktop download links', () => {
       { cwd: projectRoot, nodir: true }
     );
     const missingPages = pages.filter(
-      (filePath) => !extractLinkTargets(readProjectFile(filePath)).includes(linuxUrl)
+      (filePath) => !extractLinkTargets(readProjectFile(filePath)).some((target) => target === linuxUrl)
     );
 
     expect(pages).toHaveLength(26);
