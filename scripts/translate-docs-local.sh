@@ -98,6 +98,12 @@ fi
 pnpm install --prefer-offline --silent
 pnpm write-translations --locale en >/dev/null
 node scripts/sync-translations.js --clean >/dev/null
+# Pages in first.txt go ahead of the backlog on every run.
+if [ -f scripts/docs-translation/first.txt ]; then
+  while IFS= read -r FIRST || [ -n "$FIRST" ]; do
+    case "$FIRST" in ''|'#'*) ;; *) WORKLIST_ARGS+=(--first "$FIRST") ;; esac
+  done < scripts/docs-translation/first.txt
+fi
 SUMMARY=$(node scripts/docs-translation/worklist.js "${WORKLIST_ARGS[@]}" --max-units "$MAX_UNITS")
 PLAN_SUM=$(shasum -a 256 .translate/plan.json | cut -d' ' -f1)
 git add -A i18n
@@ -126,22 +132,45 @@ else
 fi
 mkdir -p .translate/results .translate/logs
 REVIEW_USED=skipped
+translate_packet() { # $1 = packet name; reviewed only when the translator wrote a results file
+  cat scripts/docs-translation/translate-prompt.md > .translate/prompt
+  printf '\n- .translate/work/%s.json -> .translate/results/%s.json\n' "$1" "$1" >> .translate/prompt
+  if ! run_with_timeout "${COMMAND[@]}" < .translate/prompt > ".translate/logs/$1.log" 2>&1; then
+    log "packet $1 failed or timed out; continuing"
+  fi
+  if [ "$REVIEW" -eq 1 ] && [ -f ".translate/results/$1.json" ]; then
+    REVIEW_USED=$REVIEW_MODEL
+    cat scripts/docs-translation/review-prompt.md > .translate/prompt
+    printf '\n- .translate/work/%s.json -> .translate/results/%s.json\n' "$1" "$1" >> .translate/prompt
+    if ! run_with_timeout "${REVIEW_COMMAND[@]}" < .translate/prompt > ".translate/logs/review-$1.log" 2>&1; then
+      log "review $1 failed or timed out; continuing"
+    fi
+  fi
+}
+split_packet() { # $1 = packet name; writes <name>-a and <name>-b with the first and second half of its files, printing each name written
+  local count half
+  count=$(jq '.files // {} | length' ".translate/work/$1.json")
+  half=$(( (count + 1) / 2 ))
+  if [ "$count" -gt 0 ]; then
+    jq --argjson h "$half" '.files |= (to_entries[:$h] | from_entries) | del(.counts)' ".translate/work/$1.json" > ".translate/work/$1-a.json"
+    printf '%s\n' "$1-a"
+  fi
+  if [ "$count" -gt 1 ]; then
+    jq --argjson h "$half" '.files |= (to_entries[$h:] | from_entries) | del(.counts)' ".translate/work/$1.json" > ".translate/work/$1-b.json"
+    printf '%s\n' "$1-b"
+  fi
+}
 if [ "$TOTAL" -gt 0 ]; then
   for PACKET in .translate/work/*.json; do
     [ -f "$PACKET" ] || continue
     PACKET=$(basename "$PACKET" .json)
-    cat scripts/docs-translation/translate-prompt.md > .translate/prompt
-    printf '\n- .translate/work/%s.json -> .translate/results/%s.json\n' "$PACKET" "$PACKET" >> .translate/prompt
-    if ! run_with_timeout "${COMMAND[@]}" < .translate/prompt > ".translate/logs/$PACKET.log" 2>&1; then
-      log "packet $PACKET failed or timed out; continuing"
-    fi
-    if [ "$REVIEW" -eq 1 ] && [ -f ".translate/results/$PACKET.json" ]; then
-      REVIEW_USED=$REVIEW_MODEL
-      cat scripts/docs-translation/review-prompt.md > .translate/prompt
-      printf '\n- .translate/work/%s.json -> .translate/results/%s.json\n' "$PACKET" "$PACKET" >> .translate/prompt
-      if ! run_with_timeout "${REVIEW_COMMAND[@]}" < .translate/prompt > ".translate/logs/review-$PACKET.log" 2>&1; then
-        log "review $PACKET failed or timed out; continuing"
-      fi
+    translate_packet "$PACKET"
+    if [ ! -f ".translate/results/$PACKET.json" ]; then
+      # A packet without results is retried once, split in half; the halves are not split again.
+      for HALF in $(split_packet "$PACKET"); do
+        log "packet $PACKET had no results; retrying as $HALF"
+        translate_packet "$HALF"
+      done
     fi
   done
 fi
@@ -151,13 +180,16 @@ git clean -fdq
 node scripts/docs-translation/apply.js --plan .translate/plan.json --failed-state .translate/failed-state.json
 APPLY_SUMMARY=$(node scripts/docs-translation/apply.js --plan .translate/plan.json --results .translate/results --report .translate/report.json --report-md .translate/report.md)
 log "$APPLY_SUMMARY"
+APPLIED=$(printf '%s' "$APPLY_SUMMARY" | jq -r .applied)
+REJECTED=$(printf '%s' "$APPLY_SUMMARY" | jq -r .rejected)
+NO_RESULT=$(printf '%s' "$APPLY_SUMMARY" | jq -r .missing)
+DEFERRED_UNITS=$(printf '%s' "$SUMMARY" | jq -r .deferred_units)
+log "units: planned $TOTAL, done $APPLIED, rejected $REJECTED, no result $NO_RESULT, deferred $DEFERRED_UNITS"
 if [ -z "$(git status --porcelain -- i18n)" ]; then
   if [ "$TOTAL" -eq 0 ]; then log "nothing to translate"; exit 0; fi
   fail "no translations accepted"
 fi
-APPLIED=$(printf '%s' "$APPLY_SUMMARY" | jq -r .applied)
 N_FILES=$(printf '%s' "$APPLY_SUMMARY" | jq -r .files)
-DEFERRED_UNITS=$(printf '%s' "$SUMMARY" | jq -r .deferred_units)
 git add i18n
 LOCALES=$(git diff --cached --name-only -- i18n | jq -Rsr '[split("\n")[] | split("/") | select(length > 2 and .[1] != "en") | .[1]] | unique | join(", ")')
 git commit -m "docs(i18n): translate $APPLIED units in $N_FILES files"
@@ -185,7 +217,7 @@ if ! BASE_REF="origin/$BASE" node scripts/validate-frontmatter.js --check --chan
   fail "validation failed (commit $FAILED_COMMIT); attempts recorded on $BRANCH"
 fi
 {
-  printf 'Applied %s units in %s files (%s); translator: %s (%s); review: %s; deferred: %s units.\n\n' "$APPLIED" "$N_FILES" "$LOCALES" "$TRANSLATOR" "$MODEL" "$REVIEW_USED" "$DEFERRED_UNITS"
+  printf 'Applied %s of %s planned units in %s files (%s); rejected: %s; no result: %s; translator: %s (%s); review: %s; deferred: %s units.\n\n' "$APPLIED" "$TOTAL" "$N_FILES" "$LOCALES" "$REJECTED" "$NO_RESULT" "$TRANSLATOR" "$MODEL" "$REVIEW_USED" "$DEFERRED_UNITS"
   cat .translate/report.md
   printf '\nGenerated by scripts/translate-docs-local.sh at %s.\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > .translate/pr-body.md
