@@ -21,7 +21,9 @@ const LOCALE_NAMES = {
   'hi-IN': 'Hindi (India)', 'zh-CN': 'Chinese (Simplified)',
 };
 
-function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packetMaxChars = PACKET_MAX_CHARS }) {
+function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packetMaxChars = PACKET_MAX_CHARS, first = [] }) {
+  // --first: an exact English source path, or a directory prefix.
+  const isFirst = source => first.some(p => source === p || source.startsWith(p.endsWith('/') ? p : `${p}/`));
   const state = readState(rootDir);
   const gitCache = new Map();
   function git(args, allowFailure = false) {
@@ -154,7 +156,8 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
     if (group.targets.length) groups.push(group);
   }
 
-  groups.sort((a, b) => a.priority - b.priority || (a.source < b.source ? -1 : a.source > b.source ? 1 : 0));
+  groups.sort((a, b) => Number(!isFirst(a.source)) - Number(!isFirst(b.source))
+    || a.priority - b.priority || (a.source < b.source ? -1 : a.source > b.source ? 1 : 0));
   const taken = [];
   let deferred = false;
   for (const [index, group] of groups.entries()) {
@@ -216,7 +219,7 @@ function runCli(argv) {
   let planFile;
   for (let i = 0; i < argv.length; i += 1) {
     const option = argv[i];
-    if (!['--out', '--plan', '--locale', '--max-units', '--root'].includes(option)) {
+    if (!['--out', '--plan', '--locale', '--first', '--max-units', '--root'].includes(option)) {
       throw new Error(`Unknown argument: ${option}`);
     }
     const value = argv[++i];
@@ -224,6 +227,7 @@ function runCli(argv) {
     if (option === '--out') outDir = path.resolve(value);
     if (option === '--plan') planFile = path.resolve(value);
     if (option === '--root') args.rootDir = path.resolve(value);
+    if (option === '--first') (args.first ??= []).push(value);
     if (option === '--locale') {
       if (!LOCALES.includes(value)) throw new Error(`Unknown locale: ${value}`);
       (args.locales ??= []).push(value);

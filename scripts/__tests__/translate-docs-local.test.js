@@ -445,4 +445,11 @@ it('falls back to the fixed directories when the caller PATH has no gh', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.ok(['/opt/homebrew/bin/gh', path.join(homeDir, '.local/bin/gh')].includes(result.stdout.trim()));
 });
+
+it('passes repeated --first paths to the worklist on a dry run', () => {
+  const result = run({ counts: [] }, ['--dry-run', '--first', 'versioned_docs/version-1.x/error-codes/AUTH131.mdx', '--first', 'versioned_docs/version-1.x/support']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args,
+    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--first', 'versioned_docs/version-1.x/error-codes/AUTH131.mdx', '--first', 'versioned_docs/version-1.x/support', '--max-units', '1500']);
+});
 });

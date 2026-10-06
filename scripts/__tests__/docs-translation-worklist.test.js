@@ -388,6 +388,25 @@ describe('ordering, limits, and packets', () => {
     expect(schedule({ maxUnits: 2 }).summary).toMatchObject({ total: 2, deferred_units: 0 });
   });
 
+  it('takes --first pages ahead of higher-priority groups under the cap', () => {
+    addDoc('versioned_docs/version-1.x/a-first.mdx', PARAGRAPH, null);
+    addDoc('versioned_docs/version-1.x/z-new/page.mdx', PARAGRAPH, null);
+    commitFixtures();
+    expect(schedule({ maxUnits: 1 }).plan.targets.map(e => e.source)).toEqual(['versioned_docs/version-1.x/a-first.mdx']);
+    expect(schedule({ maxUnits: 1, first: ['versioned_docs/version-1.x/z-new'] }).plan.targets.map(e => e.source))
+      .toEqual(['versioned_docs/version-1.x/z-new/page.mdx']);
+    expect(schedule({ maxUnits: 1, first: ['versioned_docs/version-1.x/z-new/page.mdx'] }).plan.targets.map(e => e.source))
+      .toEqual(['versioned_docs/version-1.x/z-new/page.mdx']);
+  });
+
+  it('does not treat --first as a bare string prefix', () => {
+    addDoc('versioned_docs/version-1.x/a-first.mdx', PARAGRAPH, null);
+    addDoc('versioned_docs/version-1.x/z-new/page.mdx', PARAGRAPH, null);
+    commitFixtures();
+    expect(schedule({ maxUnits: 1, first: ['versioned_docs/version-1.x/z-ne'] }).plan.targets.map(e => e.source))
+      .toEqual(['versioned_docs/version-1.x/a-first.mdx']);
+  });
+
   it('uses all 11 locales by default', () => {
     addDoc(DOC, PARAGRAPH, null);
     commitFixtures();
@@ -439,9 +458,22 @@ describe('worklist CLI', () => {
     expect(JSON.parse(fs.readFileSync(planFile, 'utf8'))).toEqual({ targets: [], quarantined: [] });
   });
 
+  it('writes the plan with --first pages taken ahead of other groups', () => {
+    const first = 'versioned_docs/version-1.x/z-new/page.mdx';
+    addDoc(DOC, PARAGRAPH, null);
+    addDoc(first, PARAGRAPH, null);
+    commitFixtures();
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const out = path.join(rootDir, 'out');
+    const planFile = path.join(rootDir, 'plan.json');
+    runCli(['--root', rootDir, '--out', out, '--plan', planFile, '--locale', 'de', '--max-units', '1', '--first', first]);
+    expect(JSON.parse(fs.readFileSync(planFile, 'utf8'))).toEqual(schedule({ maxUnits: 1, first: [first] }).plan);
+  });
+
   it.each([
     [[], '--out is required'], [['--out', 'out'], '--plan is required'],
     [['--locale', 'xx'], 'Unknown locale: xx'], [['--out'], 'Missing value for --out'],
+    [['--first'], 'Missing value for --first'],
     [['--wat'], 'Unknown argument: --wat'],
     ...['0', '1.5', 'NaN', '9007199254740992'].map(value => [['--max-units', value], '--max-units must be a positive integer']),
   ])('rejects invalid arguments %j', (args, message) => {
