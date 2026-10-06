@@ -13,6 +13,8 @@ const {
 } = require('../check-translation-completeness');
 
 const PACKET_MAX_CHARS = 30000;
+// gpt-6-luna stopped on 7 of 11 packets of 76-109 files in the 2026-10-06 run; keep packets small.
+const PACKET_MAX_FILES = 20;
 // Stop spending model budget on units that fail three runs for the same English hash.
 const QUARANTINE_AFTER = 3;
 const LOCALE_NAMES = {
@@ -21,7 +23,7 @@ const LOCALE_NAMES = {
   'hi-IN': 'Hindi (India)', 'zh-CN': 'Chinese (Simplified)',
 };
 
-function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packetMaxChars = PACKET_MAX_CHARS, first = [] }) {
+function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packetMaxChars = PACKET_MAX_CHARS, packetMaxFiles = PACKET_MAX_FILES, first = [] }) {
   // --first: an exact English source path, or a directory prefix.
   const isFirst = source => first.some(p => source === p || source.startsWith(p.endsWith('/') ? p : `${p}/`));
   const state = readState(rootDir);
@@ -179,7 +181,7 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
     let packet;
     for (const { entry, units, exists } of taken.filter(item => item.entry.locale === locale)) {
       const chars = units.reduce((sum, unit) => sum + unit.source.length, 0);
-      if (!packet || packet.counts.chars + chars > packetMaxChars) {
+      if (!packet || packet.counts.chars + chars > packetMaxChars || packet.counts.files >= packetMaxFiles) {
         const notes = `scripts/docs-translation/locale-context/${locale}.md`;
         packet = {
           locale, locale_name: LOCALE_NAMES[locale],
@@ -266,4 +268,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { buildWorklist, runCli, PACKET_MAX_CHARS, QUARANTINE_AFTER };
+module.exports = { buildWorklist, runCli, PACKET_MAX_CHARS, PACKET_MAX_FILES, QUARANTINE_AFTER };

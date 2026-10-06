@@ -2,7 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
-const { buildWorklist, runCli, PACKET_MAX_CHARS, QUARANTINE_AFTER } = require('../docs-translation/worklist');
+const { buildWorklist, runCli, PACKET_MAX_CHARS, PACKET_MAX_FILES, QUARANTINE_AFTER } = require('../docs-translation/worklist');
 const { applyResults } = require('../docs-translation/apply');
 const { recoverTranslations } = require('../docs-translation/recover');
 const { parseJsonUnits, applyJsonTranslations } = require('../docs-translation/json-units');
@@ -428,6 +428,14 @@ describe('ordering, limits, and packets', () => {
       'versioned_docs/version-1.x/a.mdx', 'versioned_docs/version-1.x/b.mdx',
     ]);
     expect(schedule({ packetMaxChars: 1 }).packets.map(packet => packet.counts.chars)).toEqual([11, 11, 11]);
+  });
+
+  it('starts a new packet after packetMaxFiles files', () => {
+    for (const name of ['c', 'a', 'b']) addDoc(`versioned_docs/version-1.x/${name}.mdx`, PARAGRAPH, null);
+    commitFixtures();
+    expect(PACKET_MAX_FILES).toBe(20);
+    expect(schedule({ packetMaxFiles: 2 }).packets.map(packet => packet.counts.files)).toEqual([2, 1]);
+    expect(schedule().packets.map(packet => packet.counts.files)).toEqual([3]);
   });
 });
 
