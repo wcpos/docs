@@ -73,6 +73,30 @@ describe('resolveRootRedirect', () => {
     ).toBe('/pt-BR');
   });
 
+  it('never redirects on preview deployments, which build only English', () => {
+    expect(
+      resolveRootRedirect({
+        cookieHeader: `${LOCALE_PREFERENCE_COOKIE}=de`,
+        acceptLanguage: 'de-DE,de;q=0.9',
+        vercelEnv: 'preview',
+      })
+    ).toBeNull();
+    expect(
+      resolveRootRedirect({
+        cookieHeader: '',
+        acceptLanguage: 'de-DE,de;q=0.9',
+        vercelEnv: 'production',
+      })
+    ).toBe('/de');
+    expect(
+      resolveRootRedirect({
+        cookieHeader: '',
+        acceptLanguage: 'de-DE,de;q=0.9',
+        vercelEnv: undefined,
+      })
+    ).toBe('/de');
+  });
+
   it('serves English when the browser prefers it or sends nothing', () => {
     expect(
       resolveRootRedirect({

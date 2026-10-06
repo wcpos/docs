@@ -35,19 +35,20 @@ describe('Vercel headers and build configuration', () => {
     expect(config.buildCommand).toContain('git fetch --unshallow');
     expect(config.buildCommand).toBe(
       "git fetch --unshallow --quiet || echo 'vercel build: could not unshallow; last-update dates may be wrong'; " +
-        'if [ "$VERCEL_ENV" = "production" ]; then npm run build; else npm run build -- --locale en; fi'
+        'if [ "$VERCEL_ENV" = "preview" ]; then npm run build -- --locale en; else npm run build; fi'
     );
   });
 
   // Every push to a PR branch gets a Vercel preview, and a full 12-locale
   // Docusaurus build takes 17-22 minutes on Vercel's Standard machine. Previews
   // exist for a visual look at the English pages; the all-locale build gate is
-  // .github/workflows/build.yml, which already runs on every PR. Production
-  // (`main`) must still build every locale.
+  // .github/workflows/build.yml, which already runs on every PR. Only the
+  // literal `preview` value selects the English-only build: production, and
+  // an unset VERCEL_ENV (system env vars not exposed), fail safe to all locales.
   it('builds only the English locale on preview deployments', () => {
     const [, buildStep] = config.buildCommand.split('; if ');
     expect(buildStep).toBe(
-      '[ "$VERCEL_ENV" = "production" ]; then npm run build; else npm run build -- --locale en; fi'
+      '[ "$VERCEL_ENV" = "preview" ]; then npm run build -- --locale en; else npm run build; fi'
     );
   });
 
