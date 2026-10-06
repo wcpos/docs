@@ -56,6 +56,7 @@ import {
   faDiscord,
   faWindows,
   faApple,
+  faLinux,
   faAndroid,
 } from '@fortawesome/free-brands-svg-icons';
 
@@ -118,6 +119,7 @@ const iconMap = {
   'download': faDownload,
   'windows': faWindows,
   'apple': faApple,
+  'linux': faLinux,
   'phone': faPhone,
   'android': faAndroid,
 };

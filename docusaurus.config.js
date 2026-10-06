@@ -235,8 +235,7 @@ module.exports = {
             },
             {
               label: 'WCPOS for Linux',
-              // The linux-x64 redirect on updates.wcpos.com 404s (2026-10-05 audit); releases page until it is fixed.
-              href: 'https://github.com/wcpos/electron/releases',
+              href: 'https://updates.wcpos.com/v1/electron/download/linux-x64',
             },
             {
               label: 'WCPOS for iOS & iPad',
