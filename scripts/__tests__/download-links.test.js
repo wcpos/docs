@@ -5,10 +5,10 @@ const config = require('../../docusaurus.config.js');
 
 const projectRoot = path.join(__dirname, '..', '..');
 const linuxUrl = 'https://updates.wcpos.com/v1/electron/download/linux-x64';
-// A link target, not a substring: href="<url>" in MDX or ](<url>) in Markdown.
-const linuxLinkPattern = new RegExp(
-  `(?:href="|\\]\\()${linuxUrl.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}[\")]`
-);
+// Every link target on a page: href="<url>" in MDX or ](<url>) in Markdown.
+function extractLinkTargets(content) {
+  return Array.from(content.matchAll(/href="([^"]+)"|\]\(([^)\s]+)\)/g), ([, href, markdown]) => href ?? markdown);
+}
 
 function readProjectFile(filePath) {
   return fs.readFileSync(path.join(projectRoot, filePath), 'utf8');
@@ -44,7 +44,9 @@ describe('Desktop download links', () => {
       '{versioned_docs/version-{1.x,2.x},i18n/*/docusaurus-plugin-content-docs/version-1.x}/getting-started/{index,installation}.mdx',
       { cwd: projectRoot, nodir: true }
     );
-    const missingPages = pages.filter((filePath) => !linuxLinkPattern.test(readProjectFile(filePath)));
+    const missingPages = pages.filter(
+      (filePath) => !extractLinkTargets(readProjectFile(filePath)).includes(linuxUrl)
+    );
 
     expect(pages).toHaveLength(26);
     expect(missingPages).toEqual([]);
