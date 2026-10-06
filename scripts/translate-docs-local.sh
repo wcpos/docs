@@ -32,6 +32,7 @@ while [ "$#" -gt 0 ]; do
     --no-review) REVIEW=0; shift ;;
     --base) BASE=$2; shift 2 ;;
     --locale) WORKLIST_ARGS+=(--locale "$2"); shift 2 ;;
+    --first) WORKLIST_ARGS+=(--first "$2"); shift 2 ;;
     --translator) TRANSLATOR=$2; shift 2 ;;
     --model) MODEL=$2; shift 2 ;;
     --review-model) REVIEW_MODEL=$2; shift 2 ;;
