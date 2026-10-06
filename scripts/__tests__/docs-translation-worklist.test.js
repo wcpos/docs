@@ -407,6 +407,19 @@ describe('ordering, limits, and packets', () => {
       .toEqual(['versioned_docs/version-1.x/a-first.mdx']);
   });
 
+  it('defers only a --first group that does not fit and keeps filling the run', () => {
+    addDoc('versioned_docs/version-1.x/a-small.mdx', PARAGRAPH, null);
+    addDoc('versioned_docs/version-1.x/b-big.mdx', `${PARAGRAPH}\n\nPrint a receipt for your customers.\n\nClose the register at the end of the day.\n`, null);
+    addDoc('versioned_docs/version-1.x/c-backlog.mdx', PARAGRAPH, null);
+    commitFixtures();
+    const sources = result => result.plan.targets.map(e => e.source);
+    const first = schedule({ maxUnits: 3, first: ['versioned_docs/version-1.x/a-small.mdx', 'versioned_docs/version-1.x/b-big.mdx'] });
+    expect(sources(first)).toEqual(['versioned_docs/version-1.x/a-small.mdx', 'versioned_docs/version-1.x/c-backlog.mdx']);
+    expect(first.summary.deferred_units).toBe(3);
+    // Backlog groups keep the stop rule: once one does not fit, later groups wait.
+    expect(sources(schedule({ maxUnits: 3 }))).toEqual(['versioned_docs/version-1.x/a-small.mdx']);
+  });
+
   it('uses all 11 locales by default', () => {
     addDoc(DOC, PARAGRAPH, null);
     commitFixtures();

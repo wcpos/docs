@@ -163,8 +163,10 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
   const taken = [];
   let deferred = false;
   for (const [index, group] of groups.entries()) {
-    if (index > 0 && summary.total + group.count > maxUnits) deferred = true;
-    if (deferred) {
+    const over = index > 0 && summary.total + group.count > maxUnits;
+    // A --first group that does not fit waits for a later run; it does not stop the run.
+    if (over && !isFirst(group.source)) deferred = true;
+    if (deferred || over) {
       summary.targets.deferred += group.targets.length;
       summary.deferred_units += group.count;
     } else {
