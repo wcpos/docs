@@ -1,7 +1,9 @@
 import React from 'react';
 import Head from '@docusaurus/Head';
+import {useDoc, useDocsVersion} from '@docusaurus/plugin-content-docs/client';
 import {useLocation} from '@docusaurus/router';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+import {isUntranslatedFallback} from '@site/src/utils/untranslatedFallback';
 import CopyPageButton from 'docusaurus-plugin-copy-page-button/react';
 import Layout from '@theme-original/DocItem/Layout';
 
@@ -23,6 +25,17 @@ import Layout from '@theme-original/DocItem/Layout';
 export default function LayoutWrapper(props) {
   const {pathname} = useLocation();
   const {i18n} = useDocusaurusContext();
+  const {metadata} = useDoc();
+  const version = useDocsVersion();
+  // English source served under a locale URL: keep it out of search and the
+  // locale sitemap. Versions that are noindex already (0.4.x) are left alone.
+  const noIndexFallback =
+    !version.noIndex &&
+    isUntranslatedFallback({
+      source: metadata.source,
+      currentLocale: i18n.currentLocale,
+      defaultLocale: i18n.defaultLocale,
+    });
 
   // URL prefixes served as a locale "home" directory: "/" for the default
   // locale, "/<localePath>/" for the others. Only these map to */index.md.
@@ -40,6 +53,7 @@ export default function LayoutWrapper(props) {
     <>
       <Head>
         <link rel="alternate" type="text/markdown" href={mdHref} />
+        {noIndexFallback && <meta name="robots" content="noindex" />}
       </Head>
       {/* Plugin auto-injection is off because it raced hydration. */}
       <div id="copy-page-button-container" className="copy-page-button-row">
