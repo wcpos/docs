@@ -49,7 +49,8 @@ case "$MAX_UNITS" in
   ''|*[!0-9]*) log "FAILED: max-units must be a positive integer"; log "FAILED: max-units must be a positive integer" >&2; exit 1 ;;
 esac
 if [ "$MAX_UNITS" -eq 0 ]; then log "FAILED: max-units must be positive"; log "FAILED: max-units must be positive" >&2; exit 1; fi
-PATH=/opt/homebrew/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH
+# Fallbacks go after the caller's PATH so a caller-chosen gh (the machine's credential shim) is never shadowed.
+PATH=$PATH:/opt/homebrew/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 export PATH
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=${TRANSLATE_REPO_ROOT:-}

@@ -418,4 +418,31 @@ it('exits safely while another run holds the real lock', () => {
   assert.ok(!readCalls().some(c => isCall(c, 'git', 'reset') || ['codex', 'claude'].includes(c.tool)));
   assert.ok(fs.existsSync(path.join(root, '.claude/docs-translate.lock')));
 });
+
+it('keeps a caller-chosen gh ahead of the fallback directories', () => {
+  const line = source.match(/^PATH=.*$/m)[0];
+  const shimDir = path.join(root, 'path-case/shim');
+  const homeDir = path.join(root, 'path-case/home');
+  for (const dir of [shimDir, path.join(homeDir, '.local/bin')]) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'gh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  }
+  const result = spawnSync('/bin/bash', ['-c', line + '\ncommand -v gh'], {
+    env: { PATH: shimDir + ':/usr/bin:/bin', HOME: homeDir }, encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), path.join(shimDir, 'gh'));
+});
+
+it('falls back to the fixed directories when the caller PATH has no gh', () => {
+  const line = source.match(/^PATH=.*$/m)[0];
+  const homeDir = path.join(root, 'fallback-case/home');
+  fs.mkdirSync(path.join(homeDir, '.local/bin'), { recursive: true });
+  fs.writeFileSync(path.join(homeDir, '.local/bin/gh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  const result = spawnSync('/bin/bash', ['-c', line + '\ncommand -v gh'], {
+    env: { PATH: '/usr/bin:/bin', HOME: homeDir }, encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(['/opt/homebrew/bin/gh', path.join(homeDir, '.local/bin/gh')].includes(result.stdout.trim()));
+});
 });
