@@ -18,6 +18,8 @@ module.exports = {
   // /payment/gateways (not /payment/gateways/), so Vercel serves them without a
   // 308 and canonical/og:url name the final URL.
   trailingSlash: false,
+  // One eager git read instead of one git log per file.
+  future: { experimental_vcs: 'default-v2' },
   onBrokenLinks: 'throw',
   favicon: 'img/favicon.ico',
   markdown: {
@@ -299,6 +301,8 @@ module.exports = {
         docs: {
           breadcrumbs: true,
           routeBasePath: '/',
+          // Feeds the sitemap lastmod.
+          showLastUpdateTime: true,
           lastVersion: '1.x',
           includeCurrentVersion: false,
           // 2.x is CUT BUT NOT BUILT. The next release renumbers 1.11 to 2.0 and
@@ -332,6 +336,7 @@ module.exports = {
           customCss: require.resolve('./src/css/custom.css'),
         },
         sitemap: {
+          lastmod: 'date',
           // Belt and braces with versions['0.4.x'].noIndex: no legacy URLs in sitemap.xml.
           ignorePatterns: ['/0.4.x/**', '/*/0.4.x/**'],
         },

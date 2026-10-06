@@ -1,5 +1,21 @@
 const config = require('../../docusaurus.config.js');
 
+describe('git-backed sitemap freshness', () => {
+  const preset = config.presets.find(
+    ([name]) => name === '@docusaurus/preset-classic'
+  )[1];
+
+  it('uses the eager VCS preset', () => {
+    expect(config.future.experimental_vcs).toBe('default-v2');
+  });
+
+  it('provides last-update times for sitemap dates', () => {
+    expect(preset.docs.showLastUpdateTime).toBe(true);
+    expect(preset.sitemap.lastmod).toBe('date');
+    expect(preset.sitemap.ignorePatterns).toContain('/0.4.x/**');
+  });
+});
+
 describe('docusaurus locale configuration', () => {
   it('labels the English locale as English in the language menu', () => {
     expect(config.i18n.localeConfigs.en.label).toBe('English');
