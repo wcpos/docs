@@ -1,0 +1,56 @@
+---
+title: What Search Matches
+sidebar_label: Search
+sidebar_position: 8
+description: "Reference for WCPOS search in v2.0: which fields each screen searches, how terms and phone numbers are matched, and the woocommerce_pos_search_fields filter for custom fields."
+---
+
+:::info New in v2.0
+Search in v2.0 matches the same fields on the till and on the server, matches order line items and the shipping recipient, and finds phone numbers however they were typed. The field list is fixed (there is no setting), and developers extend it with one filter.
+:::
+
+## How a search is matched {#how-a-search-is-matched}
+
+- The text you type is split on whitespace into **terms**. Every term must appear somewhere in the record, in any order and across fields: `shirt lovelace` finds an order for Ada Lovelace that contains a shirt.
+- A term matches as a **substring**, anywhere in a field: `saippua` finds `Kuorintasaippua`; `jo` finds `Bjorn`. There is no minimum length.
+- Matching ignores **case and accents**: `creme` finds `Crème`.
+- Punctuation inside a term is part of it (`0.4`, `K-2`, `3/4`), while punctuation wrapping a term is not (`(shirt)` searches for `shirt`). A term is never split on punctuation, so a full email address is one term.
+- **Phone numbers** also match by their digits. A term made of digits (with or without `+ - ( ) .` and spaces) is compared with the stored number's digits, so `0412` finds `(04) 1234 5678` and `412345` finds `+61 412-345-678`. Country codes and trunk prefixes are not normalised: `0412` does not find `+61 412 345 678`.
+
+Results on the till come from the records already on the device; the server searches the same fields, so the rows that arrive from the server for a term are the rows the till would have found with them.
+
+## What each screen searches {#what-each-screen-searches}
+
+| Screen | Fields |
+|---|---|
+| **Products** | Name, SKU, barcode |
+| **Variations** | SKU, barcode, and the parent product's name |
+| **Orders** | Order number; billing first name, last name, company, email, phone; shipping first name, last name, company, phone; each line item's name and SKU |
+| **Customers** | First name, last name, email, username; billing first name, last name, company, email, phone; shipping first name, last name, company, phone; tax IDs |
+| **Categories, tags, brands** | Name |
+| **Coupons** | Code, description |
+
+Line items match the product **name as it was sold** — an order is still found after the product is renamed — and the product's current SKU. The shipping recipient is searched because a click-and-collect or delivery order is often looked up by the person collecting it, who is not the person who paid.
+
+Order numbers from sequential-order-number plugins (`_order_number`, `_order_number_formatted`) are searched on the server alongside the WooCommerce order id.
+
+## Why there is no search-fields setting {#why-there-is-no-setting}
+
+Searching more fields costs nothing noticeable, and a term only matches a phone or a company name when that is what the cashier typed, so there is nothing to gain from turning fields off. A setting would also have to reach every till and the server together before the two agreed. The field list above is therefore fixed, and the one case that needs more — a store's own custom field — is a developer filter.
+
+## Adding a custom field {#adding-a-custom-field}
+
+`woocommerce_pos_search_fields` receives a collection's search declaration and the collection slug. To make a customer findable by a loyalty number stored in user meta:
+
+```php
+add_filter( 'woocommerce_pos_search_fields', function ( array $search, string $collection ) {
+	if ( 'customers' === $collection ) {
+		$search['meta'][] = 'loyalty_number';
+	}
+	return $search;
+}, 10, 2 );
+```
+
+For orders, append to `$search['posts']['meta']` (legacy post storage) or `$search['hpos']['addresses']` (HPOS address columns). The server searches the added field; the till shows those rows when it asks the server for a term, which it does for every search alongside its local results.
+
+Store the value the way the cashier will type it, or in a form the digits rule covers: the filter adds the field to the match list, it does not change how a term is matched.
