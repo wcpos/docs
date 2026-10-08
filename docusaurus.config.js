@@ -22,6 +22,17 @@ module.exports = {
   future: { experimental_vcs: 'default-v2' },
   onBrokenLinks: 'throw',
   favicon: 'img/favicon.ico',
+  // iOS and crawlers request the root path regardless of markup.
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'apple-touch-icon',
+        sizes: '180x180',
+        href: '/apple-touch-icon.png',
+      },
+    },
+  ],
   markdown: {
     mermaid: true,
     async parseFrontMatter(params) {
