@@ -1,0 +1,227 @@
+---
+title: Mercado Pago Terminal 网关
+description: "在 WCPOS 中使用 Mercado Pago Point Smart 终端收取线下付款"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# Mercado Pago Terminal 网关 {#mercado-pago-terminal-gateway}
+
+Mercado Pago Terminal 网关可让您在 WCPOS 中使用 Mercado Pago Point Smart 终端收取线下付款。付款从 WooCommerce 发起，并在终端上完成；Mercado Pago 的确认信息会写回订单。
+
+:::info 0.1.0 新功能
+Mercado Pago Terminal for WooCommerce 是一款新扩展，0.1.0 是其首个版本。请将其视为测试版：先在 **Test** 模式下使用 Mercado Pago 沙盒虚拟终端，并在收取真实付款前进行测试付款。
+:::
+
+## 功能 {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="credit-card" title="Point Smart 硬件">
+    使用 Mercado Pago Point Smart 1 和 2 终端收取线下付款
+  </FeatureCard>
+  <FeatureCard icon="link" title="实时终端列表">
+    实时从您的账户获取终端列表，并可在设置中一键执行 Switch to PDV 操作
+  </FeatureCard>
+  <FeatureCard icon="bolt" title="可靠完成付款">
+    每 2 秒轮询一次、接收 Mercado Pago webhook，并在 5 分钟后进行后台检查，以确认付款，即使浏览器已关闭也不例外
+  </FeatureCard>
+  <FeatureCard icon="arrow-rotate-right" title="通过 WooCommerce 退款">
+    在 WooCommerce 订单页面发起全额或部分退款
+  </FeatureCard>
+  <FeatureCard icon="file-lines" title="内置诊断">
+    在设置中检查连接和 webhook 状态，并下载支持信息包以排查问题
+  </FeatureCard>
+</FeatureGrid>
+
+## 工作原理 {#how-it-works}
+
+此网关使用 Mercado Pago 云端的 **Orders API for Point**。发起付款时，会为 WooCommerce 订单总额创建 Mercado Pago 订单，并将其发送到所选终端。Mercado Pago 订单会在 **5 分钟**后过期。
+
+付款页面每 **2 秒**向 Mercado Pago 轮询一次。即使浏览器已关闭，webhook 和**5 分钟后的后台检查**也可以完成已付款订单。Webhook 为可选项，但建议配置；如果没有 **Webhook secret**，通知仍会被处理，但不会验证签名。
+
+终端必须处于 **PDV（集成）模式**。终端出厂时处于 **STANDALONE** 模式，因此请先在网关设置中切换到 PDV 并重启终端，然后再收款。
+
+## 设置 {#setup}
+
+<Steps>
+  <StepCard number="1" title="安装 Mercado Pago Terminal for WooCommerce">
+
+从 [GitHub 发布页面](https://github.com/wcpos/mercadopago-terminal-for-woocommerce/releases)下载**插件 zip 资源**（而不是 GitHub 源代码 zip）。通过 `插件 > 新增 > 上传插件` 上传，并在 WooCommerce 已安装且启用的情况下激活插件。
+
+  </StepCard>
+  <StepCard number="2" title="添加 Mercado Pago 凭据">
+
+1. 前往 `WP Admin > WooCommerce > 设置 > 支付`，然后打开 **Mercado Pago Terminal**
+2. 选择 **Mode**：`Test` 使用沙盒虚拟终端；`Live` 使用真实终端
+3. 在 Mercado Pago 中，前往 Mercado Pago → **Your integrations** → **Credentials**，复制并粘贴您应用的 **Access token**(`APP_USR-…`)
+
+:::warning 检查 Live 模式下的令牌
+在 Live 模式下使用 `TEST-` 令牌会将付款发送到沙盒。设置页面会对此组合发出警告；收取真实付款前，请粘贴生产环境令牌。
+:::
+
+  </StepCard>
+  <StepCard number="3" title="注册 webhook">
+
+1. 在 Mercado Pago 中，前往 **Your integrations** → 您的应用 → **Webhooks**
+2. 添加网关设置页面显示的 webhook URL
+3. 选择 **Order (Mercado Pago)** 事件并保存
+4. 将**密钥签名**复制到 WooCommerce 中的 **Webhook secret**
+
+Webhook 为可选项。即使未配置，付款仍会通过轮询完成；配置密钥后，插件便可验证 webhook 签名。
+
+  </StepCard>
+  <StepCard number="4" title="设置终端">
+
+1. 保存并重新加载设置页面。**Default terminal** 下拉菜单和 **Terminals** 表格会列出您账户中的终端
+2. 对于显示为 **STANDALONE** 模式的终端，请点击 **Switch to PDV**，然后**重启终端**
+3. 选择一个 **Default terminal**
+4. *（可选）* 将 **Enabled terminals** 限定为收银员可选择的设备。留空则允许使用所有终端；即使未在此处选中，已保存的默认终端仍可用
+5. *（可选）* 启用 **Lock terminal selection**，始终使用默认终端并阻止收银员更改。此选项需要设置默认终端
+6. 保存设置
+
+  </StepCard>
+  <StepCard number="5" title="在 WCPOS 中启用" isLast>
+
+1. 前往 `WP Admin > POS > 设置 > 结账`
+2. 找到 **Mercado Pago Terminal** 网关并为 POS 启用
+3. 保存设置
+
+:::note
+WooCommerce 设置页面上的 **Enable/Disable** 复选框仅控制*在线商店*结账。无论是否勾选该框，WCPOS 都会在配置好此网关后使用它。
+:::
+
+  </StepCard>
+</Steps>
+
+## 设置参考 {#settings}
+
+| 设置 | 功能说明 |
+|---|---|
+| **Enable/Disable** | 为在线商店结账启用网关。POS 的启用状态在 `POS > 设置 > 结账` 中控制 |
+| **Title** | 结账时显示的标签；默认为 `Mercado Pago Terminal` |
+| **Description** | 结账说明；默认为 `Pay in person on a Mercado Pago Point terminal.` |
+| **Mode** | `Test`（默认）使用沙盒虚拟终端；`Live` 使用具有实时凭据的真实终端 |
+| **Access token** | 您在 Mercado Pago 中的应用令牌：Mercado Pago → Your integrations → Credentials。已保存的令牌不会再次显示；留空即可保留该令牌 |
+| **Webhook secret** | Mercado Pago webhook 设置中的密钥签名，用于验证通知 |
+| **Default terminal** | 结账时默认使用的终端，实时从您的账户获取。如果无法获取列表，则会显示文本字段 |
+| **Enabled terminals** | 限制收银员可选择的终端。留空则允许使用所有终端；默认终端始终可用。列表无法加载时此项会隐藏 |
+| **Lock terminal selection** | 始终使用默认终端，不允许收银员更改。需要设置默认终端 |
+| **Checkout debug logs** | 在付款面板中显示 **Show logs**、**Copy** 和 **Clear**。默认关闭；收集支持日志时启用 |
+| **Log level** | `Off`、`Errors only` 或 `Debug`。此版本默认使用 Debug，会记录请求和响应并移除密钥 |
+
+字段下方的 **Mercado Pago Terminal diagnostics** 表格会显示 API 检查结果（包括终端数和 PDV 数）、最近一次验证的 webhook、活动环境、凭据是否已配置、默认终端、webhook URL 以及付款日志链接。
+
+## 使用方法 {#usage}
+
+### 处理付款 {#processing-payments}
+
+1. **添加商品**：在 POS 中将商品添加到购物车
+2. **选择网关**：选择 **Mercado Pago Terminal** 作为付款方式
+3. **选择终端**：选择一个终端；若已锁定选择，则使用默认终端
+4. **发起付款**：点击 **Start Terminal Payment**，将订单总额发送到终端
+5. **顾客付款**：查看状态消息——`Sending to terminal…` → `Waiting for terminal…` → `Customer is paying on the terminal…`——同时由顾客在终端上完成付款
+6. **自动完成**：Mercado Pago 确认付款后，订单即完成，POS 随后打开收据页面
+
+### 付款控制 {#payment-controls}
+
+- **Start Terminal Payment**：向所选终端发送新的付款请求
+- **Cancel Terminal Payment**：仅可在终端接收付款前取消。之后请在终端上取消，或等待 **5 分钟后过期**
+- **重新加载页面**：恢复正在进行的付款
+
+### 收据 {#receipts}
+
+终端不会打印小票。付款完成后，请使用 POS 收据。
+
+## 退款 {#refunds}
+
+打开 WooCommerce 订单退款页面，然后选择 **Refund via Mercado Pago Terminal** 以发起全额或部分退款。Mercado Pago 允许在付款后 **90 天**内退款。
+
+某些银行卡收单机构只允许在终端上退款。这种情况下，请在终端上退款，并在 WooCommerce 中记录**手动退款**。
+
+## 日志和支持信息包 {#logs-and-support-bundle}
+
+在 `WooCommerce > Status > 日志` 中找到日志，来源为 `mercadopago-terminal`。此版本的默认日志级别为 **Debug**。请求、响应、webhook 和付款状态变更都会被记录，密钥和卡号会被隐藏。
+
+点击网关设置页面上的 **Download support bundle**，下载 `.txt` 文件并将其附加到您的支持请求中。文件包含环境详情、已遮蔽凭据的设置、终端列表和运行模式、最近 10 个订单的付款尝试以及最后 500 行日志；其中任何信息都不能用于收款。
+
+启用 **Checkout debug logs** 后，付款面板会显示 **Show logs**、**Copy** 和 **Clear**。无论此设置如何，付款活动都会记录在 WooCommerce 日志中。
+
+## 要求 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Mercado Pago 账户">在阿根廷、巴西、墨西哥、乌拉圭、哥伦比亚、智利或秘鲁拥有卖家账户，并持有应用访问令牌</RequirementItem>
+  <RequirementItem label="兼容硬件">处于 PDV 模式的 Mercado Pago Point Smart 1 或 2</RequirementItem>
+  <RequirementItem label="WCPOS">POS 结账需要 Pro 版本</RequirementItem>
+  <RequirementItem label="服务器">WordPress 5.2+、WooCommerce 和 PHP 7.4+</RequirementItem>
+  <RequirementItem label="稳定连接">用于 API 通信的可靠互联网连接</RequirementItem>
+</RequirementsList>
+
+## 范围和限制 {#scope-and-limitations}
+
+- 终端会收取**完整订单总额**。不支持在终端上仅支付部分订单
+- 不支持小费
+- 金额会以**两位小数**发送。使用智利比索或哥伦比亚比索的店铺应先通过测试付款确认
+- 不支持在线商店的 **Blocks 结账**
+- 该插件尚未声明与 **HPOS** 兼容
+
+## 故障排除 {#troubleshooting}
+
+### 常见问题 {#common-issues}
+
+<Accordion>
+  <AccordionItem question="Mercado Pago 拒绝访问令牌（HTTP 401）">
+
+  - 访问令牌无效或已过期
+  - 从 **Your integrations** → **Credentials** 复制新的令牌，并将其保存到 **Access token**
+
+  </AccordionItem>
+  <AccordionItem question="未列出任何终端">
+
+  - 如果账户未关联任何 Point 终端，请在终端上使用该 Mercado Pago 账户登录，切换到 PDV 模式并重启终端
+  - 如果 **Default terminal** 显示为文本框而非下拉菜单，则表示无法获取列表。请检查令牌和诊断信息，然后重新加载设置页面
+
+  </AccordionItem>
+  <AccordionItem question="终端处于 STANDALONE 模式">
+
+  - 集成付款需要 **PDV** 模式
+  - 在设置页面的 **Terminals** 表格中点击 **Switch to PDV**，然后重启终端
+
+  </AccordionItem>
+  <AccordionItem question="付款已发送到终端">
+
+  - 终端已接收此付款，因此无法再从 WooCommerce 取消
+  - 在终端上取消，或等待**5 分钟后过期**。付款页面会继续检查其状态
+
+  </AccordionItem>
+  <AccordionItem question="Webhook 从未验证">
+
+  - 如果诊断信息显示 **Last verified webhook: never**，请在 Mercado Pago 中检查 webhook URL 和密钥
+  - 如果缺少 **Webhook secret**，请粘贴 Mercado Pago 提供的**密钥签名**。付款仍会通过轮询完成，但不会对缺少密钥的通知进行签名验证
+
+  </AccordionItem>
+  <AccordionItem question="银行卡收单机构拒绝退款">
+
+  - 某些收单机构只允许在终端上退款；Mercado Pago 也将退款期限限制为 **90 天**
+  - 在终端上退款，并在 WooCommerce 中记录**手动退款**
+
+  </AccordionItem>
+  <AccordionItem question="付款在终端上已过期">
+
+  - Mercado Pago 订单会在 **5 分钟**后过期
+  - 重新发起付款
+
+  </AccordionItem>
+</Accordion>
+
+### 获取帮助 {#getting-help}
+
+- 将网关设置页面中的**支持信息包**附加到您的支持请求
+- 访问 [GitHub 代码库](https://github.com/wcpos/mercadopago-terminal-for-woocommerce)以报告问题
+- 有关账户和硬件的问题，请联系 Mercado Pago 支持团队
