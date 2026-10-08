@@ -151,3 +151,30 @@ describe('default social card', () => {
     expect(png.readUInt32BE(20)).toBe(630);
   });
 });
+
+describe('root icons', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  it('advertises the root apple-touch-icon in headTags', () => {
+    expect(config.headTags).toContainEqual({
+      tagName: 'link',
+      attributes: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
+    });
+  });
+
+  it('provides a 180x180 PNG at the root apple-touch-icon path', () => {
+    const png = fs.readFileSync(path.join(__dirname, '../../static', 'apple-touch-icon.png'));
+    expect(png.subarray(1, 4).toString('ascii')).toBe('PNG');
+    expect(png.readUInt32BE(16)).toBe(180);
+    expect(png.readUInt32BE(20)).toBe(180);
+  });
+
+  it('provides a root favicon identical to img/favicon.ico', () => {
+    const faviconPath = path.join(__dirname, '../../static', 'favicon.ico');
+    expect(fs.existsSync(faviconPath)).toBe(true);
+    const favicon = fs.readFileSync(faviconPath);
+    const original = fs.readFileSync(path.join(__dirname, '../../static', 'img/favicon.ico'));
+    expect(favicon.equals(original)).toBe(true);
+  });
+});
