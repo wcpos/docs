@@ -1,0 +1,227 @@
+---
+title: Mercado Pago Terminal ゲートウェイ
+description: "WCPOS で Mercado Pago Point Smart 端末を使った対面決済を受け付ける"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# Mercado Pago Terminal ゲートウェイ {#mercado-pago-terminal-gateway}
+
+Mercado Pago Terminal ゲートウェイを使うと、WCPOS から Mercado Pago Point Smart 端末で対面決済を受け付けられます。WooCommerce で決済を開始し、端末で完了すると、Mercado Pago の確認結果が注文に記録されます。
+
+:::info 0.1.0 の新機能
+Mercado Pago Terminal for WooCommerce は新しい拡張機能で、0.1.0 が初回リリースです。ベータ版として扱い、実際の決済を受け付ける前に、Mercado Pago のサンドボックス仮想端末を使って **Test** モードでテスト決済を行ってください。
+:::
+
+## 機能 {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="credit-card" title="Point Smart ハードウェア">
+    Mercado Pago Point Smart 1 および 2 端末で対面決済を受け付けます
+  </FeatureCard>
+  <FeatureCard icon="link" title="端末一覧のリアルタイム取得">
+    アカウントから端末をリアルタイムで取得し、設定画面からワンクリックで PDV に切り替えられます
+  </FeatureCard>
+  <FeatureCard icon="bolt" title="確実な決済完了">
+    2 秒ごとのポーリング、Mercado Pago の webhook、5 分後のバックグラウンド確認により、ブラウザーを閉じた場合でも決済を確認します
+  </FeatureCard>
+  <FeatureCard icon="arrow-rotate-right" title="WooCommerce から返金">
+    WooCommerce の注文画面から全額または一部を返金できます
+  </FeatureCard>
+  <FeatureCard icon="file-lines" title="診断機能を内蔵">
+    設定画面で接続と webhook の状態を確認し、トラブルシューティング用のサポート一式をダウンロードできます
+  </FeatureCard>
+</FeatureGrid>
+
+## 仕組み {#how-it-works}
+
+このゲートウェイは Mercado Pago のクラウド **Orders API for Point** を使用します。決済を開始すると、WooCommerce の注文合計全額で Mercado Pago の注文を作成し、選択した端末に送信します。Mercado Pago の注文は **5 分**後に期限切れになります。
+
+決済ページは **2 秒**ごとに Mercado Pago に状態を問い合わせます。Webhook と **5 分後のバックグラウンド確認**によっても、ブラウザーを閉じた場合に支払い済みの注文を完了できます。Webhook の設定は任意ですが推奨されます。**Webhook シークレット**がない場合も通知は処理されますが、署名検証は行われません。
+
+端末は **PDV（統合）モード**である必要があります。端末は **STANDALONE** モードで出荷されるため、決済を受け付ける前にゲートウェイ設定で PDV に切り替え、端末を再起動してください。
+
+## セットアップ {#setup}
+
+<Steps>
+  <StepCard number="1" title="Mercado Pago Terminal for WooCommerce をインストールする">
+
+[GitHub のリリースページ](https://github.com/wcpos/mercadopago-terminal-for-woocommerce/releases) から **プラグインの zip アセット**（GitHub のソースコード zip ではありません）をダウンロードします。WooCommerce がインストールされ有効になっていることを確認し、`プラグイン > 新規追加 > プラグインのアップロード` からアップロードして有効化します。
+
+  </StepCard>
+  <StepCard number="2" title="Mercado Pago の認証情報を追加する">
+
+1. `WP Admin > WooCommerce > 設定 > 支払い` に移動し、**Mercado Pago Terminal** を開きます
+2. **モード**を選択します。`Test` はサンドボックス仮想端末を使用し、`Live` は実際の端末を使用します
+3. Mercado Pago の **Your integrations** → **Credentials** から、アプリケーションの **アクセストークン**(`APP_USR-…`)をコピーして貼り付けます
+
+:::warning Live モードではトークンを確認してください
+Live モードで `TEST-` トークンを使うと、決済はサンドボックスに送信されます。この組み合わせは設定画面で警告されます。実際の決済を受け付ける前に、本番用トークンを貼り付けてください。
+:::
+
+  </StepCard>
+  <StepCard number="3" title="webhook を登録する">
+
+1. Mercado Pago で **Your integrations** → アプリケーション → **Webhooks** の順に移動します
+2. ゲートウェイ設定画面に表示されている webhook URL を追加します
+3. **Order (Mercado Pago)** イベントを選択して保存します
+4. **secret signature** をコピーし、WooCommerce の **Webhook シークレット**に貼り付けます
+
+Webhook の設定は任意です。設定しなくてもポーリングによって決済は完了しますが、シークレットを設定するとプラグインが webhook の署名を検証できます。
+
+  </StepCard>
+  <StepCard number="4" title="端末をセットアップする">
+
+1. 設定を保存し、画面を再読み込みします。**既定のターミナル**のドロップダウンと **ターミナル**の表に、アカウントの端末が表示されます
+2. **STANDALONE** モードと表示された端末は、**PDV に切り替える**をクリックしてから、**端末を再起動**します
+3. **既定のターミナル**を選択します
+4. *(任意)* **有効なターミナル**を、レジ係が選択できる端末に限定します。空欄の場合はすべての端末を使用できます。保存済みの既定のターミナルは、ここで選択されていなくても使用できます
+5. *(任意)* **ターミナル選択をロック**を有効にすると、常に既定のターミナルを使用し、レジ係が変更できないようにします。この設定には既定のターミナルが必要です
+6. 設定を保存します
+
+  </StepCard>
+  <StepCard number="5" title="WCPOS で有効にする" isLast>
+
+1. `WP Admin > POS > 設定 > 支払い` に移動します
+2. **Mercado Pago Terminal** ゲートウェイを見つけ、POS で有効にします
+3. 設定を保存します
+
+:::note
+WooCommerce 設定画面の **有効化／無効化**チェックボックスが制御するのは、*オンラインストア* の決済のみです。このゲートウェイは設定後、チェックボックスの状態にかかわらず WCPOS で使用できます。
+:::
+
+  </StepCard>
+</Steps>
+
+## 設定項目 {#settings}
+
+| 設定 | 説明 |
+|---|---|
+| **有効化／無効化** | オンラインストアの決済でゲートウェイを有効にします。POS での有効化は `POS > 設定 > 支払い` で設定します |
+| **タイトル** | 決済画面に表示するラベルです。既定値は `Mercado Pago Terminal` です |
+| **説明** | 決済画面に表示する説明です。既定値は `Pay in person on a Mercado Pago Point terminal.` です |
+| **モード** | `Test`（既定）はサンドボックス仮想端末を使用し、`Live` は本番用認証情報で実際の端末を使用します |
+| **アクセストークン** | Mercado Pago の Your integrations → Credentials にあるアプリケーションのトークンです。保存済みのトークンは再表示されません。保持する場合は空欄にします |
+| **Webhook シークレット** | 通知の検証に使用する、Mercado Pago の webhook 設定にある secret signature です |
+| **既定のターミナル** | 決済時に既定で使用する端末です。アカウントからリアルタイムで取得されます。一覧を取得できない場合はテキストフィールドが表示されます |
+| **有効なターミナル** | レジ係が選択できる端末を制限します。空欄の場合はすべての端末を使用でき、既定のターミナルは常に使用できます。一覧を読み込めない場合は非表示になります |
+| **ターミナル選択をロック** | 常に既定のターミナルを使用し、レジ係が変更できないようにします。既定のターミナルが必要です |
+| **チェックアウトのデバッグログ** | 決済パネルに **ログを表示**、**コピー**、**消去**を表示します。既定ではオフです。サポート用にログを収集する場合に有効にします |
+| **ログレベル** | `Off`、`Errors only`、`Debug` のいずれかです。このリリースでは既定値は Debug で、シークレットを除いたリクエストとレスポンスを記録します |
+
+各フィールドの下にある **Mercado Pago Terminal の診断情報**の表には、API チェック（端末数と PDV 数を含む）、最後に検証された webhook、アクティブな環境、認証情報の設定状況、既定のターミナル、webhook URL、決済ログへのリンクが表示されます。
+
+## 使い方 {#usage}
+
+### 決済処理 {#processing-payments}
+
+1. **商品を追加**: POS のカートに商品を追加します
+2. **ゲートウェイを選択**: 決済方法として **Mercado Pago Terminal** を選択します
+3. **ターミナルを選択**: 端末を選択するか、選択がロックされている場合は既定のターミナルを使用します
+4. **決済を開始**: **ターミナル決済を開始**をクリックして注文合計を端末に送信します
+5. **顧客による決済**: 顧客が端末で決済を完了する間、ステータスメッセージ `Sending to terminal…` → `Waiting for terminal…` → `Customer is paying on the terminal…` を確認します
+6. **自動完了**: Mercado Pago が決済を確認すると、注文が完了し、POS はレシート画面に移動します
+
+### 決済の操作 {#payment-controls}
+
+- **ターミナル決済を開始**: 選択した端末に新しい決済リクエストを送信します
+- **ターミナル決済をキャンセル**: 端末が決済を受け取る前に限りキャンセルできます。受け取り後は端末でキャンセルするか、**5 分後の期限切れ**まで待ちます
+- **ページの再読み込み**: 進行中の決済を再開します
+
+### レシート {#receipts}
+
+端末からレシートは印刷されません。決済完了後に POS のレシートを使用してください。
+
+## 返金 {#refunds}
+
+WooCommerce の注文返金画面を開き、**Mercado Pago Terminal 経由で返金**を選択して全額または一部を返金します。Mercado Pago では、決済から **90 日**以内の返金が可能です。
+
+カードのアクワイアラーによっては、端末からの返金しか認められない場合があります。その場合は端末で返金し、WooCommerce に **手動返金**を記録します。
+
+## ログとサポート一式 {#logs-and-support-bundle}
+
+ログは `WooCommerce > Status > ログ` で、ソース `mercadopago-terminal` を選んで確認できます。このリリースではログレベルの既定値は **Debug** です。リクエスト、レスポンス、webhook、決済状態の変更が記録され、シークレットとカード番号は伏せられます。
+
+ゲートウェイ設定画面で **サポートバンドルをダウンロード**をクリックして `.txt` ファイルをダウンロードし、サポートへの問い合わせに添付します。環境の詳細、認証情報をマスクした設定、端末一覧と動作モード、直近 10 件の注文の決済試行、最新 500 行のログが含まれます。このファイルを使って決済を行うことはできません。
+
+**チェックアウトのデバッグログ**を有効にすると、決済パネルに **ログを表示**、**コピー**、**消去**が追加されます。この設定に関係なく、決済の操作は WooCommerce のログに記録されます。
+
+## 要件 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Mercado Pago アカウント">アルゼンチン、ブラジル、メキシコ、ウルグアイ、コロンビア、チリ、ペルーのいずれかの販売者アカウントと、アプリケーションのアクセストークンが必要です</RequirementItem>
+  <RequirementItem label="対応ハードウェア">PDV モードの Mercado Pago Point Smart 1 または 2</RequirementItem>
+  <RequirementItem label="WCPOS">POS 決済には Pro バージョンが必要です</RequirementItem>
+  <RequirementItem label="サーバー">WordPress 5.2 以降、WooCommerce、PHP 7.4 以降</RequirementItem>
+  <RequirementItem label="安定した接続">API 通信に安定したインターネット接続が必要です</RequirementItem>
+</RequirementsList>
+
+## 対応範囲と制限事項 {#scope-and-limitations}
+
+- 端末では**注文合計全額**が決済されます。注文の一部だけを端末で支払うことはできません
+- チップには対応していません
+- 金額は**小数点以下 2 桁**で送信されます。チリペソまたはコロンビアペソで販売する店舗では、まずテスト決済で確認してください
+- オンラインストアの**ブロックベースのチェックアウト**には対応していません
+- このプラグインは、現時点で **HPOS への対応**を宣言していません
+
+## トラブルシューティング {#troubleshooting}
+
+### よくある問題 {#common-issues}
+
+<Accordion>
+  <AccordionItem question="Mercado Pago がアクセストークンを拒否する（HTTP 401）">
+
+  - アクセストークンが無効か、古くなっています
+  - **Your integrations** → **Credentials** から新しいトークンをコピーし、**アクセストークン**に保存します
+
+  </AccordionItem>
+  <AccordionItem question="端末が一覧に表示されない">
+
+  - アカウントに Point 端末がリンクされていない場合は、その Mercado Pago アカウントで端末にログインし、PDV に切り替えて再起動します
+  - **既定のターミナル**がドロップダウンではなくテキストボックスの場合、一覧を取得できていません。トークンと診断情報を確認してから、設定画面を再読み込みします
+
+  </AccordionItem>
+  <AccordionItem question="端末が STANDALONE モードになっている">
+
+  - 統合決済には **PDV** モードが必要です
+  - 設定画面の **ターミナル**の表で **PDV に切り替える**をクリックし、端末を再起動します
+
+  </AccordionItem>
+  <AccordionItem question="決済がすでに端末に送信されている">
+
+  - 端末が決済を受け取ったため、WooCommerce からキャンセルできません
+  - 端末でキャンセルするか、**5 分後の期限切れ**まで待ちます。決済ページは引き続き状態を確認します
+
+  </AccordionItem>
+  <AccordionItem question="webhook が一度も検証されていない">
+
+  - 診断情報に **最後に検証された webhook: なし**と表示される場合は、Mercado Pago の webhook URL とシークレットを確認します
+  - **Webhook シークレット**が設定されていない場合は、Mercado Pago の **secret signature** を貼り付けます。ポーリングで決済は完了しますが、シークレットのない通知は署名検証されません
+
+  </AccordionItem>
+  <AccordionItem question="カードアクワイアラーが返金を拒否した">
+
+  - アクワイアラーによっては端末からの返金しか認められません。また、Mercado Pago では返金可能期間が **90 日**に制限されています
+  - 端末で返金し、WooCommerce に **手動返金**を記録します
+
+  </AccordionItem>
+  <AccordionItem question="端末で決済の有効期限が切れた">
+
+  - Mercado Pago の注文は **5 分**で期限切れになります
+  - 決済を再度開始します
+
+  </AccordionItem>
+</Accordion>
+
+### サポートを受ける {#getting-help}
+
+- サポートへの問い合わせに、ゲートウェイ設定画面から取得した **サポートバンドル**を添付してください
+- 問題を報告するには [GitHub リポジトリ](https://github.com/wcpos/mercadopago-terminal-for-woocommerce) にアクセスしてください
+- アカウントやハードウェアに関する質問は Mercado Pago サポートにお問い合わせください
