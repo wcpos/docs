@@ -1,0 +1,221 @@
+---
+title: PayArc Terminal ゲートウェイ
+description: "WCPOSでPayArc PAX端末を使って対面決済を受け付ける"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# PayArc Terminal ゲートウェイ {#payarc-terminal-gateway}
+
+PayArc Terminalゲートウェイを使うと、WCPOSからPayArc Connect経由でPayArc PAX端末による対面決済を受け付けられます。WooCommerceで決済を開始し、端末で完了します。PayArcの確認後にのみ、注文は支払い済みになります。
+
+## 機能 {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="credit-card" title="PAX端末との連携">
+    ローカルでペアリングすることなく、クラウド上のPayArc Connect経由でPayArc PAX端末に決済を送信します
+  </FeatureCard>
+  <FeatureCard icon="shield" title="決済完了の検証">
+    完了前に金額と通貨が注文と一致している必要があります。カードブランド、入力方式、末尾4桁は注文に保存されます
+  </FeatureCard>
+  <FeatureCard icon="file-lines" title="明確な拒否理由">
+    拒否理由はレジ係に表示され、注文メモにも追加されます
+  </FeatureCard>
+  <FeatureCard icon="receipt" title="端末レシート">
+    端末で加盟店用レシート、顧客用レシート、または両方を印刷できます
+  </FeatureCard>
+  <FeatureCard icon="bolt" title="組み込みの診断機能">
+    **設定を検証**ボタンと識別情報をマスキングした診断テーブルで接続を確認できます
+  </FeatureCard>
+</FeatureGrid>
+
+## 仕組み {#how-it-works}
+
+WordPressが**PayArc Connect**を呼び出し、PayArcがPAX端末に接続します。POSはサイトとのみ通信します。各決済では**注文合計全額**が請求されます。
+
+決済ページは**1.5秒ごと**に結果を確認し、**5分**後に停止します。PayArcから**Webhook URL**へのコールバックにより結果の反映が速くなります。コールバックがなくてもポーリングで決済は完了します。顧客が端末で支払っている間は、決済ページを開いたままにしてください。
+
+## 設定 {#setup}
+
+<Steps>
+  <StepCard number="1" title="WooCommerce用PayArc Terminalをインストールする">
+
+`WP Admin > POS > 設定 > 拡張機能`からインストールするか、[GitHubリリースページ](https://github.com/wcpos/payarc-terminal-for-woocommerce/releases)から**payarc-terminal-for-woocommerce.zip**をダウンロードし、`プラグイン > 新規追加 > プラグインのアップロード`からアップロードします。プラグインを有効化してください。
+
+  </StepCard>
+  <StepCard number="2" title="PayArcの認証情報を入力する">
+
+1. `WP Admin > WooCommerce > 設定 > 支払い`に移動し、**PayArc Terminal**を開きます
+2. **Mode**を選択します。既定値は`Live`です。`Test`はPayArcテストダッシュボードの認証情報とPayArc Connect Testアプリを使用する場合に限ります。環境を混在させないでください
+3. PayArc加盟店ダッシュボードへのサインインに使うメールアドレスを**PayArc login email**に入力します
+4. 端末IDではなく、PayArc Merchant Profileに記載されている**PayArc MID**を入力します
+5. ダッシュボードのAPIセクションにある**PayArc ClientSecret**と、PayArcダッシュボードにある**PayArc SecretKey / API bearer token**を入力します
+6. PayArcサポートから発行されていない限り、**Callback bearer token**は空欄のままにします。この項目は任意です
+
+  </StepCard>
+  <StepCard number="3" title="接続">
+
+**これらの認証情報で接続**をクリックします。成功すると、端末のシリアル番号の入力または確認を求められるので、設定を保存します。認証情報が別の環境のものと思われるというメッセージが表示された場合は、**Mode**を切り替えて再接続してください。
+
+:::note
+モードまたは認証情報を変更した後は、もう一度**これらの認証情報で接続**をクリックして保存してください。モードと認証情報が保存済みの接続と一致するまで、決済はブロックされます。0.1.14より前のバージョンからアップグレードした場合は、接続ボタンを1回押してください。
+:::
+
+  </StepCard>
+  <StepCard number="4" title="端末を追加する">
+
+1. PayArcアカウント用に設定された、端末背面の**S/N**ラベルに記載されているPAXの**Terminal serial number**を入力します
+2. **Tender type**と**Print receipt**を選択します
+3. **Webhook URL**がHTTPSであることを確認します。PayArcから求められた場合にのみURLを伝えてください
+4. **変更を保存**をクリックします
+
+LiveモードにはHTTPSのサイトが必要です。
+
+  </StepCard>
+  <StepCard number="5" title="WCPOSで有効にする" isLast>
+
+1. `WP Admin > POS > 設定 > 支払い`に移動します
+2. **PayArc Terminal**ゲートウェイを見つけ、POSで有効にします
+3. 設定を保存します
+
+:::note
+WooCommerceの設定画面にある**Enable/Disable**チェックボックスは、*オンラインストア*のチェックアウトのみを制御します。このチェックボックスの状態にかかわらず、WCPOSではゲートウェイの設定後に利用できます。
+
+ほとんどの店舗では、このチェックを外したままにします。
+:::
+
+  </StepCard>
+</Steps>
+
+## 設定項目 {#settings}
+
+| 設定 | 説明 |
+|---|---|
+| **Enable/Disable** | オンラインストアのチェックアウトでPayArc Terminalを有効にします。既定ではオフです。POSでの有効化は`POS > 設定 > 支払い`で設定します |
+| **Title** | チェックアウトに表示するラベルです。既定値は`PayArc Terminal`です |
+| **Description** | チェックアウトに表示する説明です。既定値は`Pay in person at a PayArc PAX terminal.`です |
+| **Mode** | `Live`（既定）または`Test`です。TestにはPayArcテストダッシュボードの認証情報とPayArc Connect Testアプリが必要です |
+| **PayArc login email** | PayArc加盟店ダッシュボードへのログイン用メールアドレスです。接続前に入力が必要です |
+| **PayArc MID** | PayArc Merchant Profileにある加盟店MIDです。端末IDではありません |
+| **PayArc ClientSecret** | ダッシュボードのAPIセクションにあるシークレットです。サーバーにのみ保存されます |
+| **PayArc SecretKey / API bearer token** | PayArcダッシュボードにあるトークンです。ログインと端末レジストリの取得に使用します |
+| **Callback bearer token** | 任意です。PayArcサポートから発行された場合にのみ入力します |
+| **PayArc connection** | **これらの認証情報で接続**、**端末を更新**、**切断**の各ボタンがあります |
+| **Terminal serial number** | アカウントに割り当てられたPAXのS/Nです。決済に必須です。レジストリで見つかると自動入力されますが、保存前に入力または確認してください |
+| **Tender type** | `CREDIT`（既定）または`DEBIT`です |
+| **Print receipt** | `0` — 印刷しない（既定）、`1` — 加盟店用、`2` — 顧客用、`3` — 両方 |
+| **Webhook URL** | 読み取り専用のコールバックアドレスです。HTTPSであることを確認してください。PayArcから求められた場合にのみ伝えてください |
+| **PayArc diagnostics** | 接続情報と**設定を検証**ボタンを表示します。シークレットは表示されません |
+
+保存済みのシークレット項目には末尾4文字のみが表示されます。保存済みの値を維持するには、シークレット項目を空欄のままにしてください。
+
+**PayArc diagnostics**テーブルには、モード、エンドポイント、マスキングされたMID / テナントID / シリアル番号、Connectアクセストークンの設定状況、Webhook URL、最後のコールバック、最後のPayArcエラーが表示されます。**設定を検証**を使って設定を確認してください。
+
+## 使い方 {#usage}
+
+### 決済の処理 {#processing-payments}
+
+1. **ゲートウェイを選択**：POSで支払い方法として**PayArc Terminal**を選びます
+2. **決済を開始**：**決済を開始**をクリックして注文合計を端末に送信します
+3. **顧客による支払い**：顧客がPAX端末で支払いを完了するまで、ページを開いたままにします。ステータスメッセージを確認してください：`Starting terminal payment...` → `Payment sent to terminal.` → `Waiting for the terminal result...` → `Payment approved. Completing the order...`
+4. **自動完了**：PayArcが支払いを確認すると、注文は自動的に完了します
+
+### 決済の操作 {#payment-controls}
+
+- 決済の開始後に**決済をキャンセル**が表示されます。PayArcからtrace idがまだ返されていない場合は、キャンセルする前に少し待ってください
+- 拒否、キャンセル、またはタイムアウト後は再試行できます。タイムアウトした決済を再試行する前に、端末を確認してください
+- 決済アクティビティログは既定で折りたたまれています。**アクティビティを表示**で表示し、**クリア**で表示中のアクティビティを消去します
+
+### レシート {#receipts}
+
+**Print receipt**設定は、端末での印刷（なし、加盟店用、顧客用、または両方）を制御します。
+
+## 返金 {#refunds}
+
+このプラグインでは返金に対応していません。PayArcで返金した後、WooCommerceに返金を手動で記録してください。
+
+## ログ {#logs}
+
+ログは`WooCommerce > Status > ログ`の`payarc-terminal-for-woocommerce`ソースにあります。接続試行、開始または失敗した販売、キャンセル、受理または拒否されたコールバックが記録されます。識別情報はマスキングされ、シークレットは伏せられます。
+
+サポートバンドルをダウンロードする機能はありません。問い合わせる際は、注文番号と関連するログ行を送ってください。完全なMID、端末ID、トークン、カード情報は共有しないでください。
+
+## 要件 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="PayArcアカウント">PayArc Connectを利用できる加盟店アカウント</RequirementItem>
+  <RequirementItem label="対応ハードウェア">アカウントに割り当てられたPayArc対応PAX端末</RequirementItem>
+  <RequirementItem label="WCPOS">POSでのチェックアウトにはPro版が必要です</RequirementItem>
+  <RequirementItem label="サーバー">WooCommerce 7.0以降、PHP 7.4以降、およびLiveモード用のHTTPS</RequirementItem>
+  <RequirementItem label="通貨">USD、CAD、GBP、EUR、JPY</RequirementItem>
+  <RequirementItem label="安定した接続">決済通信に使用する安定したインターネット接続</RequirementItem>
+</RequirementsList>
+
+## 対象範囲と制限 {#scope-and-limitations}
+
+- このプラグインでは返金に対応していません
+- 決済では**注文合計全額**が請求されます。一部のみの決済や複数の支払いに分ける決済には対応していません
+- チップには対応していません
+- 店舗ごとに端末は1台です。シリアル番号の設定は単一で、レジ係による選択機能はありません
+- 通貨は**USD、CAD、GBP、EUR、JPY**に限られます
+- モードと認証情報が保存済みの接続と一致するまで、決済はブロックされます
+
+## トラブルシューティング {#troubleshooting}
+
+### よくある問題 {#common-issues}
+
+<Accordion>
+  <AccordionItem question="認証情報が別の環境のものと思われる">
+
+  - 選択したモードと認証情報の環境が一致していません
+  - 認証情報に合わせて**Mode**を切り替えるか、選択したモードに対応する認証情報に置き換えてください
+  - もう一度**これらの認証情報で接続**をクリックして保存してください
+
+  </AccordionItem>
+  <AccordionItem question="PayArcに接続できない">
+
+  - PayArcがログイン認証情報を拒否しました。入力した認証情報を確認して、もう一度お試しください
+  - 詳細は`WooCommerce > Status > ログ`の`payarc-terminal-for-woocommerce`ソースを確認してください
+
+  </AccordionItem>
+  <AccordionItem question="決済リクエストを処理できません。（HTTP 500）">
+
+  - このレジ係向けメッセージは一般的な内容です。実際の原因はWooCommerceログの**PayArc payment action failed**で確認してください
+  - モードまたは認証情報を変更した後は、もう一度**これらの認証情報で接続**をクリックして保存してください
+  - **Terminal serial number**が入力されていることを確認してください
+  - ログにConnectアクセストークンとSecretKeyの両方がPayArcに拒否されたと記録されている場合は、加盟店アカウントで**PayArc Connect V3**が有効になっているかPayArcサポートに確認してください
+  - 店舗の通貨が**USD、CAD、GBP、EUR、JPY**のいずれかであることを確認してください
+
+  </AccordionItem>
+  <AccordionItem question="決済開始時にアクセスが拒否されました。（HTTP 403）">
+
+  - POSセッションでこのエラーを修正した**0.1.12以降**に更新してください
+
+  </AccordionItem>
+  <AccordionItem question="Terminal Registryが空です">
+
+  - レジストリが空、またはPOS識別子のない端末が表示されるのは正常です
+  - レジストリのデータは情報表示のみです。決済には**Terminal serial number**を使用します
+
+  </AccordionItem>
+  <AccordionItem question="決済の応答に時間がかかる">
+
+  - 端末の画面を確認し、決済ページを開いたままにしてください
+  - 再試行する前に、注文メモとPayArcダッシュボードを確認してください
+  - ページは**1.5秒ごと**に確認し、**5分**後に停止します
+
+  </AccordionItem>
+</Accordion>
+
+### サポートへの問い合わせ {#getting-help}
+
+- サポートへの問い合わせには、**注文番号**と関連する**ログ行**を添えてください
+- 問題を報告するには[GitHubリポジトリ](https://github.com/wcpos/payarc-terminal-for-woocommerce)をご覧ください
+- アカウント、PayArc Connect、端末の設定についてはPayArcサポートにお問い合わせください
