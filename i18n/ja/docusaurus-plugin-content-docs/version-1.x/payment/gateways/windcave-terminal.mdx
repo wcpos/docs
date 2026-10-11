@@ -1,0 +1,230 @@
+---
+title: Windcave端末ゲートウェイ
+description: "WCPOSでWindcave端末（HIT）を使った対面カード決済を受け付ける"
+---
+
+import FeatureCard from '@site/src/components/FeatureCard';
+import FeatureGrid from '@site/src/components/FeatureGrid';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import Steps from '@site/src/components/Steps';
+import StepCard from '@site/src/components/StepCard';
+
+# Windcave端末ゲートウェイ {#windcave-terminal-gateway}
+
+Windcave端末ゲートウェイを使うと、Windcave HIT経由でWindcave端末による対面カード決済を受け付けられます。決済はWCPOSから開始し、端末で完了すると、確認結果がWooCommerceの注文に記録されます。
+
+:::warning 0.1.0の新機能 — Windcaveの認定待ち
+0.1.0は初回リリースです。Windcaveでは、本番環境で使用する前に連携機能のQA認定が必要ですが、この連携機能はまだ認定されていません。認定が完了するまでは、Windcaveの**UAT**（テスト）認証情報を使用してください。**Vendor ID**は認定時にWindcaveから発行されます。
+:::
+
+## 機能 {#features}
+
+<FeatureGrid>
+  <FeatureCard icon="link" title="クラウドHIT接続">
+    端末ごとにStation IDを1つ使用し、ローカルでペアリングせずにWindcaveのクラウドHITサービスへ接続します。
+  </FeatureCard>
+  <FeatureCard icon="terminal" title="端末の案内を画面に表示">
+    決済パネルで端末の案内とボタンを確認できます。署名確認のYES/NOやCANCELも表示されます。
+  </FeatureCard>
+  <FeatureCard icon="shield" title="検証後に完了">
+    決済参照番号、金額、環境、注文合計、通貨を確認した後にのみ注文が完了します。
+  </FeatureCard>
+  <FeatureCard icon="clock" title="決済を保留">
+    タイムアウト後は処理中の決済をいったん保留し、バックグラウンドで状況を確認しながら作業を続けられます。
+  </FeatureCard>
+  <FeatureCard icon="sync" title="結果通知">
+    任意の結果通知（FPRN）を有効にすると、ポーリングのバックアップとしてWindcaveからサイトへ通知できます。
+  </FeatureCard>
+</FeatureGrid>
+
+## 仕組み {#how-it-works}
+
+このゲートウェイはHTTPS経由でWindcave **HIT (Host Initiated Transaction)**を使用します。**Environment**でUATまたは本番のエンドポイントを選択し、各端末にはWindcaveが発行した**Station ID**で接続します。
+
+決済を開始すると、注文合計と通貨が端末に送信されます。決済ページは**1.5秒ごと**にWindcaveをポーリングし、端末の案内と使用可能なボタンを表示します。任意の**結果通知（FPRN）**を使うと、ポーリングのバックアップとしてWindcaveからサイトへ通知できます。
+
+## 設定 {#setup}
+
+<Steps>
+  <StepCard number="1" title="Windcave Terminal for WooCommerceをインストール">
+
+[GitHubリリースページ](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases)から**プラグインのzipファイル**（GitHubのソースコードzipではありません）をダウンロードします。`プラグイン > 新規追加 > プラグインのアップロード`からアップロードし、WooCommerceがインストールされ有効になっている状態でプラグインを有効化してください。
+
+有効化には**PHP 7.4+**と**PHP DOM拡張機能（php-xml）**が必要です。いずれかがない場合、有効化はメッセージとともに拒否されます。
+
+  </StepCard>
+  <StepCard number="2" title="WindcaveからHIT認証情報を取得">
+
+Windcaveに、**HIT username**、**HIT key**、および端末ごとに1つの**Station ID**を問い合わせてください。Windcaveの[連携要件フォーム](https://www.windcave.com/merchant-attended-developer-hit)から開発用アカウントを申請します。
+
+UATと本番の認証情報は別々です。この連携機能が認定待ちの間はUAT認証情報を使用してください。
+
+  </StepCard>
+  <StepCard number="3" title="ゲートウェイを設定">
+
+1. `WP Admin > WooCommerce > 設定 > 支払い`に移動し、**Windcave Terminal**を開きます。
+2. **Environment**を`UAT (testing)`（デフォルト）に設定します。`Production`はWindcaveの認定後に本番認証情報で使用します。
+3. Windcaveから発行された**HIT username**と**HIT key**を入力します。
+4. **Station IDs**を1行に1つずつ入力します。
+5. *（任意）* **Default Station ID**を設定します。**Lock terminal selection**を有効にすると、常にそのデフォルトが使われ、レジ係は変更できなくなります。
+6. Windcaveが認定時に発行するまで、**Vendor ID**は空欄にしておきます。
+7. 設定を保存します。
+
+  </StepCard>
+  <StepCard number="4" title="結果通知を有効化（任意）">
+
+**Result notifications (FPRN)**を有効にして保存すると、取引結果の準備ができたときにWindcaveからサイトへ通知されます。これはポーリングのバックアップです。
+
+  </StepCard>
+  <StepCard number="5" title="WCPOSで有効化" isLast>
+
+1. `WP Admin > POS > 設定 > 支払い`に移動します。
+2. **Windcave Terminal**ゲートウェイを見つけ、POSで有効にします。
+3. 設定を保存します。
+
+:::note
+WooCommerceの設定画面にある**Enable/Disable**チェックボックスは、*オンラインストア*のチェックアウトのみを制御します。このゲートウェイは、チェックボックスの状態にかかわらず、設定済みであればWCPOSで使用されます。
+:::
+
+  </StepCard>
+</Steps>
+
+## 設定リファレンス {#settings}
+
+| 設定 | 機能 |
+|---|---|
+| **Enable/Disable** | オンラインストアのチェックアウトでゲートウェイを有効にします。POSでの有効化は`POS > 設定 > 支払い`で行います。 |
+| **Title** | チェックアウトに表示するラベルです。デフォルトは`Windcave Terminal`です。 |
+| **Description** | チェックアウトに表示する説明です。デフォルトは`Pay in person on the Windcave terminal.`です。 |
+| **Environment** | `UAT (testing)`（デフォルト）または`Production`を選択します。それぞれHIT認証情報が別に必要です。本番環境にはWindcaveの認定が必要です。 |
+| **HIT username** | 選択した環境用にWindcaveが発行したHIT usernameです。 |
+| **HIT key** | 選択した環境用にWindcaveが発行したHIT keyです。 |
+| **Station IDs** | Windcaveが発行したStation IDを、端末ごとに1つずつ1行に入力します。 |
+| **Default Station ID** | あらかじめ選択されるStationです。Stationが選択されていない場合にも使用されます。 |
+| **Lock terminal selection** | 常にデフォルトのStationを使用し、レジ係が変更できないようにします。デフォルトが設定されている場合のみ有効です。 |
+| **Vendor ID** | Windcaveが認定時に発行します。Windcaveから受け取るまで空欄にしてください。 |
+| **POS name** | POSを識別するためWindcaveに送信される名前です。デフォルトは`WCPOS`です。 |
+| **Result notifications (FPRN)** | ポーリングのバックアップとして、取引結果の準備ができたときにWindcaveからサイトへ通知するよう要求します。デフォルトではオフです。 |
+| **Checkout logs** | 決済パネルにログツールを表示します。デフォルトではオフです。 |
+| **Log level** | `Off`、`Errors only`、`Debug`から選択します。デフォルトはDebugで、キーとカード情報をマスクしてリクエストとレスポンスを記録します。 |
+| **Support** | **Download support bundle**と、`WooCommerce > Status > ログ`でログを表示するためのリンクを提供します。 |
+
+接続テストボタンはありません。認証情報とStation IDは、最初の決済時に確認されます。
+
+## 使い方 {#usage}
+
+### 決済処理 {#processing-payments}
+
+1. **Add Items**：POSのカートに商品を追加します。
+2. **Select Gateway**：支払い方法として**Windcave Terminal**を選択します。
+3. **Choose Terminal**：Stationを選択するか、ロックされたデフォルトを使用します。Stationが2つ以上あり、デフォルトがない場合は選択が必要です。
+4. **Start Payment**：**Start Terminal Payment**をクリックして、注文合計を端末に送信します。
+5. **Follow Prompts**：署名確認の**YES/NO**や、表示された場合の**CANCEL**など、端末の案内と使用可能なボタンが画面に表示されます。
+6. **Automatic Completion**：承認と検証が完了すると、注文が完了し、POSにレシートが表示されます。
+
+### 決済操作 {#payment-controls}
+
+- **Start Terminal Payment**：選択したStationに新しい決済リクエストを送信します。
+- **Cancel Terminal Payment**：端末で操作できる場合は**CANCEL**ボタンを押します。操作できない場合は端末上でキャンセルするか、選択肢が表示されたときに決済を保留します。
+- **Set payment aside**：**5分のタイムアウト**後に表示されます。試行を**10分間のバックグラウンド確認**に引き継ぎ、別の方法で決済を受け付けられるようにします。Windcaveでの決済はキャンセルされません。
+- **ページの再読み込み**：進行中の決済を再開します。
+
+### レシート {#receipts}
+
+Windcaveから端末レシートのテキストが返された場合、WooCommerceの**非公開注文メモ**として保存されます。
+
+## 返金 {#refunds}
+
+WooCommerceからの返金は**0.1.0ではサポートされていません**。Windcaveポータル（**Payline**）または端末で返金し、その後WooCommerceに返金を**手動で**記録してください。
+
+## ログとサポートバンドル {#logs-and-support-bundle}
+
+ログは`WooCommerce > Status > ログ`の`windcave-terminal`ソースにあります。ログレベルのデフォルトは**Debug**で、キーとカード情報をマスクしてWindcaveへのリクエストとレスポンスを記録します。
+
+ゲートウェイ設定画面で**Download support bundle**をクリックすると、`.json`ファイルをダウンロードできます。これを**注文番号**とともに送信してください。ファイルには環境の詳細、HIT keyとusernameをマスクした設定、直近20件までの注文の決済試行（レシートは除外）、および新しい方から2つのログファイルの末尾1,000行が含まれます。ログ行に端末レシートのテキストが含まれる場合、カード番号はマスクされます。
+
+WooCommerceで**データベースログハンドラー**を使用している場合、バンドルにログ行は含まれません。代わりに`WooCommerce > Status > ログ`からログをエクスポートしてください。
+
+決済パネルにログツールを表示するには、**Checkout logs**を有効にします。
+
+## 要件 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Windcaveアカウント">HIT username、HIT key、端末ごとのStation IDが必要です。本番環境で使用するにはWindcaveの認定が必要です。</RequirementItem>
+  <RequirementItem label="対応ハードウェア">HITを使用するWindcave端末</RequirementItem>
+  <RequirementItem label="WCPOS">POSでのチェックアウトにはWCPOS Proが必要です。</RequirementItem>
+  <RequirementItem label="サーバー">WordPress 5.2+、WooCommerce、およびDOM拡張機能（php-xml）付きのPHP 7.4+</RequirementItem>
+  <RequirementItem label="通貨">小数点以下2桁の通貨</RequirementItem>
+  <RequirementItem label="安定した接続">API通信に必要な安定したインターネット接続</RequirementItem>
+</RequirementsList>
+
+## 対象範囲と制限 {#scope-and-limitations}
+
+:::warning 認定が必要です
+この連携機能はWindcaveの認定をまだ受けていません。WindcaveのQA認定が完了するまで**UAT**認証情報を使用してください。認定前に本番環境で使用しないでください。
+:::
+
+- WooCommerceからの返金は0.1.0ではサポートされていません。
+- チップ、追加料金、キャッシュアウトはサポートされていません。
+- **小数点以下2桁の通貨**のみサポートされています。
+- 端末には**注文合計全額**が請求されます。端末で注文の一部のみを支払うことはできません。
+- **Station IDs**は手動で入力します。端末は自動検出されません。
+- このゲートウェイはPOS向けです。オンラインストアでは**注文支払いページ**でのみ動作します。
+
+## トラブルシューティング {#troubleshooting}
+
+### よくある問題 {#common-issues}
+
+<Accordion>
+  <AccordionItem question="有効化が拒否される：PHP DOM拡張機能（php-xml）が必要です">
+
+  - サーバーにPHP DOM拡張機能がありません。
+  - ホスティング事業者に**php-xml**を有効にするよう依頼してください。有効化には**PHP 7.4+**も必要です。
+
+  </AccordionItem>
+  <AccordionItem question="Station IDが設定されていない">
+
+  - **Station IDs**設定が空です。
+  - Windcaveから発行されたStation IDをゲートウェイ設定に1行に1つずつ追加し、保存してください。
+
+  </AccordionItem>
+  <AccordionItem question="Windcave HIT認証情報が設定されていない">
+
+  - **HIT username**または**HIT key**が空です。
+  - ゲートウェイ設定に両方を入力して保存してください。**Environment**がその認証情報に一致していることを確認してください。
+
+  </AccordionItem>
+  <AccordionItem question="端末で前の取引をまだ処理中です">
+
+  - そのStationでは前の取引がまだ進行中です。
+  - 端末で完了またはキャンセルしてから、もう一度お試しください。
+
+  </AccordionItem>
+  <AccordionItem question="Windcaveにこの取引の記録がありません">
+
+  - 最初の30秒の猶予期間が過ぎても、Windcaveに記録がありません。
+  - 決済をもう一度開始してください。
+
+  </AccordionItem>
+  <AccordionItem question="Windcaveは決済を承認しましたが、適用できませんでした">
+
+  - 承認結果が、この注文を完了するための確認条件を満たしませんでした。
+  - **Windcaveポータル**を確認し、**再度請求する前に注文メモを確認**してください。
+
+  </AccordionItem>
+  <AccordionItem question="この決済は別の環境で開始されました">
+
+  - 決済の進行中に**Environment**が変更されました。
+  - 決済を開始した環境に戻すか、Windcaveポータルを確認してください。
+
+  </AccordionItem>
+</Accordion>
+
+### サポートを受ける {#getting-help}
+
+- ゲートウェイ設定画面から**注文番号**とともに**サポートバンドル**を送信してください。
+- 問題を報告するには[GitHubリポジトリ](https://github.com/wcpos/windcave-terminal-for-woocommerce)をご覧ください。
+- アカウント、認証情報、ハードウェアに関するお問い合わせはWindcaveサポートにご連絡ください。
