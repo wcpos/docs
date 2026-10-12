@@ -15,17 +15,22 @@ WCPOS almacena los datos de productos y clientes en una base de datos local en c
 - **Explorar clientes** — consultar nombres, correos electrónicos y direcciones de clientes
 - **Crear un carrito** — agregar artículos, modificar cantidades, editar precios y aplicar descuentos del POS
 - **Aplicar cupones** (Pro) — los códigos se validan localmente con los datos de cupones sincronizados; el servidor los vuelve a validar cuando le llega el pedido en cola
-- **Completar una venta con un método de pago compatible con el modo sin conexión** — las ventas en efectivo y con tarjeta procesada externamente se guardan localmente y se ponen en cola para WooCommerce
+- **Guardar un pedido** — mantenga un pedido en espera o guárdelo en el dispositivo; se añade a la cola de salida y se envía a WooCommerce cuando vuelve la conexión
 - **Escaneo de códigos de barras** — escanear códigos de barras para encontrar productos en la base de datos local
 - **Ver informes** — el tipo de informe predeterminado (sin conexión) genera informes a partir de los pedidos almacenados localmente
 
 ## Qué requiere conexión {#what-requires-a-connection}
 
+- **Cobrar** — al completar el pago, se muestra una página alojada en su servidor, por lo que no es posible finalizar ese paso sin conexión. Aun así, puede preparar y **guardar** el pedido sin conexión y cobrarlo cuando vuelva a estar en línea.
 - **Acciones de pago que dependen del servidor** — el pago web, las pasarelas integradas en línea o de terminal y **Guardar en el servidor** necesitan que sus respectivos servicios estén accesibles
 - **Sincronización de datos** — descarga de nuevos productos, precios actualizados o nuevos clientes desde WooCommerce
 - **Inicio de sesión** — la autenticación inicial requiere una conexión con el sitio de WordPress
 - **Activación de licencia** — las verificaciones de licencia Pro necesitan conectarse al servidor de licencias de WCPOS
 - **Procesamiento de reembolsos** — los reembolsos no pueden ponerse en cola sin conexión; tanto la pasarela como la tienda deben estar accesibles (consulte [Reembolsos](/orders/refunds))
+
+:::note Se necesita conexión para completar una venta
+Puede preparar y **guardar** un pedido sin conexión, pero el paso del pago debe esperar a que haya conexión. La posibilidad de *completar* una venta sin conexión —empezando por el efectivo— está en la [hoja de ruta](/getting-started/roadmap).
+:::
 
 ## Cómo funciona la base de datos local {#how-the-local-database-works}
 
@@ -41,7 +46,7 @@ Puede ver exactamente qué hay en el dispositivo —y qué está pendiente de en
 
 ## Los cambios que realiza sin conexión se ponen en cola {#offline-writes}
 
-Cada cambio que realiza en el POS —una venta, la edición de un producto, la actualización de un cliente— se guarda primero en el dispositivo y se pone en cola para enviarse. Mientras está sin conexión, la cola simplemente espera; no se pierde nada por quedarse sin conectividad a mitad de turno.
+Cada cambio que realice en WCPOS —un pedido guardado, un cliente nuevo o editado, un cupón, un cambio de existencias o precios (Pro) o un correo electrónico con un recibo— se guarda primero en el dispositivo y se añade a la cola de envío. Mientras no haya conexión, la cola simplemente espera; perder la conexión durante el turno no implica perder nada. La cola también se conserva tras reiniciar la aplicación o si se bloquea: si aparece una pantalla de error, al elegir **Try again** se vuelve a cargar sin descartar las ventas que aún no se hayan enviado.
 
 Cuando vuelve la conexión, la cola se vacía automáticamente. Si su servidor rechaza un cambio de plano (algo poco frecuente; por ejemplo, un registro que el servidor considera no válido), el POS no lo reintentará en silencio para siempre: el cambio queda apartado en **Estado de la tienda → Base de datos**, en *«cambios que nunca llegaron a su servidor»*, con el motivo indicado por el servidor y acciones explícitas de **Volver a enviar** / **Descartar**. Consulte [Estado de la tienda](/support/store-health#refused-changes).
 
@@ -59,7 +64,7 @@ Si se pierde la conexión a Internet mientras se utiliza el POS:
 
 1. **Los productos y clientes siguen siendo navegables** a partir de los datos locales.
 2. **Es posible continuar armando carritos** y editando artículos: cada cambio se pone en cola localmente.
-3. **Es posible completar el pago con un método de pago compatible con el modo sin conexión**: la venta se une a la cola de salida. Las pasarelas de pago que dependen del servidor siguen sin estar disponibles hasta que sus servicios sean accesibles.
+3. **Puede preparar y guardar pedidos, pero no cobrar** — los carritos y las modificaciones se ponen en cola localmente, y puede guardar un pedido para enviarlo más tarde. El pago deberá esperar a que vuelva la conexión, porque la página de pago la genera su servidor.
 4. **Los pedidos abiertos se conservan** en la base de datos local hasta que se restablezca la conectividad.
 
 ## Cuando se restablece la conexión {#when-connection-restores}
