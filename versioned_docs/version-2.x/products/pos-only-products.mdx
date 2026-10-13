@@ -117,9 +117,13 @@ When a product is set to **Online Only**:
 
 When a product is set to **POS Only**:
 
-- It won't appear on your WooCommerce store frontend
-- It won't be included in online search results
-- Customers cannot purchase it online
+- WCPOS sets its WooCommerce **Catalog visibility** to **Hidden** for you, so it is left out of the shop, category pages, search, related products, product blocks, feeds, sitemaps and anything else that honours WooCommerce's catalog visibility, including search plugins
+- It cannot be added to the cart or bought online
+- It is kept out of the WooCommerce REST API and Store API product lists
+
+While a product is POS Only, the **Catalog visibility** control in the Publish box is locked at **Hidden**. When you move the product back to **POS & Online** or **Online Only**, WCPOS restores the catalog visibility it had before it became POS Only. A product that was never anything but visible goes back to **Shop and search results**. If you want a different catalog visibility after the move, set it as a second edit.
+
+Variations have no catalog visibility of their own in WooCommerce. A POS Only variation is left out of the options offered on the product page, and the parent product stays online for its other variations. Set the parent product itself to POS Only when the whole product is in-store only.
 
 :::note
 If you've recently changed a product's visibility and it's still appearing (or not appearing) in the POS, try a sync. Long press the sync button and select **"Clear and Refresh"** to reload all product data.
@@ -144,6 +148,17 @@ add_filter( 'woocommerce_pos_hide_pos_only_products', function ( $hide, $query )
         return false;
     }
     return $hide;
+}, 10, 2 );
+```
+
+The catalog visibility WCPOS writes for a POS Only product goes through the `woocommerce_pos_pos_only_catalog_visibility` filter. It receives the value about to be applied, `hidden`, and the product. Return one of WooCommerce's catalog visibility keys (`visible`, `catalog`, `search` or `hidden`) to apply that value instead, or `null` to leave the product's catalog visibility alone so you can manage it yourself. This filter only controls what WCPOS writes into WooCommerce's Catalog visibility; WCPOS's own storefront rule above still applies, so pair it with `woocommerce_pos_hide_pos_only_products` if you want a POS Only product to actually appear somewhere online.
+
+```php
+add_filter( 'woocommerce_pos_pos_only_catalog_visibility', function ( $visibility, $product ) {
+    if ( has_term( 'club-stock', 'product_cat', $product->get_id() ) ) {
+        return null; // I manage catalog visibility for these myself.
+    }
+    return $visibility;
 }, 10, 2 );
 ```
 
@@ -190,6 +205,16 @@ add_filter( 'woocommerce_pos_hide_pos_only_products', function ( $hide, $query )
   2. Long press the sync button at the bottom of the Product Panel
   3. Select **"Clear and Refresh"**
   4. Wait for products to reload
+
+  </AccordionItem>
+
+  <AccordionItem question="A POS Only product still shows up on the website">
+
+  Open the product and look at **Catalog visibility** in the Publish box. For a POS Only product it reads **Hidden** and cannot be edited. If it shows anything else, a plugin or custom code on your site is changing the decision with the `woocommerce_pos_pos_only_catalog_visibility` filter described above; otherwise update the product once and WCPOS re-applies Hidden.
+
+  If it already reads Hidden, the page is most likely cached. A caching plugin or CDN can keep serving a shop or search page rendered before the product became POS Only. Clear the site cache after changing visibility.
+
+  Opening the product from a direct link still shows its page. That is also how WooCommerce's own Hidden visibility behaves. The product cannot be added to the cart from that page.
 
   </AccordionItem>
 
