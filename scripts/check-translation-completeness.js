@@ -123,6 +123,13 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'Stripe Terminal',
   'SumUp Terminal',
   'Vipps MobilePay',
+  // Terminal payment-gateway extension names, used verbatim as LinkCard titles on extensions/index.
+  'Square Terminal',
+  'PayPal Reader (Zettle)',
+  'Mollie Terminal',
+  'Mercado Pago Terminal',
+  'Windcave Terminal',
+  'PayArc Terminal',
   'Smart Coupons',
   'StoreApps Smart Coupons',
   'ATUM Multi-Inventory',
