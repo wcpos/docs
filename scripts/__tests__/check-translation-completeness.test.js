@@ -154,6 +154,20 @@ describe('findUntranslatedProps', () => {
     expect(hits).not.toContain('title="iOS (TestFlight)"'); // allowlisted — kept on purpose
     expect(hits).toContain('question="How do I install it?"'); // genuine leak — still flagged
   });
+
+  it('does not flag the terminal gateway names kept verbatim on extensions/index', () => {
+    const src = [
+      '<LinkCard title="Square Terminal" />',
+      '<LinkCard title="PayPal Reader (Zettle)" />',
+      '<LinkCard title="Mollie Terminal" />',
+      '<LinkCard title="Mercado Pago Terminal" />',
+      '<LinkCard title="Windcave Terminal" />',
+      '<LinkCard title="PayArc Terminal" />',
+      '<LinkCard title="Email Invoice" />',
+      '',
+    ].join('\n');
+    expect(findUntranslatedProps(src, src)).toEqual(['title="Email Invoice"']);
+  });
 });
 
 describe('findLeftoverProse', () => {
@@ -288,6 +302,20 @@ Switch to Twenty Twenty-Four to rule out a theme conflict.
 Cambia a Twenty Twenty-Four para descartar un conflicto de tema.
 `;
     expect(findLeftoverProse(source, translated)).toHaveLength(0);
+  });
+
+  it('does not count the terminal gateway names as leftover prose', () => {
+    const src = [
+      '<LinkCard title="Square Terminal" />',
+      '<LinkCard title="PayPal Reader (Zettle)" />',
+      '<LinkCard title="Mollie Terminal" />',
+      '<LinkCard title="Mercado Pago Terminal" />',
+      '<LinkCard title="Windcave Terminal" />',
+      '<LinkCard title="PayArc Terminal" />',
+      '<LinkCard title="Email Invoice" />',
+      '',
+    ].join('\n');
+    expect(findLeftoverProse(src, src)).toEqual(['Email Invoice']);
   });
 });
 
