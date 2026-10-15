@@ -2,7 +2,7 @@
 title: Productos Solo para POS
 sidebar_label: Productos Solo para POS
 sidebar_position: 2
-description: Controla la visibilidad de productos entre tu tienda en línea y el POS, incluyendo productos solo para POS y solo en línea.
+description: "Controla la visibilidad de productos entre tu tienda en línea y el POS, incluyendo productos solo para POS y solo en línea."
 ---
 
 import Image from "@theme/IdealImage";
@@ -20,7 +20,7 @@ Productos Solo para POS es una función que te permite controlar si los producto
 Cuando está habilitado, cada producto obtiene una configuración de **Visibilidad en POS** con tres opciones:
 
 | Visibilidad | Tienda en Línea | POS |
-|-------------|-----------------|-----|
+|------------|--------------|-----|
 | **POS & En Línea** (predeterminado) | Visible | Visible |
 | **Solo POS** | Oculto | Visible |
 | **Solo En Línea** | Visible | Oculto |
@@ -40,7 +40,7 @@ Si todos tus productos deben aparecer en ambos canales, no necesitas esta funci�
 
 ## Habilitando la Función {#enabling-the-feature}
 
-1. Ve a **WP Admin → WCPOS → Configuración → General**
+1. Vaya a **WP Admin > POS > Ajustes > General**
 2. Habilita **"Habilitar Productos Solo para POS"**
 3. Guarda los cambios
 
@@ -117,13 +117,37 @@ Cuando un producto está configurado como **Solo En Línea**:
 
 Cuando un producto está configurado como **Solo POS**:
 
-- No aparecerá en el frontend de tu tienda WooCommerce
-- No se incluirá en los resultados de búsqueda en línea
-- Los clientes no pueden comprarlo en línea
+- Se excluye del catálogo de la tienda, de las páginas de categorías y de la búsqueda propia de WooCommerce
+- No se puede añadir al carrito ni comprar en línea
+- Se excluye de las listas de productos de la API REST y la Store API de WooCommerce
+
+**También establezca la visibilidad del catálogo como Oculto.** La opción Solo POS y el control de **Visibilidad del catálogo** de WooCommerce, situado justo encima de la visibilidad del POS en el cuadro Publicar, son ajustes independientes. WCPOS excluye los productos Solo POS de las consultas de productos estándar de WooCommerce, pero cualquier elemento que lea directamente la visibilidad del catálogo de WooCommerce seguirá mostrando el producto, a menos que la **Visibilidad del catálogo** esté establecida como **Oculto**. Esto incluye plugins de búsqueda como FiboSearch o Relevanssi, productos relacionados y bloques o shortcodes que muestran productos por ID. Para establecerla, haga clic en **Editar** junto a **Visibilidad del catálogo** en el cuadro Publicar, seleccione **Oculto** y haga clic en **Actualizar**. Los ajustes también siguen siendo independientes al cambiarlo en sentido contrario: cuando más adelante vuelva a cambiar el producto a **POS & En Línea** o **Solo En Línea**, restablezca la Visibilidad del catálogo a **Tienda y resultados de búsqueda**; de lo contrario, seguirá oculto del sitio web.
 
 :::note
 Si has cambiado recientemente la visibilidad de un producto y aún aparece (o no aparece) en el POS, prueba una sincronización. Mantén presionado el botón de sincronización y selecciona **"Limpiar y Actualizar"** para volver a cargar todos los datos del producto.
 :::
+
+### Dónde siguen visibles los productos Solo POS {#where-pos-only-products-stay-visible}
+
+Ocultar un producto Solo POS es una regla de la tienda en línea. El producto sigue visible en los lugares donde se administra la tienda, en vez de comprar en ella:
+
+- **WP Admin**, incluida la lista de productos y el editor de productos
+- **WooCommerce Analytics**, para que un informe filtrado por una categoría de productos Solo POS muestre sus ventas
+- Comandos de **WP-CLI**, como `wp wc product list`
+- **El propio POS**
+
+Se oculta del catálogo y la búsqueda de la tienda, de la Store API de WooCommerce que utilizan el carrito y el pago por bloques, de la API REST de WooCommerce (`/wc/v3/products`) y de todo lo que se base en ellas, como los feeds de productos y los mapas del sitio.
+
+Los desarrolladores pueden cambiar la decisión para su propio contexto mediante el filtro `woocommerce_pos_hide_pos_only_products`. Este recibe la decisión predeterminada y el `WP_Query` que está a punto de ejecutarse; devuelva `false` para que esa consulta pueda ver los productos Solo POS.
+
+```php
+add_filter( 'woocommerce_pos_hide_pos_only_products', function ( $hide, $query ) {
+    if ( defined( 'MY_PLUGIN_EXPORTING' ) ) {
+        return false;
+    }
+    return $hide;
+}, 10, 2 );
+```
 
 ## Casos de Uso Comunes {#common-use-cases}
 
@@ -175,9 +199,28 @@ Si has cambiado recientemente la visibilidad de un producto y aún aparece (o no
 
   Asegúrate de que la función esté habilitada:
 
-  1. Ve a **WP Admin → WCPOS → Configuración → General**
+  1. Vaya a **WP Admin > POS > Ajustes > General**
   2. Verifica que **"Habilitar Productos Solo para POS"** esté marcado
   3. Guarda la configuración si realizaste cambios
+
+  </AccordionItem>
+
+  <AccordionItem question="Un producto Solo POS sigue apareciendo en el sitio web">
+
+  Compruebe dos cosas:
+
+  1. **La visibilidad del catálogo está establecida como Oculto.** Abra el producto y compruebe **Visibilidad del catálogo** en el cuadro Publicar. Si muestra algo distinto de **Oculto**, haga clic en **Editar**, seleccione **Oculto** y actualice el producto. Los plugins de búsqueda, los productos relacionados y los bloques o shortcodes que muestran productos por ID consultan este ajuste de WooCommerce en lugar de la visibilidad del POS de WCPOS, por lo que Solo POS por sí solo no los afecta.
+  2. **La página no está en caché.** Un plugin de caché o una CDN pueden seguir mostrando una página de tienda o de búsqueda generada antes de que el producto pasara a ser Solo POS. Borre la caché del sitio después de cambiar la visibilidad.
+
+  Si se abre el producto desde un enlace directo, su página sigue apareciendo. Así funciona también la visibilidad Oculto de WooCommerce. No es posible añadir el producto al carrito desde esa página.
+
+  </AccordionItem>
+
+  <AccordionItem question="Analytics muestra «Sin datos» para una categoría de productos Solo POS">
+
+  Las versiones del plugin WCPOS hasta la 1.10.26 también aplicaban la regla de la tienda en línea a WooCommerce Analytics. Al filtrar un informe por una categoría compuesta por productos Solo POS, no se encontraba ningún producto y se mostraba **Sin datos**, mientras que al buscar esos mismos productos por nombre sí aparecían sus ventas.
+
+  Esto se corrigió en la primera versión del plugin WCPOS posterior a la 1.10.26. Actualice el plugin; no es necesario cambiar los productos ni los ajustes del informe.
 
   </AccordionItem>
 </Accordion>
