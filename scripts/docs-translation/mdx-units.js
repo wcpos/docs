@@ -1,7 +1,7 @@
 const { createHash } = require('node:crypto');
 
 const TRANSLATABLE_FRONTMATTER_KEYS = new Set(['title', 'sidebar_label', 'description']);
-const TRANSLATABLE_JSX_ATTRS = new Set(['alt', 'title', 'description', 'label', 'question']);
+const TRANSLATABLE_JSX_ATTRS = new Set(['alt', 'title', 'description', 'label', 'question', 'summary', 'placeholder']);
 
 function hashSource(source) {
   return createHash('sha256').update(source).digest('hex');
@@ -512,7 +512,7 @@ function parseDocsMdxUnits(filePath, source) {
     }
 
     for (const attrMatch of lineNoNewline.matchAll(
-      /(?<prefix>^|\s)(?<attr>alt|title|description|label|question)=(?:(?<quote>["'])(?<value>.*?)\k<quote>|\{(?<bracedQuote>["'])(?<bracedValue>.*?)\k<bracedQuote>\})/g,
+      /(?<prefix>^|\s)(?<attr>alt|title|description|label|question|summary|placeholder)=(?:(?<quote>["'])(?<value>.*?)\k<quote>|\{(?<bracedQuote>["'])(?<bracedValue>.*?)\k<bracedQuote>\})/g,
     )) {
       const attr = attrMatch.groups?.attr;
       const prefix = attrMatch.groups?.prefix ?? '';
