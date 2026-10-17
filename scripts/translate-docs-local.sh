@@ -147,9 +147,16 @@ translate_packet() { # $1 = packet name; reviewed only when the translator wrote
     fi
   fi
 }
-split_packet() { # $1 = packet name; writes <name>-a and <name>-b with the first and second half of its files, printing each name written
+split_packet() { # $1 = packet name; splits by files, or by units for a single file, writing <name>-a/-b and printing each name written
   local count half
   count=$(jq '.files // {} | length' ".translate/work/$1.json")
+  if [ "$count" -eq 1 ] && jq -e '.files[].units | length >= 2' ".translate/work/$1.json" >/dev/null; then
+    half=$(jq '.files[].units | length | (. + 1) / 2 | floor' ".translate/work/$1.json")
+    jq --argjson h "$half" '.files[].units |= (to_entries[:$h] | from_entries) | del(.counts)' ".translate/work/$1.json" > ".translate/work/$1-a.json"
+    jq --argjson h "$half" '.files[].units |= (to_entries[$h:] | from_entries) | del(.counts)' ".translate/work/$1.json" > ".translate/work/$1-b.json"
+    printf '%s\n' "$1-a" "$1-b"
+    return
+  fi
   half=$(( (count + 1) / 2 ))
   if [ "$count" -gt 0 ]; then
     jq --argjson h "$half" '.files |= (to_entries[:$h] | from_entries) | del(.counts)' ".translate/work/$1.json" > ".translate/work/$1-a.json"
@@ -166,10 +173,16 @@ if [ "$TOTAL" -gt 0 ]; then
     PACKET=$(basename "$PACKET" .json)
     translate_packet "$PACKET"
     if [ ! -f ".translate/results/$PACKET.json" ]; then
-      # A packet without results is retried once, split in half; the halves are not split again.
+      # Retry without results in halves; single-file halves may split once more by units, but quarters never split.
       for HALF in $(split_packet "$PACKET"); do
         log "packet $PACKET had no results; retrying as $HALF"
         translate_packet "$HALF"
+        if [ ! -f ".translate/results/$HALF.json" ] && jq -e '.files | (length == 1) and (.[].units | length >= 2)' ".translate/work/$HALF.json" >/dev/null; then
+          for QUARTER in $(split_packet "$HALF"); do
+            log "packet $HALF had no results; retrying as $QUARTER"
+            translate_packet "$QUARTER"
+          done
+        fi
       done
     fi
   done

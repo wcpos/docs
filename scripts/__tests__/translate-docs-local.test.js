@@ -95,7 +95,8 @@ if (tool === 'git') {
     counts.forEach((n, i) => {
       const locale = names[i].replace(/-\d+$/, ''); locales[locale] = n;
       const packet = { locale, count: n };
-      if (typeof config.packetFiles === 'number') packet.files = Object.fromEntries(Array.from({ length: config.packetFiles }, (_, j) => ['i18n/' + locale + '/p' + j + '.mdx', { units: {} }]));
+      const units = Object.fromEntries(Array.from({ length: config.packetUnits || 0 }, (_, k) => ['u' + k, {}]));
+      if (typeof config.packetFiles === 'number') packet.files = Object.fromEntries(Array.from({ length: config.packetFiles }, (_, j) => ['i18n/' + locale + '/p' + j + '.mdx', { units }]));
       fs.writeFileSync('.translate/work/' + names[i] + '.json', JSON.stringify(packet));
     });
     fs.writeFileSync('.translate/plan.json', '{}');
@@ -126,6 +127,7 @@ if (tool === 'git') {
   console.log('MODEL LOG');
   if (config.tamper && prompt.startsWith(config.tamper)) fs.writeFileSync('.translate/plan.json', '{"tampered":true}');
   if (config.fail && prompt.includes('/de-01.json')) process.exit(1);
+  if (config.failPackets?.some(name => prompt.includes('/work/' + name + '.json'))) process.exit(1);
   if (config.failReview && prompt.startsWith('REVIEW')) process.exit(1);
   if (config.hang) {
     const child = cp.spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
@@ -474,6 +476,31 @@ it('does not split a half that also writes no results', () => {
   const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
   assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['fr-01', 'fr-01-a', 'fr-01-b']);
   assert.match(result.stdout, /units: planned 1, done 0, rejected 0, no result 0, deferred 0\n/);
+});
+
+it('splits a single-file packet without results by its units', () => {
+  const result = run({ counts: [1], packets: ['es-01'], packetFiles: 1, packetUnits: 5, failPackets: ['es-01'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a', 'es-01-b', 'es-01-b']);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  const half = name => JSON.parse(fs.readFileSync(path.join(wt, '.translate/work/' + name + '.json'), 'utf8')).files;
+  assert.deepEqual(Object.keys(half('es-01-a')), ['i18n/es/p0.mdx']);
+  assert.deepEqual(Object.keys(half('es-01-b')), ['i18n/es/p0.mdx']);
+  assert.deepEqual(Object.keys(half('es-01-a')['i18n/es/p0.mdx'].units), ['u0', 'u1', 'u2']);
+  assert.deepEqual(Object.keys(half('es-01-b')['i18n/es/p0.mdx'].units), ['u3', 'u4']);
+  assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
+});
+
+it('splits a single-file half without results once more by units, and no further', () => {
+  const result = run({ counts: [1], packets: ['es-01'], packetFiles: 2, packetUnits: 4, failPackets: ['es-01', 'es-01-a', 'es-01-a-a'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a-a', 'es-01-a-b', 'es-01-a-b', 'es-01-b', 'es-01-b']);
+  const quarter = name => JSON.parse(fs.readFileSync(path.join(wt, '.translate/work/' + name + '.json'), 'utf8')).files;
+  assert.deepEqual(Object.keys(quarter('es-01-a-a')['i18n/es/p0.mdx'].units), ['u0', 'u1']);
+  assert.deepEqual(Object.keys(quarter('es-01-a-b')['i18n/es/p0.mdx'].units), ['u2', 'u3']);
+  assert.match(result.stdout, /packet es-01-a had no results; retrying as es-01-a-a\n/);
 });
 
 it('adds the first.txt pages after CLI --first paths', () => {
