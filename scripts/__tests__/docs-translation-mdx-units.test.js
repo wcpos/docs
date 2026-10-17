@@ -509,6 +509,36 @@ Después de la imagen.
     expect(output).toMatch(/icon="box"/);
   });
 
+  it('translates JSX summary and placeholder props checked by page QA', () => {
+    const mdx = [
+      '<WizardFigure src="/img/x.png" alt="Printer self-test printout" summary="The self-test shows the printer address." />',
+      '<FieldIndex',
+      '  placeholder="Filter fields… try “savings”"',
+      '/>',
+      '',
+    ].join('\n');
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+
+    expect(parsed.units.map((unit) => [unit.type, unit.attr, unit.source])).toStrictEqual([
+      ['jsx_attr', 'alt', 'Printer self-test printout'],
+      ['jsx_attr', 'summary', 'The self-test shows the printer address.'],
+      ['jsx_attr', 'placeholder', 'Filter fields… try “savings”'],
+    ]);
+
+    const output = applyDocsMdxTranslations(
+      parsed,
+      new Map([
+        [parsed.units[0].id, 'Drucker-Selbsttestausdruck'],
+        [parsed.units[1].id, 'Der Selbsttest zeigt die Druckeradresse.'],
+        [parsed.units[2].id, 'Felder filtern… versuchen Sie “savings”'],
+      ]),
+    );
+
+    expect(output.includes('summary="Der Selbsttest zeigt die Druckeradresse."')).toBe(true);
+    expect(output.includes('placeholder="Felder filtern… versuchen Sie “savings”"')).toBe(true);
+    expect(output.includes('src="/img/x.png"')).toBe(true);
+  });
+
   it('translates simple JSX element text children and visible labels used by RequirementsList items', () => {
     const mdx = '<RequirementItem label="API Credentials">Appropriate API keys or credentials</RequirementItem>\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);

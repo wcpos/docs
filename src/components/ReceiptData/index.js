@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import clsx from 'clsx';
+import { translate } from '@docusaurus/Translate';
 import styles from './styles.module.css';
 
 /**
@@ -22,8 +23,44 @@ function rich(text) {
  * jumps to the section anchor.
  * ---------------------------------------------------------------------- */
 
+function zoneLabels() {
+  return {
+    store: translate({
+      id: 'receiptData.zone.store',
+      message: 'Store header',
+      description: 'Receipt data page: legend name of a receipt zone',
+    }),
+    order: translate({
+      id: 'receiptData.zone.order',
+      message: 'Order & people',
+      description: 'Receipt data page: legend name of a receipt zone',
+    }),
+    lines: translate({
+      id: 'receiptData.zone.lines',
+      message: 'Line items',
+      description: 'Receipt data page: legend name of a receipt zone',
+    }),
+    totals: translate({
+      id: 'receiptData.zone.totals',
+      message: 'Totals block',
+      description: 'Receipt data page: legend name of a receipt zone',
+    }),
+    payments: translate({
+      id: 'receiptData.zone.payments',
+      message: 'Payments',
+      description: 'Receipt data page: legend name of a receipt zone',
+    }),
+    footer: translate({
+      id: 'receiptData.zone.footer',
+      message: 'Footer',
+      description: 'Receipt data page: legend name of a receipt zone',
+    }),
+  };
+}
+
 export function ReceiptAnatomy({ zones, facsimile }) {
   const [hot, setHot] = useState(null);
+  const labels = zoneLabels();
 
   const zone = (id) => {
     const meta = zones.find((z) => z.id === id);
@@ -77,7 +114,7 @@ export function ReceiptAnatomy({ zones, facsimile }) {
             onFocus={() => setHot(z.id)}
             onBlur={() => setHot(null)}
           >
-            <div className={styles.legendName}>{z.label}</div>
+            <div className={styles.legendName}>{labels[z.id] ?? z.label}</div>
             <div className={styles.legendPaths}>
               {z.fields.map((f, i) => (
                 <React.Fragment key={f}>
@@ -98,7 +135,44 @@ export function ReceiptAnatomy({ zones, facsimile }) {
  * field name as a label on a visible amount.
  * ---------------------------------------------------------------------- */
 
-export function PriceFlow({ caption, scaleLabel, segments, keys, summary }) {
+function priceKeys() {
+  return [
+    {
+      kind: 'paid',
+      title: translate({
+        id: 'receiptData.priceKey.paid',
+        message: 'What the customer pays',
+        description: 'Receipt data page: name of a price segment in the sample order',
+      }),
+      fields: 'unit_price → 13.05 · line_total → 26.10',
+    },
+    {
+      kind: 'coupon',
+      title: translate({
+        id: 'receiptData.priceKey.coupon',
+        message: 'Coupon discount (SUMMER10)',
+        description: 'Receipt data page: name of a price segment in the sample order',
+      }),
+      fields: translate({
+        id: 'receiptData.priceKey.coupon.fields',
+        message: 'lines[].discounts → 2.90 on this line',
+        description: 'Receipt data page: field path and amount; keep lines[].discounts unchanged',
+      }),
+    },
+    {
+      kind: 'savings',
+      title: translate({
+        id: 'receiptData.priceKey.savings',
+        message: 'Savings vs regular price',
+        description: 'Receipt data page: name of a price segment in the sample order',
+      }),
+      fields: 'unit_savings → 2.50 · line_savings → 5.00',
+    },
+  ];
+}
+
+export function PriceFlow({ caption, scaleLabel, segments, summary }) {
+  const keys = priceKeys();
   const total = segments.reduce((sum, seg) => sum + seg.amount, 0);
   return (
     <div className={styles.flow}>
