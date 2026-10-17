@@ -503,6 +503,29 @@ it('splits a single-file half without results once more by units, and no further
   assert.match(result.stdout, /packet es-01-a had no results; retrying as es-01-a-a\n/);
 });
 
+it('splits a multi-file packet by units across files, and a failing multi-file half once more', () => {
+  const result = run({ counts: [1], packets: ['es-01'], packetFiles: 3, packetUnits: 3, failPackets: ['es-01', 'es-01-a', 'es-01-a-a'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a-a', 'es-01-a-b', 'es-01-a-b', 'es-01-b', 'es-01-b']);
+  const packet = name => JSON.parse(fs.readFileSync(path.join(wt, '.translate/work/' + name + '.json'), 'utf8'));
+  const units = name => Object.fromEntries(Object.entries(packet(name).files).map(([file, entry]) => [file, Object.keys(entry.units)]));
+  assert.deepEqual(units('es-01-a'), {
+    'i18n/es/p0.mdx': ['u0', 'u1', 'u2'],
+    'i18n/es/p1.mdx': ['u0', 'u1'],
+  });
+  assert.deepEqual(units('es-01-b'), {
+    'i18n/es/p1.mdx': ['u2'],
+    'i18n/es/p2.mdx': ['u0', 'u1', 'u2'],
+  });
+  assert.deepEqual(units('es-01-a-a'), { 'i18n/es/p0.mdx': ['u0', 'u1', 'u2'] });
+  assert.deepEqual(units('es-01-a-b'), { 'i18n/es/p1.mdx': ['u0', 'u1'] });
+  assert.ok(!Object.hasOwn(packet('es-01-a'), 'counts'));
+  assert.equal(packet('es-01-a').locale, 'es');
+  assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
+  assert.match(result.stdout, /packet es-01-a had no results; retrying as es-01-a-a\n/);
+});
+
 it('adds the first.txt pages after CLI --first paths', () => {
   const file = path.join(wt, 'scripts/docs-translation/first.txt');
   fs.writeFileSync(file, '# comment\n\nversioned_docs/a.mdx\nversioned_docs/b');
