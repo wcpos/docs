@@ -1,7 +1,7 @@
 ---
 title: Referência Técnica de Descontos do POS
 sidebar_label: Descontos do POS
-description: Referência para desenvolvedores sobre como o WCPOS armazena substituições de preço de itens de linha do POS, como elas interagem com cupons do WooCommerce e os filtros disponíveis.
+description: "Referência para desenvolvedores sobre como o WCPOS armazena substituições de preço de itens de linha do POS, como elas interagem com cupons do WooCommerce e os filtros disponíveis."
 ---
 
 # Referência Técnica de Descontos do POS {#pos-discount-technical-reference}
@@ -24,7 +24,9 @@ Para produtos diversos (personalizados), esse meta também pode conter os campos
 
 Este meta é a fonte autoritativa de preços por unidade para a linha. O `subtotal` armazenado pelo WooCommerce no item de linha é derivado de `price * qty` (com extração de impostos e arredondamento aplicados). O `total` armazenado pode ser menor quando descontos de cupons são aplicados, portanto, para precisão por unidade, sempre leia `_woocommerce_pos_data.price` e `regular_price`.
 
-## Modelo de Subtotal (v1.9.0+) {#subtotal-model-v1-9-0}
+Novos pedidos do POS também registram a versão do plugin do servidor no metadado privado do pedido `_woocommerce_pos_version`. Isso fornece um marcador explícito de versão para futuras verificações de compatibilidade. Os cálculos do recibo continuam tratando a estrutura armazenada dos itens como fonte de verdade, pois um pedido offline pode ser aceito por um servidor mais recente do que o aplicativo que o criou.
+
+## Modelo de Subtotal (v1.9.0+) {#subtotal-model-v190}
 
 A partir da v1.9.0, o WCPOS se alinha com a semântica nativa de preço promocional do WooCommerce:
 
@@ -47,7 +49,7 @@ O suporte a cupons é um recurso do [WCPOS Pro](https://wcpos.com/pro). Quando u
 1. O cupom é calculado sobre o **preço com desconto do POS** (o valor em `_woocommerce_pos_data.price`), não sobre o `regular_price` original.
 2. Quando um cupom é removido, o item do pedido retorna ao seu preço com desconto do POS.
 
-### Comportamento de `exclude_sale_items` {#excludesaleitems-behaviour}
+### Comportamento de `exclude_sale_items` {#exclude_sale_items-behaviour}
 
 Itens com desconto do POS são tratados como "em promoção" pelo WooCommerce quando `_woocommerce_pos_data.price < regular_price`. Cupons com `exclude_sale_items` ativado irão, portanto, ignorá-los, de forma consistente com o tratamento que o WooCommerce aplica aos preços promocionais regulares.
 
@@ -55,7 +57,7 @@ Se você precisar de um comportamento diferente, consulte o filtro `woocommerce_
 
 ## Filtros Disponíveis {#available-filters}
 
-### `woocommerce_pos_item_is_on_sale` {#woocommercepositemisonsale}
+### `woocommerce_pos_item_is_on_sale` {#woocommerce_pos_item_is_on_sale}
 
 Sobrescreve se um item com desconto do POS é considerado "em promoção" para fins de validação de cupons.
 
@@ -91,9 +93,12 @@ O construtor de dados do recibo (`Receipt_Data_Builder`) expõe:
 
 - `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — valor de desconto por linha, calculado como `subtotal - total`. A partir da v1.9.0, isso reflete **apenas descontos de cupom** para substituições de preço do POS, já que `subtotal === total` quando nenhum cupom é aplicado.
 - `totals.discount_total`, `totals.discount_total_incl`, `totals.discount_total_excl` — total de desconto de cupom no nível do pedido, obtido de `WC_Order::get_discount_total()`.
+- `totals.sale_savings_total`, `totals.sale_savings_total_incl`, `totals.sale_savings_total_excl` — total registrado de economia entre o preço regular e o preço de venda dos itens, incluindo preços promocionais do catálogo e substituições feitas no caixa.
+- `totals.total_saved`, `totals.total_saved_incl`, `totals.total_saved_excl` — totais combinados de descontos do WooCommerce e de economia em relação ao preço regular. O construtor exclui a economia dos itens já representada no total de descontos do WooCommerce de um pedido anterior à v1.9.0.
+- `totals.total_saved_complete` — falso quando algum item não tem dados de preço registrados suficientes para um total agregado confiável; nesse caso, os totais de economia que aceitam valor nulo são `null`.
 - `discounts[]` — array de itens de linha de cupom com `label`, `code` e `total`.
 
-Os metadados do item de linha prefixados com underscore (incluindo `_woocommerce_pos_data`) são filtrados de `lines[].meta` por `Receipt_Data_Builder::get_item_meta_pairs()`, portanto `regular_price` não está diretamente disponível para templates. Se você precisar exibir a diferença entre o preço regular e o preço do POS nos recibos, solicite via [suporte](https://wcpos.com/support).
+Os metadados do item de linha prefixados com sublinhado (incluindo `_woocommerce_pos_data`) são filtrados de `lines[].meta` por `Receipt_Data_Builder::get_item_meta_pairs()`. Em vez disso, os Dados do Recibo v1.1 expõem o preço regular registrado, o preço de venda antes do cupom, a economia por item de linha e a economia agregada por meio de campos canônicos. Consulte [Exibindo o preço regular e a economia](/receipts/receipt-data#displaying-regular-price-and-savings) e [Totais](/receipts/receipt-data#totals) para ver exemplos de modelos.
 
 ## Relacionado {#related}
 

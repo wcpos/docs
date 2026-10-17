@@ -15,6 +15,8 @@ O WCPOS é local-first: cada tela lê e grava em um banco de dados no dispositiv
 
 O POS executa **um motor de sincronização por combinação de site + loja + operador de caixa** em cada dispositivo. Esse motor é dono do próprio banco de dados local, portanto trocar de loja ou de operador de caixa troca todo o plano de dados, em vez de filtrar uma pilha compartilhada de registros. O isolamento por operador de caixa é intencional: dois operadores no mesmo dispositivo nunca compartilham dados locais.
 
+A troca de escopo é **transacional**: a nova loja ou o novo operador de caixa carrega seu plano de dados, e a troca só é confirmada quando tudo está pronto. Qualquer erro é informado, em vez de deixar você em uma situação intermediária entre duas lojas.
+
 Em atualizações, os bancos de dados locais nunca são migrados no lugar — o aplicativo inicia um banco de dados novo e baixa tudo de novo do servidor, que sempre mantém a cópia autoritativa (veja [Atualizando a partir da v1.9](#upgrading-from-v19)).
 
 Em instalações multiloja do Pro, cada requisição de sincronização identifica sua loja, de modo que um preço editado no caixa atualiza o preço daquela loja, e não o da loja online.
@@ -84,6 +86,7 @@ Detalhes que importam:
 
 - **As gravações do carrinho são serializadas por pedido.** Rajadas rápidas do leitor são aplicadas uma de cada vez, e uma adição repetida é mesclada à linha que ela duplicaria, em vez de enfileirar uma segunda linha.
 - **As confirmações de pedido adotam a cópia do servidor.** O WooCommerce atribui IDs aos itens de linha do pedido na criação; o motor adota o pedido confirmado para que atualizações posteriores correspondam a essas linhas em vez de acrescentar duplicatas. A adoção é conservadora — ela nunca sobrescreve uma edição local que o servidor ainda não viu, e só se aplica a pedidos.
+- **Um conflito de gravação de pedido recebe uma tentativa de recuperação.** Se a gravação de um pedido colidir com uma cópia mais recente no servidor, o motor reconcilia os dados e tenta novamente uma única vez; se ainda assim não conseguir, o conflito é informado para que você o resolva, em vez de ficar repetindo a tentativa sem aviso.
 - **Uma gravação que o servidor recusa em definitivo nunca é repetida silenciosamente.** Ela é estacionada com o motivo dado pelo próprio servidor e exibida em **Saúde da loja → Banco de dados** como *"alterações que nunca chegaram ao seu servidor"*, com duas ações explícitas: **Enviar novamente** (reconstrói a requisição a partir do registro como ele está agora, de modo que correções posteriores sejam aplicadas) e **Descartar**. Não há laço de repetição automática — a recuperação é sempre uma ação visível e deliberada. Veja [Saúde da loja](/support/store-health#database) para o passo a passo voltado ao lojista.
 
 ### Várias abas do navegador {#multi-tab}
@@ -93,6 +96,8 @@ Executar o POS web em várias abas da mesma loja é suportado. Toda aba pode reg
 ## Armazenamento local {#local-storage}
 
 Os aplicativos web e desktop armazenam dados por meio de um **worker OPFS (Origin Private File System)**; os aplicativos iOS e Android usam o mesmo formato em disco por meio de um motor de sistema de arquivos. As quatro plataformas compartilham um único formato de armazenamento e as mesmas ferramentas de recuperação de corrupção. (Versões anteriores usavam IndexedDB na web e SQLite no nativo.)
+
+Se o armazenamento local ficar **ilegível**, o WCPOS bloqueia a finalização da compra e solicita que você recarregue, em vez de permitir que uma venda seja feita com dados corrompidos e se perca. Nesse estado, as leituras de código de barras também falham de forma explícita, em vez de falharem silenciosamente — assim, um armazenamento corrompido não pode descartar uma venda sem aviso antes que as ferramentas de recuperação o reconstruam.
 
 As consultas são executadas dentro da camada de banco de dados — seletor, ordenação e página —, de modo que apenas a página visível de linhas atravessa até o aplicativo. Em um conjunto sintético de 10.000 pedidos, esse deslocamento reduziu o custo de atualização por gravação sob uma assinatura ativa de ~27 ms para ~0,06 ms.
 

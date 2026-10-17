@@ -1,7 +1,7 @@
 ---
 title: POS割引テクニカルリファレンス
 sidebar_label: POS割引
-description: WCPOSにおけるPOS明細行の価格上書きの保存方法、WooCommerceクーポンとの連携、利用可能なフィルターに関する開発者向けリファレンスです。
+description: "WCPOSにおけるPOS明細行の価格上書きの保存方法、WooCommerceクーポンとの連携、利用可能なフィルターに関する開発者向けリファレンスです。"
 ---
 
 # POS割引テクニカルリファレンス {#pos-discount-technical-reference}
@@ -24,7 +24,9 @@ description: WCPOSにおけるPOS明細行の価格上書きの保存方法、Wo
 
 このメタは明細行の単価の正式なソースです。WooCommerceが明細行に保存する`subtotal`は`price * qty`から導出されます（税抽出と丸め処理が適用されます）。保存される`total`はクーポン割引が適用された場合に低くなる可能性があるため、単価の精度を確保するには常に`_woocommerce_pos_data.price`と`regular_price`を参照してください。
 
-## 小計モデル（v1.9.0以降） {#subtotal-model-v1-9-0}
+新しいPOS注文では、サーバープラグインのバージョンも非公開の`_woocommerce_pos_version`注文メタに記録されます。これにより、将来の互換性チェックに使える明示的なバージョン識別子が提供されます。オフライン注文は、作成したアプリより新しいサーバーで受け付けられる場合があるため、レシート計算では引き続き保存済みの明細項目の形式を正とします。
+
+## 小計モデル（v1.9.0以降） {#subtotal-model-v190}
 
 v1.9.0以降、WCPOSはWooCommerceのネイティブなセール価格セマンティクスに準拠しています：
 
@@ -44,10 +46,10 @@ v1.9.0以降、WCPOSはWooCommerceのネイティブなセール価格セマン�
 
 クーポン機能は [WCPOS Pro](https://wcpos.com/pro) の機能です。POS 割引が適用された商品を含む注文にクーポンを適用すると：
 
-1. クーポンは元の `regular_price` ではなく、**POS 割引後の価格**（`_woocommerce_pos_data.price` の値）に対して計算されます。
+1. クーポンは元の`_woocommerce_pos_data.price`ではなく、**POS割引後の価格**（`regular_price`の値）を基準に計算されます。
 2. クーポンを削除すると、明細項目は POS 割引後の価格に戻ります。
 
-### `exclude_sale_items` の動作 {#excludesaleitems-behaviour}
+### `exclude_sale_items` の動作 {#exclude_sale_items-behaviour}
 
 POS割引が適用された商品は、`_woocommerce_pos_data.price < regular_price` の場合、WooCommerce によって「セール中」として扱われます。`exclude_sale_items` が有効なクーポンはこれらの商品をスキップします。これは WooCommerce が通常のセール価格を扱う方法と一致しています。
 
@@ -55,7 +57,7 @@ POS割引が適用された商品は、`_woocommerce_pos_data.price < regular_pr
 
 ## 利用可能なフィルター {#available-filters}
 
-### `woocommerce_pos_item_is_on_sale` {#woocommercepositemisonsale}
+### `woocommerce_pos_item_is_on_sale` {#woocommerce_pos_item_is_on_sale}
 
 POS割引が適用された商品をクーポン検証時に「セール中」とみなすかどうかをオーバーライドします。
 
@@ -91,9 +93,12 @@ add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product,
 
 - `lines[].discounts`、`lines[].discounts_incl`、`lines[].discounts_excl` — 明細行ごとの割引金額。`subtotal - total` として計算されます。v1.9.0 以降、POS価格上書きに対しては**クーポン割引のみ**を反映します。クーポンが適用されていない場合は `subtotal === total` となるためです。
 - `totals.discount_total`、`totals.discount_total_incl`、`totals.discount_total_excl` — `WC_Order::get_discount_total()` から取得した注文レベルのクーポン割引合計。
+- `totals.sale_savings_total`、`totals.sale_savings_total_incl`、`totals.sale_savings_total_excl` — 商品行の通常価格から販売価格への値引き額の合計です。カタログのセール価格とレジでの価格上書きを含みます。
+- `totals.total_saved`、`totals.total_saved_incl`、`totals.total_saved_excl` — WooCommerceの割引と通常価格からの値引き額を合わせた合計です。ビルダーは、v1.9.0より前の注文でWooCommerceの割引合計にすでに含まれる明細の値引き額を除外します。
+- `totals.total_saved_complete` — 信頼できる集計に必要な価格データが不足している明細がある場合はfalseになります。この場合、null許容の値引き額合計は`null`になります。
 - `discounts[]` — `label`、`code`、`total` を含むクーポン明細項目の配列。
 
-明細項目のアンダースコアプレフィックス付きメタ（`_woocommerce_pos_data` を含む）は `lines[].meta` によって `Receipt_Data_Builder::get_item_meta_pairs()` からフィルタリングされるため、`regular_price` はテンプレートから直接利用できません。レシートに通常価格とPOS価格の差額を表示する必要がある場合は、[サポート](https://wcpos.com/support)までご依頼ください。
+明細項目のアンダースコアで始まるメタ（`_woocommerce_pos_data`を含む）は、`lines[].meta`によって`Receipt_Data_Builder::get_item_meta_pairs()`から除外されます。Receipt Data v1.1では、記録された通常価格、クーポン適用前の販売価格、明細の値引き額、合計値引き額を標準フィールドで公開します。テンプレートの例は[通常価格と値引き額の表示](/receipts/receipt-data#displaying-regular-price-and-savings)および[合計](/receipts/receipt-data#totals)を参照してください。
 
 ## 関連項目 {#related}
 

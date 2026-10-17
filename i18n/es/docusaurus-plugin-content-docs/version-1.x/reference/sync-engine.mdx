@@ -15,6 +15,8 @@ WCPOS es local-first: cada pantalla lee y escribe en una base de datos del dispo
 
 El POS ejecuta **un motor de sincronización por cada combinación de sitio + tienda + cajero** en cada dispositivo. Ese motor es propietario de su propia base de datos local, de modo que cambiar de tienda o de cajero cambia todo el plano de datos en lugar de filtrar un único montón compartido de registros. El aislamiento por cajero es deliberado: dos cajeros en el mismo dispositivo nunca comparten datos locales.
 
+El cambio de ámbito es **transaccional**: la nueva tienda o el nuevo cajero carga su plano de datos y solo confirma el cambio cuando está listo; cualquier error se muestra en lugar de dejarle a medio camino entre dos tiendas.
+
 En las actualizaciones, las bases de datos locales nunca se migran in situ: la aplicación inicia una base de datos nueva y vuelve a descargar del servidor, que siempre conserva la copia autorizada (consulte [Actualizar desde la v1.9](#upgrading-from-v19)).
 
 En las instalaciones Pro multitienda, cada solicitud de sincronización identifica su tienda, de modo que un precio editado en la caja actualiza el precio de esa tienda y no el de la tienda web.
@@ -84,6 +86,7 @@ Detalles que importan:
 
 - **Las escrituras del carrito se serializan por pedido.** Las ráfagas rápidas del escáner se aplican una a una, y una adición repetida se fusiona con la línea que duplica en lugar de poner en cola una segunda línea.
 - **Los acuses de recibo de pedidos adoptan la copia del servidor.** WooCommerce asigna identificadores a las líneas del pedido al crearlo; el motor adopta el pedido confirmado para que las actualizaciones posteriores coincidan con esas líneas en lugar de añadir duplicados. La adopción es conservadora: nunca sobrescribe una edición local que el servidor no haya visto, y solo se aplica a los pedidos.
+- **Un conflicto al escribir un pedido se resuelve automáticamente una vez.** Si al escribir un pedido se encuentra una copia más reciente en el servidor, el motor reconcilia los datos y lo vuelve a intentar una sola vez; si sigue sin poder hacerlo, el conflicto se muestra para que pueda resolverlo, en lugar de repetir el proceso en silencio.
 - **Una escritura que el servidor rechaza de forma permanente nunca se reintenta en silencio.** Se aparca con el motivo indicado por el propio servidor y se muestra en **Estado de la tienda → Base de datos** como *«cambios que nunca llegaron a su servidor»*, con dos acciones explícitas: **Enviar de nuevo** (reconstruye la solicitud a partir del registro tal como está ahora, de modo que las correcciones posteriores se aplican) y **Descartar**. No hay ningún bucle de reintento automático: la recuperación es siempre una acción visible y deliberada. Consulte [Estado de la tienda](/support/store-health#database) para el recorrido dirigido al comerciante.
 
 ### Varias pestañas del navegador {#multi-tab}
@@ -93,6 +96,8 @@ Ejecutar el POS web en varias pestañas de la misma tienda es compatible. Todas 
 ## Almacenamiento local {#local-storage}
 
 Las aplicaciones web y de escritorio almacenan los datos mediante un **worker de OPFS (Origin Private File System)**; las aplicaciones de iOS y Android utilizan el mismo formato en disco a través de un motor de sistema de archivos. Las cuatro plataformas comparten un único formato de almacenamiento y las mismas herramientas de recuperación ante corrupción. (Las versiones anteriores usaban IndexedDB en web y SQLite en nativo.)
+
+Si el almacenamiento local deja de ser **legible**, WCPOS bloquea el proceso de pago y solicita que vuelva a cargar la aplicación, en lugar de permitir una venta con datos dañados y perderla; además, los escaneos de códigos de barras en ese estado generan un error visible en vez de fallar en silencio, para que un almacenamiento dañado no pueda descartar una venta sin avisar antes de que las herramientas de recuperación lo reconstruyan.
 
 Las consultas se ejecutan dentro de la capa de base de datos —selector, orden y página—, de modo que solo la página visible de filas cruza hacia la aplicación. Sobre un conjunto sintético de 10.000 pedidos, ese descenso de la consulta redujo el coste de actualización por escritura bajo una suscripción activa de ~27 ms a ~0,06 ms.
 

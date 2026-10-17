@@ -15,6 +15,8 @@ WCPOS is local-first: elk scherm leest en schrijft naar een database op het appa
 
 De POS draait **één synchronisatie-engine per combinatie van site + winkel + kassamedewerker** op elk apparaat. Die engine heeft zijn eigen lokale database, dus bij het wisselen van winkel of kassamedewerker wisselt het hele gegevensvlak in plaats van dat er wordt gefilterd binnen één gedeelde stapel records. De isolatie per kassamedewerker is bewust: twee kassamedewerkers op hetzelfde apparaat delen nooit lokale gegevens.
 
+Het wisselen van scope verloopt **transactioneel**: de nieuwe winkel of kassamedewerker laadt de bijbehorende gegevens en de wijziging wordt pas doorgevoerd als die klaar zijn. Fouten worden gemeld, zodat je niet halverwege tussen twee winkels blijft hangen.
+
 Bij upgrades worden lokale databases nooit ter plekke gemigreerd — de app begint met een nieuwe database en downloadt opnieuw vanaf de server, die altijd de gezaghebbende kopie heeft (zie [Upgraden vanaf v1.9](#upgrading-from-v19)).
 
 Bij Pro-installaties met meerdere winkels identificeert elk synchronisatieverzoek zijn winkel, zodat een prijs die aan de kassa wordt aangepast de prijs van díé winkel bijwerkt en niet die van de webwinkel.
@@ -84,6 +86,7 @@ Details die ertoe doen:
 
 - **Schrijfacties op het winkelwagentje worden per bestelling geserialiseerd.** Snelle reeksen scans worden één voor één toegepast, en een herhaalde toevoeging wordt samengevoegd met de regel die het dupliceert in plaats van dat er een tweede regel in de wachtrij komt.
 - **Bevestigingen van bestellingen nemen de kopie van de server over.** WooCommerce kent bij het aanmaken ID's toe aan de regelitems van een bestelling; de engine neemt de bevestigde bestelling over zodat latere updates op die regels aansluiten in plaats van dubbele regels toe te voegen. Die overname is behoudend — een lokale bewerking die de server nog niet heeft gezien wordt nooit overschreven, en het geldt alleen voor bestellingen.
+- **De engine probeert een conflict bij het opslaan van een order één keer zelf op te lossen.** Als het opslaan botst met een nieuwere serverversie, brengt de engine de gegevens in overeenstemming en probeert hij het één keer opnieuw. Lukt dat nog steeds niet, dan wordt het conflict gemeld zodat je het kunt oplossen, in plaats van dat de engine het stilzwijgend blijft proberen.
 - **Een schrijfactie die de server definitief weigert, wordt nooit stilzwijgend opnieuw geprobeerd.** Die wordt geparkeerd met de reden van de server zelf en getoond op **Winkelstatus → Database** als *„wijzigingen die je server nooit hebben bereikt”*, met twee expliciete acties: **Opnieuw versturen** (bouwt het verzoek opnieuw op uit het record zoals het er nú uitziet, zodat latere correcties meegaan) en **Verwerpen**. Er is geen automatische herhaallus — herstel is altijd een zichtbare, bewuste handeling. Zie [Winkelstatus](/support/store-health#database) voor de uitleg vanuit het perspectief van de verkoper.
 
 ### Meerdere browsertabbladen {#multi-tab}
@@ -93,6 +96,8 @@ De web-POS in meerdere tabbladen van dezelfde winkel draaien wordt ondersteund. 
 ## Lokale opslag {#local-storage}
 
 De web- en desktop-app slaan gegevens op via een **OPFS-worker (Origin Private File System)**; de iOS- en Android-apps gebruiken hetzelfde schijfformaat via een bestandssysteem-engine. Alle vier platforms delen één opslagformaat en dezelfde gereedschappen voor herstel na corruptie. (Eerdere versies gebruikten IndexedDB op het web en SQLite op native.)
+
+Als de lokale gegevensopslag **onleesbaar** wordt, blokkeert WCPOS het afrekenen en vraagt het om opnieuw te laden, in plaats van een verkoop met beschadigde gegevens toe te staan en die te verliezen. Barcodescans mislukken in die situatie ook met een duidelijke foutmelding, in plaats van stilzwijgend te mislukken — zo kan een beschadigde gegevensopslag geen verkoop ongemerkt laten verdwijnen voordat de herstelhulpmiddelen deze opnieuw opbouwen.
 
 Query's worden binnen de databaselaag uitgevoerd — selector, sortering en paginering — zodat alleen de zichtbare pagina met rijen naar de app gaat. Op een synthetische fixture met 10.000 bestellingen bracht die pushdown de kosten per schrijfactie onder een live abonnement terug van ~27 ms naar ~0,06 ms.
 
