@@ -15,6 +15,8 @@ WCPOS arbeitet nach dem Local-First-Prinzip: Jeder Bildschirm liest und schreibt
 
 Das POS betreibt auf jedem Gerät **eine Sync-Engine pro Kombination aus Website + Shop + Kassierer**. Diese Engine besitzt ihre eigene lokale Datenbank, sodass ein Wechsel von Shop oder Kassierer die gesamte Datenebene wechselt, statt einen gemeinsamen Datenbestand zu filtern. Die Trennung pro Kassierer ist beabsichtigt: Zwei Kassierer auf demselben Gerät teilen sich niemals lokale Daten.
 
+Der Wechsel des Geltungsbereichs erfolgt **transaktional**: Die Datenebene der neuen Filiale oder des neuen Kassierers wird geladen, und der Wechsel wird erst übernommen, wenn sie bereit ist. Fehler werden gemeldet, statt Sie in einem halb vollzogenen Wechsel zwischen zwei Filialen zurückzulassen.
+
 Bei Upgrades werden lokale Datenbanken niemals an Ort und Stelle migriert — die App startet eine frische Datenbank und lädt vom Server neu herunter, der stets die maßgebliche Kopie besitzt (siehe [Upgrade von v1.9](#upgrading-from-v19)).
 
 Bei Pro-Installationen mit mehreren Shops weist jede Sync-Anfrage ihren Shop aus, sodass ein an der Kasse geänderter Preis den Preis dieses Shops aktualisiert und nicht den des Onlineshops.
@@ -84,6 +86,7 @@ Wichtige Details:
 
 - **Warenkorb-Schreibvorgänge werden pro Bestellung serialisiert.** Schnelle Scanner-Salven werden nacheinander angewendet, und ein wiederholtes Hinzufügen wird mit der Position zusammengeführt, die es dupliziert, statt eine zweite Position in die Warteschlange zu stellen.
 - **Bestellbestätigungen übernehmen die Kopie des Servers.** WooCommerce vergibt beim Anlegen IDs für Bestellpositionen; die Engine übernimmt die bestätigte Bestellung, damit spätere Aktualisierungen zu diesen Positionen passen, statt Duplikate anzuhängen. Die Übernahme ist zurückhaltend — sie überschreibt nie eine lokale Änderung, die der Server noch nicht gesehen hat, und gilt nur für Bestellungen.
+- **Bei einem Konflikt beim Schreiben einer Bestellung versucht die Engine einmal, ihn selbst zu beheben.** Wenn beim Schreiben einer Bestellung eine neuere Serverkopie entgegenkommt, gleicht die Engine die Daten ab und wiederholt den Vorgang genau einmal. Falls das weiterhin nicht gelingt, wird der Konflikt gemeldet, damit Sie ihn beheben können, statt unbemerkt in einer Schleife erneut aufzutreten.
 - **Ein Schreibvorgang, den der Server dauerhaft ablehnt, wird nie stillschweigend wiederholt.** Er wird mit der Begründung des Servers geparkt und unter **Shop-Zustand → Datenbank** als *„Änderungen haben Ihren Server nie erreicht“* angezeigt, mit zwei ausdrücklichen Aktionen: **Erneut senden** (baut die Anfrage aus dem Datensatz in seinem aktuellen Zustand neu auf, sodass spätere Korrekturen berücksichtigt werden) und **Verwerfen**. Es gibt keine automatische Wiederholschleife — die Wiederherstellung ist immer eine sichtbare, bewusste Handlung. Die Anleitung für Händler finden Sie unter [Shop-Zustand](/support/store-health#database).
 
 ### Mehrere Browser-Tabs {#multi-tab}
@@ -93,6 +96,8 @@ Das Web-POS in mehreren Tabs desselben Shops zu betreiben, wird unterstützt. Je
 ## Lokaler Speicher {#local-storage}
 
 Die Web- und Desktop-Apps speichern Daten über einen **OPFS-Worker** (Origin Private File System); die iOS- und Android-Apps nutzen dasselbe Format auf der Festplatte über eine Dateisystem-Engine. Alle vier Plattformen teilen sich ein Speicherformat und dieselben Werkzeuge zur Wiederherstellung nach Beschädigungen. (Frühere Versionen nutzten IndexedDB im Web und SQLite nativ.)
+
+Wenn der lokale Datenspeicher **nicht lesbar** wird, blockiert WCPOS den Checkout und fordert zum Neuladen auf, statt einen Verkauf mit beschädigten Daten zuzulassen und dadurch Daten zu verlieren. Barcode-Scans schlagen in diesem Zustand ebenfalls sichtbar fehl, statt unbemerkt zu bleiben — so kann ein beschädigter Datenspeicher keinen Verkauf unbemerkt verschlucken, bevor die Wiederherstellungswerkzeuge ihn neu aufbauen.
 
 Abfragen werden innerhalb der Datenbankschicht ausgeführt — Selektor, Sortierung und Seite —, sodass nur die sichtbare Zeilenseite in die App übergeht. Bei einem synthetischen Testbestand von 10.000 Bestellungen senkte diese Verlagerung die Aktualisierungskosten pro Schreibvorgang unter einem aktiven Abonnement von ~27 ms auf ~0,06 ms.
 
