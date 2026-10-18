@@ -539,6 +539,89 @@ Después de la imagen.
     expect(output.includes('src="/img/x.png"')).toBe(true);
   });
 
+  it('translates receipt-data component strings in JSX props and expression data', () => {
+    const fence = ['```js', 'const row = { left: "code" };', '```'].join('\n');
+    const mdx = [
+      '<Recipe',
+      '  title="Strike it"',
+      '  why="The guard hides it."',
+      '  preview={[',
+      '    { left: "2 × Espresso Beans", right: "29.00" },',
+      '    { left: "Receipt #1042", right: "Jul 13, 2026" },',
+      '  ]}',
+      '/>',
+      '',
+      '<PriceFlow',
+      '  caption="Espresso Beans — one unit"',
+      '  scaleLabel="regular price 17.00"',
+      "  segments={[ { kind: 'paid', amount: 13.05, label: '13.05 paid' } ]}",
+      '/>',
+      '',
+      '<FieldIndex',
+      '  fields={[',
+      `    { name: 'key', type: 'string', desc: "Stable line key.", sample: [{ k: 'key', v: '"412"', str: true }] },`,
+      '    {',
+      "      name: 'total',",
+      '      desc: "Uses `null` when unknown.",',
+      '    },',
+      '  ]}',
+      '/>',
+      '',
+      'The label: "not a prop" stays prose.',
+      '',
+      fence,
+      '',
+    ].join('\n');
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const jsxUnits = parsed.units.filter((unit) => unit.type === 'jsx_attr');
+
+    // (a) named props and object keys, in source order; nothing else.
+    expect(jsxUnits.map((unit) => [unit.type, unit.attr, unit.source])).toStrictEqual([
+      ['jsx_attr', 'title', 'Strike it'],
+      ['jsx_attr', 'why', 'The guard hides it.'],
+      ['jsx_attr', 'left', '2 × Espresso Beans'],
+      ['jsx_attr', 'left', 'Receipt #1042'],
+      ['jsx_attr', 'right', 'Jul 13, 2026'],
+      ['jsx_attr', 'caption', 'Espresso Beans — one unit'],
+      ['jsx_attr', 'scaleLabel', 'regular price 17.00'],
+      ['jsx_attr', 'label', '13.05 paid'],
+      ['jsx_attr', 'desc', 'Stable line key.'],
+    ]);
+    const sources = parsed.units.map((unit) => unit.source);
+    for (const skipped of ['29.00', 'paid', 'key', '412', '"412"', 'not a prop', 'code']) {
+      expect(jsxUnits.map((unit) => unit.source)).not.toContain(skipped);
+    }
+    expect(sources.some((unitSource) => unitSource.includes('code'))).toBe(false);
+
+    // (b) the inline-code desc line stays one paragraph unit.
+    expect(parsed.units.filter((unit) => unit.source.includes('Uses `null` when unknown.')).map((unit) => [unit.type, unit.source])).toStrictEqual([
+      ['paragraph', 'desc: "Uses `null` when unknown.",'],
+    ]);
+
+    // (c) braced escaping keeps each value's own quote; the rest is untouched.
+    const translated = new Map([
+      ['Strike it', 'Tacharlo'],
+      ['The guard hides it.', 'La protección lo oculta.'],
+      ['2 × Espresso Beans', '2 × Granos "espresso"'],
+      ['Receipt #1042', 'Recibo n.º 1042'],
+      ['Jul 13, 2026', '13 jul 2026'],
+      ['Espresso Beans — one unit', 'Granos de espresso — una unidad'],
+      ['regular price 17.00', 'precio normal 17.00'],
+      ['13.05 paid', '13.05 pagado'],
+      ['Stable line key.', 'Clave de línea estable.'],
+    ]);
+    const output = applyDocsMdxTranslations(parsed, new Map(jsxUnits.map((unit) => [unit.id, translated.get(unit.source)])));
+
+    expect(output.includes('{ left: "2 × Granos \\"espresso\\"", right: "29.00" },')).toBe(true);
+    expect(output.includes('{ left: "Recibo n.º 1042", right: "13 jul 2026" },')).toBe(true);
+    expect(output.includes("segments={[ { kind: 'paid', amount: 13.05, label: '13.05 pagado' } ]}")).toBe(true);
+    expect(output.includes(`desc: "Clave de línea estable.", sample: [{ k: 'key', v: '"412"', str: true }] },`)).toBe(true);
+    expect(output.includes('why="La protección lo oculta."')).toBe(true);
+    expect(output.includes('caption="Granos de espresso — una unidad"')).toBe(true);
+    expect(output.includes('The label: "not a prop" stays prose.')).toBe(true);
+    expect(output.includes(fence)).toBe(true);
+  });
+
   it('translates simple JSX element text children and visible labels used by RequirementsList items', () => {
     const mdx = '<RequirementItem label="API Credentials">Appropriate API keys or credentials</RequirementItem>\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);

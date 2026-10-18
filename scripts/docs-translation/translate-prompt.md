@@ -32,7 +32,7 @@ Each line at the end reads `- <work packet> -> <results file>`. A packet contain
 | `heading` | heading text without `#` and without its `{#anchor}` | the heading text only |
 | `paragraph` | one Markdown block: a sentence or paragraph, a list item, a table row, a blockquote or admonition line, with inline Markdown/JSX | the same block, same inline markup |
 | `link_text`, `link_title` | a link's visible text or its tooltip | plain text |
-| `jsx_attr` (`attr` = alt, title, description, label, question) | a visible JSX prop value | plain text |
+| `jsx_attr` (`attr` = alt, title, description, label, question, summary, placeholder, caption, scaleLabel, why; or left, right, desc, label inside a component's data) | a visible JSX prop value | plain text |
 | `json` (`key`, `description`) | a UI string of the docs site (navbar, footer, sidebar category, component label); `description` says where it appears | plain text; keep `{placeholders}` |
 
 ## Results file
