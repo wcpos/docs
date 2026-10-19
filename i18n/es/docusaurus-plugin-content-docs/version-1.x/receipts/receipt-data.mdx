@@ -7,9 +7,9 @@ description: "Referencia completa del contrato de datos canónico disponible en 
 
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
-import { ReceiptAnatomy, PriceFlow, Recipes, Recipe } from '@site/src/components/ReceiptData';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
 
-Las plantillas HTML sin lógica de WCPOS y las plantillas XML térmicas se generan a partir de la misma carga útil canónica de recibos. Utilice rutas con puntos de Mustache como `{{order.number}}`, `{{store.name}}` y `{{totals.total_display}}`. Los arreglos se generan mediante secciones:
+Las plantillas HTML sin lógica de WCPOS y las plantillas XML térmicas se generan a partir de la misma carga útil canónica de recibos. Utilice rutas con puntos de Mustache, como `{{order.number}}`, `{{store.name}}` y `{{totals.total_display}}`. Los arreglos se generan mediante secciones:
 
 ```mustache
 {{#lines}}
@@ -17,20 +17,22 @@ Las plantillas HTML sin lógica de WCPOS y las plantillas XML térmicas se gener
 {{/lines}}
 ```
 
-El contrato canónico lo genera el constructor de datos de recibos de WCPOS en el servidor y se replica en el renderizador de recibos sin conexión de la aplicación. Los recibos se abren de inmediato a partir de datos locales y luego se actualizan con la respuesta del servidor cuando está disponible, por lo que las plantillas personalizadas deben usar los campos siguientes en lugar de los métodos de pedidos de PHP.
+El contrato canónico lo genera el constructor de datos de recibos de WCPOS en el servidor y lo replica el renderizador de recibos sin conexión de la aplicación. Los recibos se abren de inmediato con datos locales y luego se actualizan con la respuesta del servidor cuando está disponible, por lo que las plantillas personalizadas deben usar los campos siguientes en lugar de los métodos de pedido de PHP.
 
-Datos de recibos v1.1 añade campos registrados de precio normal, precio de venta antes de aplicar cupones y ahorro para cada línea de producto. También proporciona totales de ahorro a nivel de pedido, incluido un valor de **Total ahorrado** que combina el ahorro del precio normal con los descuentos de WooCommerce sin modificar los totales ni los informes del pedido.
+La versión v1.1 de Datos de recibos añade campos con el precio normal registrado, el precio de venta previo al cupón y el ahorro de cada línea de producto. También proporciona totales de ahorro del pedido, incluido el valor **Total ahorrado**, que combina el ahorro respecto al precio normal con los descuentos de WooCommerce sin modificar los totales ni los informes del pedido.
+
+La versión v1.2 de Datos de recibos añade `discount_type` a cada fila de descuento: el tipo de cupón de WooCommerce que origina el descuento.
 
 ## El recibo, por secciones {#receipt-map}
 
-Cada parte de un recibo impreso procede de una sección del contrato de datos. Pase el cursor por cualquiera de los lados para ver la correspondencia y haga clic para ir a los campos de esa sección. Todos los ejemplos de esta página usan el mismo pedido de muestra.
+Cada parte de un recibo impreso procede de una sección del contrato de datos. Pase el cursor por cualquiera de los lados para ver la correspondencia; haga clic para ir a los campos de esa sección. Todos los ejemplos de esta página utilizan el mismo pedido de muestra.
 
 <ReceiptAnatomy
   facsimile={[
     {
       id: 'store',
       rows: [
-        { left: 'COFFEE MONSTER', center: true, bold: true, store: true },
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
         { left: "Calle del Tueste 12, Portland OR", center: true, sub: true },
         { left: "IVA: US-998877", center: true, sub: true },
       ],
@@ -54,11 +56,11 @@ Cada parte de un recibo impreso procede de una sección del contrato de datos. P
     {
       id: 'totals',
       rows: [
-        { left: 'Subtotal', right: '52.75' },
+        { left: "Subtotal", right: "52.75" },
         { left: "Cupón SUMMER10", right: "−5.28" },
         { left: "Envoltorio de regalo", right: "2.50" },
         { left: "Envío", right: "10.00" },
-        { left: 'TOTAL', right: '59.97', bold: true },
+        { left: "TOTAL", right: "59.97", bold: true },
         { left: "Total ahorrado", right: "10.28", sub: true },
       ],
     },
@@ -74,94 +76,117 @@ Cada parte de un recibo impreso procede de una sección del contrato de datos. P
   zones={[
     {
       id: 'store',
-      anchor: "#store",
-      label: "Encabezado de la tienda",
-      fields: ["store.name", "store.address_lines", "store.tax_ids", "store.logo"],
+      anchor: '#store',
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
     },
     {
       id: 'order',
-      anchor: "#order",
-      label: "Pedido y personas",
-      fields: ["order.number", "order.created", "cashier.name", "customer.name"],
+      anchor: '#order',
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
     },
     {
       id: 'lines',
-      anchor: "#lines",
-      label: "Líneas de producto",
-      fields: ["lines[]", "line_savings", "savings_in_discounts"],
+      anchor: '#lines',
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
     },
     {
       id: 'totals',
-      anchor: "#totals",
-      label: "Bloque de totales",
-      fields: ["totals.*", "discounts[]", "fees[]", "shipping[]", "totals.total_saved"],
+      anchor: '#totals',
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
     },
     {
       id: 'payments',
-      anchor: "#payments",
-      label: "Pagos",
-      fields: ["payments[]"],
+      anchor: '#payments',
+      fields: ['payments[]'],
     },
     {
       id: 'footer',
-      anchor: "#store",
-      label: "Pie de página",
-      fields: ["store.personal_notes", "store.policies_and_conditions", "i18n.thank_you_purchase"],
+      anchor: '#store',
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
     },
   ]}
 />
 
 ## Tareas habituales de las plantillas {#common-recipes}
 
-La mayoría de las modificaciones de plantillas corresponden a una de estas tres tareas. Cada tarjeta muestra primero el resultado impreso y después el marcado exacto, listo para copiar en cualquier plantilla HTML sin lógica o XML térmica. La tercera tarjeta muestra un pedido anterior a v1.9 en lugar del pedido de muestra anterior.
+La mayoría de las modificaciones de plantillas se reducen a uno de estos tres casos. Cada tarjeta muestra primero el resultado impreso y luego el marcado exacto: cópielo en cualquier plantilla HTML sin lógica o XML térmica. La tercera tarjeta muestra un pedido heredado anterior a v1.9, no el pedido de muestra anterior.
 
 <Recipes>
   <Recipe
     title="Tachar el precio normal"
-    why="La sección condicional oculta todo en los pedidos sin historial de precios registrado."
+    why="La sección condicional lo oculta todo en los pedidos sin historial de precios registrado."
     preview={[
-      { left: '2 × Granos de espresso', right: '29.00' },
-      { left: '~34.00~ · Ahorro −5.00', sub: true },
+      { left: "2 × Granos de espresso", right: "29.00" },
+      { left: "~34.00~ · Ahorro −5.00", sub: true },
     ]}
-    snippet={`{{# line_savings }}
-  <s>{{ line_regular_total_display }}</s>
-  {{ i18n.savings }}: -{{ line_savings_display }}
-{{/ line_savings }}`}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}: -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
   />
   <Recipe
     title="Añadir una fila de Total ahorrado"
-    why="Dos condiciones: la fila desaparece si el historial de precios está incompleto o no se ahorró nada."
+    why="Hay dos condiciones: la fila desaparece si el historial de precios está incompleto o si no se ha ahorrado nada."
     preview={[
-      { left: 'TOTAL', right: '59.97', bold: true },
-      { left: 'Total ahorrado', right: '10.28', sub: true },
+      { left: "TOTAL", right: "59.97", bold: true },
+      { left: "Total ahorrado", right: "10.28", sub: true },
     ]}
-    snippet={`{{# totals.total_saved_complete }}
-  {{# totals.total_saved }}
-    {{ i18n.total_saved }}:
-    {{ totals.total_saved_display }}
-  {{/ totals.total_saved }}
-{{/ totals.total_saved_complete }}`}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
   />
   <Recipe
     title="Reimprimir de forma segura un pedido anterior a v1.9"
-    why="Los pedidos antiguos incluyen el ahorro dentro del descuento; esta condición evita que se imprima dos veces."
+    why="Los pedidos antiguos incluyen el ahorro en el descuento; así se evita imprimirlo dos veces."
     preview={[
-      { left: '1 × Granos de espresso', right: '14.50' },
-      { left: '~17.00~  Descuento −2.50', sub: true },
+      { left: "1 × Granos de espresso", right: "14.50" },
+      { left: "~17.00~  Descuento −2.50", sub: true },
     ]}
-    snippet={`{{# line_savings }}
-  {{^ savings_in_discounts }}
-    {{ i18n.savings }}: -{{ line_savings_display }}
-  {{/ savings_in_discounts }}
-{{/ line_savings }}`}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    {{^savings_in_discounts}}
+      {{i18n.savings}}: -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+{{/lines}}`}
   />
 </Recipes>
+
+## Ampliar los datos del recibo {#extending}
+
+WCPOS mantiene el contrato anterior independiente del proveedor. Cuando un plugin necesita que el recibo incluya algo que WooCommerce no modela, lo añade mediante el filtro `woocommerce_pos_receipt_data`, igual que los plugins filtran los propios totales de pedido de WooCommerce. El filtro se ejecuta en todos los recibos que genera el servidor: recibos en directo, instantáneas fiscales en el momento del pago, descargas PDF y plantillas PHP heredadas.
+
+```php
+add_filter( 'woocommerce_pos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+A continuación, una plantilla puede comprobar la nueva clave como cualquier otra sección:
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+Las claves definidas en el esquema deben conservar los tipos documentados. Las claves añadidas no forman parte del esquema, por lo que no aparecen en el selector de campos del editor de plantillas; además, las instantáneas fiscales solo incluyen lo que añadió el filtro en el momento del pago del pedido. El filtro está disponible desde WCPOS 1.10.8.
 
 ## Reglas de renderizado {#rendering-rules}
 
 ### Campos de moneda {#currency-fields}
 
-Los campos monetarios numéricos se conservan como números y el renderizador añade campos `_display` adaptados a la configuración regional para la salida de la plantilla:
+Los campos monetarios numéricos se conservan como números y el renderizador añade campos `_display` adaptados a la configuración regional para usarlos en las plantillas:
 
 | Campo numérico | Campo de visualización |
 |---------------|---------------|
@@ -170,7 +195,7 @@ Los campos monetarios numéricos se conservan como números y el renderizador a�
 | `payments[].amount` | `payments[].amount_display` |
 | `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
 
-Al imprimir recibos, se deben priorizar los campos `_display`. Los campos numéricos deben usarse únicamente para secciones condicionales o salidas legibles por máquina.
+Para imprimir recibos, prefiera los campos `_display`. Utilice campos numéricos solo en secciones condicionales o para generar salidas legibles por máquina.
 
 ### Campos adaptados a la visualización de impuestos {#tax-display-aware-fields}
 
@@ -204,127 +229,122 @@ Los campos de fecha son objetos con varias variantes preformateadas. Esto evita 
 
 | Campo | Descripción |
 |-------|-------------|
-| `datetime`, `date`, `time` | Cadenas de fecha/hora predeterminadas |
+| `datetime`, `date`, `time` | Cadenas de fecha y hora predeterminadas |
 | `datetime_short`, `datetime_long`, `datetime_full` | Formatos combinados adaptados a la configuración regional |
-| `date_short`, `date_long`, `date_full` | Formatos solo de fecha adaptados a la configuración regional |
+| `date_short`, `date_long`, `date_full` | Formatos de fecha sin hora adaptados a la configuración regional |
 | `date_ymd`, `date_dmy`, `date_mdy` | Formatos de fecha con orden fijo |
 | `weekday_short`, `weekday_long` | Nombres de los días |
-| `day`, `month`, `month_short`, `month_long`, `year` | Componentes individuales de la fecha |
+| `day`, `month`, `month_short`, `month_long`, `year` | Partes individuales de la fecha |
 
-Objetos de fecha disponibles: `order.created`, `order.paid`, `order.completed`, `order.printed` y `refunds[].date`. `order.printed` se actualiza en el momento de la generación, lo que resulta útil para las reimpresiones.
+Objetos de fecha disponibles: `order.created`, `order.paid`, `order.completed`, `order.printed` y `refunds[].date`. `order.printed` se actualiza en el momento del renderizado, lo que resulta útil para las reimpresiones.
 
 ## Secciones de nivel superior {#top-level-sections}
 
 | Sección | Tipo | Descripción |
 |---------|------|-------------|
 | `order` | objeto | Identidad, estado, fechas, nota e información de la URL de pago del pedido |
-| `store` | objeto | Identidad de la tienda, dirección, datos de contacto, ID fiscales, logotipo, horario y texto de pie de página |
-| `cashier` | objeto | Usuario que procesó el pedido |
-| `customer` | objeto | Nombre visible del cliente, direcciones e ID fiscales |
-| `lines` | matriz | Líneas de productos |
-| `fees` | matriz | Filas de tarifas |
-| `shipping` | matriz | Filas de envío |
-| `discounts` | matriz | Filas de cupones/descuentos |
-| `totals` | objeto | Totales del pedido y del pago, resumen de reembolsos y recuentos de artículos |
-| `tax` | objeto | Indicadores del modo de visualización de impuestos para controlar la visualización de secciones |
-| `tax_summary` | matriz | Filas de resumen de impuestos por tipo impositivo |
-| `has_tax_summary` | booleano | Comprobación práctica para `tax_summary` |
-| `payments` | matriz | Filas de pago |
-| `refunds` | matriz | Registros de reembolsos aplicados al pedido |
-| `fiscal` | objeto | Campos de instantánea fiscal rellenados por integraciones fiscales |
-| `presentation_hints` | objeto | Sugerencias de formato y renderizado |
-| `i18n` | objeto | Etiquetas traducidas para plantillas incluidas y personalizadas |
+| `store` | object | Identidad de la tienda, dirección, datos de contacto, identificadores fiscales, logotipo, horario y texto del pie de página |
+| `cashier` | object | Usuario que procesó el pedido |
+| `customer` | object | Nombre visible del cliente, direcciones e identificadores fiscales |
+| `lines` | array | Líneas de productos |
+| `fees` | array | Filas de tarifas |
+| `shipping` | array | Filas de envío |
+| `discounts` | array | Filas de cupones/descuentos |
+| `totals` | object | Totales del pedido, totales de pagos, resumen de reembolsos y recuento de artículos |
+| `tax` | object | Indicadores del modo de visualización de impuestos para las condiciones de las secciones |
+| `tax_summary` | array | Filas de resumen de impuestos por tipo |
+| `has_tax_summary` | boolean | Condición práctica para `tax_summary` |
+| `payments` | array | Filas de pagos |
+| `refunds` | array | Registros de reembolsos aplicados al pedido |
+| `fiscal` | object | Campos de la instantánea fiscal completados por integraciones fiscales |
+| `presentation_hints` | object | Indicaciones de formato y renderizado |
+| `i18n` | object | Etiquetas traducidas para plantillas incluidas y personalizadas |
 
-## Relación entre los precios {#price-model}
+## Cómo se relacionan los precios {#price-model}
 
-Una línea de producto contiene varios precios, y los nombres se entienden mejor al verlos sobre el importe. Esta es la línea de espresso del pedido de muestra: un producto con un precio normal de 17,00 $, en oferta por 14,50 $, más un cupón del 10 %.
+Una línea de producto incluye varios precios, cuyos nombres se entienden al verlos reflejados en los importes. Esta es la línea de espresso del pedido de ejemplo: un producto de $17.00 rebajado a $14.50, con un cupón adicional del 10 %:
 
 <PriceFlow
   caption="Granos de espresso — una unidad (el pedido contiene dos)"
   scaleLabel="precio normal 17.00"
   segments={[
     { kind: 'paid', amount: 13.05, label: "13.05 pagado" },
-    { kind: 'coupon', amount: 1.45, label: "1.45 cupón" },
-    { kind: 'savings', amount: 2.5, label: "2.50 ahorro" },
-  ]}
-  keys={[
-    { kind: 'paid', title: "Lo que paga el cliente", fields: 'unit_price → 13.05 · line_total → 26.10' },
-    { kind: 'coupon', title: "Descuento del cupón (SUMMER10)", fields: 'lines[].discounts → 2.90 en esta línea' },
-    { kind: 'savings', title: "Ahorro respecto al precio normal", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
   ]}
   summary={[
-    { label: "Todo el ahorro del pedido", value: '`totals.sale_savings_total` = 5.00' },
-    { label: "Todos los descuentos de cupones del pedido", value: '`totals.discount_total` = 5.28' },
-    { label: "Ahorro y descuentos sin solapamiento heredado", value: '`totals.total_saved` = 10.28' },
+    { label: "Ahorro por rebajas en todo el pedido", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Descuentos de cupones en todo el pedido", value: '`totals.discount_total` = 5.28' },
+    { label: "Ahorros + descuentos, sin solapamiento heredado", value: '`totals.total_saved` = 10.28' },
   ]}
 />
 
-El ahorro y los descuentos de cupones son conceptos distintos: el ahorro compara el precio de venta con el precio normal registrado, mientras que `discounts` representa el cálculo de cupones de WooCommerce. Los totales e informes de pedidos de WooCommerce solo contienen la parte correspondiente al cupón. Por eso `total_saved` es la cifra única para el cliente que combina ambos importes.
+Los ahorros por rebajas y los descuentos de cupones son conceptos distintos: los ahorros por rebajas comparan el precio de venta con el precio normal registrado, mientras que `discounts` corresponde al cálculo de cupones propio de WooCommerce. Los totales y los informes de pedidos de WooCommerce solo incluyen la parte de los cupones; por eso existe `total_saved` como cifra única para el cliente que combina ambos conceptos.
 
 ## Referencia de campos {#field-reference}
 
-La referencia completa de campos se agrupa por sección a continuación. Todo está contraído de forma predeterminada; expanda el grupo que necesite.
+A continuación, se agrupa la referencia completa de campos por sección. Todo está contraído de forma predeterminada; expanda el grupo que necesite.
 
 <Accordion>
-  <AccordionItem question="pedido — identidad, estado, fechas">
+  <AccordionItem question="order — identidad, estado y fechas">
 
-### pedido {#order}
+### order {#order}
 
 | Campo | Tipo | Ejemplo / descripción |
 |-------|------|-----------------------|
-| `order.id` | número | `1234` |
-| `order.number` | cadena | Número de pedido visible, p. ej., `"10045"` |
+| `order.id` | number | `1042` |
+| `order.number` | cadena | Número de pedido visible, p. ej., `"1042"` |
 | `order.currency` | cadena | Código de moneda ISO, p. ej., `"USD"` |
-| `order.customer_note` | cadena | Nota del cliente/pedido |
+| `order.customer_note` | string | Nota del cliente/pedido |
 | `order.wc_status` | cadena | Slug de estado sin procesar de WooCommerce, p. ej., `"processing"` |
-| `order.status_label` | cadena | Etiqueta de estado localizada, incluidos los estados personalizados |
+| `order.status_label` | string | Etiqueta de estado localizada, incluidos los estados personalizados |
 | `order.created_via` | cadena | Origen/canal, p. ej., `"woocommerce-pos"` |
-| `order.needs_payment` | booleano | Indica si se debe mostrar una sección de pago |
-| `order.payment_url` | cadena | URL de pago del pedido cuando esté disponible |
-| `order.created` | objeto de fecha | Fecha de creación del pedido |
-| `order.paid` | objeto de fecha | Fecha de pago; cadenas vacías si no se ha pagado |
-| `order.completed` | objeto de fecha | Fecha de finalización; cadenas vacías si no está completado |
-| `order.printed` | objeto de fecha | Marca de tiempo de impresión o reimpresión en el momento de renderizado |
+| `order.needs_payment` | boolean | Indica si debe mostrarse una sección de pago |
+| `order.payment_url` | string | URL de pago del pedido, cuando está disponible |
+| `order.created` | date object | Fecha de creación del pedido |
+| `order.paid` | date object | Fecha de pago; cadenas vacías si no se ha pagado |
+| `order.completed` | date object | Fecha de finalización; cadenas vacías si no se ha completado |
+| `order.printed` | date object | Marca de tiempo de impresión/reimpresión durante el renderizado |
 
   </AccordionItem>
 
-  <AccordionItem question="tienda — identidad, dirección, contacto, horario">
+  <AccordionItem question="store — identidad, dirección, contacto y horario">
 
-### tienda {#store}
+### store {#store}
 
 | Campo | Tipo | Ejemplo / descripción |
 |-------|------|-----------------------|
-| `store.id` | número | ID de la tienda o ID histórico de tiendas eliminadas |
-| `store.name` | cadena | Nombre visible de la tienda |
-| `store.address.address_1` | cadena | Primera línea de la dirección |
-| `store.address.address_2` | cadena | Línea de apartamento/unidad |
-| `store.address.city` | cadena | Ciudad/localidad |
-| `store.address.state` | cadena | Estado/región |
-| `store.address.postcode` | cadena | Código postal |
-| `store.address.country` | cadena | Código de país ISO |
-| `store.address_lines` | matriz | Líneas de dirección preformateadas; recomendadas para la mayoría de las plantillas |
-| `store.tax_ids` | matriz | ID fiscales empresariales estructurados; iterar sobre esta matriz en lugar de usar un único ID fiscal |
-| `store.phone` | cadena | Teléfono de la tienda |
-| `store.email` | cadena | Correo electrónico de la tienda |
-| `store.logo` | cadena/nulo | URL del logotipo de la tienda o URI de datos |
-| `store.opening_hours` | cadena/nulo | Texto compacto del horario de apertura |
-| `store.opening_hours_vertical` | cadena/nulo | Bloque de horario de apertura en varias líneas |
-| `store.opening_hours_inline` | cadena/nulo | Texto del horario de apertura separado por comas |
-| `store.opening_hours_notes` | cadena/nulo | Notas de texto libre sobre el horario de apertura |
-| `store.personal_notes` | cadena/nulo | Pie de recibo/nota personal |
-| `store.policies_and_conditions` | cadena/nulo | Texto sobre reembolsos, devoluciones o condiciones |
-| `store.footer_imprint` | cadena/nulo | Aviso legal del pie de página |
+| `store.id` | number | ID de la tienda o ID histórico de tiendas eliminadas |
+| `store.name` | string | Nombre visible de la tienda |
+| `store.address.address_1` | string | Línea 1 de la dirección postal |
+| `store.address.address_2` | string | Suite/unidad |
+| `store.address.city` | string | Ciudad/localidad |
+| `store.address.state` | string | Estado/región |
+| `store.address.postcode` | string | Código postal |
+| `store.address.country` | string | Código de país ISO |
+| `store.address_lines` | array | Líneas de dirección con formato previo; recomendadas para la mayoría de las plantillas |
+| `store.tax_ids` | array | Identificadores fiscales estructurados de la empresa; recorra esta lista en lugar de usar un único identificador fiscal |
+| `store.phone` | string | Teléfono de la tienda |
+| `store.email` | string | Correo electrónico de la tienda |
+| `store.logo` | string/null | URL o URI de datos del logotipo de la tienda |
+| `store.opening_hours` | string/null | Texto compacto del horario de apertura |
+| `store.opening_hours_vertical` | string/null | Bloque de horario de apertura en varias líneas |
+| `store.opening_hours_inline` | string/null | Texto del horario de apertura separado por comas |
+| `store.opening_hours_notes` | string/null | Notas de texto libre sobre el horario de apertura |
+| `store.personal_notes` | string/null | Nota personal o para el pie de página del recibo |
+| `store.policies_and_conditions` | string/null | Texto sobre reembolsos, devoluciones o condiciones |
+| `store.footer_imprint` | string/null | Aviso legal del pie de página |
 
-### Objetos de ID fiscal {#tax-id-objects}
+### Objetos de identificador fiscal {#tax-id-objects}
 
 `store.tax_ids` y `customer.tax_ids` contienen objetos con la misma estructura:
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `type` | cadena | Identificador como `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein` u `other` |
-| `value` | cadena | Valor del ID fiscal que se imprimirá |
-| `country` | cadena/nulo | Código de país ISO cuando se conozca |
-| `label` | cadena/nulo | Etiqueta de visualización localizada, resuelta antes de la representación |
+| `type` | string | Identificador como `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein` u `other` |
+| `value` | string | Valor del identificador fiscal que se imprimirá |
+| `country` | string/null | Código de país ISO, si se conoce |
+| `label` | string/null | Etiqueta de visualización localizada, resuelta antes del renderizado |
 
 Ejemplo:
 
@@ -338,68 +358,121 @@ Ejemplo:
 
   <AccordionItem question="cajero — usuario que procesó el pedido">
 
-### cajero {#cashier}
+### cashier {#cashier}
 
 | Campo | Tipo | Ejemplo / descripción |
 |-------|------|-----------------------|
-| `cashier.id` | número | ID de usuario de WordPress, `0` cuando se desconozca |
-| `cashier.name` | cadena | Nombre de visualización del cajero |
+| `cashier.id` | number | ID de usuario de WordPress; `0` si se desconoce |
+| `cashier.name` | string | Nombre visible del cajero |
 
   </AccordionItem>
 
-  <AccordionItem question="cliente — nombre, direcciones, identificadores fiscales">
+  <AccordionItem question="cliente — nombre, direcciones e identificadores fiscales">
 
-### cliente {#customer}
+### customer {#customer}
 
 | Campo | Tipo | Ejemplo / descripción |
 |-------|------|-----------------------|
-| `customer.id` | número/nulo | ID del cliente o `null` para invitados |
-| `customer.name` | cadena | Nombre para mostrar del cliente o etiqueta de invitado |
-| `customer.billing_address.*` | objeto | Campos de dirección de facturación de WooCommerce |
-| `customer.shipping_address.*` | objeto | Campos de dirección de envío de WooCommerce |
-| `customer.tax_ids` | matriz | Identificadores fiscales estructurados del cliente incluidos en la instantánea del pedido |
+| `customer.id` | number/null | ID del cliente o `null` para clientes invitados |
+| `customer.name` | string | Nombre visible del cliente o etiqueta de cliente invitado |
+| `customer.billing_address.*` | object | Campos de dirección de facturación de WooCommerce |
+| `customer.shipping_address.*` | object | Campos de dirección de envío de WooCommerce |
+| `customer.tax_ids` | array | Identificadores fiscales estructurados del cliente, guardados en la instantánea del pedido |
 
-Las claves de dirección habituales incluyen `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email` y `phone`.
+Entre las claves de dirección habituales se incluyen `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email` y `phone`.
 
   </AccordionItem>
 
-  <AccordionItem question="líneas — artículos de productos">
+  <AccordionItem question="líneas — líneas de productos">
 
-### líneas {#lines}
+### lines {#lines}
 
-Itere con `{{#lines}}...{{/lines}}`.
+Recorra la lista con `{{#lines}}...{{/lines}}`. Los valores de ejemplo corresponden a la línea de espresso del [pedido de ejemplo](#receipt-map).
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `key` | cadena | Clave estable de la línea/ID del artículo del pedido |
-| `sku` | cadena | SKU del producto |
-| `name` | cadena | Nombre mostrado del producto o de la línea |
-| `qty` | número | Cantidad vendida |
-| `qty_refunded` | número | Cantidad reembolsada de esta línea |
-| `regular_price` / `_incl` / `_excl` | número/nulo | Precio unitario normal registrado |
-| `selling_price` / `_incl` / `_excl` | número/null | Precio unitario de venta antes del cupón — el precio de POS registrado cuando está disponible; de lo contrario, se obtiene del subtotal de línea almacenado |
-| `unit_savings` / `_incl` / `_excl` | número/nulo | `regular_price - selling_price`, con un mínimo de cero |
-| `line_regular_total` / `_incl` / `_excl` | número/nulo | Precio normal registrado multiplicado por la cantidad |
-| `line_selling_total` / `_incl` / `_excl` | número/nulo | Precio de venta antes de los cupones multiplicado por la cantidad |
-| `line_savings` / `_incl` / `_excl` | número/nulo | Ahorro total entre el precio normal y el precio de venta de esta línea |
-| `savings_in_discounts` | booleano | Verdadero cuando un pedido heredado ya incluye el mismo ahorro en `discounts` |
-| `unit_subtotal` / `_incl` / `_excl` | número | Valor unitario de WooCommerce antes del descuento; no lo use como precio normal |
-| `unit_price` / `_incl` / `_excl` | número | Valor unitario final después de los descuentos de WooCommerce |
-| `line_subtotal` / `_incl` / `_excl` | número | Subtotal de la línea de WooCommerce antes del descuento |
-| `discounts` / `_incl` / `_excl` | número | Descuento de línea nativo de WooCommerce como valor positivo; normalmente solo de cupones en los pedidos actuales |
-| `line_total` / `_incl` / `_excl` | número | Total final de la línea |
-| `total_refunded` | número | Total reembolsado para esta línea como valor positivo |
-| `taxes` | matriz | Filas de impuestos por tasa para esta línea |
-| `meta` | matriz | Metadatos del artículo del pedido como pares `{key, value}` |
-| `attributes` | matriz | Atributos del producto o la variación como pares `{key, value}` |
+<FieldIndex
+  note="Cada campo monetario viene en pareja: el número (úselo en las condiciones `{{#…}}` — el cero y `null` ocultan la sección, y un campo `null` no tiene ningún campo `_display` equivalente) y su cadena `_display` (úsela para imprimir). Los campos marcados como incl/excl también incluyen variantes `_incl` y `_excl`, cada una con su propio `_display`."
+  placeholder="Filtrar campos… pruebe con «ahorros»"
+  emptyText="No hay campos que coincidan; borre el filtro para ver todos los `lines[]`."
+  fields={[
+    { name: 'key', type: 'string', desc: "Clave estable de línea / ID del artículo del pedido.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "SKU del producto.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Nombre del producto o de la línea que se muestra.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Cantidad vendida.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Cantidad reembolsada de esta línea.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Precio normal registrado por unidad. `null` en pedidos sin historial de precios de POS; inclúyalo en una sección.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Precio de venta unitario antes del cupón: el precio POS registrado cuando está disponible; de lo contrario, se obtiene del subtotal de línea almacenado.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Precio normal menos precio de venta, con un mínimo de cero. Cero es un valor falso, por lo que las filas protegidas se ocultan.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Precio normal registrado multiplicado por la cantidad.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Precio de venta antes del cupón multiplicado por la cantidad.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Ahorro total de esta línea entre el precio normal y el precio de venta.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "Verdadero en pedidos anteriores a v1.9.0 cuyo ahorro ya está incluido en `discounts`; indicador para evitar el doble recuento.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Valor unitario de WooCommerce antes del descuento. No lo utilice como precio normal.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Valor unitario final tras los descuentos de WooCommerce.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Subtotal de línea de WooCommerce antes del descuento.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "Descuento nativo de línea de WooCommerce como valor positivo; solo cupones en los pedidos actuales.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total final de línea tras los cupones; lo que se imprime en la columna de importe.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Total reembolsado de esta línea como valor positivo.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '"$0.00"', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Filas de impuestos por tipo para esta línea." },
+    { name: 'meta', type: 'array', desc: "Metadatos del artículo del pedido como pares `{key, value}`." },
+    { name: 'attributes', type: 'array', desc: "Atributos del producto o de la variación como pares `{key, value}`." },
+  ]}
+/>
 
-Cada campo monetario tiene un complemento `_display` con formato, incluidos `regular_price_display`, `selling_price_display`, `unit_savings_display`, `line_regular_total_display`, `line_selling_total_display` y `line_savings_display`. Los campos inclusivos y exclusivos también tienen variantes `_display`. Cuando un campo de ahorro que admite valores nulos es `null`, su complemento `_display` se omite por completo.
+### Mostrar el precio normal y los ahorros {#displaying-regular-price-and-savings}
 
-Los campos de ahorro son `null` cuando el pedido no contiene suficientes datos registrados de precios de POS. Por lo tanto, las plantillas deben incluirlos en secciones Mustache en lugar de asumir que todos los pedidos históricos tienen un precio normal.
-
-### Mostrar el precio habitual y el ahorro {#displaying-regular-price-and-savings}
-
-Para un diseño con precio unitario, muestre el precio habitual registrado, el precio de venta y el ahorro de esta manera:
+En un diseño con precio por unidad, muestre el precio normal registrado, el precio de venta y el ahorro de esta forma:
 
 ```mustache
 {{#lines}}
@@ -411,7 +484,7 @@ Para un diseño con precio unitario, muestre el precio habitual registrado, el p
 {{/lines}}
 ```
 
-Utilice los campos de total de línea cuando la cantidad sea importante:
+Utilice los campos de total de línea cuando la cantidad sea relevante:
 
 ```mustache
 {{#lines}}
@@ -422,10 +495,10 @@ Utilice los campos de total de línea cuando la cantidad sea importante:
 {{/lines}}
 ```
 
-`selling_price` es el precio antes de los cupones. Utilice `unit_price` o `line_total` para el importe final después de los descuentos de WooCommerce.
+`selling_price` es el precio antes de los cupones. Utilice `unit_price` o `line_total` para el importe final tras los descuentos de WooCommerce.
 
-:::note Reimpresión de pedidos creados antes de la v1.9.0
-Los pedidos antiguos de WCPOS pueden incluir ya la reducción entre el precio habitual y el precio de venta en `discounts`. Si la plantilla personalizada imprime tanto los ahorros de línea como los descuentos de línea, utilice `savings_in_discounts` para evitar mostrar la misma reducción dos veces:
+:::note Reimpresión de pedidos creados antes de v1.9.0
+Es posible que los pedidos antiguos de WCPOS ya incluyan en `discounts` la reducción entre el precio normal y el precio de venta. Si su plantilla personalizada imprime tanto los ahorros como los descuentos de línea, utilice `savings_in_discounts` para no mostrar dos veces la misma reducción:
 
 ```mustache
 {{#lines}}
@@ -441,70 +514,122 @@ Los pedidos antiguos de WCPOS pueden incluir ya la reducción entre el precio ha
 {{/lines}}
 ```
 
-Si la plantilla no imprime una fila de `discounts` a nivel de línea, siga mostrando `line_savings` incluso cuando `savings_in_discounts` sea verdadero. Las plantillas incluidas gestionan esta distinción automáticamente.
+Si la plantilla no imprime una fila de `discounts` a nivel de línea, siga mostrando `line_savings` aunque `savings_in_discounts` sea verdadero. Las plantillas incluidas gestionan esta distinción automáticamente.
 :::
 
   </AccordionItem>
 
   <AccordionItem question="tarifas y envío">
 
-### Tarifas y envío {#fees-and-shipping}
+### tarifas y envío {#fees-and-shipping}
 
-Itere con `{{#fees}}...{{/fees}}` y `{{#shipping}}...{{/shipping}}`.
+Recorra con `{{#fees}}...{{/fees}}` y `{{#shipping}}...{{/shipping}}`.
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `label` | cadena | Etiqueta de tarifa o nombre del método de envío |
-| `method_id` | cadena | ID del método de envío (solo para envíos) |
-| `total` / `_incl` / `_excl` | número | Totales mostrados, con impuestos incluidos y sin impuestos |
-| `taxes` | matriz | Filas de impuestos por tasa |
-| `meta` | matriz | Pares de metadatos `{key, value}` |
+| `label` | string | Etiqueta de la tarifa o nombre del método de envío |
+| `method_id` | string | ID del método de envío (solo para el envío) |
+| `total` / `_incl` / `_excl` | number | Totales mostrados, con impuestos y sin impuestos |
+| `taxes` | array | Filas de impuestos por tipo |
+| `meta` | array | Pares de metadatos `{key, value}` |
 
 Variantes con formato: `total_display`, `total_incl_display` y `total_excl_display`.
 
   </AccordionItem>
 
-  <AccordionItem question="descuentos — filas de cupones/descuentos">
+  <AccordionItem question="discounts — filas de cupones/descuentos">
 
-### descuentos {#discounts}
+### discounts {#discounts}
 
-Utilice un bucle con `{{#discounts}}...{{/discounts}}`.
+Recorra con `{{#discounts}}...{{/discounts}}`.
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `label` | cadena | Descripción del cupón o código alternativo |
-| `code` | cadena | Código del cupón |
-| `total` / `_incl` / `_excl` | número | Importe del descuento como valor positivo |
+| `label` | string | Descripción del cupón o código alternativo |
+| `code` | string | Código del cupón |
+| `discount_type` | string | Identificador de tipo de cupón de WooCommerce, por ejemplo, `fixed_cart`, `percent` o `fixed_product`. Vacío si el cupón ya no existe. |
+| `total` / `_incl` / `_excl` | number | Importe del descuento como valor positivo |
 
-Variantes con formato: `total_display`, `total_incl_display` y `total_excl_display`. Añada su propio signo menos en la plantilla si desea mostrar los descuentos como filas negativas.
+Variantes con formato: `total_display`, `total_incl_display` y `total_excl_display`. Añada su propio signo menos en la plantilla si quiere mostrar los descuentos como filas negativas.
+
+`discount_type` se añadió en Receipt Data v1.2. Las instantáneas de recibos fiscales capturadas anteriormente no lo incluyen.
 
   </AccordionItem>
 
-  <AccordionItem question="totales — totales de pedidos, pagos, reembolsos y artículos">
+  <AccordionItem question="totals — totales del pedido, pago, reembolso y artículos">
 
-### totales {#totals}
+### totals {#totals}
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `totals.subtotal` / `_incl` / `_excl` | número | Subtotal del pedido antes de los descuentos |
-| `totals.discount_total` / `_incl` / `_excl` | número | Total de descuentos del pedido como valor positivo |
-| `totals.sale_savings_total` / `_incl` / `_excl` | número/null | Ahorro total registrado entre el precio habitual y el precio de venta en todas las líneas de productos, incluidas las ofertas del catálogo y los cambios de precio en caja |
-| `totals.total_saved` / `_incl` / `_excl` | número/null | Descuentos de WooCommerce y ahorros sobre el precio habitual combinados, sin la superposición heredada |
-| `totals.total_saved_complete` | booleano | Indica si el recibo tiene suficientes datos de precios registrados para calcular los totales de ahorro completos |
-| `totals.tax_total` | número | Importe total de impuestos |
-| `totals.total` / `_incl` / `_excl` | número | Total general del pedido |
-| `totals.paid_total` | número | Importe pagado/aplicado |
-| `totals.change_total` | número | Cambio devuelto al cliente |
-| `totals.refund_total` | número | Total reembolsado como valor positivo |
-| `totals.net_total` | número | `total - refund_total`, con un mínimo de cero |
-| `totals.total_qty` | número | Suma de las cantidades de las líneas de artículos |
-| `totals.line_count` | número | Número de filas de líneas de productos |
+Los valores de ejemplo proceden del [pedido de ejemplo](#receipt-map), que posteriormente recibió un reembolso parcial de $7.25.
 
-Las variantes formateadas incluyen `subtotal_display`, `discount_total_display`, `sale_savings_total_display`, `total_saved_display`, `tax_total_display`, `total_display`, `paid_total_display`, `change_total_display`, `refund_total_display` y `net_total_display`, además de variantes inclusivas/exclusivas cuando corresponda.
+<FieldIndex
+  note="Los campos monetarios siguen el mismo esquema que las líneas de artículos: un número sin formato para las condiciones y una cadena `_display` para imprimir, con variantes `_incl`/`_excl` cuando se indiquen."
+  placeholder="Filtrar campos… pruebe con «ahorrado»"
+  emptyText="No hay campos que coincidan; borre el filtro para ver todos los `totals`."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Subtotal del pedido antes de los descuentos.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total de descuentos del pedido como valor positivo; solo cupones en los pedidos actuales.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Ahorro total registrado entre el precio normal y el de venta en las líneas de productos, incluidas las rebajas del catálogo y los cambios de precio en caja.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Descuentos combinados de WooCommerce y ahorros sobre el precio normal, sin duplicar los importes coincidentes de pedidos antiguos. La cifra única para mostrar al cliente por todo lo ahorrado.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Indica si el recibo tiene suficientes datos de precios registrados para calcular los totales completos de ahorro.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Importe total de impuestos.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total general del pedido.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Importe pagado/aplicado.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "Cambio devuelto al cliente.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Total reembolsado como valor positivo.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Total menos reembolsos, con un mínimo de cero.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Suma de las cantidades de los artículos de línea.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Número de filas de líneas de productos.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
 
-Utilice `total_saved` cuando se necesite una única cifra visible para el cliente que refleje todo lo ahorrado. No lo calcule sumando `discount_total` y `sale_savings_total` en la plantilla: los pedidos creados antes de la v1.9.0 pueden incluir ya el ahorro de precio de POS en el total de descuentos de WooCommerce. El campo canónico `total_saved` detecta y elimina esa superposición.
+Utilice `total_saved` cuando necesite una sola cifra para mostrar al cliente por todo lo ahorrado. No lo calcule sumando `discount_total` y `sale_savings_total` en la plantilla: los pedidos creados antes de v1.9.0 podrían incluir ya el ahorro de precio de POS en el total de descuentos de WooCommerce. El campo canónico `total_saved` detecta y elimina ese solapamiento.
 
-Los totales de ahorro son `null` y `total_saved_complete` es false cuando alguna línea de producto no cuenta con suficientes datos de precio registrados para obtener un total fiable. Proteja la fila con `total_saved_complete` y use después `total_saved` para ocultar un valor cero:
+Los totales de ahorro son `null` y `total_saved_complete` es false cuando alguna línea de producto no tiene suficientes datos de precios registrados para calcular un agregado fiable. Proteja la fila con `total_saved_complete` y, a continuación, utilice `total_saved` para ocultar un valor cero:
 
 ```mustache
 {{#totals.total_saved_complete}}
@@ -514,38 +639,38 @@ Los totales de ahorro son `null` y `total_saved_complete` es false cuando alguna
 {{/totals.total_saved_complete}}
 ```
 
-Las plantillas incluidas con precios usan la misma estructura de protección con las variantes con impuestos incluidos (`total_saved_incl` y `total_saved_incl_display`), y muestran **Total ahorrado** solo cuando el valor completo es mayor que cero.
+Las plantillas incluidas que muestran precios utilizan la misma estructura de protección con las variantes que incluyen impuestos (`total_saved_incl` y `total_saved_incl_display`), y muestran **Total ahorrado** solo cuando el valor completo es mayor que cero.
 
   </AccordionItem>
 
-  <AccordionItem question="tax y tax_summary — protecciones de visualización y filas por tasa">
+  <AccordionItem question="tax y tax_summary — condiciones de visualización y filas por tipo">
 
 ### tax y tax_summary {#tax-and-tax_summary}
 
-Utilice `tax` para las condiciones del modo de visualización y `tax_summary` para las filas de tasas desglosadas.
+Utilice `tax` para las condiciones del modo de visualización y `tax_summary` para las filas desglosadas por tipo.
 
 | Campo de impuestos | Tipo | Descripción |
 |-----------|------|-------------|
-| `tax.display` | cadena | `incl` o `excl` |
-| `tax.display_incl` | booleano | Verdadero cuando los precios se muestran con impuestos incluidos |
-| `tax.display_excl` | booleano | Verdadero cuando los precios se muestran sin impuestos |
-| `tax.breakdown` | cadena | `hidden`, `single` o `itemized` |
-| `tax.breakdown_hidden` | booleano | Verdadero cuando las filas de impuestos deben ocultarse |
-| `tax.breakdown_single` | booleano | Verdadero cuando se prefiere un único total de impuestos |
-| `tax.breakdown_itemized` | booleano | Verdadero cuando se prefieren filas por tasa |
-| `has_tax_summary` | booleano | Verdadero cuando `tax_summary` contiene filas |
+| `tax.display` | string | `incl` o `excl` |
+| `tax.display_incl` | boolean | Verdadero cuando los precios se muestran con impuestos incluidos |
+| `tax.display_excl` | boolean | Verdadero cuando los precios se muestran sin impuestos |
+| `tax.breakdown` | string | `hidden`, `single` o `itemized` |
+| `tax.breakdown_hidden` | boolean | Verdadero cuando deben ocultarse las filas de impuestos |
+| `tax.breakdown_single` | boolean | Verdadero cuando se prefiere un único total de impuestos |
+| `tax.breakdown_itemized` | boolean | Verdadero cuando se prefieren filas desglosadas por tipo |
+| `has_tax_summary` | boolean | Verdadero cuando `tax_summary` contiene filas |
 
-Para recorrer `tax_summary`, utilice `{{#tax_summary}}...{{/tax_summary}}`.
+Recorra `tax_summary` con `{{#tax_summary}}...{{/tax_summary}}`.
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `code` | cadena | ID/código de la tasa de impuestos |
-| `rate` | número/null | Porcentaje de la tasa cuando se haya resuelto |
-| `label` | cadena | Etiqueta de la tasa de impuestos |
+| `code` | string | ID/código del tipo impositivo |
+| `rate` | number/null | Porcentaje del tipo cuando se ha resuelto |
+| `label` | string | Etiqueta del tipo impositivo |
 | `compound` | booleano | Si la tasa es compuesta |
 | `taxable_amount_excl` | número/null | Base imponible sin impuestos |
 | `tax_amount` | número | Impuesto recaudado |
-| `taxable_amount_incl` | número/null | Base imponible con impuestos |
+| `taxable_amount_incl` | número/null | Base imponible con impuestos incluidos |
 
 Variantes con formato: `taxable_amount_excl_display`, `tax_amount_display` y `taxable_amount_incl_display`.
 
@@ -566,7 +691,7 @@ Se utiliza el bucle `{{#payments}}...{{/payments}}`.
 | `tendered` | número | Importe en efectivo entregado, cuando exista |
 | `change` | número | Cambio en efectivo devuelto, cuando exista |
 
-Variantes formateadas: `amount_display`, `tendered_display` y `change_display`.
+Variantes con formato: `amount_display`, `tendered_display` y `change_display`.
 
   </AccordionItem>
 
@@ -590,14 +715,14 @@ Itere con `{{#refunds}}...{{/refunds}}`. Los importes de los reembolsos son valo
 | `refunded_by_name` | cadena | Nombre visible del usuario que emitió el reembolso |
 | `refunded_payment` | booleano | Si el pago se reembolsó a través de la pasarela |
 | `destination` | cadena | `original_method`, `cash` o `manual` |
-| `gateway_id` | cadena | ID de pasarela utilizado para el reembolso |
+| `gateway_id` | cadena | ID de la pasarela utilizada para el reembolso |
 | `gateway_title` | cadena | Título visible de la pasarela |
 | `processing_mode` | cadena | Modo de procesamiento del proveedor/manual |
 | `lines` | matriz | Líneas de productos reembolsados |
 | `fees` | matriz | Líneas de tarifas reembolsadas |
 | `shipping` | matriz | Líneas de envío reembolsadas |
 
-Los campos de las líneas de reembolso incluyen `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl`, `line_total`, `unit_total` e `taxes`. Las líneas de tarifas y envío reembolsados utilizan `label`, `total`, `total_incl`, `total_excl` e `taxes`. Se añaden variantes de visualización para los totales y los importes de impuestos.
+Los campos de las líneas de reembolso incluyen `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl`, `line_total`, `unit_total` y `taxes`. Las líneas de tarifas y envío reembolsados utilizan `label`, `total`, `total_incl`, `total_excl` y `taxes`. Se añaden variantes de visualización para los totales y los importes de impuestos.
 
   </AccordionItem>
 
@@ -605,7 +730,7 @@ Los campos de las líneas de reembolso incluyen `name`, `sku`, `qty`, `total`, `
 
 ### fiscal {#fiscal}
 
-Los campos fiscales están vacíos de forma predeterminada y se completan mediante integraciones fiscales o el enriquecimiento de instantáneas de WCPOS Pro.
+Los campos fiscales están vacíos de forma predeterminada y se rellenan mediante integraciones fiscales o el enriquecimiento de instantáneas de WCPOS Pro.
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
@@ -618,7 +743,7 @@ Los campos fiscales están vacíos de forma predeterminada y se completan median
 | `fiscal.signed_at` | cadena | Marca de tiempo de la firma fiscal |
 | `fiscal.signature_excerpt` | cadena | Firma truncada para su visualización |
 | `fiscal.document_label` | cadena | Etiqueta del documento, p. ej., factura fiscal |
-| `fiscal.is_reprint` | booleano | Si esta impresión es una reimpresión |
+| `fiscal.is_reprint` | booleano | Si esta representación es una reimpresión |
 | `fiscal.reprint_count` | número | Número de reimpresiones |
 | `fiscal.extra_fields` | array/objeto | Valores específicos de la jurisdicción |
 
@@ -645,13 +770,15 @@ Estos campos los utilizan principalmente el renderizador y el formateador. Está
 | `presentation_hints.price_display_suffix` | cadena | Sufijo de visualización de precios de WooCommerce |
 | `presentation_hints.order_barcode_type` | cadena | Tipo de código de barras utilizado por las plantillas de galería |
 
+Los campos monetarios preformateados (los valores `*_display`, como `totals.total_display`) muestran los importes con el **símbolo de moneda** de la moneda del pedido, usando la posición y los separadores anteriores; así, los recibos muestran `$12.00`, no `USD 12.00`. El campo sin procesar `order.currency` conserva el código ISO para cualquier lógica de su plantilla.
+
   </AccordionItem>
 
   <AccordionItem question="i18n — etiquetas traducidas">
 
 ### i18n {#i18n}
 
-Utilice etiquetas de `i18n` en lugar de codificar texto de forma fija siempre que sea posible:
+Siempre que sea posible, utilice las etiquetas de `i18n` en lugar de codificar el texto directamente:
 
 ```mustache
 {{i18n.order}} #{{order.number}}
@@ -659,7 +786,7 @@ Utilice etiquetas de `i18n` en lugar de codificar texto de forma fija siempre qu
 {{i18n.total}}: {{totals.total_display}}
 ```
 
-Las claves habituales incluyen `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours` y las claves de etiqueta de ID fiscal como `store_tax_id_label_eu_vat` y `customer_tax_id_label_other`. Las extensiones pueden añadir claves adicionales.
+Entre las claves habituales se incluyen `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours` y las claves de etiquetas de ID fiscal, como `store_tax_id_label_eu_vat` y `customer_tax_id_label_other`. Las extensiones pueden añadir otras claves.
 
   </AccordionItem>
 </Accordion>
