@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { translate } from '@docusaurus/Translate';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+import { fieldMatches, suggestTerms, typeLabel } from './fieldIndexSearch';
 import styles from './styles.module.css';
 
 /**
@@ -231,33 +233,60 @@ export function PriceFlow({ caption, scaleLabel, segments, summary }) {
  * formatted `_display` twin for money fields.
  * ---------------------------------------------------------------------- */
 
-const BADGE_LABELS = {
-  money: 'money',
-  nullable: 'nullable',
-  variants: 'incl/excl',
-};
-
-export function FieldIndex({ note, placeholder, emptyText, fields }) {
-  const [query, setQuery] = useState('');
-  const q = query.trim().toLowerCase();
-
-  const shown = useMemo(
-    () =>
-      fields.filter((f) => {
-        if (!q) return true;
-        const hay = [
-          f.name,
-          f.type,
-          f.desc,
-          ...(f.badges || []).flatMap((b) => [b, BADGE_LABELS[b] || '']),
-          ...(f.sample || []).map((kv) => kv.k),
-        ]
-          .join(' ')
-          .toLowerCase();
-        return hay.includes(q);
+function fieldIndexLabels() {
+  return {
+    types: {
+      string: translate({ id: 'receiptData.fieldIndex.type.string', message: 'string',
+        description: 'Receipt data page: field type chip',
       }),
-    [fields, q]
-  );
+      number: translate({ id: 'receiptData.fieldIndex.type.number', message: 'number',
+        description: 'Receipt data page: field type chip',
+      }),
+      boolean: translate({ id: 'receiptData.fieldIndex.type.boolean', message: 'boolean',
+        description: 'Receipt data page: field type chip',
+      }),
+      array: translate({ id: 'receiptData.fieldIndex.type.array', message: 'array',
+        description: 'Receipt data page: field type chip',
+      }),
+      object: translate({ id: 'receiptData.fieldIndex.type.object', message: 'object',
+        description: 'Receipt data page: field type chip',
+      }),
+      null: translate({ id: 'receiptData.fieldIndex.type.null', message: 'null',
+        description: 'Receipt data page: field type chip',
+      }),
+    },
+    badges: {
+      money: translate({ id: 'receiptData.fieldIndex.badge.money', message: 'money',
+        description: 'Receipt data page: field badge chip',
+      }),
+      nullable: translate({ id: 'receiptData.fieldIndex.badge.nullable', message: 'nullable',
+        description: 'Receipt data page: field badge chip',
+      }),
+      variants: translate({ id: 'receiptData.fieldIndex.badge.variants', message: 'incl/excl',
+        description: 'Receipt data page: field badge chip',
+      }),
+    },
+    filter: translate({ id: 'receiptData.fieldIndex.filter', message: 'Filter fields…',
+      description: 'Receipt data page: field filter label and placeholder without suggestions',
+    }),
+    suggestion: (term) => translate({ id: 'receiptData.fieldIndex.suggestion', message: '“{term}”',
+      description: 'Receipt data page: quoted search suggestion in the field filter placeholder',
+    }, { term }),
+    placeholder: (terms) => translate({ id: 'receiptData.fieldIndex.placeholder', message: 'Filter fields… try {terms}',
+      description: 'Receipt data page: field filter placeholder with search suggestions',
+    }, { terms }),
+  };
+}
+
+export function FieldIndex({ note, emptyText, fields }) {
+  const [query, setQuery] = useState('');
+  const labels = fieldIndexLabels();
+  const locale = useDocusaurusContext().i18n.currentLocale;
+  const suggestions = useMemo(() => suggestTerms(fields, locale), [fields, locale]);
+  const placeholder = suggestions.length
+    ? labels.placeholder(suggestions.map((term) => labels.suggestion(term)).join(', '))
+    : labels.filter;
+  const shown = fields.filter((f) => fieldMatches(f, query, labels));
 
   return (
     <div className={styles.fieldIndex}>
@@ -266,7 +295,7 @@ export function FieldIndex({ note, placeholder, emptyText, fields }) {
         type="search"
         className={styles.filter}
         placeholder={placeholder}
-        aria-label={placeholder}
+        aria-label={labels.filter}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
@@ -276,9 +305,9 @@ export function FieldIndex({ note, placeholder, emptyText, fields }) {
             <div>
               <span className={styles.fname}>{f.name}</span>
               <span className={styles.badges}>
-                <span className={styles.badge}>{f.type}</span>
+                <span className={styles.badge}>{typeLabel(f.type, labels)}</span>
                 {(f.badges || []).map((b) => (
-                  <span key={b} className={clsx(styles.badge, styles[`b_${b}`])}>{BADGE_LABELS[b] || b}</span>
+                  <span key={b} className={clsx(styles.badge, styles[`b_${b}`])}>{labels.badges[b] || b}</span>
                 ))}
               </span>
               <div className={styles.fdesc}>{rich(f.desc)}</div>
