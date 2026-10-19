@@ -11,7 +11,7 @@ export function typeLabel(type, labels) {
 }
 
 export function fieldMatches(field, query, labels) {
-  const q = normalizeSearch(query);
+  const q = normalizeSearch(query).trim();
   const hay = [
     field?.name, field?.type, typeLabel(field?.type, labels), field?.desc,
     ...(Array.isArray(field?.badges) ? field.badges : []).flatMap((key) => [key, labels?.badges?.[key]]),

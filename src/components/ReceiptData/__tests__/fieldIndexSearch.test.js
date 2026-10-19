@@ -85,6 +85,14 @@ it('fieldMatches is accent-insensitive and searches labels', () => {
   expect(fieldMatches(undefined, '')).toBe(true);
 });
 
+it('fieldMatches trims the query', () => {
+  const field = { name: 'x', type: 'string/null', desc: 'Precio de venta', badges: ['money'] };
+  for (const query of [' precio', 'precio ', '  PRECIÓ  ', '   ']) {
+    expect(fieldMatches(field, query, labels)).toBe(true);
+  }
+  expect(fieldMatches(field, ' ahorro ', labels)).toBe(false);
+});
+
 describe('suggestTerms rules', () => {
   it('removes code spans and takes distinct longest words in field order', () => {
     const fields = [
