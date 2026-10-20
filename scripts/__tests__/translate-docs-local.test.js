@@ -138,7 +138,8 @@ if (tool === 'git') {
       const empty = prompt.includes('/work/' + match[2] + '.json') && (
         (prompt.startsWith('TRANSLATE') && config.emptyPackets?.includes(match[2])) ||
         (prompt.startsWith('REVIEW') && config.emptyReviewPackets?.includes(match[2])));
-      fs.writeFileSync(match[1], empty ? '{"locale":"x","files":{}}' : '{"files":{"i18n/x.mdx":{"u0":"t"}}}');
+      const blank = prompt.startsWith('TRANSLATE') && prompt.includes('/work/' + match[2] + '.json') && config.blankPackets?.includes(match[2]);
+      fs.writeFileSync(match[1], empty ? '{"locale":"x","files":{}}' : blank ? '{"locale":"x","files":{"i18n/x.mdx":{"u0":"","u1":null,"u2":"  "}}}' : '{"files":{"i18n/x.mdx":{"u0":"t"}}}');
     }
   }
 }
@@ -533,6 +534,17 @@ it('splits a multi-file packet by units across files, and a failing multi-file h
 
 it('discards an empty results file and retries the packet split in half', () => {
   const result = run({ counts: [1], packets: ['es-01'], packetFiles: 1, packetUnits: 5, emptyPackets: ['es-01'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a', 'es-01-b', 'es-01-b']);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  assert.match(result.stdout, /packet es-01 wrote no translations; discarding its results\n/);
+  assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
+  assert.ok(!fs.existsSync(path.join(wt, '.translate/results/es-01.json')));
+});
+
+it('discards a results file whose units are all null or blank', () => {
+  const result = run({ counts: [1], packets: ['es-01'], packetFiles: 1, packetUnits: 5, blankPackets: ['es-01'] });
   assert.equal(result.status, 0, result.stderr);
   const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
   assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a', 'es-01-b', 'es-01-b']);

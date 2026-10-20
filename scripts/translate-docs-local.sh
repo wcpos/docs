@@ -132,10 +132,10 @@ else
 fi
 mkdir -p .translate/results .translate/logs
 REVIEW_USED=skipped
-discard_empty_results() { # $1 = packet name; deletes a results file that holds no unit translation
+discard_empty_results() { # $1 = packet name; deletes a results file that holds no non-blank unit translation
   local file=".translate/results/$1.json"
   [ -f "$file" ] || return 0
-  if ! jq -e '([.files[]? | objects | length] | add // 0) > 0' "$file" >/dev/null 2>&1; then
+  if ! jq -e '[.files[]? | objects | .[] | strings | select(test("\\S"))] | length > 0' "$file" >/dev/null 2>&1; then
     log "packet $1 wrote no translations; discarding its results"
     rm -f "$file"
   fi
