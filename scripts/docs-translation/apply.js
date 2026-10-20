@@ -5,7 +5,7 @@ const path = require('path');
 const { parseDocsMdxUnits, applyDocsMdxTranslations } = require('./mdx-units');
 const { parseJsonUnits, applyJsonTranslations } = require('./json-units');
 const { decodeDocsUnitSource, unitKey, STRUCTURAL_ISSUE_CODES, tableCellCount } = require('./recover');
-const { readState, serializeState, writeState, unitHash } = require('./state');
+const { readState, serializeState, writeState, unitHash, attemptKeys } = require('./state');
 const {
   applyStableHeadingAnchorsFromSource, missingPreservedHeadingAnchors,
   restoreNonBreadcrumbInlineCodeSpans,
@@ -39,14 +39,16 @@ function applyResults({ rootDir, plan, results }) {
     const units = kind === 'mdx' ? parsed.units : parseJsonUnits(english);
     const translations = new Map(Object.entries(reused ?? {}).map(([index, text]) => [Number(index), text]));
     const accepted = {};
+    const acceptedKeys = [];
+    const hashes = units.map(unit => unitHash(kind === 'mdx' ? unitKey(unit, decodeDocsUnitSource(parsed, unit)) : ['json', unit.key, '', unit.source].join('\u0000')));
+    const keys = attemptKeys(hashes);
     for (const index of pending) {
       const id = `u${index}`;
       const unit = units[index];
       const decoded = kind === 'mdx' ? decodeDocsUnitSource(parsed, unit) : unit.source;
-      const key = kind === 'mdx' ? unitKey(unit, decoded) : ['json', unit.key, '', decoded].join('\u0000');
-      const hash = unitHash(key);
+      const hash = hashes[index];
       // Count pending attempts now; clear accepted ones after whole-file checks.
-      (saved.attempts ??= {})[hash] = (saved.attempts[hash] ?? 0) + 1;
+      (saved.attempts ??= {})[keys[index]] = (saved.attempts[keys[index]] ?? 0) + 1;
       let text = results.filter(result => result?.locale === locale)
         .map(result => result.files?.[target]?.[id]).find(value => value !== undefined);
       if (typeof text !== 'string') {
@@ -93,6 +95,7 @@ function applyResults({ rootDir, plan, results }) {
       }
       translations.set(index, text);
       accepted[hash] = text;
+      acceptedKeys.push(keys[index]);
       if (text === decoded && !saved.same?.includes(hash)) (saved.same ??= []).push(hash);
       report.applied += 1;
     }
@@ -124,7 +127,7 @@ function applyResults({ rootDir, plan, results }) {
         }
       }
     }
-    candidates.push({ entry, english, existing, out, complete, accepted, fileRejected });
+    candidates.push({ entry, english, existing, out, complete, accepted, acceptedKeys, fileRejected });
   }
 
   const proposed = new Map(candidates.filter(item => item.complete && item.out !== item.existing)
@@ -145,9 +148,9 @@ function applyResults({ rootDir, plan, results }) {
   }
 
   const writes = [];
-  for (const { entry, out, existing, complete, accepted, fileRejected } of candidates) {
+  for (const { entry, out, existing, complete, accepted, acceptedKeys, fileRejected } of candidates) {
     const saved = state[entry.target];
-    if (!fileRejected) for (const hash of Object.keys(accepted)) delete saved.attempts[hash];
+    if (!fileRejected) for (const key of acceptedKeys) delete saved.attempts[key];
     if (!Object.keys(saved.attempts ?? {}).length) delete saved.attempts;
     const held = proposed.has(entry.target) && report.sources_held_back.includes(entry.source);
     if (complete && !held) {

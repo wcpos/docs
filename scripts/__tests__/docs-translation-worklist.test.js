@@ -6,7 +6,7 @@ const { buildWorklist, runCli, PACKET_MAX_CHARS, PACKET_MAX_FILES, QUARANTINE_AF
 const { applyResults } = require('../docs-translation/apply');
 const { recoverTranslations } = require('../docs-translation/recover');
 const { parseJsonUnits, applyJsonTranslations } = require('../docs-translation/json-units');
-const { STATE_PATH, readState, serializeState, writeState, unitHash } = require('../docs-translation/state');
+const { STATE_PATH, readState, serializeState, writeState, unitHash, attemptKeys } = require('../docs-translation/state');
 const { LOCALES, sourceToTranslatedPath, jsonSourceToTranslatedPath } = require('../check-translation-completeness');
 
 const DOC = 'versioned_docs/version-1.x/guide.mdx';
@@ -279,6 +279,29 @@ describe('quarantine', () => {
     expect(plan.targets.map(entry => entry.source)).toEqual([backlog]);
     expect(schedule().plan.targets.find(entry => entry.source === DOC)).toMatchObject({ pending: [4], reasons: { changed: 0, english: 1 } });
     expect(summary).toMatchObject({ total: 1, quarantined: 1, deferred_units: 1 });
+  });
+});
+
+describe('per-row attempt keys', () => {
+  const HEADER = '| Field | Type | Description |';
+  const TABLES = ['# Fields', `${HEADER}\n| --- | --- | --- |\n| \`id\` | integer | The order ID. |`,
+    '## Totals', `${HEADER}\n| --- | --- | --- |\n| \`total\` | string | The order total. |`,
+    '## Lines', `${HEADER}\n| --- | --- | --- |\n| \`qty\` | integer | The line quantity. |`].join('\n\n') + '\n';
+  const H = unitHash(['paragraph', '', '', HEADER].join('\0'));
+
+  it('attemptKeys suffixes repeated hashes by occurrence', () => {
+    expect(attemptKeys(['a', 'b', 'a', 'a'])).toEqual(['a', 'b', 'a#1', 'a#2']);
+    expect(attemptKeys([])).toEqual([]);
+  });
+
+  it.each([[`${H}#1`, 'u4', [1, 7], 4], [H, 'u1', [4, 7], 1]])('quarantines only the row whose attempt key %s reached the limit', (key, unit, kept, dropped) => {
+    addDoc(DOC, TABLES, null);
+    commitFixtures();
+    writeState(rootDir, { [TARGET]: { attempts: { [key]: 3 } } });
+    const { plan } = schedule();
+    expect(plan.quarantined).toEqual([{ target: TARGET, unit, source: HEADER, attempts: 3 }]);
+    expect(plan.targets[0].pending).toEqual(expect.arrayContaining(kept));
+    expect(plan.targets[0].pending).not.toContain(dropped);
   });
 });
 
