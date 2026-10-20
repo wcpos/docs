@@ -422,6 +422,22 @@ describe('per-row attempts for repeated units', () => {
     const output = apply({ ...ALL, pending: [4] }, []);
     expect(output.state[TARGET].attempts).toEqual({ [H]: 2, [`${H}#1`]: 1, [`${H}#2`]: 2 });
   });
+
+  it('clears the attempt of a repeated row reused from partial', () => {
+    writeState(rootDir, { [TARGET]: { attempts: { [`${H}#1`]: 1 } } });
+    const output = apply({ ...ALL, pending: [0, 1, 2, 3, 5, 6, 7, 8], reused: { 4: TABLE_TEXTS[4] } }, [result(TABLE_TEXTS)]);
+    expect(output.report).toMatchObject({ applied: 8, rejected: 0, missing: 0 });
+    expect(output.state[TARGET].attempts).toBeUndefined();
+  });
+
+  it('keeps the reused row attempt when the file is rejected', () => {
+    write(SOURCE, TABLES + '\n<Image alt="Receipt preview" />\n');
+    writeState(rootDir, { [TARGET]: { attempts: { [`${H}#1`]: 1 } } });
+    const output = apply({ ...ALL, pending: [0, 1, 2, 3, 5, 6, 7, 8], reused: { 4: TABLE_TEXTS[4], 9: 'Receipt preview' } }, [result(TABLE_TEXTS)]);
+    expect(output.writes).toEqual([]);
+    expect(output.report.rejected_details).toContainEqual({ target: TARGET, unit: null, reason: expect.stringContaining('untranslated_props') });
+    expect(output.state[TARGET].attempts).toMatchObject({ [`${H}#1`]: 1 });
+  });
 });
 
 describe('failedAttemptsState', () => {
