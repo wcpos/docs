@@ -40,4 +40,15 @@ function unitHash(key) {
   return createHash('sha256').update(key).digest('hex').slice(0, 16);
 }
 
-module.exports = { STATE_PATH, readState, serializeState, writeState, unitHash };
+// Identical rows on one page must not share an attempts counter, so repeats get `#n`.
+// The first occurrence stays bare so existing state keeps its meaning.
+function attemptKeys(hashes) {
+  const seen = new Map();
+  return hashes.map(hash => {
+    const count = seen.get(hash) ?? 0;
+    seen.set(hash, count + 1);
+    return count ? `${hash}#${count}` : hash;
+  });
+}
+
+module.exports = { STATE_PATH, readState, serializeState, writeState, unitHash, attemptKeys };
