@@ -134,7 +134,12 @@ if (tool === 'git') {
     fs.writeFileSync(path.join(root, 'child.pid'), String(child.pid));
     setInterval(() => {}, 1000);
   } else if (!config.noResults) {
-    for (const match of prompt.matchAll(/-> (\.translate\/results\/([\w-]+)\.json)/g)) fs.writeFileSync(match[1], '{}');
+    for (const match of prompt.matchAll(/-> (\.translate\/results\/([\w-]+)\.json)/g)) {
+      const empty = prompt.includes('/work/' + match[2] + '.json') && (
+        (prompt.startsWith('TRANSLATE') && config.emptyPackets?.includes(match[2])) ||
+        (prompt.startsWith('REVIEW') && config.emptyReviewPackets?.includes(match[2])));
+      fs.writeFileSync(match[1], empty ? '{"locale":"x","files":{}}' : '{"files":{"i18n/x.mdx":{"u0":"t"}}}');
+    }
   }
 }
 `.replace('@NODE@', process.execPath);
@@ -524,6 +529,26 @@ it('splits a multi-file packet by units across files, and a failing multi-file h
   assert.equal(packet('es-01-a').locale, 'es');
   assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
   assert.match(result.stdout, /packet es-01-a had no results; retrying as es-01-a-a\n/);
+});
+
+it('discards an empty results file and retries the packet split in half', () => {
+  const result = run({ counts: [1], packets: ['es-01'], packetFiles: 1, packetUnits: 5, emptyPackets: ['es-01'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a', 'es-01-b', 'es-01-b']);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  assert.match(result.stdout, /packet es-01 wrote no translations; discarding its results\n/);
+  assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
+  assert.ok(!fs.existsSync(path.join(wt, '.translate/results/es-01.json')));
+});
+
+it('discards results that the review leaves empty', () => {
+  const result = run({ counts: [1], packets: ['fr-01'], packetFiles: 2, emptyReviewPackets: ['fr-01'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['fr-01', 'fr-01', 'fr-01-a', 'fr-01-a', 'fr-01-b', 'fr-01-b']);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  assert.match(result.stdout, /packet fr-01 wrote no translations; discarding its results\n/);
 });
 
 it('adds the first.txt pages after CLI --first paths', () => {
