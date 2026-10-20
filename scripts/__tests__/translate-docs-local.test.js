@@ -95,8 +95,8 @@ if (tool === 'git') {
     counts.forEach((n, i) => {
       const locale = names[i].replace(/-\d+$/, ''); locales[locale] = n;
       const packet = { locale, count: n };
-      const units = Object.fromEntries(Array.from({ length: config.packetUnits || 0 }, (_, k) => ['u' + k, {}]));
-      if (typeof config.packetFiles === 'number') packet.files = Object.fromEntries(Array.from({ length: config.packetFiles }, (_, j) => ['i18n/' + locale + '/p' + j + '.mdx', { units }]));
+      const units = Object.fromEntries(Array.from({ length: config.packetUnits ?? 1 }, (_, k) => ['u' + k, {}]));
+      packet.files = Object.fromEntries(Array.from({ length: config.packetFiles ?? 1 }, (_, j) => ['i18n/' + locale + '/p' + j + '.mdx', { units }]));
       fs.writeFileSync('.translate/work/' + names[i] + '.json', JSON.stringify(packet));
     });
     fs.writeFileSync('.translate/plan.json', '{}');
@@ -134,7 +134,23 @@ if (tool === 'git') {
     fs.writeFileSync(path.join(root, 'child.pid'), String(child.pid));
     setInterval(() => {}, 1000);
   } else if (!config.noResults) {
-    for (const match of prompt.matchAll(/-> (\.translate\/results\/([\w-]+)\.json)/g)) fs.writeFileSync(match[1], '{}');
+    for (const match of prompt.matchAll(/-> (\.translate\/results\/([\w-]+)\.json)/g)) {
+      const packet = JSON.parse(fs.readFileSync('.translate/work/' + match[2] + '.json', 'utf8'));
+      const locale = packet.locale;
+      const empty = prompt.includes('/work/' + match[2] + '.json') && (
+        (prompt.startsWith('TRANSLATE') && config.emptyPackets?.includes(match[2])) ||
+        (prompt.startsWith('REVIEW') && config.emptyReviewPackets?.includes(match[2])));
+      const blank = prompt.startsWith('TRANSLATE') && prompt.includes('/work/' + match[2] + '.json') && config.blankPackets?.includes(match[2]);
+      const wrongLocale = prompt.startsWith('TRANSLATE') && prompt.includes('/work/' + match[2] + '.json') && config.wrongLocalePackets?.includes(match[2]);
+      const stray = prompt.startsWith('TRANSLATE') && prompt.includes('/work/' + match[2] + '.json') && config.strayPackets?.includes(match[2]);
+      const files = Object.fromEntries(Object.entries(packet.files).map(([target, entry], j) => [target,
+        Object.fromEntries(Object.keys(entry.units).map((id, k) => [id, blank ? (j === 0 && k === 0 ? null : '  ') : 't']))]));
+      const result = empty ? { locale: 'x', files: {} } : {
+        locale: wrongLocale ? 'xx' : locale,
+        files: stray ? { ['i18n/' + locale + '/stray.mdx']: { u0: 't' } } : files,
+      };
+      fs.writeFileSync(match[1], JSON.stringify(result));
+    }
   }
 }
 `.replace('@NODE@', process.execPath);
@@ -213,9 +229,9 @@ it('translates and reviews each sorted packet with the reference CLI arguments a
 });
 
 it('continues after a failed packet and lets CLI flags override environment models and effort', () => {
-  const result = run({ fail: true }, ['--translator', 'codex', '--model', 'chosen', '--review-model', 'chosen-review', '--effort', 'high'], { TRANSLATE_TRANSLATOR: 'claude', TRANSLATE_MODEL: 'env-model', TRANSLATE_REVIEW_MODEL: 'env-review', TRANSLATE_EFFORT: 'low' });
+  const result = run({ failPackets: ['de-01', 'de-01-a'] }, ['--translator', 'codex', '--model', 'chosen', '--review-model', 'chosen-review', '--effort', 'high'], { TRANSLATE_TRANSLATOR: 'claude', TRANSLATE_MODEL: 'env-model', TRANSLATE_REVIEW_MODEL: 'env-review', TRANSLATE_EFFORT: 'low' });
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(models(result).map(c => c.args[c.args.indexOf('-m') + 1]), ['chosen', 'chosen', 'chosen-review']);
+  assert.deepEqual(models(result).map(c => c.args[c.args.indexOf('-m') + 1]), ['chosen', 'chosen', 'chosen', 'chosen-review']);
   assert.ok(models(result).every(c => c.tool === 'codex' && c.args.includes('model_reasoning_effort="high"')));
   assert.match(result.stdout, /packet de-01 failed or timed out; continuing/);
   assert.match(body(), /^Applied 2 of 3 planned units in 1 files \(fr\); rejected: 0; no result: 0; translator: codex \(chosen\); review: chosen-review;/);
@@ -399,7 +415,7 @@ it('skips review without a results file and fails when nothing is accepted', () 
   const result = run({ noResults: true });
   assertFailed(result, 'no translations accepted');
   assert.equal(result.status, 1, result.stderr);
-  assert.equal(models(result).length, 2);
+  assert.equal(models(result).length, 4);
   assert.match(result.stdout, /no translations accepted/);
   assert.ok(!result.calls.some(c => isCall(c, 'git', 'commit') || isCall(c, 'git', 'push')));
 });
@@ -524,6 +540,59 @@ it('splits a multi-file packet by units across files, and a failing multi-file h
   assert.equal(packet('es-01-a').locale, 'es');
   assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
   assert.match(result.stdout, /packet es-01-a had no results; retrying as es-01-a-a\n/);
+});
+
+it('discards an empty results file and retries the packet split in half', () => {
+  const result = run({ counts: [1], packets: ['es-01'], packetFiles: 1, packetUnits: 5, emptyPackets: ['es-01'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a', 'es-01-b', 'es-01-b']);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  assert.match(result.stdout, /packet es-01 wrote no translations; discarding its results\n/);
+  assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
+  assert.ok(!fs.existsSync(path.join(wt, '.translate/results/es-01.json')));
+});
+
+it('discards a results file whose units are all null or blank', () => {
+  const result = run({ counts: [1], packets: ['es-01'], packetFiles: 1, packetUnits: 5, blankPackets: ['es-01'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a', 'es-01-b', 'es-01-b']);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  assert.match(result.stdout, /packet es-01 wrote no translations; discarding its results\n/);
+  assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
+  assert.ok(!fs.existsSync(path.join(wt, '.translate/results/es-01.json')));
+});
+
+it('discards results whose locale does not match the packet', () => {
+  const result = run({ counts: [1], packets: ['es-01'], packetFiles: 1, packetUnits: 5, wrongLocalePackets: ['es-01'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a', 'es-01-b', 'es-01-b']);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  assert.match(result.stdout, /packet es-01 wrote no translations; discarding its results\n/);
+  assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
+  assert.ok(!fs.existsSync(path.join(wt, '.translate/results/es-01.json')));
+});
+
+it('discards results that name no unit of the packet', () => {
+  const result = run({ counts: [1], packets: ['es-01'], packetFiles: 1, packetUnits: 5, strayPackets: ['es-01'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['es-01', 'es-01-a', 'es-01-a', 'es-01-b', 'es-01-b']);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  assert.match(result.stdout, /packet es-01 wrote no translations; discarding its results\n/);
+  assert.match(result.stdout, /packet es-01 had no results; retrying as es-01-a\n/);
+  assert.ok(!fs.existsSync(path.join(wt, '.translate/results/es-01.json')));
+});
+
+it('discards results that the review leaves empty', () => {
+  const result = run({ counts: [1], packets: ['fr-01'], packetFiles: 2, emptyReviewPackets: ['fr-01'] });
+  assert.equal(result.status, 0, result.stderr);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['fr-01', 'fr-01', 'fr-01-a', 'fr-01-a', 'fr-01-b', 'fr-01-b']);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  assert.match(result.stdout, /packet fr-01 wrote no translations; discarding its results\n/);
 });
 
 it('adds the first.txt pages after CLI --first paths', () => {

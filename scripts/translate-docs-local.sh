@@ -132,12 +132,25 @@ else
 fi
 mkdir -p .translate/results .translate/logs
 REVIEW_USED=skipped
+discard_empty_results() { # $1 = packet name; deletes a results file with no non-blank translation that apply.js would read
+  local file=".translate/results/$1.json"
+  [ -f "$file" ] || return 0
+  if ! jq -e --slurpfile work ".translate/work/$1.json" '. as $r | $work[0] as $w
+    | $r.locale == $w.locale
+      and ([$w.files | to_entries[] | .key as $t | .value.units | keys[] as $id
+            | $r.files[$t]? | objects | .[$id] | strings | select(test("\\S"))] | length > 0)
+  ' "$file" >/dev/null 2>&1; then
+    log "packet $1 wrote no translations; discarding its results"
+    rm -f "$file"
+  fi
+}
 translate_packet() { # $1 = packet name; reviewed only when the translator wrote a results file
   cat scripts/docs-translation/translate-prompt.md > .translate/prompt
   printf '\n- .translate/work/%s.json -> .translate/results/%s.json\n' "$1" "$1" >> .translate/prompt
   if ! run_with_timeout "${COMMAND[@]}" < .translate/prompt > ".translate/logs/$1.log" 2>&1; then
     log "packet $1 failed or timed out; continuing"
   fi
+  discard_empty_results "$1"
   if [ "$REVIEW" -eq 1 ] && [ -f ".translate/results/$1.json" ]; then
     REVIEW_USED=$REVIEW_MODEL
     cat scripts/docs-translation/review-prompt.md > .translate/prompt
@@ -145,6 +158,7 @@ translate_packet() { # $1 = packet name; reviewed only when the translator wrote
     if ! run_with_timeout "${REVIEW_COMMAND[@]}" < .translate/prompt > ".translate/logs/review-$1.log" 2>&1; then
       log "review $1 failed or timed out; continuing"
     fi
+    discard_empty_results "$1"
   fi
 }
 split_packet() { # $1 = packet name; halves units across files (files if fewer than two units), writing <name>-a/-b and printing each name written
