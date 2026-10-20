@@ -132,10 +132,14 @@ else
 fi
 mkdir -p .translate/results .translate/logs
 REVIEW_USED=skipped
-discard_empty_results() { # $1 = packet name; deletes a results file that holds no non-blank unit translation
+discard_empty_results() { # $1 = packet name; deletes a results file with no non-blank translation that apply.js would read
   local file=".translate/results/$1.json"
   [ -f "$file" ] || return 0
-  if ! jq -e '[.files[]? | objects | .[] | strings | select(test("\\S"))] | length > 0' "$file" >/dev/null 2>&1; then
+  if ! jq -e --slurpfile work ".translate/work/$1.json" '. as $r | $work[0] as $w
+    | $r.locale == $w.locale
+      and ([$w.files | to_entries[] | .key as $t | .value.units | keys[] as $id
+            | $r.files[$t]? | objects | .[$id] | strings | select(test("\\S"))] | length > 0)
+  ' "$file" >/dev/null 2>&1; then
     log "packet $1 wrote no translations; discarding its results"
     rm -f "$file"
   fi
