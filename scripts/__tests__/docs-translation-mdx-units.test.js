@@ -222,6 +222,64 @@ Body text.
     expect(output).toBe('Usar modo `POS`.\n');
   });
 
+  it('keeps a space after inline code when a translated fragment drops leading punctuation', () => {
+    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x).\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const fragment = parsed.units.find((unit) => unit.source === ', and');
+    const link = parsed.units.find((unit) => unit.source === 'everything');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([
+      [fragment.id, 'und'],
+      [link.id, 'alles'],
+    ]));
+
+    expect(output).toContain('`pdf417` und [alles](https://example.com/x).');
+  });
+
+  it('keeps a space before and after inline code when punctuation around it is dropped', () => {
+    const mdx = '# T\n\nThe same `<barcode>` tag, see (`ean13`) too.\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const before = parsed.units.find((unit) => unit.source === 'tag, see (');
+    const after = parsed.units.find((unit) => unit.source === ') too.');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([
+      [before.id, 'Tag, siehe'],
+      [after.id, 'auch.'],
+    ]));
+
+    expect(output).toContain('The same `<barcode>` Tag, siehe `ean13` auch.');
+  });
+
+  it('does not add a space next to inline code for CJK translations', () => {
+    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x).\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const fragment = parsed.units.find((unit) => unit.source === ', and');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([[fragment.id, '和']]));
+
+    expect(output).toContain('`pdf417`和 ');
+  });
+
+  it('leaves a translation that keeps the punctuation unchanged', () => {
+    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x).\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const fragment = parsed.units.find((unit) => unit.source === ', and');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([[fragment.id, ', und']]));
+
+    expect(output).toContain('`pdf417`, und');
+  });
+
+  it('keeps a translation glued to inline code when the English fragment is glued', () => {
+    const mdx = '# T\n\nThe same `<barcode>` tag fills the `SKU`s column.\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const fragment = parsed.units.find((unit) => unit.source === 's column.');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([[fragment.id, 's-Spalte.']]));
+
+    expect(output).toContain('`SKU`s-Spalte.');
+  });
+
   it('translates markdown link sentences as one unit so grammar can be reordered', () => {
     const parsed = parseDocsMdxUnits('docs/example.mdx', 'Create integrations using the [Custom Gateways](/payment/custom-gateways) system.\n');
 
