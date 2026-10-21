@@ -1120,6 +1120,7 @@ function findDuplicateHeadingAnchors(source) {
 }
 
 module.exports = {
+  isSpaceSensitiveLetter,
   normalizeAdminBreadcrumbInlineCode,
   DOCS_LOCALE_PROFILES,
   validateProtectedTermsInText,

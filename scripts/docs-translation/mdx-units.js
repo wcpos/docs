@@ -1,4 +1,5 @@
 const { createHash } = require('node:crypto');
+const { isSpaceSensitiveLetter } = require('./docs-qa');
 
 const TRANSLATABLE_FRONTMATTER_KEYS = new Set(['title', 'sidebar_label', 'description']);
 const TRANSLATABLE_JSX_ATTRS = new Set(['alt', 'title', 'description', 'label', 'question', 'summary', 'placeholder', 'caption', 'scaleLabel', 'why']);
@@ -653,6 +654,25 @@ function applyDocsMdxTranslations(parsed, translations) {
       if (translation === undefined) {
         return undefined;
       }
+      let value = translation;
+      // Fragment ranges are trimmed, so dropped punctuation glues the translation to the code span.
+      if (!['frontmatter', 'link_title', 'jsx_attr'].includes(unit.type)) {
+        const source = parsed.source.slice(unit.range.start, unit.range.end);
+        if (
+          parsed.source[unit.range.start - 1] === '`' &&
+          /^[^\s\p{L}]/u.test(source) &&
+          isSpaceSensitiveLetter(translation[0])
+        ) {
+          value = ` ${value}`;
+        }
+        if (
+          parsed.source[unit.range.end] === '`' &&
+          /[^\s\p{L}]$/u.test(source) &&
+          isSpaceSensitiveLetter(translation.at(-1))
+        ) {
+          value = `${value} `;
+        }
+      }
       return {
         start: unit.range.start,
         end: unit.range.end,
@@ -665,7 +685,7 @@ function applyDocsMdxTranslations(parsed, translations) {
                 ? escapeJsStringLiteral(translation, unit.attrQuote ?? parsed.source[unit.range.start - 1] ?? '"')
                 : unit.type === 'jsx_attr'
                   ? escapeQuotedAttribute(translation, unit.attrQuote ?? parsed.source[unit.range.start - 1] ?? '"')
-                  : translation,
+                  : value,
       };
     })
     .filter((replacement) => replacement !== undefined)
