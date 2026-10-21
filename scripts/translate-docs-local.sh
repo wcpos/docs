@@ -9,6 +9,7 @@ CLAUDE_REVIEW_MODEL=sonnet # Default model for Claude review pass.
 DEFAULT_EFFORT=medium # Codex reasoning effort.
 MAX_UNITS=1500 # Units per run; the rest waits for the next run.
 CALL_TIMEOUT=1800 # Seconds allowed for each translation or review call.
+CODEX_TOOL_OUTPUT_TOKENS=25000 # Codex tool-output cap per call; the machine default (2000) truncates packets and Luna declines them (#526).
 
 log() { printf '[translate-docs-local] %s\n' "$*"; }
 fail() {
@@ -124,8 +125,8 @@ run_with_timeout() {
   return "$status"
 }
 if [ "$TRANSLATOR" = codex ]; then
-  COMMAND=(codex exec -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -s workspace-write -C "$WT" -)
-  REVIEW_COMMAND=(codex exec -m "$REVIEW_MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -s workspace-write -C "$WT" -)
+  COMMAND=(codex exec -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -c "tool_output_token_limit=$CODEX_TOOL_OUTPUT_TOKENS" -s workspace-write -C "$WT" -)
+  REVIEW_COMMAND=(codex exec -m "$REVIEW_MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -c "tool_output_token_limit=$CODEX_TOOL_OUTPUT_TOKENS" -s workspace-write -C "$WT" -)
 else
   COMMAND=(claude -p --model "$MODEL" --permission-mode acceptEdits --allowedTools "Read,Write,Glob,Grep")
   REVIEW_COMMAND=(claude -p --model "$REVIEW_MODEL" --permission-mode acceptEdits --allowedTools "Read,Write,Glob,Grep")
