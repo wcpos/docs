@@ -270,6 +270,16 @@ Body text.
     expect(output).toContain('`pdf417`, und');
   });
 
+  it('keeps a translation glued to inline code when the English fragment is glued', () => {
+    const mdx = '# T\n\nThe same `<barcode>` tag fills the `SKU`s column.\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const fragment = parsed.units.find((unit) => unit.source === 's column.');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([[fragment.id, 's-Spalte.']]));
+
+    expect(output).toContain('`SKU`s-Spalte.');
+  });
+
   it('translates markdown link sentences as one unit so grammar can be reordered', () => {
     const parsed = parseDocsMdxUnits('docs/example.mdx', 'Create integrations using the [Custom Gateways](/payment/custom-gateways) system.\n');
 
