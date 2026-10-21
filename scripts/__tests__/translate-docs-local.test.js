@@ -198,7 +198,7 @@ it.each(['updated', 'identical', false].flatMap(reexec => [[], [2, 1]].map(count
 it('translates and reviews each sorted packet with the reference CLI arguments and publishes the report after all gates', () => {
   const result = run({ deferred: 17, newWorktree: true, labelExists: true });
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(models(result).map(c => c.args), ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-sol'].map(model => ['exec', '-m', model, '-c', 'model_reasoning_effort="medium"', '-c', 'approval_policy="never"', '-s', 'workspace-write', '-C', wt, '-']));
+  assert.deepEqual(models(result).map(c => c.args), ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-sol'].map(model => ['exec', '-m', model, '-c', 'model_reasoning_effort="medium"', '-c', 'approval_policy="never"', '-c', 'tool_output_token_limit=25000', '-s', 'workspace-write', '-C', wt, '-']));
   const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
   assert.deepEqual(prompts.map(p => p.match(/work\/([^\s]+)\.json/)[1]), ['de-01', 'de-01', 'fr-01', 'fr-01']);
   assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'REVIEW', 'TRANSLATE', 'REVIEW']);
