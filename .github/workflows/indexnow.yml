@@ -8,6 +8,7 @@ on: deployment_status
 
 permissions:
   contents: read
+  deployments: read
 
 jobs:
   ping:
@@ -30,12 +31,42 @@ jobs:
         with:
           node-version: '22.13.1'
 
-      # Every merge to main lands as a single commit (squash or merge), so
-      # HEAD~1..HEAD is the deployed change set. A redeploy of the same commit
-      # just re-sends the same URLs, which is harmless.
+      # Vercel builds production one commit at a time and cancels builds that a
+      # newer push supersedes, so several merges can land as ONE deployment.
+      # The change set is therefore everything since the last commit that was
+      # actually deployed, not HEAD~1. Falls back to HEAD~1 on the first run.
+      - name: Find the previously deployed commit
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ github.event.deployment.id }}
+        run: |
+          base=""
+          # Newest first; --paginate walks the whole Production history so a run of
+          # cancelled builds can't push the last deployed commit off the page.
+          for id in $(gh api --paginate "repos/${GITHUB_REPOSITORY}/deployments?environment=Production&per_page=100" \
+              --jq ".[] | select(.id < ${DEPLOYMENT_ID}) | .id"); do
+            # Any "success" status means the commit went live; a later "inactive"
+            # only means a newer deployment replaced it. Cancelled builds never
+            # get a "success".
+            if gh api "repos/${GITHUB_REPOSITORY}/deployments/${id}/statuses" --jq '[.[] | select(.state == "success")] | length' | grep -qvx 0; then
+              base=$(gh api "repos/${GITHUB_REPOSITORY}/deployments/${id}" --jq .sha)
+              break
+            fi
+          done
+          if [ -z "$base" ]; then
+            echo "No earlier successful production deployment found; diffing against the parent commit."
+            base=$(git rev-parse HEAD~1)
+          else
+            echo "Previous production deployment: ${base}"
+            git fetch --no-tags --depth=1 origin "$base"
+          fi
+          echo "sha=${base}" >> "$GITHUB_OUTPUT"
+
+      # A redeploy of the same commit yields an empty diff, which sends nothing.
       - name: Ping IndexNow with changed pages
         run: |
-          git diff --name-only --diff-filter=ACMR HEAD~1 HEAD -- \
+          git diff --name-only --diff-filter=ACMR "${{ steps.base.outputs.sha }}" HEAD -- \
             'versioned_docs/version-1.x/**' \
             'i18n/*/docusaurus-plugin-content-docs/version-1.x/**' \
             | node scripts/indexnow-ping.js
