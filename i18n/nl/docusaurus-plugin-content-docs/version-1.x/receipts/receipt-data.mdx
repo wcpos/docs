@@ -21,6 +21,8 @@ Het canonieke contract wordt geproduceerd door de WCPOS-bongegevensbouwer op de 
 
 Bongegevens v1.1 voegt per productregel vastgelegde velden toe voor de reguliere prijs, de verkoopprijs vóór kortingsbonnen en de besparing. Het levert ook besparingstotalen op bestelniveau, waaronder een waarde **Totaal bespaard** die besparingen ten opzichte van de reguliere prijs combineert met WooCommerce-kortingen, zonder de besteltotalen of rapporten te wijzigen.
 
+Receipt Data v1.2 voegt `discount_type` toe aan elke kortingsregel: het WooCommerce-coupontype achter de korting.
+
 ## De bon, in kaart gebracht {#receipt-map}
 
 Elk onderdeel van een afgedrukte bon komt uit één sectie van het gegevenscontract. Beweeg over beide zijden om de koppeling te zien; klik om naar de velden van die sectie te springen. Alle voorbeelden op deze pagina gebruiken dezelfde voorbeeldbestelling.
@@ -75,37 +77,31 @@ Elk onderdeel van een afgedrukte bon komt uit één sectie van het gegevenscontr
     {
       id: 'store',
       anchor: '#store',
-      label: "Winkelkop",
       fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
     },
     {
       id: 'order',
       anchor: '#order',
-      label: "Bestelling en personen",
       fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
     },
     {
       id: 'lines',
       anchor: '#lines',
-      label: "Regelitems",
       fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
     },
     {
       id: 'totals',
       anchor: '#totals',
-      label: "Totalenblok",
       fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
     },
     {
       id: 'payments',
       anchor: '#payments',
-      label: "Betalingen",
       fields: ['payments[]'],
     },
     {
       id: 'footer',
       anchor: '#store',
-      label: "Voettekst",
       fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
     },
   ]}
@@ -160,6 +156,31 @@ De meeste sjabloonwijzigingen zijn een van deze drie. Elke kaart toont eerst het
 {{/lines}}`}
   />
 </Recipes>
+
+## Bongegevens uitbreiden {#extending}
+
+WCPOS houdt het bovenstaande contract leveranciersneutraal. Als een plugin informatie nodig heeft die WooCommerce niet modelleert, voegt die plugin deze zelf toe via het filter `woocommerce_pos_receipt_data`, op dezelfde manier waarop plugins de ordertotalen van WooCommerce filteren. Het filter wordt uitgevoerd voor elke bon die de server samenstelt: live bonnen, fiscale momentopnamen op het moment van betaling, PDF-downloads en verouderde PHP-sjablonen.
+
+```php
+add_filter( 'woocommerce_pos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+Een sjabloon kan vervolgens, net als bij elke andere sectie, controleren of de nieuwe sleutel aanwezig is:
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+Sleutels die in het schema zijn gedefinieerd, moeten de gedocumenteerde typen behouden. Toegevoegde sleutels maken geen deel uit van het schema en verschijnen daarom niet in de veldkiezer van de sjablooneditor. Fiscale momentopnamen bevatten alleen wat het filter toevoegde op het moment dat de bestelling werd betaald. Het filter is beschikbaar vanaf WCPOS 1.10.8.
 
 ## Renderregels {#rendering-rules}
 
@@ -251,11 +272,6 @@ Eén productregel draagt meerdere prijzen, en de namen worden logisch zodra je z
     { kind: 'coupon', amount: 1.45, label: "1.45" },
     { kind: 'savings', amount: 2.5, label: "2.50" },
   ]}
-  keys={[
-    { kind: 'paid', title: "Wat de klant betaalt", fields: 'unit_price → 13.05 · line_total → 26.10' },
-    { kind: 'coupon', title: "Kortingsbonkorting (SUMMER10)", fields: 'lines[].discounts → 2.90 op deze regel' },
-    { kind: 'savings', title: "Besparing ten opzichte van de reguliere prijs", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
-  ]}
   summary={[
     { label: "Aanbiedingsbesparing over de hele bestelling", value: '`totals.sale_savings_total` = 5.00' },
     { label: "Alle kortingsbonkortingen over de hele bestelling", value: '`totals.discount_total` = 5.28' },
@@ -276,8 +292,8 @@ De volledige veldreferentie is hieronder gegroepeerd per sectie. Alles is standa
 
 | Veld | Type | Voorbeeld / beschrijving |
 |-------|------|-----------------------|
-| `order.id` | number | `1234` |
-| `order.number` | string | Voor mensen leesbaar bestelnummer, bijv. `"10045"` |
+| `order.id` | number | `1042` |
+| `order.number` | string | Voor mensen leesbaar bestelnummer, bijv. `"1042"` |
 | `order.currency` | string | ISO-valutacode, bijv. `"USD"` |
 | `order.customer_note` | string | Klant-/bestelnotitie |
 | `order.wc_status` | string | Onbewerkte WooCommerce-statusslug, bijv. `"processing"` |
@@ -375,7 +391,6 @@ Loop met `{{#lines}}...{{/lines}}`. De voorbeeldwaarden zijn de espressoregel ui
 
 <FieldIndex
   note="Elk geldveld komt als paar: het getal (gebruik dat in `{{#…}}`-guards — nul en `null` verbergen de sectie, en een `null`-veld heeft helemaal geen `_display`-tegenhanger) en de bijbehorende `_display`-string (gebruik die om af te drukken). Velden met de markering incl/excl leveren ook `_incl`- en `_excl`-varianten, elk met een eigen `_display`."
-  placeholder="Velden filteren… probeer “savings”"
   emptyText="Geen velden komen overeen — wis het filter om alles van `lines[]` te zien."
   fields={[
     { name: 'key', type: 'string', desc: "Stabiele regelsleutel / bestelitem-ID.", sample: [{ k: 'key', v: '"412"', str: true }] },
@@ -531,9 +546,12 @@ Loop met `{{#discounts}}...{{/discounts}}`.
 |-------|------|-------------|
 | `label` | string | Couponbeschrijving of code-fallback |
 | `code` | string | Couponcode |
+| `discount_type` | string | Slug van het WooCommerce-coupontype, bijvoorbeeld `fixed_cart`, `percent` of `fixed_product`. Leeg als de coupon niet meer bestaat. |
 | `total` / `_incl` / `_excl` | number | Kortingsbedrag als positieve waarde |
 
 Opgemaakte varianten: `total_display`, `total_incl_display` en `total_excl_display`. Voeg je eigen minteken toe in het sjabloon als je kortingen als negatieve regels wilt tonen.
+
+`discount_type` is toegevoegd in Receipt Data v1.2. Fiscale bonmomentopnamen die eerder zijn vastgelegd, bevatten dit veld niet.
 
   </AccordionItem>
 
@@ -545,7 +563,6 @@ De voorbeeldwaarden komen uit [de voorbeeldbestelling](#receipt-map), waarop lat
 
 <FieldIndex
   note="Geldvelden volgen dezelfde koppeling als regelitems: een kaal getal voor guards en een `_display`-string om af te drukken, met `_incl`-/`_excl`-varianten waar dat is aangegeven."
-  placeholder="Velden filteren… probeer “saved”"
   emptyText="Geen velden komen overeen — wis het filter om alles van `totals` te zien."
   fields={[
     {
@@ -750,6 +767,8 @@ Deze velden worden voornamelijk verbruikt door de renderer en formatter. Ze zijn
 | `presentation_hints.price_num_decimals` | number | Aantal decimalen |
 | `presentation_hints.price_display_suffix` | string | WooCommerce-achtervoegsel voor prijsweergave |
 | `presentation_hints.order_barcode_type` | string | Barcodetype dat door galerijsjablonen wordt gebruikt |
+
+De vooraf opgemaakte geldvelden (de waarden `*_display`, zoals `totals.total_display`) geven bedragen weer met het **valutasymbool** van de valuta van de bestelling, met de hierboven beschreven positie en scheidingstekens — bonnen tonen dus `$12.00`, niet `USD 12.00`. Het onbewerkte veld `order.currency` blijft de ISO-code voor eventuele logica in je sjabloon.
 
   </AccordionItem>
 

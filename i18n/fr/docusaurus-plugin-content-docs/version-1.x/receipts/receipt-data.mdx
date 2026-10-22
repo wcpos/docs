@@ -21,6 +21,8 @@ Le contrat canonique est produit par le générateur de données de reçu WCPOS 
 
 La version 1.1 des données de reçu ajoute, pour chaque ligne de produit, les champs de prix normal enregistré, de prix de vente avant coupon et d'économies. Elle fournit également des totaux d'économies au niveau de la commande, dont une valeur **Total économisé** qui combine les économies par rapport au prix normal et les remises WooCommerce, sans modifier les totaux de commande ni les rapports.
 
+La version 1.2 des données de reçu ajoute `discount_type` à chaque ligne de remise : le type de coupon WooCommerce associé à la remise.
+
 ## Le reçu, cartographié {#receipt-map}
 
 Chaque partie d'un reçu imprimé provient d'une section du contrat de données. Survolez l'un ou l'autre côté pour voir la correspondance ; cliquez pour accéder aux champs de cette section. Tous les exemples de cette page utilisent la même commande d'exemple.
@@ -75,37 +77,31 @@ Chaque partie d'un reçu imprimé provient d'une section du contrat de données.
     {
       id: 'store',
       anchor: '#store',
-      label: "En-tête de la boutique",
       fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
     },
     {
       id: 'order',
       anchor: '#order',
-      label: "Commande et personnes",
       fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
     },
     {
       id: 'lines',
       anchor: '#lines',
-      label: "Lignes d’articles",
       fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
     },
     {
       id: 'totals',
       anchor: '#totals',
-      label: "Bloc des totaux",
       fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
     },
     {
       id: 'payments',
       anchor: '#payments',
-      label: "Paiements",
       fields: ['payments[]'],
     },
     {
       id: 'footer',
       anchor: '#store',
-      label: "Pied de page",
       fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
     },
   ]}
@@ -160,6 +156,31 @@ La plupart des modifications de modèle relèvent de l'une de ces trois recettes
 {{/lines}}`}
   />
 </Recipes>
+
+## Étendre les données du reçu {#extending}
+
+WCPOS maintient le contrat ci-dessus indépendant des fournisseurs. Lorsqu’une extension a besoin que le reçu connaisse une information que WooCommerce ne modélise pas, elle l’ajoute elle-même via le filtre `woocommerce_pos_receipt_data`, comme les extensions filtrent les totaux de commande de WooCommerce. Le filtre s’exécute pour chaque reçu généré par le serveur : reçus en direct, instantanés fiscaux au moment du paiement, téléchargements PDF et anciens modèles PHP.
+
+```php
+add_filter( 'woocommerce_pos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+Un modèle peut ensuite vérifier la nouvelle clé comme n’importe quelle autre section :
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+Les clés définies dans le schéma doivent conserver les types documentés. Les clés ajoutées ne font pas partie du schéma : elles n’apparaissent donc pas dans le sélecteur de champs de l’éditeur de modèles, et les instantanés fiscaux ne contiennent que les données ajoutées par le filtre au moment du paiement de la commande. Le filtre est disponible depuis WCPOS 1.10.8.
 
 ## Règles de rendu {#rendering-rules}
 
@@ -250,11 +271,6 @@ Une ligne de produit porte plusieurs prix, et leurs noms prennent tout leur sens
     { kind: 'paid', amount: 13.05, label: "13.05 payés" },
     { kind: 'coupon', amount: 1.45, label: "1.45" },
     { kind: 'savings', amount: 2.5, label: "2.50" },
-  ]}
-  keys={[
-    { kind: 'paid', title: "Ce que paie le client", fields: 'unit_price → 13.05 · line_total → 26.10' },
-    { kind: 'coupon', title: "Remise du coupon (SUMMER10)", fields: 'lines[].discounts → 2.90 sur cette ligne' },
-    { kind: 'savings', title: "Économies par rapport au prix normal", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
   ]}
   summary={[
     { label: "Économies sur soldes pour la commande", value: '`totals.sale_savings_total` = 5.00' },
@@ -375,7 +391,6 @@ Boucler avec `{{#lines}}...{{/lines}}`. Les valeurs d'exemple proviennent de la 
 
 <FieldIndex
   note="Chaque champ monétaire arrive par paire : le nombre (à utiliser dans les conditions `{{#…}}` — zéro et `null` masquent la section, et un champ `null` n’a aucun jumeau `_display`) et sa chaîne `_display` (à utiliser pour l’impression). Les champs marqués TTC/HT fournissent aussi des variantes `_incl` et `_excl`, chacune avec son propre `_display`."
-  placeholder="Filtrer les champs… essayez « savings »"
   emptyText="Aucun champ ne correspond — effacez le filtre pour voir l’ensemble de `lines[]`."
   fields={[
     { name: 'key', type: 'string', desc: "Clé stable de ligne / identifiant d’article de commande.", sample: [{ k: 'key', v: '"412"', str: true }] },
@@ -505,7 +520,7 @@ Si le modèle n'imprime pas de ligne `discounts` au niveau de l'article, continu
 
   <AccordionItem question="fees et shipping">
 
-### `fees` et `shipping` {#fees-and-shipping}
+### frais et livraison {#fees-and-shipping}
 
 Itérer avec `{{#fees}}...{{/fees}}` et `{{#shipping}}...{{/shipping}}`.
 
@@ -531,9 +546,12 @@ Boucle avec `{{#discounts}}...{{/discounts}}`.
 |-------|------|-------------|
 | `label` | string | Description du coupon ou code par défaut |
 | `code` | string | Code du coupon |
+| `discount_type` | string | Slug du type de coupon WooCommerce, par exemple `fixed_cart`, `percent` ou `fixed_product`. Vide lorsque le coupon n’existe plus. |
 | `total` / `_incl` / `_excl` | number | Montant de la remise en valeur positive |
 
 Variantes formatées : `total_display`, `total_incl_display` et `total_excl_display`. Ajoutez votre propre signe moins dans le modèle si vous souhaitez afficher les remises sous forme de lignes négatives.
+
+`discount_type` a été ajouté dans la version 1.2 des données de reçu. Les instantanés fiscaux de reçus capturés auparavant ne le contiennent pas.
 
   </AccordionItem>
 
@@ -545,7 +563,6 @@ Les valeurs d'exemple proviennent de [la commande d'exemple](#receipt-map), qui 
 
 <FieldIndex
   note="Les champs monétaires suivent le même appariement que les lignes d’articles : un nombre brut pour les conditions et une chaîne `_display` pour l’impression, avec des variantes `_incl`/`_excl` là où c’est indiqué."
-  placeholder="Filtrer les champs… essayez « saved »"
   emptyText="Aucun champ ne correspond — effacez le filtre pour voir l’ensemble de `totals`."
   fields={[
     {
@@ -626,12 +643,12 @@ Les modèles fournis qui affichent des prix utilisent la même structure de cond
 
   <AccordionItem question="tax et tax_summary — conditions d'affichage et lignes par taux">
 
-### `tax` et `tax_summary` {#tax-and-tax_summary}
+### tax et tax_summary {#tax-and-tax_summary}
 
 Utilisez `tax` pour les conditions d'affichage et `tax_summary` pour les lignes détaillées par taux.
 
 | Champ de taxe | Type | Description |
-|---------------|------|-------------|
+|-----------|------|-------------|
 | `tax.display` | string | `incl` ou `excl` |
 | `tax.display_incl` | boolean | Vrai lorsque les prix sont affichés toutes taxes comprises |
 | `tax.display_excl` | boolean | Vrai lorsque les prix sont affichés hors taxes |
@@ -732,7 +749,7 @@ Les champs fiscaux sont vides par défaut et alimentés par les intégrations fi
 
   <AccordionItem question="presentation_hints — indications de formatage et de rendu">
 
-### `presentation_hints` {#presentation_hints}
+### presentation_hints {#presentation_hints}
 
 Ces champs sont principalement utilisés par le moteur de rendu et le formateur. Ils sont disponibles dans les modèles si nécessaire.
 
@@ -750,6 +767,8 @@ Ces champs sont principalement utilisés par le moteur de rendu et le formateur.
 | `presentation_hints.price_num_decimals` | number | Nombre de décimales |
 | `presentation_hints.price_display_suffix` | string | Suffixe d'affichage des prix WooCommerce |
 | `presentation_hints.order_barcode_type` | string | Type de code-barres utilisé par les modèles de galerie |
+
+Les champs monétaires préformatés (les valeurs `*_display`, telles que `totals.total_display`) affichent les montants avec le **symbole monétaire** de la devise de la commande, en utilisant la position et les séparateurs indiqués ci-dessus — les reçus affichent donc `$12.00`, et non `USD 12.00`. Le champ brut `order.currency` reste le code ISO à utiliser dans la logique de votre modèle.
 
   </AccordionItem>
 

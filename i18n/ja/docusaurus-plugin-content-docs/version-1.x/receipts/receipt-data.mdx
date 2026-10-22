@@ -21,6 +21,8 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 
 レシートデータ v1.1 では、各商品明細に記録済みの通常価格、クーポン適用前の販売価格、割引額のフィールドが追加されました。また、注文レベルの割引合計も提供されます。これには、通常価格からの割引と WooCommerce の割引を合算した **合計割引額** の値が含まれますが、注文合計やレポートが変わることはありません。
 
+Receipt Data v1.2 では、各割引行に `discount_type` が追加されました。これは割引の元となる WooCommerce クーポンの種類です。
+
 ## レシートの対応関係 {#receipt-map}
 
 印刷されるレシートの各部分は、データコントラクトのいずれかのセクションに対応しています。どちらか一方にカーソルを合わせると対応関係が表示され、クリックするとそのセクションのフィールドに移動します。このページのすべての例では、同じサンプル注文を使用しています。
@@ -45,9 +47,9 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
     {
       id: 'lines',
       rows: [
-        { left: "2 × Espresso Beans", right: "29.00" },
+        { left: "2 × エスプレッソ豆", right: "29.00" },
         { left: "~34.00~ · 割引 −5.00", sub: true },
-        { left: "1 × Ceramic Mug", right: "18.00" },
+        { left: "1 × セラミックマグ", right: "18.00" },
         { left: "1 × Croissant", right: "5.75" },
       ],
     },
@@ -75,37 +77,31 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
     {
       id: 'store',
       anchor: '#store',
-      label: "店舗ヘッダー",
       fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
     },
     {
       id: 'order',
       anchor: '#order',
-      label: "注文と担当者",
       fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
     },
     {
       id: 'lines',
       anchor: '#lines',
-      label: "明細行",
       fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
     },
     {
       id: 'totals',
       anchor: '#totals',
-      label: "合計ブロック",
       fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
     },
     {
       id: 'payments',
       anchor: '#payments',
-      label: "支払い",
       fields: ['payments[]'],
     },
     {
       id: 'footer',
       anchor: '#store',
-      label: "フッター",
       fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
     },
   ]}
@@ -113,14 +109,14 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 
 ## よく使うレシピ {#common-recipes}
 
-テンプレートの編集のほとんどは、次の3つのいずれかです。各カードには、まず印刷結果が表示され、続いて実際のマークアップが表示されます。ロジックレス HTML またはサーマル XML のテンプレートにそのままコピーしてください。3つ目のカードは、上記のサンプル注文ではなく v1.9 より前のレガシー注文を示しています。
+テンプレートの編集の多くは、次の3つのパターンのいずれかです。各カードには、まず印刷結果、次に正確なマークアップが示されます。ロジックレスHTMLテンプレートまたはサーマルXMLテンプレートにコピーして使用できます。3つ目のカードは、上記のサンプル注文ではなくv1.9より前のレガシー注文を示しています。
 
 <Recipes>
   <Recipe
     title="通常価格に取り消し線を引く"
     why="価格履歴が記録されていない注文では、セクションガードによってすべて非表示になります。"
     preview={[
-      { left: "2 × Espresso Beans", right: "29.00" },
+      { left: "2 × エスプレッソ豆", right: "29.00" },
       { left: "~34.00~ · 割引 −5.00", sub: true },
     ]}
     snippet={`{{#lines}}
@@ -132,7 +128,7 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
   />
   <Recipe
     title="合計割引額の行を追加する"
-    why="2つのガード: 価格履歴が不完全な場合や、割引がなかった場合にこの行は表示されません。"
+    why="2つの条件により、価格履歴が不完全な場合や何も保存されていない場合は行が表示されません。"
     preview={[
       { left: "合計", right: "59.97", bold: true },
       { left: "合計割引額", right: "10.28", sub: true },
@@ -148,7 +144,7 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
     title="v1.9 より前の注文を安全に再印刷する"
     why="古い注文では割引額の中に値引きが含まれているため、二重表示を防ぎます。"
     preview={[
-      { left: "1 × Espresso Beans", right: "14.50" },
+      { left: "1 × エスプレッソ豆", right: "14.50" },
       { left: "~17.00~  割引 −2.50", sub: true },
     ]}
     snippet={`{{#lines}}
@@ -160,6 +156,31 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 {{/lines}}`}
   />
 </Recipes>
+
+## レシートデータの拡張 {#extending}
+
+WCPOS は上記の仕様をベンダーに依存しない形で維持しています。プラグインで、WooCommerce がモデル化していない情報をレシートに含める必要がある場合は、WooCommerce の注文合計をプラグインでフィルターするのと同様に、`woocommerce_pos_receipt_data` フィルターを使って情報を追加できます。このフィルターはサーバーが生成するすべてのレシートで実行されます。通常のレシート、支払い時のフィスカルスナップショット、PDFダウンロード、レガシーPHPテンプレートが対象です。
+
+```php
+add_filter( 'woocommerce_pos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+テンプレートでは、ほかのセクションと同様に、新しいキーがある場合の条件を設定できます：
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+スキーマで定義されているキーは、文書化された型を維持してください。追加したキーはスキーマに含まれないため、テンプレートエディターのフィールド選択には表示されません。またフィスカルスナップショットに含まれるのは、注文の支払い時点でフィルターが追加したデータだけです。このフィルターは WCPOS 1.10.8 以降で使用できます。
 
 ## レンダリングルール {#rendering-rules}
 
@@ -241,20 +262,15 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 
 ## 価格どうしの関係 {#price-model}
 
-1つの商品明細には複数の価格が含まれますが、実際の金額の上で見れば名前の意味は明確になります。以下はサンプル注文のエスプレッソの明細です。通常価格 $17.00 の商品が $14.50 で販売され、さらに 10% のクーポンが適用されています。
+1つの商品行には複数の価格が含まれます。金額と一緒に見ると、それぞれの名前の意味がわかります。サンプル注文のエスプレッソ商品は、通常価格 $17.00、セール価格 $14.50 で、さらに10%クーポンが適用されています：
 
 <PriceFlow
-  caption="Espresso Beans — 1個あたり（注文には2個含まれます）"
+  caption="エスプレッソ豆 — 1個分（注文では2個）"
   scaleLabel="通常価格 17.00"
   segments={[
     { kind: 'paid', amount: 13.05, label: "13.05 支払額" },
     { kind: 'coupon', amount: 1.45, label: "1.45" },
     { kind: 'savings', amount: 2.5, label: "2.50" },
-  ]}
-  keys={[
-    { kind: 'paid', title: "顧客が支払う金額", fields: 'unit_price → 13.05 · line_total → 26.10' },
-    { kind: 'coupon', title: "クーポン割引 (SUMMER10)", fields: 'lines[].discounts → この明細で 2.90' },
-    { kind: 'savings', title: "通常価格からの割引額", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
   ]}
   summary={[
     { label: "注文全体のセール割引額", value: '`totals.sale_savings_total` = 5.00' },
@@ -375,7 +391,6 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 
 <FieldIndex
   note="金額フィールドはすべてペアで提供されます。数値（`{{#…}}` ガードで使用します。ゼロと `null` はセクションを非表示にし、`null` のフィールドには `_display` の対になる値がまったくありません）と、その `_display` 文字列（印刷に使用します）です。incl/excl の印が付いたフィールドには `_incl` と `_excl` のバリアントもあり、それぞれに独自の `_display` があります。"
-  placeholder="フィールドを絞り込み… 「savings」で試してください"
   emptyText="一致するフィールドがありません — フィルターをクリアすると `lines[]` のすべてが表示されます。"
   fields={[
     { name: 'key', type: 'string', desc: "固定の明細キー／注文アイテム ID。", sample: [{ k: 'key', v: '"412"', str: true }] },
@@ -498,7 +513,7 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 {{/lines}}
 ```
 
-テンプレートが明細レベルの `discounts` の行を印刷しない場合は、`savings_in_discounts` が true であっても `line_savings` を表示し続けてください。組み込みテンプレートはこの区別を自動的に処理します。
+テンプレートで行単位の `discounts` 行を印刷しない場合、`line_savings` が true であっても `savings_in_discounts` を表示してください。同梱テンプレートではこの違いが自動的に処理されます。
 :::
 
   </AccordionItem>
@@ -531,9 +546,12 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 |-------|------|-------------|
 | `label` | string | クーポンの説明またはコードのフォールバック |
 | `code` | string | クーポンコード |
+| `discount_type` | string | WooCommerce クーポンの種類を表すスラッグ。例：`fixed_cart`、`percent`、`fixed_product`。クーポンが存在しなくなった場合は空です。 |
 | `total` / `_incl` / `_excl` | number | 正の値としての割引額 |
 
 フォーマット済みバリアント: `total_display`、`total_incl_display`、`total_excl_display`。割引をマイナス行として表示する場合は、テンプレート内で独自にマイナス記号を追加してください。
+
+`discount_type` は Receipt Data v1.2 で追加されました。それ以前に保存されたフィスカルレシートのスナップショットには含まれません。
 
   </AccordionItem>
 
@@ -545,7 +563,6 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
 
 <FieldIndex
   note="金額フィールドは明細行と同じペアの形式に従います。ガード用の素の数値と、印刷用の `_display` 文字列があり、印が付いたものには `_incl` / `_excl` のバリアントがあります。"
-  placeholder="フィールドを絞り込み… 「saved」で試してください"
   emptyText="一致するフィールドがありません — フィルターをクリアすると `totals` のすべてが表示されます。"
   fields={[
     {
@@ -608,7 +625,7 @@ WCPOSのロジックレスHTMLテンプレートとサーマルXMLテンプレ�
   ]}
 />
 
-節約された金額全体を1つの顧客向けの数値として表示したい場合は `total_saved` を使用してください。テンプレート内で `discount_total` と `sale_savings_total` を足して算出しないでください。v1.9.0 より前に作成された注文では、POS の価格による値引きがすでに WooCommerce の割引合計に含まれている場合があります。正規の `total_saved` フィールドは、この重複を検出して除去します。
+節約額を顧客向けに1つの金額で示す場合は `total_saved` を使用してください。テンプレートで `discount_total` と `sale_savings_total` を加算して計算しないでください。v1.9.0 より前に作成された注文では、POS価格の割引がWooCommerceの割引合計にすでに含まれている場合があります。標準の `total_saved` フィールドは重複分を検出して除外します。
 
 いずれかの商品明細に、信頼できる集計に必要な価格データが記録されていない場合、割引合計は `null` となり、`total_saved_complete` は false になります。行を `total_saved_complete` でガードし、そのうえで `total_saved` を使ってゼロの値を非表示にしてください。
 
@@ -750,6 +767,8 @@ fiscal フィールドはデフォルトでは空であり、財務連携機能�
 | `presentation_hints.price_num_decimals` | number | 小数点以下の桁数 |
 | `presentation_hints.price_display_suffix` | string | WooCommerce の価格表示サフィックス |
 | `presentation_hints.order_barcode_type` | string | ギャラリーテンプレートで使用されるバーコードの種類 |
+
+書式設定済みの金額フィールド（`*_display` などの `totals.total_display` 値）は、上記の配置と区切り文字に従って、注文通貨の**通貨記号**付きで金額を表示します。そのため、レシートには `$12.00` ではなく `USD 12.00` と印刷されます。テンプレート内のロジックでは、元の `order.currency` フィールドにあるISOコードを引き続き使用できます。
 
   </AccordionItem>
 

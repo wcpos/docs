@@ -21,6 +21,8 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 
 收据数据 v1.1 为每个商品行新增了已记录的原价、优惠券前售价以及节省金额字段。它还提供订单级的节省金额合计，其中包括一个 **总计节省** 值，该值将原价节省与 WooCommerce 折扣合并在一起，而不会改变订单合计或报表。
 
+收据数据 v1.2 为每个折扣行新增了 `discount_type`：即该折扣所对应的 WooCommerce 优惠券类型。
+
 ## 收据结构对照 {#receipt-map}
 
 打印收据的每个部分都来自数据契约中的某一节。悬停任意一侧可查看对应关系；点击可跳转到该节的字段。本页所有示例都使用同一个示例订单。
@@ -75,37 +77,31 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
     {
       id: 'store',
       anchor: '#store',
-      label: "店铺抬头",
       fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
     },
     {
       id: 'order',
       anchor: '#order',
-      label: "订单与人员",
       fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
     },
     {
       id: 'lines',
       anchor: '#lines',
-      label: "商品行项目",
       fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
     },
     {
       id: 'totals',
       anchor: '#totals',
-      label: "合计区块",
       fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
     },
     {
       id: 'payments',
       anchor: '#payments',
-      label: "付款",
       fields: ['payments[]'],
     },
     {
       id: 'footer',
       anchor: '#store',
-      label: "页脚",
       fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
     },
   ]}
@@ -160,6 +156,31 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 {{/lines}}`}
   />
 </Recipes>
+
+## 扩展收据数据 {#extending}
+
+WCPOS 通过上述契约保持供应商中立。当插件需要在收据中包含 WooCommerce 未建模的信息时，可通过 `woocommerce_pos_receipt_data` 筛选器自行添加，方式与插件筛选 WooCommerce 自身的订单合计相同。此筛选器会作用于服务器生成的每张收据：实时收据、付款时的财税快照、PDF 下载以及旧版 PHP 模板。
+
+```php
+add_filter( 'woocommerce_pos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+随后，模板可以像检查其他部分一样，根据新增键进行判断：
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+架构中定义的键应保持其文档所述类型。新增键不属于架构，因此不会显示在模板编辑器的字段选择器中；财税快照也只包含订单付款时筛选器添加的内容。WCPOS 1.10.8 起提供此筛选器。
 
 ## 渲染规则 {#rendering-rules}
 
@@ -250,11 +271,6 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
     { kind: 'paid', amount: 13.05, label: "实付 13.05" },
     { kind: 'coupon', amount: 1.45, label: "1.45" },
     { kind: 'savings', amount: 2.5, label: "2.50" },
-  ]}
-  keys={[
-    { kind: 'paid', title: "顾客实际支付的金额", fields: 'unit_price → 13.05 · line_total → 26.10' },
-    { kind: 'coupon', title: "优惠券折扣（SUMMER10）", fields: 'lines[].discounts → 2.90 on this line' },
-    { kind: 'savings', title: "相对原价的节省", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
   ]}
   summary={[
     { label: "整个订单的特价节省", value: '`totals.sale_savings_total` = 5.00' },
@@ -375,7 +391,6 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 
 <FieldIndex
   note="每个金额字段都成对提供：数字本身（用在 `{{#…}}` 条件判断中——零和 `null` 会隐藏该区块，而值为 `null` 的字段根本没有对应的 `_display` 孪生字段），以及它的 `_display` 字符串（用于打印）。标记为 incl/excl 的字段还提供 `_incl` 和 `_excl` 变体，每个变体都有各自的 `_display`。"
-  placeholder="筛选字段…… 试试“savings”"
   emptyText="没有匹配的字段——清除筛选条件即可查看 `lines[]` 的全部字段。"
   fields={[
     { name: 'key', type: 'string', desc: "稳定的行键/订单项 ID。", sample: [{ k: 'key', v: '"412"', str: true }] },
@@ -498,7 +513,7 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 {{/lines}}
 ```
 
-如果模板不打印行级的 `discounts` 行，那么即使 `savings_in_discounts` 为 true，也应继续显示 `line_savings`。内置模板会自动处理这一区别。
+如果模板不打印行级 `discounts` 行，即使 `line_savings` 为 true，也应继续显示 `savings_in_discounts`。内置模板会自动处理这种区别。
 :::
 
   </AccordionItem>
@@ -531,9 +546,12 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 |-------|------|-------------|
 | `label` | string | 优惠券描述或代码回退值 |
 | `code` | string | 优惠券代码 |
+| `discount_type` | string | WooCommerce 优惠券类型标识，例如 `fixed_cart`、`percent` 或 `fixed_product`。优惠券已不存在时为空。 |
 | `total` / `_incl` / `_excl` | number | 折扣金额，为正数值 |
 
 格式化变体：`total_display`、`total_incl_display` 和 `total_excl_display`。如果需要将折扣显示为负数行，请在模板中自行添加负号。
+
+`discount_type` 在收据数据 v1.2 中新增。此前生成的财税收据快照不包含此字段。
 
   </AccordionItem>
 
@@ -545,7 +563,6 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 
 <FieldIndex
   note="金额字段遵循与商品行相同的成对规则：裸数字用于条件判断，`_display` 字符串用于打印，标记处还提供 `_incl`/`_excl` 变体。"
-  placeholder="筛选字段…… 试试“saved”"
   emptyText="没有匹配的字段——清除筛选条件即可查看 `totals` 的全部字段。"
   fields={[
     {
@@ -641,7 +658,7 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 | `tax.breakdown_itemized` | boolean | 当优先显示按税率逐项列出时为 true |
 | `has_tax_summary` | boolean | 当 `tax_summary` 包含行数据时为 true |
 
-使用 `{{#tax_summary}}...{{/tax_summary}}` 循环遍历 `tax_summary`。
+使用 `tax_summary` 循环遍历 `{{#tax_summary}}...{{/tax_summary}}`。
 
 | 字段 | 类型 | 描述 |
 |-------|------|-------------|
@@ -750,6 +767,8 @@ WCPOS 无逻辑 HTML 模板和热敏 XML 模板从相同的规范收据数据渲
 | `presentation_hints.price_num_decimals` | number | 小数位数 |
 | `presentation_hints.price_display_suffix` | string | WooCommerce 价格显示后缀 |
 | `presentation_hints.order_barcode_type` | string | 图库模板使用的条形码类型 |
+
+预格式化的金额字段（如 `*_display` 这样的 `totals.total_display` 值）会使用订单所用货币的**货币符号**显示金额，并遵循上述符号位置和分隔符设置——因此收据显示 `$12.00`，而非 `USD 12.00`。原始 `order.currency` 字段仍保留 ISO 代码，供模板中的逻辑使用。
 
   </AccordionItem>
 
