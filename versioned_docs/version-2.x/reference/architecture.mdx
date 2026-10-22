@@ -2,7 +2,7 @@
 title: Architecture
 sidebar_label: Architecture
 sidebar_position: 2
-description: "Technical architecture of WCPOS explaining how the POS client communicates with the WooCommerce REST API."
+description: "Technical architecture of WCPOS: the PHP plugin and the local-first client, the sync engine and local database, the POS checkout and its payment ledger, and the REST API extensions."
 ---
 
 import LocalizedSVG from '@site/src/components/LocalizedSVG';
@@ -37,7 +37,7 @@ The client is local-first: every screen reads and writes the device's local data
 - **Seeds and lanes:** a bounded catalogue seed, a recent-orders window, and idle-time maintenance lanes fill and verify local data on schedules you can tune per device.
 - **Durable writes:** sales and edits queue locally and drain to WooCommerce, with visible recovery for anything the server refuses.
 
-What gets synced: products and variations, categories/tags/brands, customers, tax rates, coupons (Pro), and orders. Payment gateways are fetched at checkout.
+What gets synced: products and variations, categories/tags/brands, customers, tax rates, coupons (Pro), and orders. Payment methods are not synced this way: the till reads them from the plugin's `wcpos/v2/payment-methods` route.
 
 ## Architecture Pros and Cons {#architecture-pros-and-cons}
 
@@ -59,11 +59,13 @@ Each site + store + cashier combination gets its own local database, so cashiers
 
 ## Checkout Architecture {#checkout-architecture}
 
-The checkout process uses an iframe/webview that loads the WooCommerce Order Pay page. This approach:
+The checkout belongs to the POS: the client takes payment itself and records each payment against one WooCommerce order, instead of loading the WooCommerce Order Pay page for every sale.
 
-- **Leverages existing payment gateways:** Any WooCommerce payment gateway can work in the POS
-- **Maintains security:** Payment processing happens through WooCommerce's secure infrastructure
-- **Reduces complexity:** No need to re-implement payment gateway integrations
+- **Payment-method descriptors:** `GET wcpos/v2/payment-methods` describes every registered gateway — its kind (cash, card, stored value, bank transfer, other), how the money is taken, and what it supports (offline, refunds, tips, change). The client draws a tile for each POS-enabled method it can drive, and shows a method it can't drive as disabled with the reason, never hidden.
+- **Capture modes:** `manual` (Cash, Card and other payments the cashier records), `server` and `device` (card readers driven from the till, from WCPOS Pro), `stored_value` (a balance checked on the store, Pro), `gateway` (the gateway's own `process_payment()` runs with values the till collected, such as an email invoice), and `webview` (the gateway's own Order Pay page on the Legacy tab, kept so existing gateways keep working).
+- **One order, many payments:** the payments are rows in the order's `_wcpos_payments` meta, so a split sale is still one `shop_order` with its items, taxes, stock and number, and WooCommerce Analytics counts the money once. A refund is a normal WooCommerce refund with an allocation per payment.
+- **Payment routes:** the free plugin owns the payment routes under `wcpos/v2` (such as record, intent, capture, status, void and refund) and hands each call to the handler registered for the payment's capture mode. Each payment's UUID makes a retried request safe.
+- **The server decides:** after every payment write the store answers with the order's paid amount and balance, and the client completes the sale on the server's figures. A payment recorded offline completes on the device and is recorded on the store when the till reconnects.
 
 ## API Extensions {#api-extensions}
 
