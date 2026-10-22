@@ -415,7 +415,7 @@ module.exports = {
         // for the version served at the root (1.x today). AT THE 2.x LAUNCH FLIP
         // (see lastVersion above) swap in the 2.x wording from those pages.
         siteDescription:
-          'WCPOS is a point of sale (POS) for WooCommerce. It runs in a web browser or as a Windows, macOS, Linux, iOS or Android app, sells from the same catalogue, stock and prices as your online store, and records every sale as a WooCommerce order. The free plugin takes cash and external card payments and prints receipts; WCPOS Pro adds integrated card readers, refunds, stock editing, order history, reports and multiple stores.',
+          'WCPOS is a point of sale (POS) for WooCommerce. It runs in a web browser or as a Windows, macOS or Linux desktop app, with iOS and Android apps in beta. It sells from the same catalogue, stock and prices as your online store and records every sale as a WooCommerce order. The free plugin takes cash and external card payments and prints receipts; WCPOS Pro adds integrated card readers, refunds, stock editing, order history, reports and multiple stores.',
         depth: 2,
         enableDescriptions: true,
         // Sidebar order, so the index reads top-down the way a reader would:
