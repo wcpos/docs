@@ -408,10 +408,37 @@ module.exports = {
       '@signalwire/docusaurus-plugin-llms-txt',
       {
         siteTitle: 'WCPOS Documentation',
+        // The canonical product definition. It is the blockquote at the top of
+        // llms.txt, so it is the first thing an agent reads about WCPOS. Keep it
+        // word-for-word identical to the opening paragraph of
+        // getting-started/is-wcpos-right-for-you.mdx and getting-started/index.mdx
+        // for the version served at the root (1.x today). AT THE 2.x LAUNCH FLIP
+        // (see lastVersion above) swap in the 2.x wording from those pages.
         siteDescription:
-          'WCPOS is a free, open-source Point of Sale (POS) application for WooCommerce. It turns any WooCommerce-powered online store into a fully-featured retail POS system.',
+          'WCPOS is a point of sale (POS) for WooCommerce. It runs in a web browser or as a Windows, macOS or Linux desktop app, with iOS and Android apps in beta. It sells from the same catalogue, stock and prices as your online store and records every sale as a WooCommerce order. The free plugin takes cash and external card payments and prints receipts; WCPOS Pro adds integrated card readers, refunds, stock editing, order history, reports and multiple stores.',
         depth: 2,
         enableDescriptions: true,
+        // Sidebar order, so the index reads top-down the way a reader would:
+        // what it is and how to start, then the register, then everything else.
+        includeOrder: [
+          '/getting-started/**',
+          '/pos/**',
+          '/products/**',
+          '/orders/**',
+          '/customers/**',
+          '/coupons/**',
+          '/stores/**',
+          '/reports/**',
+          '/payment/**',
+          '/receipts/**',
+          '/hardware/**',
+          '/settings/**',
+          '/integrations/**',
+          '/extensions/**',
+          '/support/**',
+          '/error-codes/**',
+          '/reference/**',
+        ],
         content: {
           enableMarkdownFiles: true,
           enableLlmsFullTxt: true,
@@ -421,6 +448,9 @@ module.exports = {
           includeVersionedDocs: false,
           includePages: false,
           includeBlog: false,
+          // Docusaurus category index pages (/category/<slug>) are navigation,
+          // not content; they only add a meaningless '## category' section.
+          includeGeneratedIndex: false,
           // Drop the Algolia search page and any older version paths.
           excludeRoutes: ['/search', '/search/**', '/0.4.x/**'],
         },
@@ -432,6 +462,7 @@ module.exports = {
           {title: 'Discord', url: 'https://wcpos.com/discord', description: 'Community support chat'},
           {title: 'WordPress.org plugin', url: 'https://wordpress.org/plugins/woocommerce-pos/', description: 'Free version on the WordPress plugin directory'},
           {title: 'WCPOS Pro', url: 'https://wcpos.com/pro', description: 'Pro features and licensing'},
+          {title: 'Compare WooCommerce POS systems', url: 'https://wcpos.com/compare', description: 'WCPOS compared with Oliver POS, WooCommerce\'s official POS, Square, Jovvie, Vitepos, YITH and FooSales: pricing, offline support, hardware, and when each is the better choice'},
         ],
       },
     ],
