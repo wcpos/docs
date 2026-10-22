@@ -58,7 +58,8 @@ Write exactly one JSON file per packet at the given results path:
   is a visible UI path. Localize its menu labels to the labels WordPress, WooCommerce and
   WCPOS actually use in the locale; keep the backticks, the ` > ` separators and the
   segments WP Admin, WooCommerce and WCPOS.
-- Product and brand names: WCPOS, WCPOS Pro (never "WooCommerce POS"), WooCommerce,
+- Product and brand names: WCPOS, WCPOS Pro (never "WooCommerce POS", except verbatim
+  where the English sentence itself names the former listing), WooCommerce,
   WordPress, Stripe, Stripe Terminal, SumUp, SumUp Terminal, PrintNode, Star CloudPRNT,
   and other plugin/extension names. Technical acronyms (API, REST, JSON, HTTP(S), OAuth,
   URL, ID, SKU, HTML, ESC/POS, PDF) stay, but translate the phrase around them
