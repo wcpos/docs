@@ -5,6 +5,7 @@
 // Scans i18n MDX files for common AI translation errors:
 // - Invalid YAML frontmatter (nested quotes, partial quoting)
 // - Broken markdown links (double parentheses, double brackets)
+// - Frontmatter values ending in a backslash (mdx-loader emits an unterminated string)
 //
 // Usage:
 //   node scripts/validate-frontmatter.js [--fix] [--check] [--changed] [--quiet] [glob-pattern]
@@ -29,6 +30,25 @@ const { execFileSync } = require('child_process');
 const matter = require('gray-matter');
 const yaml = require('js-yaml');
 const glob = require('glob');
+
+/**
+ * Find top-level frontmatter keys with strings ending in a backslash.
+ * @param {string} content - Full MDX file content
+ * @returns {string[]} - Keys in frontmatter order
+ */
+function findTrailingBackslashValues(content) {
+  try {
+    return Object.entries(matter(content).data)
+      .filter(([, value]) =>
+        typeof value === 'string'
+          ? value.endsWith('\\')
+          : Array.isArray(value) && value.some((item) => typeof item === 'string' && item.endsWith('\\'))
+      )
+      .map(([key]) => key);
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Check if frontmatter YAML is valid
@@ -424,6 +444,14 @@ function processFile(filePath, options = { fix: true }) {
   let wasFixed = false;
   const allFixes = [];
 
+  const trailingBackslashKeys = findTrailingBackslashValues(content);
+  if (trailingBackslashKeys.length > 0) {
+    return {
+      status: 'error',
+      error: `frontmatter value ends with a trailing backslash: ${trailingBackslashKeys.join(', ')}`,
+    };
+  }
+
   // 0. Enforce the description quoting policy (always double-quoted). Runs first
   //    because it also repairs the unquoted-colon break that the targeted YAML
   //    fixers below do not handle.
@@ -616,6 +644,7 @@ if (require.main === module) {
 
 // Export for testing
 module.exports = {
+  findTrailingBackslashValues,
   validateFrontmatter,
   extractFrontmatter,
   fixMissingClosingDelimiter,

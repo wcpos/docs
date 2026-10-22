@@ -1,4 +1,8 @@
+const fs = require('fs');
+const path = require('path');
 const {
+  findTrailingBackslashValues,
+  processFile,
   validateFrontmatter,
   extractFrontmatter,
   fixMissingClosingDelimiter,
@@ -10,6 +14,61 @@ const {
   findBrokenLinks,
   fixBrokenLinks,
 } = require('../validate-frontmatter');
+
+describe('findTrailingBackslashValues', () => {
+  it('detects a plain scalar ending in a backslash', () => {
+    const content = '---\ntitle: Betalingsgateways\\\n---';
+
+    expect(findTrailingBackslashValues(content)).toEqual(['title']);
+  });
+
+  it('detects a double-quoted string ending in a backslash', () => {
+    const content = '---\ntitle: "Foo\\\\"\n---';
+
+    expect(findTrailingBackslashValues(content)).toEqual(['title']);
+  });
+
+  it('detects a top-level array item ending in a backslash', () => {
+    const content = '---\nkeywords:\n  - pos\\\n---';
+
+    expect(findTrailingBackslashValues(content)).toEqual(['keywords']);
+  });
+
+  it('ignores clean values and backslashes in the middle of a value', () => {
+    const content = '---\ntitle: "C:\\\\temp folder"\ndescription: "Clean description"\n---';
+
+    expect(findTrailingBackslashValues(content)).toEqual([]);
+  });
+
+  it('returns no keys for unparseable or absent frontmatter', () => {
+    expect(findTrailingBackslashValues("---\ntitle: 'a 'b' c'\n---")).toEqual([]);
+    expect(findTrailingBackslashValues('Content without frontmatter')).toEqual([]);
+  });
+});
+
+describe('processFile trailing-backslash fixtures', () => {
+  for (const filename of ['nl-gateways-index.mdx', 'nl-paypal-reader.mdx', 'ja-paypal-reader.mdx']) {
+    const file = path.join(__dirname, 'fixtures', 'trailing-backslash', filename);
+
+    it(`rejects ${filename} in check mode`, () => {
+      const result = processFile(file, { check: true });
+
+      expect(result.status).toBe('error');
+      expect(result.error).toContain('ends with a trailing backslash');
+      expect(result.error).toContain('title');
+    });
+
+    it(`rejects ${filename} in fix mode without changing its bytes`, () => {
+      const before = fs.readFileSync(file);
+      const result = processFile(file, { fix: true });
+
+      expect(result.status).toBe('error');
+      expect(result.error).toContain('ends with a trailing backslash');
+      expect(result.error).toContain('title');
+      expect(fs.readFileSync(file)).toEqual(before);
+    });
+  }
+});
 
 describe('validateFrontmatter', () => {
   it('returns valid for correct frontmatter', () => {

@@ -1,7 +1,11 @@
 const { createHash } = require('node:crypto');
+const { isSpaceSensitiveLetter } = require('./docs-qa');
 
 const TRANSLATABLE_FRONTMATTER_KEYS = new Set(['title', 'sidebar_label', 'description']);
-const TRANSLATABLE_JSX_ATTRS = new Set(['alt', 'title', 'description', 'label', 'question']);
+const TRANSLATABLE_JSX_ATTRS = new Set(['alt', 'title', 'description', 'label', 'question', 'summary', 'placeholder', 'caption', 'scaleLabel', 'why']);
+// Object keys whose string values are visible text inside a component's
+// expression props (e.g. `facsimile={[{ left: "…", right: "…" }]}`).
+const TRANSLATABLE_JSX_OBJECT_KEYS = new Set(['left', 'right', 'desc', 'label']);
 
 function hashSource(source) {
   return createHash('sha256').update(source).digest('hex');
@@ -512,7 +516,7 @@ function parseDocsMdxUnits(filePath, source) {
     }
 
     for (const attrMatch of lineNoNewline.matchAll(
-      /(?<prefix>^|\s)(?<attr>alt|title|description|label|question)=(?:(?<quote>["'])(?<value>.*?)\k<quote>|\{(?<bracedQuote>["'])(?<bracedValue>.*?)\k<bracedQuote>\})/g,
+      /(?<prefix>^|\s)(?<attr>alt|title|description|label|question|summary|placeholder|caption|scaleLabel|why)=(?:(?<quote>["'])(?<value>.*?)\k<quote>|\{(?<bracedQuote>["'])(?<bracedValue>.*?)\k<bracedQuote>\})/g,
     )) {
       const attr = attrMatch.groups?.attr;
       const prefix = attrMatch.groups?.prefix ?? '';
@@ -537,6 +541,38 @@ function parseDocsMdxUnits(filePath, source) {
         attrSyntax,
         attrQuote,
       });
+    }
+
+    // Inside an unclosed multi-line JSX opening tag (`inJsxBlock` as it stood
+    // at the start of this line), string values of a few named object keys in
+    // expression props are visible text. Never extract keys anywhere else.
+    if (inJsxBlock) {
+      for (const keyMatch of lineNoNewline.matchAll(/(?<prefix>^\s*|[{,]\s*)(?<key>left|right|desc|label):\s*(?<quote>["'])(?<value>(?:\\.|(?!\k<quote>).)*?)\k<quote>/g)) {
+        const key = keyMatch.groups?.key;
+        const value = keyMatch.groups?.value;
+        if (key === undefined || value === undefined || !TRANSLATABLE_JSX_OBJECT_KEYS.has(key) || !isSafeTranslatableJsxString(value)) {
+          continue;
+        }
+        // Escaped quotes would round-trip wrongly; leave such values alone.
+        if (value.includes('\\')) {
+          continue;
+        }
+        const keyStart = (keyMatch.index ?? 0) + (keyMatch.groups?.prefix ?? '').length;
+        const matchEnd = (keyMatch.index ?? 0) + keyMatch[0].length;
+        if (overlapsAnyRange({ start: keyStart, end: matchEnd }, codeRanges)) {
+          continue;
+        }
+        const start = lineStart + matchEnd - 1 - value.length;
+        addUnit({
+          type: 'jsx_attr',
+          source: value,
+          start,
+          end: start + value.length,
+          attr: key,
+          attrSyntax: 'braced',
+          attrQuote: keyMatch.groups?.quote,
+        });
+      }
     }
 
     const jsxChildRanges = [];
@@ -618,6 +654,25 @@ function applyDocsMdxTranslations(parsed, translations) {
       if (translation === undefined) {
         return undefined;
       }
+      let value = translation;
+      // Fragment ranges are trimmed, so dropped punctuation glues the translation to the code span.
+      if (!['frontmatter', 'link_title', 'jsx_attr'].includes(unit.type)) {
+        const source = parsed.source.slice(unit.range.start, unit.range.end);
+        if (
+          parsed.source[unit.range.start - 1] === '`' &&
+          /^[^\s\p{L}]/u.test(source) &&
+          isSpaceSensitiveLetter(translation[0])
+        ) {
+          value = ` ${value}`;
+        }
+        if (
+          parsed.source[unit.range.end] === '`' &&
+          /[^\s\p{L}]$/u.test(source) &&
+          isSpaceSensitiveLetter(translation.at(-1))
+        ) {
+          value = `${value} `;
+        }
+      }
       return {
         start: unit.range.start,
         end: unit.range.end,
@@ -630,7 +685,7 @@ function applyDocsMdxTranslations(parsed, translations) {
                 ? escapeJsStringLiteral(translation, unit.attrQuote ?? parsed.source[unit.range.start - 1] ?? '"')
                 : unit.type === 'jsx_attr'
                   ? escapeQuotedAttribute(translation, unit.attrQuote ?? parsed.source[unit.range.start - 1] ?? '"')
-                  : translation,
+                  : value,
       };
     })
     .filter((replacement) => replacement !== undefined)

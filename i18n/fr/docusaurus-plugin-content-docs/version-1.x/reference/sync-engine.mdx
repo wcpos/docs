@@ -15,6 +15,8 @@ WCPOS fonctionne en local d’abord : chaque écran lit et écrit dans une base 
 
 Le POS exécute **un moteur de synchronisation par combinaison site + boutique + caissier** sur chaque appareil. Ce moteur possède sa propre base de données locale : changer de boutique ou de caissier change donc tout le plan de données, plutôt que de filtrer un même ensemble d’enregistrements partagé. L’isolation par caissier est délibérée : deux caissiers utilisant le même appareil ne partagent jamais leurs données locales.
 
+Le changement de périmètre est **transactionnel** : les données de la nouvelle boutique ou du nouveau caissier sont chargées, et la modification n’est validée qu’une fois prête. Toute erreur est signalée au lieu de vous laisser à mi-chemin entre deux boutiques.
+
 Lors des mises à niveau, les bases de données locales ne sont jamais migrées sur place — l’application démarre une nouvelle base et retélécharge depuis le serveur, qui détient toujours la copie de référence (voir [Migration depuis la v1.9](#upgrading-from-v19)).
 
 Sur les installations multiboutiques Pro, chaque requête de synchronisation identifie sa boutique : un prix modifié à la caisse met donc à jour le prix de cette boutique, et non celui de la boutique en ligne.
@@ -84,6 +86,7 @@ Des détails qui comptent :
 
 - **Les écritures du panier sont sérialisées par commande.** Les rafales rapides du scanner s’appliquent une à une, et un ajout répété fusionne avec la ligne qu’il duplique au lieu de mettre en file une seconde ligne.
 - **Les accusés de réception de commande adoptent la copie du serveur.** WooCommerce attribue des identifiants aux lignes de commande lors de la création ; le moteur adopte la commande acquittée afin que les mises à jour ultérieures correspondent à ces lignes au lieu d’en ajouter des doublons. Cette adoption est prudente — elle n’écrase jamais une modification locale que le serveur n’a pas encore vue, et ne s’applique qu’aux commandes.
+- **Un conflit d’écriture de commande se résout une fois automatiquement.** Si l’écriture d’une commande entre en conflit avec une copie plus récente sur le serveur, le moteur réconcilie les données et réessaie une seule fois ; en cas de nouvel échec, le conflit vous est signalé afin que vous puissiez le résoudre, au lieu de se répéter silencieusement.
 - **Une écriture définitivement refusée par le serveur n’est jamais réessayée en silence.** Elle est mise de côté avec le motif fourni par le serveur et présentée dans **État de la boutique → Base de données** sous l’intitulé *« modifications qui n’ont jamais atteint votre serveur »*, avec deux actions explicites : **Renvoyer** (reconstruit la requête à partir de l’enregistrement dans son état actuel, afin que les corrections ultérieures s’appliquent) et **Abandonner**. Il n’y a aucune boucle de nouvelle tentative automatique — la récupération est toujours une action visible et délibérée. Voir [État de la boutique](/support/store-health#database) pour la présentation destinée aux commerçants.
 
 ### Plusieurs onglets de navigateur {#multi-tab}
@@ -93,6 +96,8 @@ L’utilisation du POS web dans plusieurs onglets de la même boutique est prise
 ## Stockage local {#local-storage}
 
 Les applications web et bureau stockent les données via un **worker OPFS (Origin Private File System)** ; les applications iOS et Android utilisent le même format sur disque via un moteur de système de fichiers. Les quatre plateformes partagent un format de stockage unique et les mêmes outils de récupération après corruption. (Les versions antérieures utilisaient IndexedDB sur le web et SQLite en natif.)
+
+Si la base de données locale devient **illisible**, WCPOS bloque l’encaissement et vous invite à recharger l’application plutôt que de risquer de perdre une vente effectuée avec des données endommagées. Dans cet état, les lectures de codes-barres échouent également de manière visible au lieu de rester silencieuses — ainsi, une base de données corrompue ne peut pas faire disparaître une vente sans laisser de trace avant sa reconstruction par les outils de récupération.
 
 Les requêtes s’exécutent à l’intérieur de la couche base de données — sélecteur, tri et pagination — de sorte que seule la page de lignes visible passe dans l’application. Sur un jeu de test synthétique de 10 000 commandes, cette délégation a fait passer le coût de mise à jour par écriture sous un abonnement actif d’environ 27 ms à environ 0,06 ms.
 

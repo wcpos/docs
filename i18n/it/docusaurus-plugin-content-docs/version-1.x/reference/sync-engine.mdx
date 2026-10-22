@@ -15,6 +15,8 @@ WCPOS è local-first: ogni schermata legge e scrive su un database presente sul 
 
 Il POS esegue **un motore di sincronizzazione per ogni combinazione di sito + negozio + cassiere** su ciascun dispositivo. Quel motore possiede il proprio database locale, quindi cambiare negozio o cassiere significa cambiare l'intero piano dati anziché filtrare un unico insieme condiviso di record. L'isolamento per cassiere è voluto: due cassieri sullo stesso dispositivo non condividono mai i dati locali.
 
+Il cambio di ambito è **transazionale**: il nuovo negozio o cassiere carica i dati del proprio piano dati e conferma il passaggio solo quando è pronto; eventuali errori vengono segnalati, evitando di lasciare il cambio a metà tra due negozi.
+
 Durante gli aggiornamenti i database locali non vengono mai migrati sul posto: l'app avvia un database nuovo e riscarica dal server, che detiene sempre la copia autorevole (vedi [Aggiornamento dalla versione 1.9](#upgrading-from-v19)).
 
 Nelle installazioni Pro multi-negozio, ogni richiesta di sincronizzazione identifica il proprio negozio, così un prezzo modificato alla cassa aggiorna il prezzo di quel negozio anziché quello del negozio online.
@@ -84,6 +86,7 @@ Dettagli che contano:
 
 - **Le scritture del carrello sono serializzate per ordine.** Le raffiche rapide dello scanner vengono applicate una alla volta, e l'aggiunta ripetuta di un articolo viene unita alla riga che duplicherebbe anziché accodare una seconda riga.
 - **Le conferme degli ordini adottano la copia del server.** WooCommerce assegna gli ID alle voci di riga dell'ordine al momento della creazione; il motore adotta l'ordine confermato, così gli aggiornamenti successivi corrispondono a quelle righe invece di aggiungerne di duplicate. L'adozione è prudente: non sovrascrive mai una modifica locale che il server non ha ancora visto e si applica solo agli ordini.
+- **Un conflitto durante la scrittura di un ordine viene risolto automaticamente una volta.** Se la scrittura di un ordine entra in conflitto con una copia più recente sul server, il motore riconcilia i dati e riprova una sola volta; se il conflitto persiste, viene segnalato così che tu possa risolverlo, invece di riprovare all'infinito senza avviso.
 - **Una scrittura che il server rifiuta in modo definitivo non viene mai ritentata in silenzio.** Viene messa da parte con la motivazione fornita dal server stesso e mostrata in **Stato del negozio → Database** come *«modifiche che non hanno mai raggiunto il tuo server»*, con due azioni esplicite: **Invia di nuovo** (ricostruisce la richiesta a partire dal record così com'è adesso, così le correzioni successive vengono applicate) e **Scarta**. Non esiste alcun ciclo di riprova automatico: il recupero è sempre un'azione visibile e deliberata. Vedi [Stato del negozio](/support/store-health#database) per la guida rivolta ai commercianti.
 
 ### Più schede del browser {#multi-tab}
@@ -93,6 +96,8 @@ Eseguire il POS web in più schede dello stesso negozio è supportato. Ogni sche
 ## Archiviazione locale {#local-storage}
 
 Le app web e desktop archiviano i dati tramite un **worker OPFS (Origin Private File System)**; le app iOS e Android usano lo stesso formato su disco attraverso un motore su filesystem. Tutte e quattro le piattaforme condividono un unico formato di archiviazione e gli stessi strumenti di recupero in caso di corruzione. (Le versioni precedenti usavano IndexedDB sul web e SQLite su nativo.)
+
+Se l'archivio locale diventa **illeggibile**, WCPOS blocca il checkout e chiede di ricaricare, invece di consentire una vendita basata su dati danneggiati e rischiare di perderla; anche le scansioni dei codici a barre in questa situazione generano un errore esplicito, invece di non dare alcun riscontro — così un archivio danneggiato non può perdere una vendita senza avviso prima che gli strumenti di ripristino lo ricostruiscano.
 
 Le query vengono eseguite all'interno del livello di database — selettore, ordinamento e paginazione — così solo la pagina di righe visibile passa all'app. Su un set di prova sintetico da 10.000 ordini, questo spostamento ha ridotto il costo di aggiornamento per scrittura in presenza di una sottoscrizione attiva da ~27 ms a ~0,06 ms.
 

@@ -21,6 +21,10 @@ import Layout from '@theme-original/DocItem/Layout';
  * The href must mirror the plugin's output exactly:
  *   - site/locale home ("/", "/es/") -> "/index.md", "/es/index.md"
  *   - every other route ("/pos/", "/getting-started/connect") -> "<route>.md"
+ *
+ * It also adds `<link rel="describedby">` to the locale's llms.txt, the
+ * discovery link llmstxt.org (v2) specifies, so an agent that lands on any page
+ * can find the site-wide index without guessing the path.
  */
 export default function LayoutWrapper(props) {
   const {pathname} = useLocation();
@@ -48,11 +52,16 @@ export default function LayoutWrapper(props) {
 
   const clean = pathname.replace(/\/+$/, '');
   const mdHref = localeHomes.has(pathname) ? `${clean}/index.md` : `${clean}.md`;
+  // The plugin writes one llms.txt per locale, next to that locale's pages.
+  const currentLocalePath = i18n.localeConfigs[i18n.currentLocale]?.path ?? i18n.currentLocale;
+  const llmsHref =
+    i18n.currentLocale === i18n.defaultLocale ? '/llms.txt' : `/${currentLocalePath}/llms.txt`;
 
   return (
     <>
       <Head>
         <link rel="alternate" type="text/markdown" href={mdHref} />
+        <link rel="describedby" href={llmsHref} />
         {noIndexFallback && <meta name="robots" content="noindex" />}
       </Head>
       {/* Plugin auto-injection is off because it raced hydration. */}

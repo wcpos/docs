@@ -32,7 +32,7 @@ Each line at the end reads `- <work packet> -> <results file>`. A packet contain
 | `heading` | heading text without `#` and without its `{#anchor}` | the heading text only |
 | `paragraph` | one Markdown block: a sentence or paragraph, a list item, a table row, a blockquote or admonition line, with inline Markdown/JSX | the same block, same inline markup |
 | `link_text`, `link_title` | a link's visible text or its tooltip | plain text |
-| `jsx_attr` (`attr` = alt, title, description, label, question) | a visible JSX prop value | plain text |
+| `jsx_attr` (`attr` = alt, title, description, label, question, summary, placeholder, caption, scaleLabel, why; or left, right, desc, label inside a component's data) | a visible JSX prop value | plain text |
 | `json` (`key`, `description`) | a UI string of the docs site (navbar, footer, sidebar category, component label); `description` says where it appears | plain text; keep `{placeholders}` |
 
 ## Results file
@@ -58,7 +58,8 @@ Write exactly one JSON file per packet at the given results path:
   is a visible UI path. Localize its menu labels to the labels WordPress, WooCommerce and
   WCPOS actually use in the locale; keep the backticks, the ` > ` separators and the
   segments WP Admin, WooCommerce and WCPOS.
-- Product and brand names: WCPOS, WCPOS Pro (never "WooCommerce POS"), WooCommerce,
+- Product and brand names: WCPOS, WCPOS Pro (never "WooCommerce POS", except verbatim
+  where the English sentence itself names the former listing), WooCommerce,
   WordPress, Stripe, Stripe Terminal, SumUp, SumUp Terminal, PrintNode, Star CloudPRNT,
   and other plugin/extension names. Technical acronyms (API, REST, JSON, HTTP(S), OAuth,
   URL, ID, SKU, HTML, ESC/POS, PDF) stay, but translate the phrase around them

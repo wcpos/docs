@@ -9,6 +9,7 @@ CLAUDE_REVIEW_MODEL=sonnet # Default model for Claude review pass.
 DEFAULT_EFFORT=medium # Codex reasoning effort.
 MAX_UNITS=1500 # Units per run; the rest waits for the next run.
 CALL_TIMEOUT=1800 # Seconds allowed for each translation or review call.
+CODEX_TOOL_OUTPUT_TOKENS=25000 # Codex tool-output cap per call; the machine default (2000) truncates packets and Luna declines them (#526).
 
 log() { printf '[translate-docs-local] %s\n' "$*"; }
 fail() {
@@ -124,20 +125,33 @@ run_with_timeout() {
   return "$status"
 }
 if [ "$TRANSLATOR" = codex ]; then
-  COMMAND=(codex exec -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -s workspace-write -C "$WT" -)
-  REVIEW_COMMAND=(codex exec -m "$REVIEW_MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -s workspace-write -C "$WT" -)
+  COMMAND=(codex exec -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -c "tool_output_token_limit=$CODEX_TOOL_OUTPUT_TOKENS" -s workspace-write -C "$WT" -)
+  REVIEW_COMMAND=(codex exec -m "$REVIEW_MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -c "tool_output_token_limit=$CODEX_TOOL_OUTPUT_TOKENS" -s workspace-write -C "$WT" -)
 else
   COMMAND=(claude -p --model "$MODEL" --permission-mode acceptEdits --allowedTools "Read,Write,Glob,Grep")
   REVIEW_COMMAND=(claude -p --model "$REVIEW_MODEL" --permission-mode acceptEdits --allowedTools "Read,Write,Glob,Grep")
 fi
 mkdir -p .translate/results .translate/logs
 REVIEW_USED=skipped
+discard_empty_results() { # $1 = packet name; deletes a results file with no non-blank translation that apply.js would read
+  local file=".translate/results/$1.json"
+  [ -f "$file" ] || return 0
+  if ! jq -e --slurpfile work ".translate/work/$1.json" '. as $r | $work[0] as $w
+    | $r.locale == $w.locale
+      and ([$w.files | to_entries[] | .key as $t | .value.units | keys[] as $id
+            | $r.files[$t]? | objects | .[$id] | strings | select(test("\\S"))] | length > 0)
+  ' "$file" >/dev/null 2>&1; then
+    log "packet $1 wrote no translations; discarding its results"
+    rm -f "$file"
+  fi
+}
 translate_packet() { # $1 = packet name; reviewed only when the translator wrote a results file
   cat scripts/docs-translation/translate-prompt.md > .translate/prompt
   printf '\n- .translate/work/%s.json -> .translate/results/%s.json\n' "$1" "$1" >> .translate/prompt
   if ! run_with_timeout "${COMMAND[@]}" < .translate/prompt > ".translate/logs/$1.log" 2>&1; then
     log "packet $1 failed or timed out; continuing"
   fi
+  discard_empty_results "$1"
   if [ "$REVIEW" -eq 1 ] && [ -f ".translate/results/$1.json" ]; then
     REVIEW_USED=$REVIEW_MODEL
     cat scripts/docs-translation/review-prompt.md > .translate/prompt
@@ -145,11 +159,27 @@ translate_packet() { # $1 = packet name; reviewed only when the translator wrote
     if ! run_with_timeout "${REVIEW_COMMAND[@]}" < .translate/prompt > ".translate/logs/review-$1.log" 2>&1; then
       log "review $1 failed or timed out; continuing"
     fi
+    discard_empty_results "$1"
   fi
 }
-split_packet() { # $1 = packet name; writes <name>-a and <name>-b with the first and second half of its files, printing each name written
-  local count half
+split_packet() { # $1 = packet name; halves units across files (files if fewer than two units), writing <name>-a/-b and printing each name written
+  local count half side
   count=$(jq '.files // {} | length' ".translate/work/$1.json")
+  if jq -e '[.files[]?.units | length] | add >= 2' ".translate/work/$1.json" >/dev/null; then
+    half=$(jq '[.files[].units | length] | add | (. + 1) / 2 | floor' ".translate/work/$1.json")
+    for side in a b; do
+      jq --argjson h "$half" --arg side "$side" '
+        [.files | to_entries[] as $file | $file.value.units | to_entries[] | {file: $file.key, key, value}] as $units |
+        (if $side == "a" then $units[:$h] else $units[$h:] end) as $part |
+        .files as $files |
+        .files = (reduce $part[] as $unit ({};
+          .[$unit.file] //= ($files[$unit.file] + {units: {}}) |
+          .[$unit.file].units[$unit.key] = $unit.value)) | del(.counts)
+      ' ".translate/work/$1.json" > ".translate/work/$1-$side.json"
+    done
+    printf '%s\n' "$1-a" "$1-b"
+    return
+  fi
   half=$(( (count + 1) / 2 ))
   if [ "$count" -gt 0 ]; then
     jq --argjson h "$half" '.files |= (to_entries[:$h] | from_entries) | del(.counts)' ".translate/work/$1.json" > ".translate/work/$1-a.json"
@@ -166,10 +196,16 @@ if [ "$TOTAL" -gt 0 ]; then
     PACKET=$(basename "$PACKET" .json)
     translate_packet "$PACKET"
     if [ ! -f ".translate/results/$PACKET.json" ]; then
-      # A packet without results is retried once, split in half; the halves are not split again.
+      # Retry without results in halves; halves with at least two units may split once more, but quarters never split.
       for HALF in $(split_packet "$PACKET"); do
         log "packet $PACKET had no results; retrying as $HALF"
         translate_packet "$HALF"
+        if [ ! -f ".translate/results/$HALF.json" ] && jq -e '[.files[]?.units | length] | add >= 2' ".translate/work/$HALF.json" >/dev/null; then
+          for QUARTER in $(split_packet "$HALF"); do
+            log "packet $HALF had no results; retrying as $QUARTER"
+            translate_packet "$QUARTER"
+          done
+        fi
       done
     fi
   done

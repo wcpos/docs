@@ -6,6 +6,7 @@ const { applyResults, failedAttemptsState, runCli } = require('../docs-translati
 const { parseDocsMdxUnits } = require('../docs-translation/mdx-units');
 const { decodeDocsUnitSource, unitKey } = require('../docs-translation/recover');
 const { readState, serializeState, writeState, unitHash, STATE_PATH } = require('../docs-translation/state');
+const { QUARANTINE_AFTER } = require('../docs-translation/worklist');
 const {
   LOCALES, sourceToTranslatedPath, findUntranslatedProps, findLeftoverProse,
   findMissingSections, isStub,
@@ -129,6 +130,16 @@ describe('applyResults MDX', () => {
     const output = apply({ ...ENTRY, target, locale, pending: [0] }, [result(['正確なドメイン（`yourstore.com`）'], target, locale)]);
     expect(output.report).toMatchObject({ applied: 1, rejected: 0 });
     expect(output.writes).toEqual([{ path: target, content: '正確なドメイン(`yourstore.com`)\n' }]);
+  });
+
+  it('accepts the former product name when the English unit itself carries it', () => {
+    write(SOURCE, 'Until November 2025 the plugin was listed as WooCommerce POS.\n');
+    for (const sibling of LOCALES) write(sourceToTranslatedPath(SOURCE, sibling), GERMAN);
+    const target = sourceToTranslatedPath(SOURCE, 'de');
+    const translated = 'Bis November 2025 hieß das Plugin WooCommerce POS.';
+    const output = apply({ ...ENTRY, target, locale: 'de', pending: [0] }, [result([translated], target, 'de')]);
+    expect(output.report).toMatchObject({ applied: 1, rejected: 0 });
+    expect(output.writes).toEqual([{ path: target, content: translated + '\n' }]);
   });
 
   it.each([
@@ -376,6 +387,66 @@ describe('applyResults JSON', () => {
     const second = apply({ ...entry, pending: [0], reused: { 1: 'API', 2: 'Nächste Seite' } }, [result(['Hallo {name}, {name}: {count}'], target)]);
     expect(second.writes).toHaveLength(1);
     expect(second.state[target].attempts).toBeUndefined();
+  });
+});
+
+describe('per-row attempts for repeated units', () => {
+  const HEADER = '| Field | Type | Description |';
+  const TABLES = ['# Fields', `${HEADER}\n| --- | --- | --- |\n| \`id\` | integer | The order ID. |`,
+    '## Totals', `${HEADER}\n| --- | --- | --- |\n| \`total\` | string | The order total. |`,
+    '## Lines', `${HEADER}\n| --- | --- | --- |\n| \`qty\` | integer | The line quantity. |`].join('\n\n') + '\n';
+  const TABLE_TEXTS = ['Felder', '| Feld | Typ | Beschreibung |', '| `id` | Ganzzahl | Die Bestell-ID. |',
+    'Summen', '| Feld | Typ | Beschreibung |', '| `total` | Zeichenkette | Die Bestellsumme. |',
+    'Positionen', '| Feld | Typ | Beschreibung |', '| `qty` | Ganzzahl | Die Positionsmenge. |'];
+  const ALL = { ...ENTRY, pending: [0, 1, 2, 3, 4, 5, 6, 7, 8] };
+  let H;
+  beforeEach(() => {
+    write(SOURCE, TABLES);
+    H = mdxHash(1, TABLES);
+  });
+
+  it('counts one attempt per repeated row when results are missing', () => {
+    expect([4, 7].map(index => mdxHash(index, TABLES))).toEqual([H, H]);
+    const first = apply(ALL, []);
+    const attempts = first.state[TARGET].attempts;
+    expect(Object.keys(attempts)).toHaveLength(9);
+    expect(Object.values(attempts).every(count => count === 1)).toBe(true);
+    expect(attempts).toMatchObject({ [H]: 1, [`${H}#1`]: 1, [`${H}#2`]: 1 });
+    writeState(rootDir, first.state);
+    const second = apply(ALL, []);
+    expect(Object.values(second.state[TARGET].attempts)).toEqual(Array(9).fill(2));
+    expect(Object.values(second.state[TARGET].attempts).every(count => count < QUARANTINE_AFTER)).toBe(true);
+  });
+
+  it('keeps the attempt only for the rejected repeated row', () => {
+    const texts = [...TABLE_TEXTS];
+    texts[4] = '| Feld | Typ |';
+    const output = apply(ALL, [result(texts)]);
+    expect(output.report.rejected_details).toEqual([{ target: TARGET, unit: 'u4', reason: 'table_shape' }]);
+    expect(output.state[TARGET].attempts).toEqual({ [`${H}#1`]: 1 });
+    expect(output.state[TARGET].partial[H]).toBe(TABLE_TEXTS[1]);
+  });
+
+  it('moves only the pending repeated row attempt', () => {
+    writeState(rootDir, { [TARGET]: { attempts: { [H]: 2, [`${H}#2`]: 2 } } });
+    const output = apply({ ...ALL, pending: [4] }, []);
+    expect(output.state[TARGET].attempts).toEqual({ [H]: 2, [`${H}#1`]: 1, [`${H}#2`]: 2 });
+  });
+
+  it('clears the attempt of a repeated row reused from partial', () => {
+    writeState(rootDir, { [TARGET]: { attempts: { [`${H}#1`]: 1 } } });
+    const output = apply({ ...ALL, pending: [0, 1, 2, 3, 5, 6, 7, 8], reused: { 4: TABLE_TEXTS[4] } }, [result(TABLE_TEXTS)]);
+    expect(output.report).toMatchObject({ applied: 8, rejected: 0, missing: 0 });
+    expect(output.state[TARGET].attempts).toBeUndefined();
+  });
+
+  it('keeps the reused row attempt when the file is rejected', () => {
+    write(SOURCE, TABLES + '\n<Image alt="Receipt preview" />\n');
+    writeState(rootDir, { [TARGET]: { attempts: { [`${H}#1`]: 1 } } });
+    const output = apply({ ...ALL, pending: [0, 1, 2, 3, 5, 6, 7, 8], reused: { 4: TABLE_TEXTS[4], 9: 'Receipt preview' } }, [result(TABLE_TEXTS)]);
+    expect(output.writes).toEqual([]);
+    expect(output.report.rejected_details).toContainEqual({ target: TARGET, unit: null, reason: expect.stringContaining('untranslated_props') });
+    expect(output.state[TARGET].attempts).toMatchObject({ [`${H}#1`]: 1 });
   });
 });
 

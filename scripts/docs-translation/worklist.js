@@ -6,7 +6,7 @@ const { execFileSync } = require('child_process');
 const { parseDocsMdxUnits } = require('./mdx-units');
 const { decodeDocsUnitSource, unitKey, recoverTranslations } = require('./recover');
 const { parseJsonUnits } = require('./json-units');
-const { readState, unitHash } = require('./state');
+const { readState, unitHash, attemptKeys } = require('./state');
 const {
   LOCALES, AUDIT_EXCLUDE_DEFAULT, isSignificantProse, lineToProse,
   UNTRANSLATED_PROP_ALLOWLIST, sourceToTranslatedPath, jsonSourceToTranslatedPath,
@@ -80,6 +80,8 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
     const parsed = kind === 'mdx' ? parseDocsMdxUnits(source, sourceText) : null;
     const units = kind === 'json' ? parseJsonUnits(sourceText).map(unit => ({ ...unit, type: 'json' }))
       : parsed.units.map((unit, index) => ({ ...unit, index, source: decodeDocsUnitSource(parsed, unit) }));
+    const keys = units.map(unit => (kind === 'json' ? ['json', unit.key, '', unit.source].join('\u0000') : unitKey(unit, unit.source)));
+    const attemptKeyList = attemptKeys(keys.map(unitHash));
     const group = { source, priority: Infinity, targets: [], count: 0 };
     for (const locale of selectedLocales) {
       const target = (kind === 'json' ? jsonSourceToTranslatedPath : sourceToTranslatedPath)(source, locale);
@@ -99,10 +101,10 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
       const reused = {};
       const reasons = { missing: 0, changed: 0, english: 0, unpaired: 0 };
       let quarantined = 0;
-      for (const unit of units) {
-        const key = kind === 'json' ? ['json', unit.key, '', unit.source].join('\u0000') : unitKey(unit, unit.source);
+      for (const [position, unit] of units.entries()) {
+        const key = keys[position];
         const hash = unitHash(key);
-        const attempts = saved.attempts?.[hash] ?? 0;
+        const attempts = saved.attempts?.[attemptKeyList[position]] ?? 0;
         if (attempts >= QUARANTINE_AFTER) {
           plan.quarantined.push({ target, unit: `u${unit.index}`, source: unit.source, attempts });
           quarantined += 1;

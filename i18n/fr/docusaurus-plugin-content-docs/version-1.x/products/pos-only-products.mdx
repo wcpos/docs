@@ -2,7 +2,7 @@
 title: Produits réservés au POS
 sidebar_label: Produits réservés au POS
 sidebar_position: 2
-description: Contrôlez la visibilité des produits entre votre boutique en ligne et votre POS, y compris les produits réservés uniquement au POS et ceux réservés uniquement en ligne.
+description: "Contrôlez la visibilité des produits entre votre boutique en ligne et votre POS, y compris les produits réservés uniquement au POS et ceux réservés uniquement en ligne."
 ---
 
 import Image from "@theme/IdealImage";
@@ -20,7 +20,7 @@ Les Produits réservés au POS est une fonctionnalité qui vous permet de contr�
 Lorsqu'elle est activée, chaque produit reçoit un paramètre de **Visibilité POS** avec trois options :
 
 | Visibilité            | Boutique en ligne | POS     |
-|-----------------------|-------------------|---------|
+|------------|--------------|-----|
 | **POS & En ligne** (par défaut) | Visible           | Visible |
 | **Réservé au POS**         | Caché              | Visible |
 | **Réservé en ligne**       | Visible           | Caché   |
@@ -40,7 +40,7 @@ Si tous vos produits doivent apparaître dans les deux canaux, vous n'avez pas b
 
 ## Activation de la fonctionnalité {#enabling-the-feature}
 
-1. Allez dans **WP Admin → WCPOS → Paramètres → Général**
+1. Accédez à **WP Admin > PDV > Paramètres > Général**
 2. Activez **"Activer les Produits réservés au POS"**
 3. Enregistrez les modifications
 
@@ -117,13 +117,37 @@ Lorsque un produit est défini sur **Réservé en ligne** :
 
 Lorsque un produit est défini sur **Réservé au POS** :
 
-- Il n'apparaîtra pas sur le front-end de votre boutique WooCommerce
-- Il ne sera pas inclus dans les résultats de recherche en ligne
-- Les clients ne peuvent pas l'acheter en ligne
+- Il n'apparaît pas dans le catalogue de la boutique, les pages de catégories ni la recherche intégrée à WooCommerce
+- Il ne peut pas être ajouté au panier ni acheté en ligne
+- Il est exclu des listes de produits de l'API REST WooCommerce et de la Store API
+
+**Définissez également la visibilité du catalogue sur Masqué.** Les paramètres Produit réservé au PDV et **Visibilité du catalogue** de WooCommerce sont distincts ; ce dernier se trouve juste au-dessus de la visibilité PDV dans la boîte Publier. WCPOS exclut les produits réservés au PDV des requêtes de produits WooCommerce standard, mais tout élément qui lit directement la visibilité du catalogue WooCommerce continue d'afficher le produit tant que la visibilité du catalogue n'est pas définie sur **Masqué**. Cela concerne notamment les extensions de recherche comme FiboSearch ou Relevanssi, les produits associés et les blocs ou codes courts qui listent des produits par ID. Pour la modifier, cliquez sur **Modifier** à côté de **Visibilité du catalogue** dans la boîte Publier, choisissez **Masqué**, puis cliquez sur **Mettre à jour**. Les deux paramètres restent également distincts dans l'autre sens : lorsque vous repassez ensuite le produit en **PDV et en ligne** ou **En ligne uniquement**, rétablissez vous-même la visibilité du catalogue sur **Boutique et résultats de recherche**, sinon le produit restera masqué sur le site Web.
 
 :::note
 Si vous avez récemment changé la visibilité d'un produit et qu'il continue à apparaître (ou ne pas apparaître) dans le POS, essayez une synchronisation. Appuyez longuement sur le bouton de synchronisation et sélectionnez **"Effacer et Actualiser"** pour recharger toutes les données du produit.
 :::
+
+### Où les produits réservés au PDV restent visibles {#where-pos-only-products-stay-visible}
+
+Masquer un produit réservé au PDV est une règle qui s'applique à la vitrine. Le produit reste visible partout où vous gérez la boutique, plutôt que là où vous faites vos achats :
+
+- **WP Admin**, notamment la liste des produits et l'éditeur de produit
+- **WooCommerce Analytics**, afin qu'un rapport filtré par une catégorie de produits réservés au PDV affiche leurs ventes
+- Les commandes **WP-CLI**, telles que `wp wc product list`
+- **Le PDV lui-même**
+
+Le produit est masqué du catalogue et de la recherche de la boutique, de la WooCommerce Store API utilisée par le panier et le paiement par blocs, de l'API REST WooCommerce (`/wc/v3/products`) et de tout ce qui repose sur ces API, comme les flux de produits et les plans de site.
+
+Les développeurs peuvent modifier cette décision pour leur propre contexte avec le filtre `woocommerce_pos_hide_pos_only_products`. Il reçoit la décision par défaut et la `WP_Query` sur le point d'être exécutée ; renvoyez `false` pour autoriser cette requête à voir les produits réservés au PDV.
+
+```php
+add_filter( 'woocommerce_pos_hide_pos_only_products', function ( $hide, $query ) {
+    if ( defined( 'MY_PLUGIN_EXPORTING' ) ) {
+        return false;
+    }
+    return $hide;
+}, 10, 2 );
+```
 
 ## Cas d'utilisation courants {#common-use-cases}
 
@@ -175,9 +199,28 @@ Si vous avez récemment changé la visibilité d'un produit et qu'il continue à
 
   Assurez-vous que la fonctionnalité est activée :
 
-  1. Allez dans **WP Admin → WCPOS → Paramètres → Général**
+  1. Accédez à **WP Admin > PDV > Paramètres > Général**
   2. Vérifiez que **"Activer les Produits réservés au POS"** est coché
   3. Enregistrez les paramètres si vous avez apporté des modifications
+
+  </AccordionItem>
+
+  <AccordionItem question="Un produit réservé au PDV apparaît toujours sur le site Web">
+
+  Vérifiez les deux points suivants :
+
+  1. **La visibilité du catalogue est définie sur Masqué.** Ouvrez le produit et vérifiez **Visibilité du catalogue** dans la boîte Publier. Si la valeur est différente de **Masqué**, cliquez sur **Modifier**, choisissez **Masqué** et mettez le produit à jour. Les extensions de recherche, les produits associés et les blocs ou codes courts qui listent des produits par ID lisent ce paramètre WooCommerce plutôt que le paramètre de visibilité PDV de WCPOS ; le réglage Produit réservé au PDV ne leur suffit donc pas.
+  2. **La page n'est pas mise en cache.** Une extension de mise en cache ou un CDN peut continuer à diffuser une page de boutique ou de recherche générée avant que le produit ne soit réservé au PDV. Videz le cache du site après avoir modifié la visibilité.
+
+  L'ouverture du produit à partir d'un lien direct affiche toujours sa page. C'est également le comportement de la visibilité Masqué de WooCommerce. Le produit ne peut pas être ajouté au panier depuis cette page.
+
+  </AccordionItem>
+
+  <AccordionItem question="Analytics affiche « Aucune donnée » pour une catégorie de produits réservés au PDV">
+
+  Jusqu'à la version 1.10.26 incluse, les versions de l'extension WCPOS appliquaient également la règle de vitrine à WooCommerce Analytics. Le filtrage d'un rapport par une catégorie composée de produits réservés au PDV ne trouvait aucun produit et affichait **Aucune donnée**, alors qu'une recherche par nom des mêmes produits affichait leurs ventes.
+
+  Ce problème est corrigé dans la première version de l'extension WCPOS publiée après 1.10.26. Mettez l'extension à jour ; aucune modification des produits ni des paramètres du rapport n'est nécessaire.
 
   </AccordionItem>
 </Accordion>

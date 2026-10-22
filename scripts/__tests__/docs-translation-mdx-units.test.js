@@ -222,6 +222,64 @@ Body text.
     expect(output).toBe('Usar modo `POS`.\n');
   });
 
+  it('keeps a space after inline code when a translated fragment drops leading punctuation', () => {
+    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x).\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const fragment = parsed.units.find((unit) => unit.source === ', and');
+    const link = parsed.units.find((unit) => unit.source === 'everything');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([
+      [fragment.id, 'und'],
+      [link.id, 'alles'],
+    ]));
+
+    expect(output).toContain('`pdf417` und [alles](https://example.com/x).');
+  });
+
+  it('keeps a space before and after inline code when punctuation around it is dropped', () => {
+    const mdx = '# T\n\nThe same `<barcode>` tag, see (`ean13`) too.\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const before = parsed.units.find((unit) => unit.source === 'tag, see (');
+    const after = parsed.units.find((unit) => unit.source === ') too.');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([
+      [before.id, 'Tag, siehe'],
+      [after.id, 'auch.'],
+    ]));
+
+    expect(output).toContain('The same `<barcode>` Tag, siehe `ean13` auch.');
+  });
+
+  it('does not add a space next to inline code for CJK translations', () => {
+    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x).\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const fragment = parsed.units.find((unit) => unit.source === ', and');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([[fragment.id, '和']]));
+
+    expect(output).toContain('`pdf417`和 ');
+  });
+
+  it('leaves a translation that keeps the punctuation unchanged', () => {
+    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x).\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const fragment = parsed.units.find((unit) => unit.source === ', and');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([[fragment.id, ', und']]));
+
+    expect(output).toContain('`pdf417`, und');
+  });
+
+  it('keeps a translation glued to inline code when the English fragment is glued', () => {
+    const mdx = '# T\n\nThe same `<barcode>` tag fills the `SKU`s column.\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const fragment = parsed.units.find((unit) => unit.source === 's column.');
+
+    const output = applyDocsMdxTranslations(parsed, new Map([[fragment.id, 's-Spalte.']]));
+
+    expect(output).toContain('`SKU`s-Spalte.');
+  });
+
   it('translates markdown link sentences as one unit so grammar can be reordered', () => {
     const parsed = parseDocsMdxUnits('docs/example.mdx', 'Create integrations using the [Custom Gateways](/payment/custom-gateways) system.\n');
 
@@ -507,6 +565,119 @@ Después de la imagen.
     expect(output.includes('description="Verknüpfen Sie WCPOS Pro-Filialen mit ATUM Multi-Inventory-Standorten."')).toBe(true);
     expect(output.includes('to="/extensions/atum"')).toBe(true);
     expect(output).toMatch(/icon="box"/);
+  });
+
+  it('translates JSX summary and placeholder props checked by page QA', () => {
+    const mdx = [
+      '<WizardFigure src="/img/x.png" alt="Printer self-test printout" summary="The self-test shows the printer address." />',
+      '<FieldIndex',
+      '  placeholder="Filter fields… try “savings”"',
+      '/>',
+      '',
+    ].join('\n');
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+
+    expect(parsed.units.map((unit) => [unit.type, unit.attr, unit.source])).toStrictEqual([
+      ['jsx_attr', 'alt', 'Printer self-test printout'],
+      ['jsx_attr', 'summary', 'The self-test shows the printer address.'],
+      ['jsx_attr', 'placeholder', 'Filter fields… try “savings”'],
+    ]);
+
+    const output = applyDocsMdxTranslations(
+      parsed,
+      new Map([
+        [parsed.units[0].id, 'Drucker-Selbsttestausdruck'],
+        [parsed.units[1].id, 'Der Selbsttest zeigt die Druckeradresse.'],
+        [parsed.units[2].id, 'Felder filtern… versuchen Sie “savings”'],
+      ]),
+    );
+
+    expect(output.includes('summary="Der Selbsttest zeigt die Druckeradresse."')).toBe(true);
+    expect(output.includes('placeholder="Felder filtern… versuchen Sie “savings”"')).toBe(true);
+    expect(output.includes('src="/img/x.png"')).toBe(true);
+  });
+
+  it('translates receipt-data component strings in JSX props and expression data', () => {
+    const fence = ['```js', 'const row = { left: "code" };', '```'].join('\n');
+    const mdx = [
+      '<Recipe',
+      '  title="Strike it"',
+      '  why="The guard hides it."',
+      '  preview={[',
+      '    { left: "2 × Espresso Beans", right: "29.00" },',
+      '    { left: "Receipt #1042", right: "Jul 13, 2026" },',
+      '  ]}',
+      '/>',
+      '',
+      '<PriceFlow',
+      '  caption="Espresso Beans — one unit"',
+      '  scaleLabel="regular price 17.00"',
+      "  segments={[ { kind: 'paid', amount: 13.05, label: '13.05 paid' } ]}",
+      '/>',
+      '',
+      '<FieldIndex',
+      '  fields={[',
+      `    { name: 'key', type: 'string', desc: "Stable line key.", sample: [{ k: 'key', v: '"412"', str: true }] },`,
+      '    {',
+      "      name: 'total',",
+      '      desc: "Uses `null` when unknown.",',
+      '    },',
+      '  ]}',
+      '/>',
+      '',
+      'The label: "not a prop" stays prose.',
+      '',
+      fence,
+      '',
+    ].join('\n');
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+    const jsxUnits = parsed.units.filter((unit) => unit.type === 'jsx_attr');
+
+    // (a) named props and object keys, in source order; nothing else.
+    expect(jsxUnits.map((unit) => [unit.type, unit.attr, unit.source])).toStrictEqual([
+      ['jsx_attr', 'title', 'Strike it'],
+      ['jsx_attr', 'why', 'The guard hides it.'],
+      ['jsx_attr', 'left', '2 × Espresso Beans'],
+      ['jsx_attr', 'left', 'Receipt #1042'],
+      ['jsx_attr', 'right', 'Jul 13, 2026'],
+      ['jsx_attr', 'caption', 'Espresso Beans — one unit'],
+      ['jsx_attr', 'scaleLabel', 'regular price 17.00'],
+      ['jsx_attr', 'label', '13.05 paid'],
+      ['jsx_attr', 'desc', 'Stable line key.'],
+    ]);
+    const sources = parsed.units.map((unit) => unit.source);
+    for (const skipped of ['29.00', 'paid', 'key', '412', '"412"', 'not a prop', 'code']) {
+      expect(jsxUnits.map((unit) => unit.source)).not.toContain(skipped);
+    }
+    expect(sources.some((unitSource) => unitSource.includes('code'))).toBe(false);
+
+    // (b) the inline-code desc line stays one paragraph unit.
+    expect(parsed.units.filter((unit) => unit.source.includes('Uses `null` when unknown.')).map((unit) => [unit.type, unit.source])).toStrictEqual([
+      ['paragraph', 'desc: "Uses `null` when unknown.",'],
+    ]);
+
+    // (c) braced escaping keeps each value's own quote; the rest is untouched.
+    const translated = new Map([
+      ['Strike it', 'Tacharlo'],
+      ['The guard hides it.', 'La protección lo oculta.'],
+      ['2 × Espresso Beans', '2 × Granos "espresso"'],
+      ['Receipt #1042', 'Recibo n.º 1042'],
+      ['Jul 13, 2026', '13 jul 2026'],
+      ['Espresso Beans — one unit', 'Granos de espresso — una unidad'],
+      ['regular price 17.00', 'precio normal 17.00'],
+      ['13.05 paid', '13.05 pagado'],
+      ['Stable line key.', 'Clave de línea estable.'],
+    ]);
+    const output = applyDocsMdxTranslations(parsed, new Map(jsxUnits.map((unit) => [unit.id, translated.get(unit.source)])));
+
+    expect(output.includes('{ left: "2 × Granos \\"espresso\\"", right: "29.00" },')).toBe(true);
+    expect(output.includes('{ left: "Recibo n.º 1042", right: "13 jul 2026" },')).toBe(true);
+    expect(output.includes("segments={[ { kind: 'paid', amount: 13.05, label: '13.05 pagado' } ]}")).toBe(true);
+    expect(output.includes(`desc: "Clave de línea estable.", sample: [{ k: 'key', v: '"412"', str: true }] },`)).toBe(true);
+    expect(output.includes('why="La protección lo oculta."')).toBe(true);
+    expect(output.includes('caption="Granos de espresso — una unidad"')).toBe(true);
+    expect(output.includes('The label: "not a prop" stays prose.')).toBe(true);
+    expect(output.includes(fence)).toBe(true);
   });
 
   it('translates simple JSX element text children and visible labels used by RequirementsList items', () => {

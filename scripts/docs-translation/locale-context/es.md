@@ -5,3 +5,5 @@
 - A retail location is "tienda" / "tiendas". Keep WCPOS exactly; never shorten it to POS.
 - In admin breadcrumbs, use the WordPress, WooCommerce and WCPOS Spanish labels; keep POS as POS where the WCPOS labels do.
 - Decimal comma: 0,25.
+- Data types in field tables and prose are Spanish nouns, used the same way on every row: cadena (string), número (number), booleano (boolean), matriz (array), objeto (object), nulo (null), e.g. cadena/nulo. Keep a type in English only inside a code span.
+- Keep every number from the English as digits, in the same count: "line 1" is "línea 1", never "primera línea"; a unit that spells out or drops a number is rejected.
