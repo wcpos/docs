@@ -89,6 +89,13 @@ pnpm start      # local dev server with hot reload
 2. Include the required frontmatter — `title`, `sidebar_label`, `sidebar_position`, and optionally `slug` and `description`. Frontmatter is validated at build time.
 3. Update `versioned_sidebars/version-1.x-sidebars.json` when adding or moving pages. The live `1.x` docs are served with `includeCurrentVersion: false`, so new MDX files under `versioned_docs/version-1.x/` are omitted from navigation until this checked-in sidebar JSON is updated or regenerated.
 4. Reuse the MDX components in `src/components/` (e.g. `<Steps>`, `<LinkCard>`, `<ProBadge>`) for consistent styling.
+5. Write so a page stands on its own when an AI answer engine quotes one section of it (see `plans/2026-10-22-agent-readable-docs-research.md` for the sources):
+   - Open every page, and every H2 section, with the answer in the first one or two sentences.
+   - Keep facts people decide on (limits, versions, prices, what needs a connection) in the main text, not only inside tabs, accordions or `<details>`, and state them as numbers.
+   - Make each sentence make sense when pulled out of context: name the thing ("the free plugin", "WCPOS Pro"), not "it".
+   - Use the canonical product definition from `getting-started/is-wcpos-right-for-you.mdx` whenever a page says what WCPOS is; don't paraphrase it.
+   - When a page relies on WooCommerce or a gateway's behaviour, link the vendor's own page.
+   - No marketing adjectives ("powerful", "fully-featured"); say what the feature does instead.
 
 Source (English) content is authored here; translations in `i18n/` are produced by `scripts/translate-docs-local.sh`, run daily on the Mac mini with local subscription models (no API keys in Actions).
 

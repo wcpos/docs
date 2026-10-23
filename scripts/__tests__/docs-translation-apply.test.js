@@ -132,6 +132,16 @@ describe('applyResults MDX', () => {
     expect(output.writes).toEqual([{ path: target, content: '正確なドメイン(`yourstore.com`)\n' }]);
   });
 
+  it('accepts the former product name when the English unit itself carries it', () => {
+    write(SOURCE, 'Until November 2025 the plugin was listed as WooCommerce POS.\n');
+    for (const sibling of LOCALES) write(sourceToTranslatedPath(SOURCE, sibling), GERMAN);
+    const target = sourceToTranslatedPath(SOURCE, 'de');
+    const translated = 'Bis November 2025 hieß das Plugin WooCommerce POS.';
+    const output = apply({ ...ENTRY, target, locale: 'de', pending: [0] }, [result([translated], target, 'de')]);
+    expect(output.report).toMatchObject({ applied: 1, rejected: 0 });
+    expect(output.writes).toEqual([{ path: target, content: translated + '\n' }]);
+  });
+
   it.each([
     [4, 'Aktualisieren Sie Ihren Shop.', 'inline_code_changed'],
     [5, 'Besuchen Sie den [Support](https://example.test/wrong).', 'link_url_changed'],

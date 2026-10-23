@@ -80,7 +80,9 @@ function applyResults({ rootDir, plan, results }) {
         })) reasons.push('numbers');
       }
       if (text.trim() === '') reasons.push('empty');
-      if (text.includes('WooCommerce POS')) reasons.push('WooCommerce POS');
+      // The former product name is banned in translations unless the English unit itself
+      // carries it (the one historical mention on "Is WCPOS right for you?").
+      if (text.includes('WooCommerce POS') && !decoded.includes('WooCommerce POS')) reasons.push('WooCommerce POS');
       if (reasons.length) {
         report.rejected += 1;
         report.rejected_details.push({ target, unit: id, reason: reasons.join(', ') });
