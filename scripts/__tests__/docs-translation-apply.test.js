@@ -93,6 +93,14 @@ describe('applyResults MDX', () => {
     expect(JSON.stringify({ plan, results })).toBe(inputs);
   });
 
+  it('rejects a page whose frontmatter value ends in a backslash', () => {
+    siblings();
+    const output = apply(ENTRY, [result(['Shop-Anleitung\\', ...TEXTS.slice(1)])]);
+    expect(output.writes).toEqual([]);
+    expect(output.report.rejected_details).toContainEqual({ target: TARGET, unit: null, reason: expect.stringContaining('frontmatter') });
+    expect(output.report.files_incomplete).toContain(TARGET);
+  });
+
   it('restores a changed non-breadcrumb inline code span and accepts the unit', () => {
     siblings();
     const texts = [...TEXTS];

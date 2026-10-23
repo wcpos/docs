@@ -17,7 +17,7 @@ const {
   LOCALES, sourceToTranslatedPath,
   findUntranslatedProps, findLeftoverProse, isStub, findMissingSections,
 } = require('../check-translation-completeness');
-const { canonicalizeDescriptionQuoting, validateFrontmatter } = require('../validate-frontmatter');
+const { canonicalizeDescriptionQuoting, findTrailingBackslashValues, validateFrontmatter } = require('../validate-frontmatter');
 
 function applyResults({ rootDir, plan, results }) {
   const state = readState(rootDir);
@@ -112,7 +112,7 @@ function applyResults({ rootDir, plan, results }) {
         out = applyStableHeadingAnchorsFromSource(english, out, existing);
         out = canonicalizeDescriptionQuoting(out).content;
         const reasons = [];
-        if (!validateFrontmatter(out).valid) reasons.push('frontmatter');
+        if (!validateFrontmatter(out).valid || findTrailingBackslashValues(out).length) reasons.push('frontmatter');
         reasons.push(...new Set(validateDocsMdxStructure(english, out, target, locale)
           .filter(issue => STRUCTURAL_ISSUE_CODES.has(issue.code)).map(issue => issue.code)));
         if (existing && missingPreservedHeadingAnchors(english, out, existing)
