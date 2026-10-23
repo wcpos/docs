@@ -21,6 +21,8 @@ Il contratto canonico è prodotto dal builder dei dati scontrino WCPOS sul serve
 
 Receipt Data v1.1 aggiunge, per ogni riga prodotto, i campi registrati di prezzo di listino, prezzo di vendita prima dei coupon e risparmio. Fornisce inoltre i totali di risparmio a livello di ordine, incluso un valore **Risparmio totale** che combina il risparmio sul prezzo di listino con gli sconti WooCommerce senza modificare i totali dell'ordine né i report.
 
+Receipt Data v1.2 aggiunge `discount_type` a ogni riga di sconto: il tipo di coupon WooCommerce all'origine dello sconto.
+
 ## Lo scontrino, mappato {#receipt-map}
 
 Ogni parte di uno scontrino stampato proviene da una sezione del contratto dati. Passa il mouse su uno dei due lati per vedere la corrispondenza; fai clic per passare ai campi di quella sezione. Tutti gli esempi di questa pagina usano lo stesso ordine di esempio.
@@ -45,9 +47,9 @@ Ogni parte di uno scontrino stampato proviene da una sezione del contratto dati.
     {
       id: 'lines',
       rows: [
-        { left: "2 × Espresso Beans", right: "29.00" },
+        { left: "2 × Chicchi di espresso", right: "29.00" },
         { left: "~34.00~ · Risparmio −5.00", sub: true },
-        { left: "1 × Ceramic Mug", right: "18.00" },
+        { left: "1 × Tazza in ceramica", right: "18.00" },
         { left: "1 × Croissant", right: "5.75" },
       ],
     },
@@ -75,37 +77,31 @@ Ogni parte di uno scontrino stampato proviene da una sezione del contratto dati.
     {
       id: 'store',
       anchor: '#store',
-      label: "Intestazione del negozio",
       fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
     },
     {
       id: 'order',
       anchor: '#order',
-      label: "Ordine e persone",
       fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
     },
     {
       id: 'lines',
       anchor: '#lines',
-      label: "Righe prodotto",
       fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
     },
     {
       id: 'totals',
       anchor: '#totals',
-      label: "Blocco dei totali",
       fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
     },
     {
       id: 'payments',
       anchor: '#payments',
-      label: "Pagamenti",
       fields: ['payments[]'],
     },
     {
       id: 'footer',
       anchor: '#store',
-      label: "Piè di pagina",
       fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
     },
   ]}
@@ -120,7 +116,7 @@ La maggior parte delle modifiche ai modelli rientra in una di queste tre. Ogni s
     title="Barrare il prezzo di listino"
     why="La sezione condizionale nasconde tutto negli ordini privi di uno storico dei prezzi registrato."
     preview={[
-      { left: "2 × Espresso Beans", right: "29.00" },
+      { left: "2 × Chicchi di espresso", right: "29.00" },
       { left: "~34.00~ · Risparmio −5.00", sub: true },
     ]}
     snippet={`{{#lines}}
@@ -148,7 +144,7 @@ La maggior parte delle modifiche ai modelli rientra in una di queste tre. Ogni s
     title="Ristampare in sicurezza un ordine precedente alla v1.9"
     why="Gli ordini più vecchi portano il risparmio già dentro lo sconto: così non viene stampato due volte."
     preview={[
-      { left: "1 × Espresso Beans", right: "14.50" },
+      { left: "1 × Chicchi di espresso", right: "14.50" },
       { left: "~17.00~  Sconto −2.50", sub: true },
     ]}
     snippet={`{{#lines}}
@@ -160,6 +156,31 @@ La maggior parte delle modifiche ai modelli rientra in una di queste tre. Ogni s
 {{/lines}}`}
   />
 </Recipes>
+
+## Estendere i dati dello scontrino {#extending}
+
+WCPOS mantiene il contratto descritto sopra indipendente dal fornitore. Quando un plugin deve aggiungere allo scontrino informazioni che WooCommerce non modella, lo fa tramite il filtro `woocommerce_pos_receipt_data`, proprio come i plugin filtrano i totali degli ordini di WooCommerce. Il filtro viene eseguito per ogni scontrino generato dal server: scontrini in tempo reale, istantanee fiscali al momento del pagamento, download di PDF e modelli PHP legacy.
+
+```php
+add_filter( 'woocommerce_pos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+Un modello può quindi verificare la presenza della nuova chiave come per qualsiasi altra sezione:
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+Le chiavi definite nello schema devono mantenere i tipi documentati. Le chiavi aggiunte non fanno parte dello schema, quindi non compaiono nel selettore dei campi dell'editor dei modelli; inoltre, le istantanee fiscali includono solo ciò che il filtro ha aggiunto al momento del pagamento dell'ordine. Il filtro è disponibile da WCPOS 1.10.8.
 
 ## Regole di rendering {#rendering-rules}
 
@@ -250,11 +271,6 @@ Una riga prodotto porta con sé diversi prezzi, e i nomi diventano chiari quando
     { kind: 'paid', amount: 13.05, label: "13.05 pagati" },
     { kind: 'coupon', amount: 1.45, label: "1.45" },
     { kind: 'savings', amount: 2.5, label: "2.50" },
-  ]}
-  keys={[
-    { kind: 'paid', title: "Quanto paga il cliente", fields: 'unit_price → 13.05 · line_total → 26.10' },
-    { kind: 'coupon', title: "Sconto coupon (SUMMER10)", fields: 'lines[].discounts → 2.90 su questa riga' },
-    { kind: 'savings', title: "Risparmio rispetto al prezzo di listino", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
   ]}
   summary={[
     { label: "Risparmio da saldo sull'intero ordine", value: '`totals.sale_savings_total` = 5.00' },
@@ -375,7 +391,6 @@ Iterare con `{{#lines}}...{{/lines}}`. I valori di esempio sono quelli della rig
 
 <FieldIndex
   note="Ogni campo monetario arriva in coppia: il numero (da usare nelle sezioni condizionali `{{#…}}` — zero e `null` nascondono la sezione, e un campo `null` non ha alcun gemello `_display`) e la sua stringa `_display` (da usare per stampare). I campi contrassegnati incl/excl forniscono anche le varianti `_incl` e `_excl`, ciascuna con il proprio `_display`."
-  placeholder="Filtra i campi… prova «savings»"
   emptyText="Nessun campo corrisponde — azzera il filtro per vedere tutto `lines[]`."
   fields={[
     { name: 'key', type: 'string', desc: "Chiave stabile della riga / ID articolo dell'ordine.", sample: [{ k: 'key', v: '"412"', str: true }] },
@@ -531,9 +546,12 @@ Iterare con `{{#discounts}}...{{/discounts}}`.
 |-------|------|-------------|
 | `label` | string | Descrizione del coupon o codice di riserva |
 | `code` | string | Codice coupon |
+| `discount_type` | string | Slug del tipo di coupon WooCommerce, ad esempio `fixed_cart`, `percent` o `fixed_product`. Vuoto se il coupon non esiste più. |
 | `total` / `_incl` / `_excl` | number | Importo dello sconto come valore positivo |
 
 Varianti formattate: `total_display`, `total_incl_display` e `total_excl_display`. Aggiungere il proprio segno meno nel template per visualizzare gli sconti come righe negative.
+
+`discount_type` è stato aggiunto in Receipt Data v1.2. Le istantanee fiscali degli scontrini acquisite prima di allora non lo contengono.
 
   </AccordionItem>
 
@@ -545,7 +563,6 @@ I valori di esempio provengono dall'[ordine di esempio](#receipt-map), che ha in
 
 <FieldIndex
   note="I campi monetari seguono lo stesso abbinamento delle righe prodotto: un numero puro per le sezioni condizionali e una stringa `_display` per la stampa, con le varianti `_incl`/`_excl` dove indicato."
-  placeholder="Filtra i campi… prova «saved»"
   emptyText="Nessun campo corrisponde — azzera il filtro per vedere tutto `totals`."
   fields={[
     {
@@ -750,6 +767,8 @@ Questi campi sono utilizzati principalmente dal renderer e dal formatter. Sono d
 | `presentation_hints.price_num_decimals` | number | Cifre decimali |
 | `presentation_hints.price_display_suffix` | string | Suffisso di visualizzazione prezzo di WooCommerce |
 | `presentation_hints.order_barcode_type` | string | Tipo di codice a barre utilizzato dai modelli galleria |
+
+I campi monetari preformattati (i valori `*_display`, come `totals.total_display`) mostrano gli importi con il **simbolo della valuta** dell'ordine, usando la posizione e i separatori indicati sopra — quindi gli scontrini mostrano `$12.00`, non `USD 12.00`. Il campo grezzo `order.currency` resta il codice ISO da usare nella logica del modello.
 
   </AccordionItem>
 
