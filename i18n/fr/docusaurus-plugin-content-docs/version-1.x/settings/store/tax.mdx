@@ -19,7 +19,7 @@ Les paramètres de taxe contrôlent la manière dont les taxes sont calculées e
 </div>
 
 :::warning Important
-Au chargement initial, le PDV récupère les paramètres de taxe par défaut depuis WooCommerce. En général, il est recommandé de conserver les mêmes paramètres que WooCommerce, sauf en cas de besoin spécifique. Des paramètres de taxe différents de ceux du serveur entraîneront presque certainement des calculs de taxes différents entre le PDV et WooCommerce, ce qui peut provoquer des écarts et des problèmes de synchronisation des commandes.
+Au premier chargement, le PDV récupère les paramètres de taxe par défaut de WooCommerce. En règle générale, les utilisateurs devraient conserver les mêmes paramètres que WooCommerce, sauf besoin particulier. Des paramètres de taxe différents de ceux du serveur entraîneront presque certainement des calculs différents dans le PDV et WooCommerce, ce qui peut créer des écarts et des problèmes de synchronisation des commandes. La seule exception est [Calculer la taxe selon](#calculate-tax-based-on), que WCPOS 1.x ne reprend pas de WooCommerce.
 :::
 
 ## Afficher tous les taux de taxe {#view-all-tax-rates}
@@ -43,6 +43,8 @@ Détermine si les prix des produits incluent la taxe :
 | **Oui** | Les prix des produits incluent la taxe. Le PDV calcule la taxe en partant du prix total |
 | **Non** | Les prix des produits n'incluent pas la taxe. Le PDV ajoute la taxe en plus du prix saisi |
 
+Les boutiques utilisant [WooCommerce Tax](/integrations/woocommerce-tax) avec les taxes automatisées activées sont verrouillées sur **Non** par WooCommerce ; le PDV doit donc reprendre cette valeur.
+
 ### Calculer la taxe en fonction de {#calculate-tax-based-on}
 
 Détermine l'adresse utilisée pour le calcul des taxes :
@@ -52,6 +54,20 @@ Détermine l'adresse utilisée pour le calcul des taxes :
 | **Adresse de livraison du client** | Taux de taxe basés sur le lieu de livraison de la commande |
 | **Adresse de facturation du client** | Taux de taxe basés sur l'adresse de facturation du client |
 | **Adresse de base de la boutique** | Taux de taxe basés sur l'emplacement physique de la boutique |
+
+Dans WCPOS 1.x, y compris toutes les versions 1.11, ce paramètre n'est pas repris de WooCommerce. Le PDV utilise **Adresse de base de la boutique**, quelle que soit l'option *Calculer la taxe selon* de WooCommerce, et **Restaurer les paramètres du serveur** rétablit cette valeur. Modifier l'option dans `WP Admin > WooCommerce > Réglages > Tax` ne la modifie pas dans le PDV.
+
+Pour calculer les taxes des ventes PDV à partir de l'adresse du client :
+
+1. Dans le PDV, ouvrez **Paramètres > Taxe**.
+2. Définissez **Calculer la taxe selon** sur **Adresse de livraison du client** ou **Adresse de facturation du client**.
+3. Répétez l'opération sur chaque caisse. Le PDV ne partage pas ce choix entre les appareils.
+
+Le PDV enregistre ce choix pour chaque commande, et WooCommerce calcule la taxe de cette commande à partir de la même adresse ; la caisse et votre boutique sont ainsi cohérentes. Après avoir utilisé **Restaurer les paramètres du serveur**, redéfinissez ce choix.
+
+Avec WCPOS Pro, **Adresse de base de la boutique** désigne l'adresse choisie dans le paramètre *Calculer la taxe selon* de la boutique : l'adresse de la boutique (valeur par défaut) ou l'emplacement de base WooCommerce. Consultez [Configuration des boutiques](/stores/setup).
+
+Les boutiques utilisant [WooCommerce Tax](/integrations/woocommerce-tax) avec les taxes automatisées activées sont verrouillées par WooCommerce sur l'adresse de livraison du client. Un autre choix ici s'applique quand même aux commandes PDV, à la fois dans le PDV et dans votre boutique.
 
 ### Classe de taxe de livraison {#shipping-tax-class}
 
@@ -69,6 +85,12 @@ Détermine comment les frais de livraison sont taxés :
 | Option | Description |
 |--------|-------------|
 | **Arrondir la taxe au niveau du sous-total** | La taxe est calculée sur l'ensemble du sous-total puis arrondie, au lieu d'arrondir la taxe pour chaque article individuellement |
+
+WCPOS suit les calculs de taxe de WooCommerce afin qu'une commande ait le même total qu'elle soit enregistrée à la caisse ou passée sur votre site Web :
+
+- **Précision intégrale** — les totaux des lignes et des commandes sont conservés avec leur précision intégrale et arrondis uniquement pour l'affichage. Le montant enregistré dans la commande est donc le chiffre exact attendu par WooCommerce, et non une valeur préalablement arrondie aux décimales affichées.
+- **Arrondi de la boutique** — l'arrondi utilise la précision en centimes de votre devise et respecte le paramètre **Arrondir la taxe au niveau du sous-total** ci-dessus.
+- **Taxes composées** — lorsqu'un taux est marqué comme *composé*, les taux sont appliqués selon l'ordre de priorité de WooCommerce (`tax_rate_priority`) ; une taxe qui s'ajoute à une autre est donc calculée après celle-ci.
 
 ## Paramètres d'affichage {#display-settings}
 
@@ -99,12 +121,12 @@ Texte affiché après les prix pour indiquer le statut fiscal (par ex. « TTC »
 
 ## Restaurer les paramètres du serveur {#restore-server-settings}
 
-Cliquez pour récupérer et appliquer les paramètres de taxes WooCommerce actuels depuis votre serveur.
+Cliquez pour récupérer et appliquer les paramètres de taxe WooCommerce actuellement enregistrés sur votre serveur. Dans WCPOS 1.x, cette action rétablit également **Calculer la taxe selon** sur **Adresse de base de la boutique** (voir [ci-dessus](#calculate-tax-based-on)).
 
 :::tip Quand et comment l'utiliser
 WooCommerce est la référence pour les paramètres de taxe — le PDV doit les refléter. **Restaurer les paramètres du serveur** est le moyen sûr de récupérer la dernière configuration depuis votre boutique, et c'est l'action à effectuer chaque fois que vous avez modifié les paramètres de taxe dans `WP Admin > WooCommerce > Réglages > Tax` et que vous souhaitez que le PDV les prenne en compte.
 
-Le seul cas où il faut y réfléchir à deux fois : si vous avez **délibérément** remplacé un paramètre de taxe côté PDV pour qu'il diffère du serveur (configuration avancée), Restaurer les paramètres du serveur écrasera cette modification. Si vous n'êtes pas sûr de l'avoir fait, c'est presque certainement que non.
+La seule situation où il faut y réfléchir à deux fois : si vous avez **délibérément** modifié un paramètre de taxe côté PDV, par exemple défini **Calculer la taxe selon** sur une adresse client, l'action Restaurer les paramètres du serveur l'écrasera. Redéfinissez-le ensuite.
 :::
 
 ## Problèmes courants {#common-issues}
@@ -112,6 +134,8 @@ Le seul cas où il faut y réfléchir à deux fois : si vous avez **délibérém
 ### Le PDV et WooCommerce affichent des totaux différents {#pos-and-woocommerce-showing-different-totals}
 
 Le problème de taxe le plus fréquent est une divergence entre les paramètres de taxe du PDV et ceux de WooCommerce. Lorsqu'ils diffèrent, la même commande produira des totaux différents selon l'endroit où elle est passée. Gardez toujours les paramètres du PDV synchronisés — utilisez **Restaurer les paramètres du serveur** après toute modification dans `WP Admin > WooCommerce > Réglages > Tax`.
+
+Pour les boutiques utilisant WooCommerce Tax, une autre cause est à vérifier : la première vente à un emplacement pour lequel votre boutique n'a encore jamais calculé de taxe. Consultez [WooCommerce Tax](/integrations/woocommerce-tax#what-to-expect).
 
 ### Confusion sur les prix TTC {#tax-inclusive-pricing-confusion}
 
@@ -126,7 +150,7 @@ Lorsque « Calculer la taxe selon » est réglé sur **Adresse de livraison du c
 ### Les montants de taxe sont incorrects {#tax-amounts-are-incorrect}
 
 1. Accédez aux **Paramètres de taxe** dans le PDV et cliquez sur **Restaurer les paramètres du serveur** pour récupérer la dernière configuration depuis WooCommerce.
-2. Cliquez sur **Voir tous les taux de taxe** et vérifiez que les taux attendus apparaissent. Si des taux sont manquants, vérifiez qu'ils sont correctement configurés dans `WP Admin > WooCommerce > Réglages > Tax > Standard rates`.
+2. Cliquez sur **Afficher tous les taux de taxe** et vérifiez que les taux attendus apparaissent. S'il en manque, vérifiez leur configuration dans `WP Admin > WooCommerce > Réglages > Tax > Standard rates`. Lorsque les taxes automatisées de [WooCommerce Tax](/integrations/woocommerce-tax) sont activées, n'ajoutez pas de lignes manuellement : les lignes d'un emplacement apparaissent lors de sa première vente, puis le PDV les récupère lors de sa prochaine vérification des modifications, ou immédiatement avec **Effacer et télécharger à nouveau** sur la ligne **Taux de taxe** dans l'état de la boutique.
 3. Vérifiez la classe de taxe du produit — les produits assignés à une classe de taxe « Taux zéro » ne seront pas taxés, quels que soient les paramètres.
 
 ### La taxe s'affiche à zéro {#tax-is-showing-as-zero}
