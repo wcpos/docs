@@ -16,7 +16,7 @@ translate docs yourself in this session. It works in its own worktree
 1. Run the command from the repository root. With no work it exits 0 after
    "nothing to translate", and there is nothing more to do.
 2. Otherwise it delegates each packet to the chosen model CLI (default: Codex
-   `gpt-6-luna`, reviewed by `gpt-6-sol`; `--translator claude` uses Claude Sonnet
+   `gpt-6-luna`, reviewed by `gpt-6-luna`; `--translator claude` uses Claude Sonnet
    for both), applies the results through `scripts/docs-translation/apply.js`,
    commits and validates, then pushes and opens a PR labelled `docs-translate`
    (or comments on the open one). Refresh and state-only work needs no model call.

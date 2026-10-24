@@ -4,7 +4,7 @@ set -euo pipefail
 DEFAULT_TRANSLATOR=codex # Local subscription CLI used for translation and review.
 CODEX_MODEL=gpt-6-luna # Codex translate pass, mechanical tier.
 CLAUDE_MODEL=sonnet # Default model for Claude.
-CODEX_REVIEW_MODEL=gpt-6-sol # Default model for Codex review pass.
+CODEX_REVIEW_MODEL=gpt-6-luna # Default model for Codex review pass; gpt-6-sol is refused on this ChatGPT account (docs#543).
 CLAUDE_REVIEW_MODEL=sonnet # Default model for Claude review pass.
 DEFAULT_EFFORT=medium # Codex reasoning effort.
 MAX_UNITS=1500 # Units per run; the rest waits for the next run.
@@ -132,7 +132,9 @@ else
   REVIEW_COMMAND=(claude -p --model "$REVIEW_MODEL" --permission-mode acceptEdits --allowedTools "Read,Write,Glob,Grep")
 fi
 mkdir -p .translate/results .translate/logs
-REVIEW_USED=skipped
+REVIEW_CALLS=0
+REVIEW_OK=0
+REVIEW_ERROR=
 discard_empty_results() { # $1 = packet name; deletes a results file with no non-blank translation that apply.js would read
   local file=".translate/results/$1.json"
   [ -f "$file" ] || return 0
@@ -145,7 +147,16 @@ discard_empty_results() { # $1 = packet name; deletes a results file with no non
     rm -f "$file"
   fi
 }
+review_error() { # $1 = review log, $2 = exit status; prints why the call failed, one line of at most 160 chars
+  local reason
+  reason=$(sed -n '/"message":"/{s/.*"message":"\([^"]*\)".*/\1/p;q;}' "$1" 2>/dev/null || true)
+  [ -n "$reason" ] || reason=$(grep -m 1 -i error "$1" 2>/dev/null || true)
+  [ -n "$reason" ] || reason="exit $2"
+  reason=${reason//$'\r'/}
+  printf '%s\n' "${reason:0:160}"
+}
 translate_packet() { # $1 = packet name; reviewed only when the translator wrote a results file
+  local status
   cat scripts/docs-translation/translate-prompt.md > .translate/prompt
   printf '\n- .translate/work/%s.json -> .translate/results/%s.json\n' "$1" "$1" >> .translate/prompt
   if ! run_with_timeout "${COMMAND[@]}" < .translate/prompt > ".translate/logs/$1.log" 2>&1; then
@@ -153,11 +164,15 @@ translate_packet() { # $1 = packet name; reviewed only when the translator wrote
   fi
   discard_empty_results "$1"
   if [ "$REVIEW" -eq 1 ] && [ -f ".translate/results/$1.json" ]; then
-    REVIEW_USED=$REVIEW_MODEL
     cat scripts/docs-translation/review-prompt.md > .translate/prompt
     printf '\n- .translate/work/%s.json -> .translate/results/%s.json\n' "$1" "$1" >> .translate/prompt
-    if ! run_with_timeout "${REVIEW_COMMAND[@]}" < .translate/prompt > ".translate/logs/review-$1.log" 2>&1; then
+    REVIEW_CALLS=$((REVIEW_CALLS + 1))
+    if run_with_timeout "${REVIEW_COMMAND[@]}" < .translate/prompt > ".translate/logs/review-$1.log" 2>&1; then
+      REVIEW_OK=$((REVIEW_OK + 1))
+    else
+      status=$?
       log "review $1 failed or timed out; continuing"
+      [ -n "$REVIEW_ERROR" ] || REVIEW_ERROR=$(review_error ".translate/logs/review-$1.log" "$status")
     fi
     discard_empty_results "$1"
   fi
@@ -220,7 +235,20 @@ APPLIED=$(printf '%s' "$APPLY_SUMMARY" | jq -r .applied)
 REJECTED=$(printf '%s' "$APPLY_SUMMARY" | jq -r .rejected)
 NO_RESULT=$(printf '%s' "$APPLY_SUMMARY" | jq -r .missing)
 DEFERRED_UNITS=$(printf '%s' "$SUMMARY" | jq -r .deferred_units)
-log "units: planned $TOTAL, done $APPLIED, rejected $REJECTED, no result $NO_RESULT, deferred $DEFERRED_UNITS"
+REVIEW_TALLY=skipped
+REVIEW_USED=skipped
+if [ "$REVIEW_CALLS" -gt 0 ]; then
+  REVIEW_TALLY="$REVIEW_OK of $REVIEW_CALLS calls ok"
+  if [ "$REVIEW_OK" -eq 0 ]; then
+    REVIEW_USED="none ($REVIEW_MODEL failed $REVIEW_CALLS of $REVIEW_CALLS calls: $REVIEW_ERROR)"
+  elif [ "$REVIEW_OK" -lt "$REVIEW_CALLS" ]; then
+    REVIEW_USED="$REVIEW_MODEL ($((REVIEW_CALLS - REVIEW_OK)) of $REVIEW_CALLS calls failed: $REVIEW_ERROR)"
+  else
+    REVIEW_USED=$REVIEW_MODEL
+  fi
+fi
+log "units: planned $TOTAL, done $APPLIED, rejected $REJECTED, no result $NO_RESULT, deferred $DEFERRED_UNITS; review: $REVIEW_TALLY"
+if [ "$REVIEW_CALLS" -gt 0 ] && [ "$REVIEW_OK" -eq 0 ]; then log "WARNING: no review call succeeded; review: $REVIEW_USED"; fi
 if [ -z "$(git status --porcelain -- i18n)" ]; then
   if [ "$TOTAL" -eq 0 ]; then log "nothing to translate"; exit 0; fi
   fail "no translations accepted"
