@@ -6,6 +6,8 @@ CODEX_MODEL=gpt-6-luna # Codex translate pass, mechanical tier.
 CLAUDE_MODEL=sonnet # Default model for Claude.
 CODEX_REVIEW_MODEL=gpt-6-luna # Default model for Codex review pass; gpt-6-sol is refused on this ChatGPT account (docs#543).
 CLAUDE_REVIEW_MODEL=sonnet # Default model for Claude review pass.
+FALLBACK_REVIEW_MODEL=claude-opus-5-5 # Reviews on the TeamClaude pool lane when Codex rejects the review model (route-hold 2026-10-23: gpt-6-sol and gpt-6-astra rejected).
+POOL_SETTINGS='{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:3456"}}' # TeamClaude pool lane, as ~/.claude/bin/project-session.sh launches pool helpers.
 DEFAULT_EFFORT=medium # Codex reasoning effort.
 MAX_UNITS=1500 # Units per run; the rest waits for the next run.
 CALL_TIMEOUT=1800 # Seconds allowed for each translation or review call.
@@ -127,6 +129,7 @@ run_with_timeout() {
 if [ "$TRANSLATOR" = codex ]; then
   COMMAND=(codex exec -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -c "tool_output_token_limit=$CODEX_TOOL_OUTPUT_TOKENS" -s workspace-write -C "$WT" -)
   REVIEW_COMMAND=(codex exec -m "$REVIEW_MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c 'approval_policy="never"' -c "tool_output_token_limit=$CODEX_TOOL_OUTPUT_TOKENS" -s workspace-write -C "$WT" -)
+  FALLBACK_REVIEW_COMMAND=(claude -p --model "$FALLBACK_REVIEW_MODEL" --settings "$POOL_SETTINGS" --permission-mode acceptEdits --allowedTools "Read,Write,Glob,Grep")
 else
   COMMAND=(claude -p --model "$MODEL" --permission-mode acceptEdits --allowedTools "Read,Write,Glob,Grep")
   REVIEW_COMMAND=(claude -p --model "$REVIEW_MODEL" --permission-mode acceptEdits --allowedTools "Read,Write,Glob,Grep")
@@ -134,7 +137,11 @@ fi
 mkdir -p .translate/results .translate/logs
 REVIEW_CALLS=0
 REVIEW_OK=0
+CODEX_REVIEW_OK=0
+FALLBACK_REVIEW_OK=0
+REVIEW_REJECTED=
 REVIEW_ERROR=
+REVIEW_ERROR_MODEL=
 discard_empty_results() { # $1 = packet name; deletes a results file with no non-blank translation that apply.js would read
   local file=".translate/results/$1.json"
   [ -f "$file" ] || return 0
@@ -155,6 +162,9 @@ review_error() { # $1 = review log, $2 = exit status; prints why the call failed
   reason=${reason//$'\r'/}
   printf '%s\n' "${reason:0:160}"
 }
+model_rejected() { # $1 = review log; true when Codex refused the model itself
+  grep -q -e model_not_found -e 'model is not supported' "$1" 2>/dev/null
+}
 translate_packet() { # $1 = packet name; reviewed only when the translator wrote a results file
   local status
   cat scripts/docs-translation/translate-prompt.md > .translate/prompt
@@ -167,12 +177,36 @@ translate_packet() { # $1 = packet name; reviewed only when the translator wrote
     cat scripts/docs-translation/review-prompt.md > .translate/prompt
     printf '\n- .translate/work/%s.json -> .translate/results/%s.json\n' "$1" "$1" >> .translate/prompt
     REVIEW_CALLS=$((REVIEW_CALLS + 1))
-    if run_with_timeout "${REVIEW_COMMAND[@]}" < .translate/prompt > ".translate/logs/review-$1.log" 2>&1; then
-      REVIEW_OK=$((REVIEW_OK + 1))
-    else
-      status=$?
-      log "review $1 failed or timed out; continuing"
-      [ -n "$REVIEW_ERROR" ] || REVIEW_ERROR=$(review_error ".translate/logs/review-$1.log" "$status")
+    if [ -z "$REVIEW_REJECTED" ]; then
+      if run_with_timeout "${REVIEW_COMMAND[@]}" < .translate/prompt > ".translate/logs/review-$1.log" 2>&1; then
+        REVIEW_OK=$((REVIEW_OK + 1))
+        CODEX_REVIEW_OK=$((CODEX_REVIEW_OK + 1))
+      else
+        status=$?
+        if [ "$TRANSLATOR" = codex ] && model_rejected ".translate/logs/review-$1.log"; then
+          REVIEW_REJECTED=$(review_error ".translate/logs/review-$1.log" "$status")
+          log "review model $REVIEW_MODEL rejected by Codex ($REVIEW_REJECTED); reviewing with $FALLBACK_REVIEW_MODEL on the pool lane for the rest of this run"
+        else
+          log "review $1 failed or timed out; continuing"
+          if [ -z "$REVIEW_ERROR" ]; then
+            REVIEW_ERROR=$(review_error ".translate/logs/review-$1.log" "$status")
+            REVIEW_ERROR_MODEL=$REVIEW_MODEL
+          fi
+        fi
+      fi
+    fi
+    if [ -n "$REVIEW_REJECTED" ]; then
+      if run_with_timeout "${FALLBACK_REVIEW_COMMAND[@]}" < .translate/prompt > ".translate/logs/review-$1-fallback.log" 2>&1; then
+        REVIEW_OK=$((REVIEW_OK + 1))
+        FALLBACK_REVIEW_OK=$((FALLBACK_REVIEW_OK + 1))
+      else
+        status=$?
+        log "review $1 failed or timed out; continuing"
+        if [ -z "$REVIEW_ERROR" ]; then
+          REVIEW_ERROR=$(review_error ".translate/logs/review-$1-fallback.log" "$status")
+          REVIEW_ERROR_MODEL=$FALLBACK_REVIEW_MODEL
+        fi
+      fi
     fi
     discard_empty_results "$1"
   fi
@@ -239,13 +273,15 @@ REVIEW_TALLY=skipped
 REVIEW_USED=skipped
 if [ "$REVIEW_CALLS" -gt 0 ]; then
   REVIEW_TALLY="$REVIEW_OK of $REVIEW_CALLS calls ok"
-  if [ "$REVIEW_OK" -eq 0 ]; then
-    REVIEW_USED="none ($REVIEW_MODEL failed $REVIEW_CALLS of $REVIEW_CALLS calls: $REVIEW_ERROR)"
-  elif [ "$REVIEW_OK" -lt "$REVIEW_CALLS" ]; then
-    REVIEW_USED="$REVIEW_MODEL ($((REVIEW_CALLS - REVIEW_OK)) of $REVIEW_CALLS calls failed: $REVIEW_ERROR)"
-  else
-    REVIEW_USED=$REVIEW_MODEL
+  REVIEW_BY=
+  [ "$CODEX_REVIEW_OK" -eq 0 ] || REVIEW_BY=$REVIEW_MODEL
+  [ "$FALLBACK_REVIEW_OK" -eq 0 ] || REVIEW_BY="${REVIEW_BY:+$REVIEW_BY and }$FALLBACK_REVIEW_MODEL on the pool lane"
+  REVIEW_NOTES=
+  [ -z "$REVIEW_REJECTED" ] || REVIEW_NOTES="Codex rejected $REVIEW_MODEL: $REVIEW_REJECTED"
+  if [ "$REVIEW_OK" -lt "$REVIEW_CALLS" ]; then
+    REVIEW_NOTES="${REVIEW_NOTES:+$REVIEW_NOTES; }$((REVIEW_CALLS - REVIEW_OK)) of $REVIEW_CALLS calls failed, first on $REVIEW_ERROR_MODEL: $REVIEW_ERROR"
   fi
+  REVIEW_USED="${REVIEW_BY:-none}${REVIEW_NOTES:+ ($REVIEW_NOTES)}"
 fi
 log "units: planned $TOTAL, done $APPLIED, rejected $REJECTED, no result $NO_RESULT, deferred $DEFERRED_UNITS; review: $REVIEW_TALLY"
 if [ "$REVIEW_CALLS" -gt 0 ] && [ "$REVIEW_OK" -eq 0 ]; then log "WARNING: no review call succeeded; review: $REVIEW_USED"; fi
@@ -287,4 +323,7 @@ fi
 } > .translate/pr-body.md
 publish
 log "$PR_URL"
+if [ "$REVIEW_OK" -lt "$REVIEW_CALLS" ]; then
+  fail "review failed for $((REVIEW_CALLS - REVIEW_OK)) of $REVIEW_CALLS packets after publishing $PR_URL; review: $REVIEW_USED"
+fi
 exit 0

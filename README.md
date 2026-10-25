@@ -105,7 +105,7 @@ Each run syncs its own `.claude/worktrees/docs-translate` worktree, installs dep
 
 1. Prints the work summary and exits for `--dry-run`, without calling a model or applying results.
 2. Skips every model call when there are no units to translate; refresh and state-only work still runs through apply.
-3. Translates each packet with Codex `gpt-6-luna` and reviews with `gpt-6-luna` (Claude Sonnet for both with `--translator claude`), continuing after failed or timed-out calls.
+3. Translates each packet with Codex `gpt-6-luna` and reviews with `gpt-6-luna` (Claude Sonnet for both with `--translator claude`), continuing after failed or timed-out calls. When Codex rejects the review model, the review falls back to Claude Opus 5.5 (`claude-opus-5-5`) on the pool lane for the rest of the run, and a run with any failed review exits non-zero after publishing.
 4. Applies results and rebuilds pages; exits 0 if there is nothing to translate, or 1 if no translations were accepted.
 5. Commits changes locally, then runs the frontmatter, completeness, and translation-safety CI gates; any failure prevents pushing.
 6. Builds the PR body with applied units, files, locales, models, deferred units, and the Markdown report.

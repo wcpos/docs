@@ -128,6 +128,14 @@ if (tool === 'git') {
   if (config.tamper && prompt.startsWith(config.tamper)) fs.writeFileSync('.translate/plan.json', '{"tampered":true}');
   if (config.fail && prompt.includes('/de-01.json')) process.exit(1);
   if (config.failPackets?.some(name => prompt.includes('/work/' + name + '.json'))) process.exit(1);
+  if (prompt.startsWith('REVIEW') && tool === 'codex' && config.rejectReviewModel && args[args.indexOf('-m') + 1] === config.rejectReviewModel) {
+    process.stderr.write('ERROR: ' + JSON.stringify({ error: { message: "The '" + config.rejectReviewModel + "' model is not supported when using Codex with a ChatGPT account." } }) + '\n');
+    process.exit(1);
+  }
+  if (prompt.startsWith('REVIEW') && config.crashReviewPackets?.some(name => prompt.includes('/work/' + name + '.json'))) {
+    process.stderr.write('ERROR: {"error":{"message":"stream disconnected"}}\n');
+    process.exit(1);
+  }
   if (prompt.startsWith('REVIEW') && (config.failReview || config.failReviewPackets?.some(name => prompt.includes('/work/' + name + '.json')))) {
     const model = args[args.indexOf(tool === 'codex' ? '-m' : '--model') + 1];
     process.stderr.write('ERROR: ' + JSON.stringify({ error: { message: "The '" + model + "' model is not supported when using Codex with a ChatGPT account." } }) + '\n');
@@ -301,9 +309,29 @@ it.each([
   assert.equal(result.calls.length, 0);
 });
 
-it('uses Claude Sonnet for both passes and merges into and comments on the open PR even after review failure', () => {
-  const result = run({ pr, failReview: true }, ['--translator', 'claude']);
+const FALLBACK_ARGS = ['-p', '--model', 'claude-opus-5-5', '--settings', '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:3456"}}', '--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Write,Glob,Grep'];
+
+it('falls back to Opus on the pool lane when Codex rejects the review model', () => {
+  const result = run({ rejectReviewModel: 'gpt-6-luna' });
   assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(models(result).map(c => c.tool), ['codex', 'codex', 'claude', 'codex', 'claude']);
+  for (const call of models(result).filter(c => c.tool === 'claude')) assert.deepEqual(call.args, FALLBACK_ARGS);
+  const prompts = result.calls.filter(c => c.tool === 'prompt').map(c => c.prompt);
+  assert.deepEqual(prompts.map(p => p.split('\n')[0]), ['TRANSLATE', 'REVIEW', 'REVIEW', 'TRANSLATE', 'REVIEW']);
+  assert.match(fs.readFileSync(path.join(wt, '.translate/logs/review-de-01.log'), 'utf8'), /model_not_found|not supported/);
+  for (const packet of ['de-01', 'fr-01']) assert.match(fs.readFileSync(path.join(wt, '.translate/logs/review-' + packet + '-fallback.log'), 'utf8'), /MODEL LOG/);
+  assert.ok(body().includes("review: claude-opus-5-5 on the pool lane (Codex rejected gpt-6-luna: The 'gpt-6-luna' model is not supported when using Codex with a ChatGPT account.);"), body());
+  assert.doesNotMatch(body(), /review: gpt-6-luna[;( ]/);
+  assert.match(result.stdout, /; review: 2 of 2 calls ok\n/);
+  assert.equal(result.stdout.split('rejected by Codex').length, 2, result.stdout);
+  assert.doesNotMatch(result.stdout, /WARNING: no review call succeeded/);
+  assert.ok(result.stdout.trimEnd().split('\n').at(-1).endsWith('https://example.test/pr/1'), result.stdout);
+});
+
+it('uses Claude Sonnet for both passes and merges into and comments on the open PR and exits 1 after review failure', () => {
+  const result = run({ pr, failReview: true }, ['--translator', 'claude']);
+  const expected = "none (2 of 2 calls failed, first on sonnet: The 'sonnet' model is not supported when using Codex with a ChatGPT account.)";
+  assertFailed(result, 'review failed for 2 of 2 packets after publishing https://example.test/pr/42; review: ' + expected);
   assert.equal(models(result).length, 4);
   assert.ok(models(result).every(c => c.tool === 'claude'));
   for (const call of models(result)) assert.deepEqual(call.args, ['-p', '--model', 'sonnet', '--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Write,Glob,Grep']);
@@ -313,32 +341,39 @@ it('uses Claude Sonnet for both passes and merges into and comments on the open 
   assert.ok(!result.calls.some(c => isCall(c, 'gh', 'create')));
   assert.match(result.stdout, /review de-01 failed or timed out; continuing/);
   assert.match(result.stdout, /https:\/\/example.test\/pr\/42/);
-  assert.ok(body().includes("review: none (sonnet failed 2 of 2 calls: The 'sonnet' model is not supported when using Codex with a ChatGPT account.);"), body());
+  assert.ok(body().includes('review: ' + expected + ';'), body());
   assert.match(result.stdout, /review: 0 of 2 calls ok/);
   assert.match(result.stdout, /WARNING: no review call succeeded/);
 });
 
 it('records a failed codex review instead of naming the model', () => {
   const result = run({ failReview: true });
-  assert.equal(result.status, 0, result.stderr);
-  assert.ok(body().includes("review: none (gpt-6-luna failed 2 of 2 calls: The 'gpt-6-luna' model is not supported when using Codex with a ChatGPT account.);"), body());
+  const expected = "none (Codex rejected gpt-6-luna: The 'gpt-6-luna' model is not supported when using Codex with a ChatGPT account.; 2 of 2 calls failed, first on claude-opus-5-5: The 'claude-opus-5-5' model is not supported when using Codex with a ChatGPT account.)";
+  assertFailed(result, 'review failed for 2 of 2 packets after publishing https://example.test/pr/1; review: ' + expected);
+  assert.deepEqual(models(result).map(c => c.tool), ['codex', 'codex', 'claude', 'codex', 'claude']);
+  assert.ok(body().includes('review: ' + expected + ';'), body());
   assert.doesNotMatch(body(), /review: gpt-6-luna;/);
+  assert.ok(result.calls.some(c => isCall(c, 'gh', 'pr', 'create')));
   assert.match(result.stdout, /units: planned 3, done 3, rejected 0, no result 0, deferred 0; review: 0 of 2 calls ok\n/);
-  assert.match(result.stdout, /WARNING: no review call succeeded; review: none \(gpt-6-luna failed 2 of 2 calls: /);
+  assert.match(result.stdout, /WARNING: no review call succeeded; review: /);
 });
 
 it('names the review model with a failure count when some review calls fail', () => {
-  const result = run({ failReviewPackets: ['de-01'] });
-  assert.equal(result.status, 0, result.stderr);
-  assert.ok(body().includes("review: gpt-6-luna (1 of 2 calls failed: The 'gpt-6-luna' model is not supported when using Codex with a ChatGPT account.);"), body());
+  const result = run({ crashReviewPackets: ['de-01'] });
+  const expected = 'gpt-6-luna (1 of 2 calls failed, first on gpt-6-luna: stream disconnected)';
+  assertFailed(result, 'review failed for 1 of 2 packets after publishing https://example.test/pr/1; review: ' + expected);
+  assert.ok(!models(result).some(c => c.tool === 'claude'));
+  assert.ok(body().includes('review: ' + expected + ';'), body());
   assert.match(result.stdout, /review: 1 of 2 calls ok/);
   assert.doesNotMatch(result.stdout, /WARNING: no review call succeeded/);
 });
 
 it('falls back to the exit status when a failed review logs no error', () => {
   const result = run({ silentReviewFailure: true });
-  assert.equal(result.status, 0, result.stderr);
-  assert.ok(body().includes('review: none (gpt-6-luna failed 2 of 2 calls: exit 3);'), body());
+  const expected = 'none (2 of 2 calls failed, first on gpt-6-luna: exit 3)';
+  assertFailed(result, 'review failed for 2 of 2 packets after publishing https://example.test/pr/1; review: ' + expected);
+  assert.ok(!models(result).some(c => c.tool === 'claude'));
+  assert.ok(body().includes('review: ' + expected + ';'), body());
 });
 
 it.each(['pushFails', 'commentFails', 'createFails'])('reports failed publishing for %s', failure => {
