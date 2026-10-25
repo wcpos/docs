@@ -58,7 +58,8 @@ const fs = require('node:fs'), path = require('node:path'), cp = require('node:c
 const root = path.dirname(__dirname), tool = path.basename(process.argv[1]), args = process.argv.slice(2);
 const config = JSON.parse(fs.readFileSync(path.join(root, 'config.json')));
 const wt = path.join(root, '.claude/worktrees/docs-translate');
-fs.appendFileSync(path.join(root, 'calls.jsonl'), JSON.stringify({ tool, args, cwd: process.cwd(), base: process.env.BASE_REF }) + '\n');
+fs.appendFileSync(path.join(root, 'calls.jsonl'), JSON.stringify({ tool, args, cwd: process.cwd(), base: process.env.BASE_REF,
+  author: process.env.GIT_AUTHOR_NAME + ' <' + process.env.GIT_AUTHOR_EMAIL + '>', committer: process.env.GIT_COMMITTER_NAME + ' <' + process.env.GIT_COMMITTER_EMAIL + '>' }) + '\n');
 if (tool === 'git') {
   if (args.includes('fetch') && config.fetchFails) process.exit(1);
   if (args.includes('push') && config.pushFails) process.exit(1);
@@ -344,6 +345,18 @@ it('uses Claude Sonnet for both passes and merges into and comments on the open 
   assert.ok(body().includes('review: ' + expected + ';'), body());
   assert.match(result.stdout, /review: 0 of 2 calls ok/);
   assert.match(result.stdout, /WARNING: no review call succeeded/);
+});
+
+it("commits and merges as the wcpos-mini App, not the caller's git identity", () => {
+  const human = { GIT_AUTHOR_NAME: 'Human', GIT_AUTHOR_EMAIL: 'human@example.test', GIT_COMMITTER_NAME: 'Human', GIT_COMMITTER_EMAIL: 'human@example.test' };
+  const app = 'wcpos-mini[bot] <336269863+wcpos-mini[bot]@users.noreply.github.com>';
+  for (const [config, args] of [[{ pr, failReview: true }, ['--translator', 'claude']], [{ deferred: 17, newWorktree: true, labelExists: true }, []],
+    [{ invalid: 'check-translation-safety.js' }, ['--no-review', '--base', 'stack']]]) {
+    const result = run(config, args, human);
+    const commits = result.calls.filter(c => isCall(c, 'git', 'commit') || (isCall(c, 'git', 'merge') && !c.args.includes('--abort')));
+    assert.ok(commits.some(c => isCall(c, 'git', 'commit') || isCall(c, 'git', 'merge', '--no-edit')), JSON.stringify(config));
+    for (const call of commits) assert.deepEqual([call.author, call.committer], [app, app], JSON.stringify(call));
+  }
 });
 
 it('records a failed codex review instead of naming the model', () => {
