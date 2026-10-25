@@ -12,6 +12,8 @@ DEFAULT_EFFORT=medium # Codex reasoning effort.
 MAX_UNITS=1500 # Units per run; the rest waits for the next run.
 CALL_TIMEOUT=1800 # Seconds allowed for each translation or review call.
 CODEX_TOOL_OUTPUT_TOKENS=25000 # Codex tool-output cap per call; the machine default (2000) truncates packets and Luna declines them (#526).
+GIT_APP_NAME='wcpos-mini[bot]' # Commits are the machine's GitHub App, never the caller's git identity (docs#546 carried Paul's name).
+GIT_APP_EMAIL='336269863+wcpos-mini[bot]@users.noreply.github.com' # The App's noreply address, as GitHub records it on machine commits.
 
 log() { printf '[translate-docs-local] %s\n' "$*"; }
 fail() {
@@ -81,6 +83,7 @@ if ! git -C "$REPO_ROOT" worktree list --porcelain | grep -Fxq "worktree $WT"; t
   git -C "$REPO_ROOT" worktree add --detach "$WT" "origin/$BASE"
 fi
 cd "$WT"
+export GIT_AUTHOR_NAME=$GIT_APP_NAME GIT_AUTHOR_EMAIL=$GIT_APP_EMAIL GIT_COMMITTER_NAME=$GIT_APP_NAME GIT_COMMITTER_EMAIL=$GIT_APP_EMAIL
 git reset --hard --quiet
 git clean -fdq
 rm -rf .translate
