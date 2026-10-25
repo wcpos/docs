@@ -20,10 +20,14 @@ translate docs yourself in this session. It works in its own worktree
    for both), applies the results through `scripts/docs-translation/apply.js`,
    commits and validates, then pushes and opens a PR labelled `docs-translate`
    (or comments on the open one). Refresh and state-only work needs no model call.
+   When Codex rejects the review model, the review falls back to Claude Opus 5.5
+   (`claude-opus-5-5`) on the pool lane for the rest of the run.
 3. Report back with the PR URL, the applied/rejected/warning counts from the script's
    output, and any rejected units. Rejected units stay untranslated and are
    retried on the next run.
 4. On a non-zero exit, show the last 30 lines of output and the packet logs in
    `.claude/worktrees/docs-translate/.translate/logs/`. Do not rerun more than once.
+   When a review failed, the non-zero exit comes after the PR was published; report
+   the PR URL and the `review:` part of the `FAILED:` line.
 
 Use `--dry-run` to see the work summary without calling a model.
