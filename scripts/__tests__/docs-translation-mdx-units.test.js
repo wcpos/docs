@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { parseDocsMdxUnits, applyDocsMdxTranslations } = require('../docs-translation/mdx-units');
 
 const source = `---
@@ -986,5 +988,75 @@ echo "Hello";
 
 Después del bloque.
 `);
+  });
+});
+
+describe('MDX comment and export blocks', () => {
+  const commentLines = [
+    '{/*',
+    '  Structured data for this page only. Every value here must match the visible',
+    '  text below. When a price changes on this page, change it here too.',
+    '*/}',
+  ];
+  const exportLines = [
+    'export const data = {',
+    "  name: 'Point of sale for your store',",
+    "  description: 'WCPOS is a point of sale for WooCommerce. It runs in a web browser.',",
+    '};',
+  ];
+  const mdx = ['---', 'title: Example page', '---', '', ...commentLines, ...exportLines, '', 'This paragraph is visible to readers.', '', '## A visible heading', ''].join('\n');
+  const blockFragments = ['Structured data', 'match the visible', 'change it here too', '*/}', 'export const', 'Point of sale for your store', 'description:', 'runs in a web browser', '};'];
+
+  it('skips multi-line MDX comment blocks and multi-line export blocks', () => {
+    const parsed = parseDocsMdxUnits('docs/blocks.mdx', mdx);
+
+    for (const unit of parsed.units) {
+      for (const fragment of blockFragments) {
+        expect(unit.source).not.toContain(fragment);
+      }
+    }
+    expect(parsed.units.map((unit) => [unit.type, unit.source])).toStrictEqual([
+      ['frontmatter', 'Example page'],
+      ['paragraph', 'This paragraph is visible to readers.'],
+      ['heading', 'A visible heading'],
+    ]);
+  });
+
+  it('round-trips comment and export blocks verbatim', () => {
+    const parsed = parseDocsMdxUnits('docs/blocks.mdx', mdx);
+    const output = applyDocsMdxTranslations(parsed, new Map(parsed.units.map((unit) => [unit.id, `DE ${unit.source}`])));
+
+    expect(output).toContain(`\n${[...commentLines, ...exportLines].join('\n')}\n\n`);
+    expect(output).toContain('\nDE This paragraph is visible to readers.\n');
+    expect(output).toContain('\n## DE A visible heading\n');
+  });
+
+  it('keeps single-line comments and single-line exports as before', () => {
+    const parsed = parseDocsMdxUnits(
+      'docs/single.mdx',
+      '{/* Screenshot: pos.png */}\n\nexport const Yes = () => <Icon name="check" title="Included" />;\n\nHello world.\n',
+    );
+
+    expect(parsed.units.map((unit) => [unit.type, unit.source])).toStrictEqual([
+      ['paragraph', '{/* Screenshot: pos.png */}'],
+      ['paragraph', 'export const Yes = () =>'],
+      ['jsx_attr', 'Included'],
+      ['paragraph', ';'],
+      ['paragraph', 'Hello world.'],
+    ]);
+  });
+
+  it('real page: is-wcpos-right-for-you has no comment or export units', () => {
+    const relativePath = 'versioned_docs/version-1.x/getting-started/is-wcpos-right-for-you.mdx';
+    const parsed = parseDocsMdxUnits(relativePath, fs.readFileSync(path.join(__dirname, '../..', relativePath), 'utf8'));
+
+    for (const unit of parsed.units) {
+      for (const fragment of ['softwareApplication', '@context', 'Structured data for this page', 'priceCurrency']) {
+        expect(unit.source).not.toContain(fragment);
+      }
+    }
+    expect(
+      parsed.units.some((unit) => unit.type === 'paragraph' && unit.source.startsWith('WCPOS is a point of sale (POS) for WooCommerce.')),
+    ).toBe(true);
   });
 });

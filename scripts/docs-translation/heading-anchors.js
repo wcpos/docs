@@ -211,9 +211,20 @@ function restoreNonBreadcrumbInlineCodeSpans(source, translated) {
   const translatedSpans = translated.match(inlineCodePattern) ?? [];
   if (sourceSpans.length === 0 || sourceSpans.length !== translatedSpans.length) return translated;
 
+  // Verbatim spans stay put (a reorder survives); only altered spans are restored, in source order.
+  const claimed = sourceSpans.map(() => false);
+  const kept = translatedSpans.map((span) => {
+    const sourceIndex = sourceSpans.findIndex((sourceSpan, i) => !claimed[i] && sourceSpan === span);
+    if (sourceIndex === -1) return false;
+    claimed[sourceIndex] = true;
+    return true;
+  });
+  const unclaimedSourceSpans = sourceSpans.filter((_, i) => !claimed[i]);
   let index = 0;
+  let unclaimedIndex = 0;
   return translated.replace(inlineCodePattern, (span) => {
-    const sourceSpan = sourceSpans[index++] ?? span;
+    if (kept[index++]) return span;
+    const sourceSpan = unclaimedSourceSpans[unclaimedIndex++] ?? span;
     const sourceContent = /^(`+)([^\n]*?)\1$/.exec(sourceSpan)?.[2] ?? sourceSpan;
     return /\S\s*>\s*\S/.test(sourceContent) ? span : sourceSpan;
   });

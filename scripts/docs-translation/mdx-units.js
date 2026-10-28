@@ -423,6 +423,8 @@ function parseDocsMdxUnits(filePath, source) {
   let inFence = false;
   let fenceMarker;
   let inImportBlock = false;
+  let inCommentBlock = false;
+  let inExportBlock = false;
   let inJsxBlock = false;
   const linePattern = /.*(?:\n|$)/g;
   for (const match of source.slice(bodyStart).matchAll(linePattern)) {
@@ -441,6 +443,16 @@ function parseDocsMdxUnits(filePath, source) {
       continue;
     }
     if (inFence) {
+      continue;
+    }
+    // Multi-line MDX comment ({/* … */} over several lines): not prose, copied through verbatim.
+    if (inCommentBlock || (trimmedLine.startsWith('{/*') && !lineNoNewline.includes('*/}'))) {
+      inCommentBlock = !lineNoNewline.includes('*/}');
+      continue;
+    }
+    // Multi-line top-level ESM export: code, not prose; MDX ends the block at the next blank line.
+    if (inExportBlock || (/^export\s/.test(lineNoNewline) && !trimmedLine.endsWith(';'))) {
+      inExportBlock = !isBlank(lineNoNewline);
       continue;
     }
     if (inImportBlock) {

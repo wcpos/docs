@@ -119,7 +119,14 @@ function pairLooksRight({ source, translation, locale, file }) {
     ...validateProtectedTermsInText(source, translation, file),
   ];
   if (issues.some((issue) => STRUCTURAL_ISSUE_CODES.has(issue.code))) return false;
-  if (JSON.stringify((source.match(/\d+/g) ?? []).sort()) !== JSON.stringify((translation.match(/\d+/g) ?? []).sort())) return false;
+  // apply.js rule: every source digit run must appear; extra runs ("three" -> "3") are allowed.
+  const translationNumbers = translation.match(/\d+/g) ?? [];
+  if ((source.match(/\d+/g) ?? []).some((number) => {
+    const index = translationNumbers.indexOf(number);
+    if (index === -1) return true;
+    translationNumbers.splice(index, 1);
+    return false;
+  })) return false;
   if (source.length >= 40) {
     const ratio = translation.length / source.length;
     const [min, max] = CJK_LOCALES.has(locale) ? [0.1, 2] : [0.3, 3];

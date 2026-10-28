@@ -55,6 +55,17 @@ describe('heading anchor and inline code helpers', () => {
     expect(restoreNonBreadcrumbInlineCodeSpans(source, translated)).toBe('Gardez ``literal `tick` value`` et `checkout.id`.');
   });
 
+  it('keeps reordered inline code spans in place', () => {
+    const source = 'If the template does not print a line-level `discounts` row, keep showing `line_savings` even when `savings_in_discounts` is true. The bundled templates handle this distinction automatically.';
+    const translated = 'テンプレートが明細レベルの `discounts` の行を印刷しない場合は、`savings_in_discounts` が true であっても `line_savings` を表示し続けてください。組み込みテンプレートはこの区別を自動的に処理します。';
+
+    expect(restoreNonBreadcrumbInlineCodeSpans(source, translated)).toBe(translated);
+  });
+
+  it('restores an altered span without moving reordered ones', () => {
+    expect(restoreNonBreadcrumbInlineCodeSpans('Set `a.b` before `c.d`.', 'Vor `c.d` setzen Sie `a.x`.')).toBe('Vor `c.d` setzen Sie `a.b`.');
+  });
+
   it('adds stable English-source Docusaurus anchors to translated headings', () => {
     const source = ['## Default Payment Methods', '### Cash', '## Custom Gateways', ''].join('\n');
     const translated = ['## Standard-Zahlungsmethoden', '### Bargeld', '## Benutzerdefinierte Gateways', ''].join('\n');
