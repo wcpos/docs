@@ -152,6 +152,22 @@ describe('pairLooksRight', () => {
     expect(pairLooksRight({ source: '10 then 20.', translation: '20 después de 10.', locale: 'es', file: 'es.mdx' })).toBe(true);
   });
 
+  it('accepts a correct reordered ja pair', () => {
+    expect(pairLooksRight({
+      source: 'If the template does not print a line-level `discounts` row, keep showing `line_savings` even when `savings_in_discounts` is true. The bundled templates handle this distinction automatically.',
+      translation: 'テンプレートが明細レベルの `discounts` の行を印刷しない場合は、`savings_in_discounts` が true であっても `line_savings` を表示し続けてください。組み込みテンプレートはこの区別を自動的に処理します。',
+      locale: 'ja', file: 'receipt-data.mdx',
+    })).toBe(true);
+  });
+
+  it('accepts extra digit runs in the translation', () => {
+    expect(pairLooksRight({ source: 'Most edits are one of these three.', translation: '編集の大半は、次の3つのいずれかです。', locale: 'ja', file: 'doc.mdx' })).toBe(true);
+  });
+
+  it('rejects a translation that drops a source digit run', () => {
+    expect(pairLooksRight({ source: 'Wait 30 days.', translation: 'Espere días.', locale: 'es', file: 'es.mdx' })).toBe(false);
+  });
+
   it.each([
     ['es', 12, true], ['es', 11, false], ['es', 120, true], ['es', 121, false],
     ['ja', 4, true], ['ja', 3, false], ['ko', 80, true], ['ko', 81, false],

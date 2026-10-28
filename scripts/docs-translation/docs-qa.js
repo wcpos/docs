@@ -542,26 +542,32 @@ function normalizeAdminBreadcrumbInlineCode(source, translated, locale) {
   return lines.join('\n');
 }
 
+// Order-insensitive one-to-one match (translations reorder spans): byte-equal pairs first, then pairCompatible.
+function spansMatchInAnyOrder(sourceSpans, translatedSpans, pairCompatible) {
+  if (sourceSpans.length !== translatedSpans.length) return false;
+  const remaining = [...translatedSpans];
+  const take = (index) => index !== -1 && remaining.splice(index, 1).length === 1;
+  return sourceSpans.filter((span) => !take(remaining.indexOf(span)))
+    .every((span) => take(remaining.findIndex((translated) => pairCompatible(span, translated))));
+}
+
 function inlineCodeSpansCompatible(sourceSpans, translatedSpans, locale) {
-  return sourceSpans.length === translatedSpans.length
-    && sourceSpans.every((span, index) => (
-      span === translatedSpans[index]
-      || adminBreadcrumbSpansCompatible(span, translatedSpans[index] ?? '', locale)
-    ));
+  return spansMatchInAnyOrder(sourceSpans, translatedSpans, (span, translated) => (
+    span === translated
+    || adminBreadcrumbSpansCompatible(span, translated, locale)
+  ));
 }
 
 function parenthesizedInlineCodeSpansCompatible(sourceSpans, translatedSpans, locale) {
-  return sourceSpans.length === translatedSpans.length
-    && sourceSpans.every((span, index) => {
-      const translated = translatedSpans[index] ?? '';
-      if (span === translated) {
-        return true;
-      }
-      if (!span.startsWith('(') || !span.endsWith(')') || !translated.startsWith('(') || !translated.endsWith(')')) {
-        return false;
-      }
-      return adminBreadcrumbSpansCompatible(span.slice(1, -1), translated.slice(1, -1), locale);
-    });
+  return spansMatchInAnyOrder(sourceSpans, translatedSpans, (span, translated) => {
+    if (span === translated) {
+      return true;
+    }
+    if (!span.startsWith('(') || !span.endsWith(')') || !translated.startsWith('(') || !translated.endsWith(')')) {
+      return false;
+    }
+    return adminBreadcrumbSpansCompatible(span.slice(1, -1), translated.slice(1, -1), locale);
+  });
 }
 
 function findUntranslatedAdminBreadcrumbLabels(translated, locale) {

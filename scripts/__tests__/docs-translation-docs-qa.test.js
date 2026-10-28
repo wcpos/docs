@@ -689,6 +689,30 @@ An example compares "Kassierereinstellungen" with another label.
   });
 });
 
+describe('validateDocsMdxStructure inline code span order', () => {
+  const en = 'If the template does not print a line-level `discounts` row, keep showing `line_savings` even when `savings_in_discounts` is true. The bundled templates handle this distinction automatically.';
+  const ja = 'テンプレートが明細レベルの `discounts` の行を印刷しない場合は、`savings_in_discounts` が true であっても `line_savings` を表示し続けてください。組み込みテンプレートはこの区別を自動的に処理します。';
+  const codes = (translated, locale = 'ja', sourceText = en) => (
+    validateDocsMdxStructure(sourceText, translated, 'receipt-data.mdx', locale).map((issue) => issue.code)
+  );
+
+  it('accepts reordered inline code spans', () => {
+    expect(codes(ja)).not.toContain('inline_code_changed');
+  });
+
+  it('still flags a changed span when spans are reordered', () => {
+    expect(codes(ja.replace('`line_savings`', '`line_saving`'))).toContain('inline_code_changed');
+  });
+
+  it('still flags a missing span', () => {
+    expect(codes(ja.replace('`discounts`', 'discounts'))).toContain('inline_code_changed');
+  });
+
+  it('accepts reordered parenthesized inline code spans', () => {
+    expect(codes('(`b`) und (`a`) verwenden.', 'de', 'Use (`a`) and (`b`).')).not.toContain('inline_code_punctuation_changed');
+  });
+});
+
 const complexSource = [
   'import Foo, {',
   '  Bar,',
