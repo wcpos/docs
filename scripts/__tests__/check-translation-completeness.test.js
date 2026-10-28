@@ -317,6 +317,29 @@ Cambia a Twenty Twenty-Four para descartar un conflicto de tema.
     ].join('\n');
     expect(findLeftoverProse(src, src)).toEqual(['Email Invoice']);
   });
+
+  describe('multi-line MDX comment and export blocks', () => {
+    const blocks = `{/*
+  Structured data for this page only. Every value here must match the visible
+  text below. When a price changes on this page, change it here too.
+*/}
+export const data = {
+  name: 'Point of sale for your store',
+  description: 'WCPOS is a point of sale for WooCommerce. It runs in a web browser.',
+};
+`;
+    const english = ['The point of sale runs in any modern web browser.', 'Every sale is recorded as a WooCommerce order.', 'Receipts can be printed or emailed to the customer.'];
+    const german = ['Die Kasse läuft in jedem modernen Webbrowser.', 'Jeder Verkauf wird als WooCommerce-Bestellung erfasst.', 'Belege können gedruckt oder per E-Mail an den Kunden gesendet werden.'];
+    const doc = (paragraphs) => `---\ntitle: Example\n---\n\n${blocks}\n${paragraphs.join('\n\n')}\n`;
+
+    it('ignores multi-line MDX comment and export blocks', () => {
+      expect(findLeftoverProse(doc(english), doc(german))).toEqual([]);
+    });
+
+    it('still flags English left in normal paragraphs next to those blocks', () => {
+      expect(findLeftoverProse(doc(english), doc(english))).toEqual(english);
+    });
+  });
 });
 
 describe('findMissingSections (stale detection)', () => {

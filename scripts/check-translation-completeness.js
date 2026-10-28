@@ -200,6 +200,8 @@ function bodyLines(text) {
   let inFence = false;
   let inTemplateLiteral = false; // inside a JSX {`...`} template-literal child (e.g. <Recipe>{`...`}</Recipe>)
   let inPropArray = false; // inside a multi-line JSX prop array (e.g. fields={[ ... ]})
+  let inComment = false; // inside a multi-line MDX {/* ... */} comment
+  let inExport = false; // inside a multi-line top-level `export` block (ends at a blank line)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!frontmatterDone && i === 0 && line.trim() === '---') {
@@ -218,6 +220,17 @@ function bodyLines(text) {
       continue;
     }
     if (inFence) continue;
+    // Multi-line MDX comment ({/* … */} over several lines) is not prose.
+    if (inComment || (line.trim().startsWith('{/*') && !line.includes('*/}'))) {
+      inComment = !line.includes('*/}');
+      continue;
+    }
+    // Multi-line top-level ESM export is code; MDX ends it at the next blank line,
+    // which stays in the output like any other blank line.
+    if (inExport || (/^export\s/.test(line) && !line.trim().endsWith(';'))) {
+      inExport = line.trim() !== '';
+      if (inExport) continue;
+    }
     // JSX code containers hold machine content (template snippets, data props),
     // not prose — skipping them mirrors the fenced-code rule above.
     if (inTemplateLiteral) {
