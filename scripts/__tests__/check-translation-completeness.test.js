@@ -560,7 +560,9 @@ describe('main', () => {
       fs.writeFileSync(brokenPath, '# 付款\n\n结账设置页面控制支付网关。\n\n**现金。**打烊时清点钱箱。\n');
 
       expect(main([brokenPath])).toBe(1);
-      expect(error.mock.calls.flat().join('\n')).toContain('renders wrong (literal_emphasis): literal ** or __ at line 5, 5');
+      const output = error.mock.calls.flat().join('\n');
+      expect(output).toContain('renders wrong (literal_emphasis): literal ** or __ at line 5');
+      expect(output).not.toContain('line 5, 5');
     } finally {
       process.chdir(cwd);
       log.mockRestore();

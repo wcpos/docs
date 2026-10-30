@@ -726,8 +726,8 @@ function main(argv = process.argv.slice(2), env = process.env) {
     } else if (r.renderIssues.length) {
       // Name the lines of the literal markers so a hand fix can go straight to them.
       const translated = fs.readFileSync(r.file, 'utf8');
-      const lines = literalEmphasisRuns(translated).filter((run) => run.offset !== null)
-        .map((run) => translated.slice(0, run.offset).split('\n').length);
+      const lines = [...new Set(literalEmphasisRuns(translated).filter((run) => run.offset !== null)
+        .map((run) => translated.slice(0, run.offset).split('\n').length))];
       fileProblems.push(
         `renders wrong (literal_emphasis): literal ** or __ at line ${lines.slice(0, 5).join(', ')}` +
           (lines.length > 5 ? ` (+${lines.length - 5} more)` : '')
