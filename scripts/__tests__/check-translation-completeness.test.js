@@ -539,6 +539,37 @@ describe('main', () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it('fails a changed translation whose bold renders literally, naming the line', () => {
+    const cwd = process.cwd();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'translation-check-'));
+    const sourcePath = 'docs/foo.mdx';
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      process.chdir(tmp);
+      fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+      fs.writeFileSync(sourcePath, '# Payments\n\nThe Checkout Settings page controls payment gateways.\n\n**Cash.** Count the drawer at close.\n');
+      for (const locale of LOCALES) {
+        const translatedPath = sourceToTranslatedPath(sourcePath, locale);
+        fs.mkdirSync(path.dirname(translatedPath), { recursive: true });
+        fs.writeFileSync(translatedPath, '# 付款\n\n结账设置页面控制支付网关。\n\n**现金。** 打烊时清点钱箱。\n');
+      }
+      const brokenPath = sourceToTranslatedPath(sourcePath, 'zh-CN');
+      fs.writeFileSync(brokenPath, '# 付款\n\n结账设置页面控制支付网关。\n\n**现金。**打烊时清点钱箱。\n');
+
+      expect(main([brokenPath])).toBe(1);
+      const output = error.mock.calls.flat().join('\n');
+      expect(output).toContain('renders wrong (literal_emphasis): literal ** or __ at line 5');
+      expect(output).not.toContain('line 5, 5');
+    } finally {
+      process.chdir(cwd);
+      log.mockRestore();
+      error.mockRestore();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('listIncompleteSources (self-healing sweep input)', () => {

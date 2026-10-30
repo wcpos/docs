@@ -74,6 +74,10 @@ Write exactly one JSON file per packet at the given results path:
   value, else the label the existing translation uses. The same English word can be two
   elements with different labels (the POS **Checkout** button vs. the WP-Admin
   **Checkout** tab): match the element, not the word.
+- In ja, ko and zh-CN, put a space after a closing `**` that follows full-width
+  punctuation (。：？！）」) when text comes straight after it (`**标签。** 正文`), and a
+  space before an opening `**` that follows a letter and comes before punctuation
+  (`点击 **“设置”**`). Without the space the asterisks render as literal text.
 - Translate visible UI, settings, option and table text (feature names, labels, "Pro
   Feature", "Requires Pro", "Default") unless it is a brand, a code span, an acronym or a
   number/dimension (80mm, A4).

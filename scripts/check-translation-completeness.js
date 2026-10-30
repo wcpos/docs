@@ -34,6 +34,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { findRenderIssues, literalEmphasisRuns } = require('./docs-translation/render-check');
 
 const LOCALES = ['es', 'fr', 'de', 'nl', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
 const CJK = new Set(['zh-CN', 'ja', 'ko']);
@@ -376,9 +377,10 @@ function isStub(sourceContent, translatedContent, locale) {
 }
 
 // Evaluate one translated file. Returns
-// { file, untranslatedProps, leftoverProse, stub, missingSections }, where
+// { file, untranslatedProps, leftoverProse, stub, missingSections, renderIssues }, where
 // missingSections is the array of source heading anchors absent from the
-// translation (non-empty only when the translation has a net heading deficit).
+// translation (non-empty only when the translation has a net heading deficit)
+// and renderIssues the render-check codes (literal ** / __, MDX that fails to parse).
 function evaluateFile(translatedPath, readFile = (p) => fs.readFileSync(p, 'utf8')) {
   const sourcePath = getSourcePath(translatedPath);
   const locale = localeOf(translatedPath);
@@ -395,6 +397,7 @@ function evaluateFile(translatedPath, readFile = (p) => fs.readFileSync(p, 'utf8
     leftoverProse: findLeftoverProse(source, translated),
     stub: isStub(source, translated, locale),
     missingSections: findMissingSections(source, translated),
+    renderIssues: /\.mdx?$/.test(translatedPath) ? findRenderIssues(source, translated) : [],
   };
 }
 
@@ -716,6 +719,18 @@ function main(argv = process.argv.slice(2), env = process.env) {
       fileProblems.push(
         `stale: ${r.missingSections.length} section(s) in the English source are missing here ` +
           `(translation of an older revision), e.g. {#${r.missingSections[0]}}`
+      );
+    }
+    if (r.renderIssues.includes('mdx_parse')) {
+      fileProblems.push('renders wrong (mdx_parse): the file no longer parses as MDX');
+    } else if (r.renderIssues.length) {
+      // Name the lines of the literal markers so a hand fix can go straight to them.
+      const translated = fs.readFileSync(r.file, 'utf8');
+      const lines = [...new Set(literalEmphasisRuns(translated).filter((run) => run.offset !== null)
+        .map((run) => translated.slice(0, run.offset).split('\n').length))];
+      fileProblems.push(
+        `renders wrong (literal_emphasis): literal ** or __ at line ${lines.slice(0, 5).join(', ')}` +
+          (lines.length > 5 ? ` (+${lines.length - 5} more)` : '')
       );
     }
     if (fileProblems.length) problems.push({ file: r.file, issues: fileProblems });

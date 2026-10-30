@@ -334,6 +334,38 @@ describe('applyResults MDX', () => {
   });
 });
 
+describe('applyResults render check', () => {
+  const ZH_TARGET = sourceToTranslatedPath(SOURCE, 'zh-CN');
+  const ZH_ENTRY = { ...ENTRY, target: ZH_TARGET, locale: 'zh-CN', pending: [0] };
+
+  it('repairs a CJK bold closer after full-width punctuation and warns emphasis_repaired', () => {
+    write(SOURCE, '**Cash.** Count the drawer at close.\n');
+    siblings('**Bargeld.** Zählen Sie die Kasse beim Schließen.\n');
+    write(TARGET, '**Bargeld.** Zählen Sie die Kasse beim Schließen.\n');
+    const output = apply(ZH_ENTRY, [result(['**现金。**打烊时清点钱箱。'], ZH_TARGET, 'zh-CN')]);
+    expect(output.writes).toEqual([{ path: ZH_TARGET, content: '**现金。** 打烊时清点钱箱。\n' }]);
+    expect(output.report.rejected_details).toEqual([]);
+    expect(output.report.warning_details).toEqual([{ target: ZH_TARGET, unit: 'u0', codes: ['emphasis_repaired'] }]);
+  });
+
+  it('rejects a unit whose bold still renders literally', () => {
+    write(SOURCE, 'Check when **several orders** differ.\n');
+    siblings('Prüfen Sie, wenn **mehrere Bestellungen** abweichen.\n');
+    const output = apply({ ...ENTRY, pending: [0] }, [result(['Prüfen Sie, wenn **mehrere Bestellungen ** abweichen.'])]);
+    expect(output.writes).toEqual([]);
+    expect(output.report.rejected_details).toEqual([{ target: TARGET, unit: 'u0', reason: expect.stringContaining('literal_emphasis') }]);
+    expect(output.report.files_incomplete).toEqual([TARGET]);
+  });
+
+  it('rejects a unit that no longer parses as MDX', () => {
+    write(SOURCE, 'Use the <Badge>Pro</Badge> option.\n');
+    siblings('Verwenden Sie die Option <Badge>Pro</Badge>.\n');
+    const output = apply({ ...ENTRY, pending: [0] }, [result(['Verwenden Sie die Option <Badge>Pro.'])]);
+    expect(output.writes).toEqual([]);
+    expect(output.report.rejected_details).toEqual([{ target: TARGET, unit: 'u0', reason: expect.stringContaining('mdx_parse') }]);
+  });
+});
+
 describe('applyResults JSON', () => {
   const source = 'i18n/en/strings.json';
   const target = 'i18n/de/strings.json';
