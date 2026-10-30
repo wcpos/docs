@@ -7,6 +7,7 @@ const { parseDocsMdxUnits } = require('./mdx-units');
 const { decodeDocsUnitSource, unitKey, recoverTranslations } = require('./recover');
 const { parseJsonUnits } = require('./json-units');
 const { readState, unitHash, attemptKeys } = require('./state');
+const { findRenderIssues } = require('./render-check');
 const {
   LOCALES, AUDIT_EXCLUDE_DEFAULT, isSignificantProse, lineToProse,
   UNTRANSLATED_PROP_ALLOWLIST, sourceToTranslatedPath, jsonSourceToTranslatedPath,
@@ -99,7 +100,7 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
       }) : {};
       const pending = [];
       const reused = {};
-      const reasons = { missing: 0, changed: 0, english: 0, unpaired: 0 };
+      const reasons = { missing: 0, changed: 0, english: 0, unpaired: 0, render: 0 };
       let quarantined = 0;
       for (const [position, unit] of units.entries()) {
         const key = keys[position];
@@ -131,6 +132,9 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
           if (translation === undefined || translation === null) reason = 'changed';
           else if (translation === unit.source && significant && !saved.same?.includes(hash)) reason = 'english';
         }
+        // Resend reused units whose bold renders as literal ** (the regex skips the parser for most).
+        if (!reason && kind === 'mdx' && /\*\*|__/.test(translation)
+          && findRenderIssues(unit.source, translation).length > 0) reason = 'render';
         if (reason) {
           pending.push(unit.index);
           reasons[reason] += 1;

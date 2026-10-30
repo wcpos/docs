@@ -114,7 +114,7 @@ describe('MDX worklist', () => {
     expect(summary.targets.record).toBe(1);
     expect(packets).toEqual([]);
     expect(plan.targets).toEqual([{ target: TARGET, source: DOC, locale: 'de', kind: 'mdx', status: 'record',
-      source_blob: git('hash-object', DOC), pending: [], reasons: { missing: 0, changed: 0, english: 0, unpaired: 0 } }]);
+      source_blob: git('hash-object', DOC), pending: [], reasons: { missing: 0, changed: 0, english: 0, unpaired: 0, render: 0 } }]);
   });
 
   it('schedules only the edited paragraph using positions across mixed MDX unit types', () => {
@@ -163,6 +163,15 @@ describe('MDX worklist', () => {
     expect(schedule().plan.targets[0]).toMatchObject({ pending: [0], reasons: { english: 1 } });
     writeState(rootDir, { [TARGET]: { source: git('hash-object', DOC), same: [unitHash(['paragraph', '', '', PARAGRAPH].join('\0'))] } });
     expect(schedule().summary).toMatchObject({ total: 0, targets: { unchanged: 1 } });
+  });
+
+  it('schedules a reused unit whose bold renders literally with reason render', () => {
+    addDoc(DOC, '**Label.** Text\n\nPrint a receipt for your customers.\n', '**标签。**正文\n\n为您的顾客打印收据。\n');
+    commitFixtures();
+    const [entry] = schedule().plan.targets;
+    expect(entry).toMatchObject({ status: 'translate', pending: [0] });
+    expect(entry.reused).toEqual({ 1: '为您的顾客打印收据。' });
+    expect(entry.reasons).toEqual({ missing: 0, changed: 0, english: 0, unpaired: 0, render: 1 });
   });
 
   it('reuses short prose and allowlisted terms even when identical to English', () => {

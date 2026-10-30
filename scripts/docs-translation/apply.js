@@ -18,6 +18,7 @@ const {
   findUntranslatedProps, findLeftoverProse, isStub, findMissingSections,
 } = require('../check-translation-completeness');
 const { canonicalizeDescriptionQuoting, findTrailingBackslashValues, validateFrontmatter } = require('../validate-frontmatter');
+const { findRenderIssues, repairLiteralEmphasis } = require('./render-check');
 
 function applyResults({ rootDir, plan, results }) {
   const state = readState(rootDir);
@@ -55,16 +56,21 @@ function applyResults({ rootDir, plan, results }) {
         continue;
       }
       let issues = [];
+      let repaired = false;
       const reasons = [];
       if (kind === 'mdx') {
         text = text.replace(/（(`[^`\n]+`)）/g, '($1)');
         text = restoreNonBreadcrumbInlineCodeSpans(decoded, normalizeAdminBreadcrumbInlineCode(decoded, text, locale));
+        // The one safe CJK repair is a flanking space; other literal ** is rejected below.
+        const emphasisRepaired = repairLiteralEmphasis(decoded, text);
+        if (emphasisRepaired !== text) [text, repaired] = [emphasisRepaired, true];
         if (tableCellCount(decoded) !== tableCellCount(text)) reasons.push('table_shape');
         if (text.split('\n').length !== decoded.split('\n').length) reasons.push('line_count');
         if (unit.type !== 'paragraph' && text.includes('\n')) reasons.push('non_paragraph_newline');
         issues = [...validateDocsMdxStructure(decoded, text, target, locale),
           ...validateProtectedTermsInText(decoded, text, target)];
         reasons.push(...new Set(issues.filter(issue => STRUCTURAL_ISSUE_CODES.has(issue.code)).map(issue => issue.code)));
+        reasons.push(...findRenderIssues(decoded, text));
       } else {
         const sourcePlaceholders = (decoded.match(/\{[^{}]*\}/g) ?? []).sort();
         const translatedPlaceholders = (text.match(/\{[^{}]*\}/g) ?? []).sort();
@@ -90,6 +96,7 @@ function applyResults({ rootDir, plan, results }) {
       }
       const codes = [...new Set(issues.filter(issue => !STRUCTURAL_ISSUE_CODES.has(issue.code)).map(issue => issue.code))];
       if (text === decoded) codes.push('identical');
+      if (repaired) codes.push('emphasis_repaired');
       if (codes.length) {
         report.warnings += 1;
         report.warning_details.push({ target, unit: id, codes });
@@ -121,6 +128,7 @@ function applyResults({ rootDir, plan, results }) {
         if (isStub(english, out, locale)) reasons.push('stub');
         if (findLeftoverProse(english, out).length >= 3) reasons.push('leftover_prose');
         if (findMissingSections(english, out).length >= 1) reasons.push('missing_sections');
+        reasons.push(...findRenderIssues(english, out));
         if (reasons.length) {
           complete = false;
           fileRejected = true;
