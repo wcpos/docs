@@ -20,6 +20,17 @@ const {
 const { canonicalizeDescriptionQuoting, findTrailingBackslashValues, validateFrontmatter } = require('../validate-frontmatter');
 const { findRenderIssues, repairLiteralEmphasis } = require('./render-check');
 
+// Arabic writes 1 and 2 as the singular or dual form (دقيقة واحدة "1 minute",
+// نطاقين "2 domains"), so an ar translation may drop a standalone 1 or 2. A run
+// joined to another digit run by . , : / - (1.11, 4.2, 1/2, 10:1) is not standalone.
+function isArabicDroppableNumber(english, match) {
+  if (match[0] !== '1' && match[0] !== '2') return false;
+  const start = match.index;
+  const end = start + match[0].length;
+  const joined = (sep, digit) => /[.,:/-]/.test(sep ?? '') && /\d/.test(digit ?? '');
+  return !joined(english[start - 1], english[start - 2]) && !joined(english[end], english[end + 1]);
+}
+
 function applyResults({ rootDir, plan, results }) {
   const state = readState(rootDir);
   const previousTargets = new Set(Object.keys(state));
@@ -78,7 +89,10 @@ function applyResults({ rootDir, plan, results }) {
       }
       if (!(kind === 'json' && decoded.includes('|'))) {
         const numbers = text.match(/\d+/g) ?? [];
-        if ((decoded.match(/\d+/g) ?? []).some(number => {
+        // Required runs are matched first, so a translated 1 or 2 is never spent on a droppable one.
+        const required = [...decoded.matchAll(/\d+/g)]
+          .filter(match => !(locale === 'ar' && isArabicDroppableNumber(decoded, match))).map(match => match[0]);
+        if (required.some(number => {
           const index = numbers.indexOf(number);
           if (index === -1) return true;
           numbers.splice(index, 1);
