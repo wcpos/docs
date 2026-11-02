@@ -200,6 +200,37 @@ Keep code untouched: ` + '`Default` and `ATUM Inventory`' + `
     expect(issues.some((issue) => issue.code === 'inline_code_spacing_changed')).toBe(true);
   });
 
+  describe('Arabic one-letter prefix before inline code', () => {
+    const arSource = 'Use `code` and `last_name` here.\n';
+    const spacingIssue = (translated, locale = 'ar') => validateDocsMdxStructure(arSource, translated, 'test.mdx', locale)
+      .some((issue) => issue.code === 'inline_code_spacing_changed');
+
+    it.each([
+      ['و after a space', 'استخدم `code` و`last_name` هنا.\n'],
+      ['و after a comma and space', 'استخدم `code`، و`last_name` هنا.\n'],
+      ['و directly after a parenthesis', 'استخدم `code` (و`last_name`) هنا.\n'],
+      ['و at the start of a line', 'و`code` ثم `last_name` هنا.\n'],
+      ['ف', 'استخدم `code` ف`last_name` هنا.\n'],
+      ['ب', 'استخدم `code` ب`last_name` هنا.\n'],
+      ['ل', 'استخدم `code` ل`last_name` هنا.\n'],
+      ['ك', 'استخدم `code` ك`last_name` هنا.\n'],
+    ])('allows a standalone prefix in ar: %s', (_label, translated) => {
+      expect(spacingIssue(translated)).toBe(false);
+    });
+
+    it.each([
+      ['a prefix letter ending a longer word (كتاب ends in ب)', 'استخدم `code` كتاب`last_name` هنا.\n'],
+      ['a letter that is not one of the five', 'استخدم `code` م`last_name` هنا.\n'],
+      ['prose glued after the code span', 'استخدم `code`و `last_name` هنا.\n'],
+    ])('still flags in ar: %s', (_label, translated) => {
+      expect(spacingIssue(translated)).toBe(true);
+    });
+
+    it.each(['fa', 'de'])('does not allow the prefix for %s', (locale) => {
+      expect(spacingIssue('استخدم `code` و`last_name` هنا.\n', locale)).toBe(true);
+    });
+  });
+
   it('allows an identical product-name column with two data rows and translated siblings', () => {
     const tableSource = [
       '| Plugin | Details |',

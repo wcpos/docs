@@ -118,6 +118,41 @@ describe('applyResults MDX', () => {
     expect(output.report).toMatchObject({ applied: 5, rejected: 1 });
   });
 
+  function applySingle(english, translated, locale) {
+    write(SOURCE, english + '\n');
+    for (const sibling of LOCALES) write(sourceToTranslatedPath(SOURCE, sibling), GERMAN);
+    const target = sourceToTranslatedPath(SOURCE, locale);
+    return { target, output: apply({ ...ENTRY, target, locale, pending: [0] }, [result([translated], target, locale)]) };
+  }
+
+  it.each([
+    ['Wait 1 minute.', 'انتظر دقيقة واحدة.'],
+    ['Use 2FA on 2 domains.', 'استخدم المصادقة الثنائية على نطاقين.'],
+    ['Wait 1 minute, then install version 1.11.', 'انتظر دقيقة واحدة، ثم ثبّت الإصدار 1.11.'],
+  ])('accepts an Arabic translation that drops a standalone 1 or 2: %s', (english, translated) => {
+    const { target, output } = applySingle(english, translated, 'ar');
+    expect(output.report).toMatchObject({ applied: 1, rejected: 0 });
+    expect(output.writes).toEqual([{ path: target, content: translated + '\n' }]);
+  });
+
+  it.each([
+    ['Wait 3 minutes.', 'انتظر بضع دقائق.'],
+    ['Wait 12 minutes.', 'انتظر بضع دقائق.'],
+    ['Install Version 4.2 now.', 'ثبّت الإصدار 4 الآن.'],
+    ['Install version 1.11 now.', 'ثبّت الإصدار 11 الآن.'],
+    ['Use 1/2 of the space.', 'استخدم 1 من المساحة.'],
+  ])('still rejects other missing Arabic numbers: %s', (english, translated) => {
+    const { target, output } = applySingle(english, translated, 'ar');
+    expect(output.report.rejected_details).toEqual([{ target, unit: 'u0', reason: 'numbers' }]);
+    expect(output.writes).toEqual([]);
+  });
+
+  it('still rejects a missing standalone 2 outside Arabic', () => {
+    const { target, output } = applySingle('Use 2 domains.', 'Nutzen Sie Domains.', 'de');
+    expect(output.report.rejected_details).toEqual([{ target, unit: 'u0', reason: 'numbers' }]);
+    expect(output.writes).toEqual([]);
+  });
+
   it.each([
     ['You can apply more than one coupon to an order.', '1つの注文に複数のクーポンを適用できます。'],
     ['Two 10% coupons stack to 19% off (not 20%).', '10%のクーポンを2つ重ねると19%割引になります（20%ではありません）。'],

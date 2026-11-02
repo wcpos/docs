@@ -192,19 +192,29 @@ function isSpaceSensitiveLetter(ch) {
   return !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(ch);
 }
 
+// Arabic one-letter proclitics (و and, ف so, ب with, ل for, ك like) are written
+// joined to the next word, so correct ar text glues one directly before inline
+// code (و`last_name`). Only these five, and only when they stand alone.
+const ARABIC_PROCLITIC_LETTERS = new Set(['\u0648', '\u0641', '\u0628', '\u0644', '\u0643']);
+
+function isArabicProcliticBefore(line, start) {
+  return ARABIC_PROCLITIC_LETTERS.has(line[start - 1]) && !/\p{L}/u.test(line[start - 2] ?? '');
+}
+
 // Keys identifying each inline-code span occurrence that is glued (no space) to
 // a space-sensitive letter, by side + occurrence + span text. Comparing the
 // source and the translation per span avoids the false "issue" a whole-document
 // regex produces when a line contains two or more spans (the prose between them
 // looks like one long span to a greedy matcher).
-function collectGluedInlineCodeKeys(masked) {
+function collectGluedInlineCodeKeys(masked, locale) {
   const keys = new Set();
   let spanIndex = 0;
   for (const line of masked.split('\n')) {
     for (const range of extractInlineCodeRanges(line)) {
       const span = line.slice(range.start, range.end);
       const keyBase = `${spanIndex}:${span}`;
-      if (isSpaceSensitiveLetter(line[range.start - 1])) keys.add(`before ${keyBase}`);
+      if (isSpaceSensitiveLetter(line[range.start - 1])
+        && !(locale === 'ar' && isArabicProcliticBefore(line, range.start))) keys.add(`before ${keyBase}`);
       if (isSpaceSensitiveLetter(line[range.end])) keys.add(`after ${keyBase}`);
       spanIndex += 1;
     }
@@ -214,9 +224,9 @@ function collectGluedInlineCodeKeys(masked) {
 
 // True when the translation glues an inline-code span to prose where the source
 // (for that same span and side) did not — i.e. a space the model dropped.
-function inlineCodeSpacingRegressed(maskedSource, maskedTranslated) {
-  const sourceGlued = collectGluedInlineCodeKeys(maskedSource);
-  for (const key of collectGluedInlineCodeKeys(maskedTranslated)) {
+function inlineCodeSpacingRegressed(maskedSource, maskedTranslated, locale) {
+  const sourceGlued = collectGluedInlineCodeKeys(maskedSource, locale);
+  for (const key of collectGluedInlineCodeKeys(maskedTranslated, locale)) {
     if (!sourceGlued.has(key)) return true;
   }
   return false;
@@ -1048,7 +1058,7 @@ function validateDocsMdxStructure(source, translated, file, locale) {
     issues.push(issue('inline_code_punctuation_changed', file, 'Parenthesized inline code punctuation changed.'));
   }
 
-  if (inlineCodeSpacingRegressed(sourceWithoutCodeBlocks, translatedWithoutCodeBlocks)) {
+  if (inlineCodeSpacingRegressed(sourceWithoutCodeBlocks, translatedWithoutCodeBlocks, locale)) {
     issues.push(issue('inline_code_spacing_changed', file, 'Inline code spans are directly adjacent to prose.'));
   }
 
