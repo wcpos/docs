@@ -556,6 +556,13 @@ it('passes repeated --first paths to the worklist on a dry run', () => {
     ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--first', 'versioned_docs/version-1.x/error-codes/AUTH131.mdx', '--first', 'versioned_docs/version-1.x/support', '--max-units', '1500']);
 });
 
+it('passes --retry-quarantined to the worklist on a dry run', () => {
+  const result = run({ counts: [] }, ['--dry-run', '--retry-quarantined', '--locale', 'ar']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args,
+    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--retry-quarantined', '--locale', 'ar', '--max-units', '1500']);
+});
+
 it('retries a packet without results once, split in half by files', () => {
   const result = run({ fail: true, packetFiles: 3 });
   assert.equal(result.status, 0, result.stderr);
