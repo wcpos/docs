@@ -24,7 +24,7 @@ const LOCALE_NAMES = {
   'hi-IN': 'Hindi (India)', 'zh-CN': 'Chinese (Simplified)',
 };
 
-function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packetMaxChars = PACKET_MAX_CHARS, packetMaxFiles = PACKET_MAX_FILES, first = [] }) {
+function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packetMaxChars = PACKET_MAX_CHARS, packetMaxFiles = PACKET_MAX_FILES, first = [], retryQuarantined = false }) {
   // --first: an exact English source path, or a directory prefix.
   const isFirst = source => first.some(p => source === p || source.startsWith(p.endsWith('/') ? p : `${p}/`));
   const state = readState(rootDir);
@@ -106,7 +106,7 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
         const key = keys[position];
         const hash = unitHash(key);
         const attempts = saved.attempts?.[attemptKeyList[position]] ?? 0;
-        if (attempts >= QUARANTINE_AFTER) {
+        if (attempts >= QUARANTINE_AFTER && !retryQuarantined) {
           plan.quarantined.push({ target, unit: `u${unit.index}`, source: unit.source, attempts });
           quarantined += 1;
           summary.quarantined += 1;
@@ -229,6 +229,10 @@ function runCli(argv) {
   let planFile;
   for (let i = 0; i < argv.length; i += 1) {
     const option = argv[i];
+    if (option === '--retry-quarantined') {
+      args.retryQuarantined = true;
+      continue;
+    }
     if (!['--out', '--plan', '--locale', '--first', '--max-units', '--root'].includes(option)) {
       throw new Error(`Unknown argument: ${option}`);
     }

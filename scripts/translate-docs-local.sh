@@ -38,6 +38,7 @@ while [ "$#" -gt 0 ]; do
     --base) BASE=$2; shift 2 ;;
     --locale) WORKLIST_ARGS+=(--locale "$2"); shift 2 ;;
     --first) WORKLIST_ARGS+=(--first "$2"); shift 2 ;;
+    --retry-quarantined) WORKLIST_ARGS+=(--retry-quarantined); shift ;;
     --translator) TRANSLATOR=$2; shift 2 ;;
     --model) MODEL=$2; shift 2 ;;
     --review-model) REVIEW_MODEL=$2; shift 2 ;;

@@ -276,6 +276,23 @@ describe('quarantine', () => {
     expect(changed.summary).toMatchObject({ total: 1, quarantined: 0 });
   });
 
+  it.each(['mdx', 'json'])('plans quarantined %s units as pending with retryQuarantined', kind => {
+    const source = kind === 'mdx' ? DOC : JSON_SOURCE;
+    const target = kind === 'mdx' ? TARGET : JSON_TARGET;
+    const hash = kind === 'mdx' ? unitHash(['paragraph', '', '', PARAGRAPH].join('\0')) : jsonHash('first', PARAGRAPH);
+    if (kind === 'mdx') addDoc(DOC, PARAGRAPH + '\n\n' + EDITED, null);
+    else write(source, { first: PARAGRAPH, second: EDITED });
+    commitFixtures();
+    writeState(rootDir, { [target]: { attempts: { [hash]: 3 } } });
+    const retry = schedule({ retryQuarantined: true });
+    expect(retry.plan.quarantined).toEqual([]);
+    expect(retry.plan.targets[0].pending).toEqual([0, 1]);
+    expect(retry.summary).toMatchObject({ total: 2, quarantined: 0 });
+    const daily = schedule();
+    expect(daily.plan.targets[0].pending).toEqual([1]);
+    expect(daily.summary).toMatchObject({ total: 1, quarantined: 1 });
+  });
+
   it('does not let quarantined changed text raise a page ahead of English backlog', () => {
     addDoc();
     const backlog = 'versioned_docs/version-1.x/a-backlog.mdx';
@@ -521,6 +538,19 @@ describe('worklist CLI', () => {
     const planFile = path.join(rootDir, 'plan.json');
     runCli(['--root', rootDir, '--out', out, '--plan', planFile, '--locale', 'de', '--max-units', '1', '--first', first]);
     expect(JSON.parse(fs.readFileSync(planFile, 'utf8'))).toEqual(schedule({ maxUnits: 1, first: [first] }).plan);
+  });
+
+  it('writes the plan with quarantined units retried for --retry-quarantined, which takes no value', () => {
+    addDoc(DOC, PARAGRAPH + '\n\n' + EDITED, null);
+    commitFixtures();
+    writeState(rootDir, { [TARGET]: { attempts: { [unitHash(['paragraph', '', '', PARAGRAPH].join('\0'))]: 3 } } });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const out = path.join(rootDir, 'out');
+    const planFile = path.join(rootDir, 'plan.json');
+    runCli(['--root', rootDir, '--out', out, '--plan', planFile, '--retry-quarantined', '--locale', 'de']);
+    const expected = schedule({ retryQuarantined: true }).plan;
+    expect(expected).not.toEqual(schedule().plan);
+    expect(JSON.parse(fs.readFileSync(planFile, 'utf8'))).toEqual(expected);
   });
 
   it.each([
