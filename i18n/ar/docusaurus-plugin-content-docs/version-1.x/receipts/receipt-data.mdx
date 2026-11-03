@@ -21,6 +21,8 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
 
 تضيف بيانات الإيصال v1.1 حقولًا مسجَّلة للسعر الاعتيادي وسعر البيع قبل القسيمة وقيمة التوفير لكل بند منتج. كما توفّر إجماليات توفير على مستوى الطلب، بما فيها قيمة **إجمالي ما تم توفيره** التي تجمع التوفير مقابل السعر الاعتيادي مع خصومات WooCommerce دون تغيير إجماليات الطلب أو التقارير.
 
+تضيف بيانات الإيصال v1.2 الحقل `discount_type` إلى كل صف خصم: نوع قسيمة WooCommerce الذي يستند إليه الخصم.
+
 ## الإيصال، مُخطَّطًا {#receipt-map}
 
 كل جزء من الإيصال المطبوع يأتي من قسم واحد من عقد البيانات. مرّر المؤشر على أي من الجانبين لرؤية التطابق؛ وانقر للانتقال إلى حقول ذلك القسم. وتستخدم جميع الأمثلة في هذه الصفحة الطلب النموذجي نفسه.
@@ -75,37 +77,31 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
     {
       id: 'store',
       anchor: '#store',
-      label: "ترويسة المتجر",
       fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
     },
     {
       id: 'order',
       anchor: '#order',
-      label: "الطلب والأشخاص",
       fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
     },
     {
       id: 'lines',
       anchor: '#lines',
-      label: "بنود المنتجات",
       fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
     },
     {
       id: 'totals',
       anchor: '#totals',
-      label: "كتلة الإجماليات",
       fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
     },
     {
       id: 'payments',
       anchor: '#payments',
-      label: "المدفوعات",
       fields: ['payments[]'],
     },
     {
       id: 'footer',
       anchor: '#store',
-      label: "التذييل",
       fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
     },
   ]}
@@ -160,6 +156,31 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
 {{/lines}}`}
   />
 </Recipes>
+
+## توسيع بيانات الإيصال {#extending}
+
+تحافظ WCPOS على حيادية العقد أعلاه تجاه المورّدين. عندما يحتاج مكوّن إضافي إلى تضمين معلومة لا يمثّلها WooCommerce في الإيصال، يضيفها بنفسه عبر المرشح `woocommerce_pos_receipt_data`، كما تفعل المكونات الإضافية عند ترشيح إجماليات الطلبات الخاصة بـ WooCommerce. يعمل المرشح على كل إيصال ينشئه الخادم: الإيصالات المباشرة، واللقطات المالية عند الدفع، وتنزيلات PDF، وقوالب PHP القديمة.
+
+```php
+add_filter( 'woocommerce_pos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+يمكن للنموذج بعد ذلك استخدام المفتاح الجديد شرطًا كما يفعل مع أي قسم آخر:
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+ينبغي أن تحتفظ المفاتيح المحددة في المخطط بالأنواع الموثقة لها. أما المفاتيح المضافة فليست جزءًا من المخطط، ولذلك لا تظهر في منتقي الحقول بمحرر النماذج، ولا تتضمن اللقطات المالية إلا ما أضافه المرشح وقت دفع الطلب. يتوفر هذا المرشح ابتداءً من WCPOS 1.10.8.
 
 ## قواعد العرض {#rendering-rules}
 
@@ -251,11 +272,6 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
     { kind: 'coupon', amount: 1.45, label: "1.45" },
     { kind: 'savings', amount: 2.5, label: "2.50" },
   ]}
-  keys={[
-    { kind: 'paid', title: "ما يدفعه العميل", fields: 'unit_price → 13.05 · line_total → 26.10' },
-    { kind: 'coupon', title: "خصم القسيمة (SUMMER10)", fields: 'lines[].discounts → 2.90 on this line' },
-    { kind: 'savings', title: "التوفير مقابل السعر الاعتيادي", fields: 'unit_savings → 2.50 · line_savings → 5.00' },
-  ]}
   summary={[
     { label: "توفير العروض عبر الطلب", value: '`totals.sale_savings_total` = 5.00' },
     { label: "جميع خصومات القسائم عبر الطلب", value: '`totals.discount_total` = 5.28' },
@@ -276,8 +292,8 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
 
 | الحقل | النوع | مثال / وصف |
 |-------|------|-----------------------|
-| `order.id` | number | `1234` |
-| `order.number` | string | رقم الطلب الظاهر للعميل، مثل `"10045"` |
+| `order.id` | رقم | `1042` |
+| `order.number` | سلسلة نصية | رقم الطلب المعروض للمستخدم، مثل `"1042"` |
 | `order.currency` | string | رمز العملة وفق معيار ISO، مثل `"USD"` |
 | `order.customer_note` | string | ملاحظة العميل/الطلب |
 | `order.wc_status` | string | رمز حالة WooCommerce الأصلي، مثل `"processing"` |
@@ -375,7 +391,6 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
 
 <FieldIndex
   note="يأتي كل حقل مالي في صورة زوج: الرقم (استخدمه في حراس `{{#…}}` — إذ يخفي الصفر و`null` القسم، ولا يملك الحقل ذو القيمة `null` توأمًا بامتداد `_display` أصلًا) وسلسلة `_display` الخاصة به (استخدمها للطباعة). أما الحقول الموسومة بـ incl/excl فتأتي أيضًا بصيغتَي `_incl` و`_excl`، ولكل منهما `_display` خاص بها."
-  placeholder="تصفية الحقول… جرّب savings"
   emptyText="لا حقول مطابقة — امسح عامل التصفية لعرض كل `lines[]`."
   fields={[
     { name: 'key', type: 'string', desc: "مفتاح البند الثابت / معرّف عنصر الطلب.", sample: [{ k: 'key', v: '"412"', str: true }] },
@@ -531,9 +546,12 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
 |-------|------|-------------|
 | `label` | string | وصف القسيمة أو الرمز كقيمة بديلة |
 | `code` | string | رمز القسيمة |
+| `discount_type` | سلسلة نصية | رمز نوع قسيمة WooCommerce، مثل `fixed_cart` أو `percent` أو `fixed_product`. يكون فارغًا إذا لم تعد القسيمة موجودة. |
 | `total` / `_incl` / `_excl` | number | مبلغ الخصم كقيمة موجبة |
 
 الصيغ المنسّقة: `total_display` و`total_incl_display` و`total_excl_display`. أضف علامة السالب الخاصة بك في القالب إذا أردت عرض الخصومات كصفوف سالبة.
+
+أُضيف `discount_type` في بيانات الإيصال v1.2. لا تحتوي لقطات الإيصالات المالية المأخوذة قبل ذلك على هذا الحقل.
 
   </AccordionItem>
 
@@ -545,7 +563,6 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
 
 <FieldIndex
   note="تتبع الحقول المالية التزاوج نفسه المتّبع في بنود المنتجات: رقم مجرّد للحراس وسلسلة `_display` للطباعة، مع صيغتَي `_incl`/`_excl` حيثما وُسمت بذلك."
-  placeholder="تصفية الحقول… جرّب saved"
   emptyText="لا حقول مطابقة — امسح عامل التصفية لعرض كل `totals`."
   fields={[
     {
@@ -751,6 +768,8 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
 | `presentation_hints.price_display_suffix` | string | لاحقة عرض السعر في WooCommerce |
 | `presentation_hints.order_barcode_type` | string | نوع الباركود المستخدم في قوالب المعرض |
 
+تعرض الحقول المالية المنسقة مسبقًا (قيم `*_display` مثل `totals.total_display`) المبالغ مع **رمز العملة** بعملة الطلب، مستخدمةً الموضع والفواصل المذكورة أعلاه؛ لذلك تعرض الإيصالات `$12.00` لا `USD 12.00`. ويظل الحقل الخام `order.currency` رمز ISO لاستخدامه في أي منطق داخل نموذجك.
+
   </AccordionItem>
 
   <AccordionItem question="i18n — التسميات المترجمة">
@@ -765,7 +784,7 @@ import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/sr
 {{i18n.total}}: {{totals.total_display}}
 ```
 
-تتضمّن المفاتيح الشائعة `order` و`date` و`cashier` و`customer` و`item` و`sku` و`qty` و`unit_price` و`discount` و`subtotal` و`total` و`tax` و`paid` و`tendered` و`change` و`tax_summary` و`refunded` و`net_total` و`customer_note` و`thank_you_purchase` و`opening_hours`، ومفاتيح تسميات المعرّف الضريبي مثل `store_tax_id_label_eu_vat` و`customer_tax_id_label_other`. يمكن أن تضيف الإضافات مفاتيح إضافية.
+تشمل المفاتيح الشائعة `order` و`date` و`cashier` و`customer` و`item` و`sku` و`qty` و`unit_price` و`regular_price` و`selling_price` و`savings` و`discount` و`subtotal` و`total_saved` و`total` و`tax` و`paid` و`tendered` و`change` و`tax_summary` و`refunded` و`net_total` و`customer_note` و`thank_you_purchase` و`opening_hours`، ومفاتيح تسميات معرّف الضريبة مثل `store_tax_id_label_eu_vat` و`customer_tax_id_label_other`. قد تضيف الإضافات مفاتيح أخرى.
 
   </AccordionItem>
 </Accordion>
