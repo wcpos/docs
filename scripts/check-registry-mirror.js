@@ -42,7 +42,7 @@ const path = require('path');
 const fs = require('fs');
 
 const REGISTRY_URL =
-  'https://raw.githubusercontent.com/wcpos/monorepo/next/packages/utils/src/logger/error-registry.json';
+  'https://raw.githubusercontent.com/wcpos/monorepo/main/packages/utils/src/logger/error-registry.json';
 const MANIFEST = path.join(__dirname, '../src/data/error-catalogue.json');
 /** The facts ErrorMeta renders — the only fields the catalogue mirrors. */
 const MIRRORED_FIELDS = ['symbol', 'domain', 'severity', 'introducedIn'];
