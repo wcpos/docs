@@ -1,0 +1,78 @@
+---
+title: Cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Verhindern Sie, dass die Sicherheitsprüfungen von Cloudflare die Verbindung der WCPOS-App zu Ihrer Filiale blockieren."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+
+Cloudflare schützt Ihre Website, indem Besucher vor dem Zugriff eine Sicherheitsprüfung bestehen müssen. Ein Browser besteht diese Prüfung unbemerkt. Die WCPOS-App ist kein Browser: Sie kommuniziert mit der REST API Ihrer Filiale. Wenn Cloudflare auf diese Anfragen mit einer Seite zur Sicherheitsprüfung statt mit Daten antwortet, kann die App keine Verbindung herstellen.
+
+Auf dieser Seite erfahren Sie, wie Sie das Problem erkennen und Cloudflare so konfigurieren, dass die App Zugriff erhält. Alle Schritte richten sich an den Filialinhaber oder die Person, die das Cloudflare-Konto der Website verwaltet.
+
+## Problem erkennen {#how-to-recognise-it}
+
+- Auf dem Verbindungsbildschirm wird **„This store's hosting setup is blocking the app“** mit dem Fehlercode [HOST121](/error-codes/HOST121) angezeigt.
+- Während der Verbindung oder Synchronisierung öffnet die Desktop-App ein kleines Fenster mit dem Titel **„Security check for your-store.com“**.
+- Ältere Versionen meldeten bei einer eindeutig erreichbaren Website **„Site does not seem to be a WordPress site“** oder **„The site took too long to respond“**.
+- Das Drucken über die Cloud wird mit der Meldung „security service is blocking WCPOS Cloud Print“ angehalten.
+
+Öffnen Sie zur Bestätigung ein Terminal und führen Sie Folgendes aus:
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+Eine blockierte Filiale antwortet mit dem Status `403` und einem Header `cf-mitigated: challenge`. Eine funktionierende Filiale antwortet mit `200` und `content-type: application/json`. Bei `404` verwendet Ihre Website keine sprechenden Permalinks; führen Sie dieselbe Prüfung stattdessen mit `'https://your-store.com/?rest_route=/'` aus. Liegt WordPress in einem Unterverzeichnis, geben Sie dieses mit an: `https://example.com/shop/wp-json/`.
+
+:::note Die Desktop-App kann eine einmalige Prüfung bestehen
+Aktuelle Versionen der Desktop-App bestehen die Cloudflare-Prüfung nach Möglichkeit in einem kleinen Fenster. So können Sie weiterarbeiten, aber die von Cloudflare erteilte Freigabe läuft ab (standardmäßig nach 30 Minuten), und die Prüfung erscheint erneut. Betrachten Sie das Fenster als vorübergehende Lösung und wenden Sie den folgenden Fix an.
+:::
+
+## Welche Cloudflare-Funktion ist die Ursache? {#which-feature}
+
+Der Fix hängt davon ab, welche Funktion die App-Prüfung auslöst. Prüfen Sie die folgenden Einstellungen im Cloudflare-Dashboard Ihrer Website. Cloudflare hat seine Menüs mehrfach geändert; der frühere Menüpfad steht in Klammern.
+
+| Funktion | Menüpfad | Kann die API ausgenommen werden? |
+| --- | --- | --- |
+| **Bot Fight Mode** (Free-Tarif) | Security → Settings → Bot traffic (früheres Dashboard: Security → Bots) | **Nein.** Skip- oder Allow-Regeln können diese Funktion nicht umgehen. Deaktivieren Sie sie oder wechseln Sie zu Pro und verwenden Sie Super Bot Fight Mode, der durch die folgende Skip-Regel ausgenommen werden kann. |
+| **Under Attack Mode** | Umschalter „Under Attack Mode“ in der Website-Übersicht oder Security → Settings | Ja. Die folgende Skip-Regel überspringt Security Level, das durch Under Attack Mode erhöht wird. Oder deaktivieren Sie Under Attack Mode, sobald der Angriff vorüber ist. |
+| **Super Bot Fight Mode** (Pro und höher) | Security → Settings → Bot traffic (früheres Dashboard: Security → Bots) | Ja, mit der folgenden Skip-Regel. |
+| **Benutzerdefinierte oder verwaltete WAF-Regeln** mit der Aktion _Managed Challenge_ | Security → Security rules (früheres Dashboard: Security → WAF) | Ja, mit der folgenden Skip-Regel, die oberhalb aller benutzerdefinierten Regeln platziert wird, die eine Prüfung auslösen. Verwaltete Regeln werden immer nach benutzerdefinierten Regeln ausgeführt; ihre Reihenfolge spielt daher keine Rolle. |
+
+Mit dem offiziellen Cloudflare-Plugin für WordPress lassen sich Under Attack Mode umschalten und die WAF aktivieren. Skip-Regeln können damit jedoch nicht erstellt werden; diese befinden sich im Cloudflare-Dashboard.
+
+## Skip-Regel für die REST API hinzufügen {#add-a-skip-rule}
+
+Dieser Fix eignet sich für alle Fälle außer Bot Fight Mode. Er weist Cloudflare an, Anfragen an die REST API Ihrer Filiale nicht zu prüfen. Die eigenen Anmelde- und Berechtigungsprüfungen von WordPress schützen diese Endpunkte weiterhin.
+
+1. Öffnen Sie im Cloudflare-Dashboard Ihre Website und dann **Security → Security rules** (früheres Dashboard: **Security → WAF → Custom rules**). Wählen Sie anschließend **Create rule → Custom rules**.
+2. Geben Sie der Regel den Namen `WCPOS REST API`.
+3. Wählen Sie unter **When incoming requests match** die Option **Edit expression** und fügen Sie Folgendes ein:
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   Die zweite Hälfte erfasst die WordPress-Ausweichadresse `/?rest_route=/...` und gilt nur für den Stammpfad der Website. Eine Zeichenfolge `rest_route=` in der Abfrage einer anderen Seite hebt deren Schutz daher nicht auf. Liegt WordPress in einem Unterverzeichnis wie `https://example.com/shop`, verwenden Sie `/shop/wp-json/` und `/shop/` anstelle von `/wp-json/` und `/`.
+
+4. Wählen Sie unter **Then take action** die Option **Skip**.
+5. Aktivieren Sie **All remaining custom rules**. Wählen Sie in der Liste der zu überspringenden Komponenten **All Super Bot Fight Mode rules** und **Security Level** aus. Aktivieren Sie **All managed rules** nur, wenn eine verwaltete Regel die Prüfung auslöst, und lassen Sie Einträge mit dem Vermerk „(Previous version)“ unverändert.
+6. Aktivieren Sie die Regel. Wenn andere benutzerdefinierte Regeln Anfragen prüfen oder blockieren, muss diese Regel oberhalb davon stehen.
+
+Führen Sie die `curl`-Prüfung erneut aus. Der Header `cf-mitigated` sollte nicht mehr vorhanden sein, und die Antwort sollte JSON enthalten.
+
+:::tip Free-Tarif und Bot Fight Mode
+Wenn die `curl`-Prüfung nach der Skip-Regel weiterhin eine Sicherheitsprüfung anzeigt und **Bot Fight Mode** aktiviert ist, ist Bot Fight Mode die Ursache. Im Free-Tarif besteht die einzige Lösung darin, die Funktion unter Security → Settings → Bot traffic zu deaktivieren. Die Cloudflare-Dokumentation bestätigt, dass keine Regel sie umgehen kann. Wenn Bot Fight Mode bereits deaktiviert ist, lesen Sie [Weiterhin blockiert?](#still-blocked).
+:::
+
+## Caching {#caching}
+
+Cloudflare kann auch Antworten der REST API zwischenspeichern, sodass die App veraltete Produkte und Bestellungen anzeigt. Die obige Skip-Regel ändert nichts am Caching. Wenn Sie den Cloudflare-Cache für HTML-Seiten oder Automatic Platform Optimization verwenden, fügen Sie eine **Cache Rule** hinzu, die für denselben Ausdruck **Bypass cache** festlegt.
+
+## Weiterhin blockiert? {#still-blocked}
+
+Prüfen Sie, ob die Skip-Regel aktiviert und nicht nur als Entwurf gespeichert ist und ob keine IP-Access-Regel das Netzwerk des POS blockiert. Andere Dienste vor Ihrer Website verhalten sich ähnlich wie Cloudflare: Informationen zu Sicherheits-Plugins finden Sie unter [Plugin-Konflikte](/support/troubleshooting/plugin-conflicts), Hinweise zu GoDaddy, WP Engine und anderen Anbietern in den [Hosting-Hinweisen](/support/performance/server#hosting-specific-notes).
+
+<SupportContact />

@@ -15,7 +15,10 @@ Check each translation:
 
 1. **Fidelity.** Back-translate it in your head. Does it say what the English says, with
    nothing added or dropped, and every number, code span, URL, placeholder and link
-   identical?
+   identical? In a substitution or comparison ("use `A` in place of `B`", "replace `B`
+   with `A`", "`A` instead of `B`"), check which value the translation tells the reader
+   to use. The code spans must keep their roles, even when the locale's grammar puts
+   them in a different order from the English.
 2. **Consistency.** Same register and reader address as the existing localized page and
    the locale notes; the same terms and UI labels the existing translation uses for the
    same things; pinned glossary labels for bolded UI elements; order-status names from the
