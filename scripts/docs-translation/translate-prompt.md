@@ -70,6 +70,12 @@ Write exactly one JSON file per packet at the given results path:
 - Write natural documentation prose in the target language, not English word order. Use
   the locale's professional software-documentation register and the reader address in
   the locale notes.
+- Keep the direction of every substitution and comparison. In "use `/shop/wp-json/` in
+  place of `/wp-json/`" the reader must type `/shop/wp-json/`, and the translation must
+  still tell them to. Many locales put "instead of" before the thing to use (の代わりに,
+  대신, की जगह, 将…替换为), so the code spans often belong in the opposite order from the
+  English. Place each code span by its meaning, not its English position, then
+  back-translate the sentence to check which value the reader is told to use.
 - A **bolded** name of a button, tab or field is a UI label: use the pinned glossary
   value, else the label the existing translation uses. The same English word can be two
   elements with different labels (the POS **Checkout** button vs. the WP-Admin
