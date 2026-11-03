@@ -1,0 +1,78 @@
+---
+title: Cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Cloudflareのセキュリティチェックによって、WCPOSアプリから店舗への接続がブロックされないようにします。"
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+
+Cloudflareは、訪問者にセキュリティチェックを通過させてからサイトへのアクセスを許可することで、サイトを保護します。ブラウザーはそのチェックを画面に表示せずに通過します。WCPOSアプリはブラウザーではありません。店舗のREST APIに接続するため、Cloudflareがデータの代わりにセキュリティチェックのページを返すと、アプリは接続できません。
+
+このページでは、問題の見分け方と、アプリがアクセスできるようCloudflareを設定する方法を説明します。ここで説明する手順はすべて、店舗のオーナーまたはサイトのCloudflareアカウント管理者向けです。
+
+## 問題の見分け方 {#how-to-recognise-it}
+
+- 接続画面にエラーコード[HOST121](/error-codes/HOST121)とともに **「この店舗のホスティング設定によりアプリがブロックされています」** と表示されます。
+- 接続中または同期中に、デスクトップアプリで **「your-store.com のセキュリティチェック」** という小さなウィンドウが開きます。
+- 明らかにオンラインのサイトで、以前のバージョンでは **「WordPressサイトではないようです」**または**「サイトの応答に時間がかかりすぎています」** と報告されていました。
+- クラウド印刷が停止し、「セキュリティサービスがWCPOS Cloud Printをブロックしています」というメッセージが表示されます。
+
+確認するには、ターミナルを開いて次を実行します。
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+ブロックされた店舗では、`403`ステータスと`cf-mitigated: challenge`ヘッダーが返されます。正常な店舗では、`200`と`content-type: application/json`が返されます。`404`が返された場合、サイトではパーマリンクが有効になっていません。同じ確認を`'https://your-store.com/?rest_route=/'`に対して実行してください。WordPressがサブフォルダーにある場合は、`https://example.com/shop/wp-json/`のようにサブフォルダーを含めてください。
+
+:::note デスクトップアプリは一時的なチェックを通過できます
+デスクトップアプリの最近のバージョンでは、可能な場合、Cloudflareのチェックを小さなウィンドウ内で完了します。これにより販売を続けられますが、Cloudflareが発行する許可は（デフォルトでは30分で）期限切れとなり、チェックが再び表示されます。このウィンドウは一時しのぎとして扱い、以下の修正を適用してください。
+:::
+
+## 原因となっているCloudflare機能を特定する {#which-feature}
+
+修正方法は、アプリにチャレンジを要求している機能によって異なります。サイトのCloudflareダッシュボードで以下を確認してください。Cloudflareはメニューを変更しているため、旧メニューの場所も括弧内に記載しています。
+
+| 機能 | 場所 | APIを除外できるか？ |
+| --- | --- | --- |
+| **Bot Fight Mode**（Freeプラン） | Security → Settings → Bot traffic（旧ダッシュボード: Security → Bots） | **いいえ。** Cloudflareでは、SkipルールやAllowルールでこの機能を回避できません。無効にするか、Proにアップグレードして、以下のSkipルールで除外できるSuper Bot Fight Modeを使用してください。 |
+| **Under Attack Mode** | サイトのOverviewにある「Under Attack Mode」切り替え、またはSecurity → Settings | はい。以下のSkipルールで、Under Attack Modeが引き上げるSecurity Levelをスキップできます。または、攻撃の収束後にUnder Attack Modeを無効にしてください。 |
+| **Super Bot Fight Mode**（Pro以上） | Security → Settings → Bot traffic（旧ダッシュボード: Security → Bots） | はい。以下のSkipルールで除外できます。 |
+| _Managed Challenge_に設定された**WAFカスタムルールまたはマネージドルール** | Security → Security rules（旧ダッシュボード: Security → WAF） | はい。以下のSkipルールを、チャレンジを要求するカスタムルールより上に配置して除外できます。マネージドルールは常にカスタムルールの後に実行されるため、順序は関係ありません。 |
+
+Cloudflare公式のWordPressプラグインでは、Under Attack Modeの切り替えやWAFの有効化はできますが、Skipルールは作成できません。SkipルールはCloudflareダッシュボードで設定します。
+
+## REST API用のSkipルールを追加する {#add-a-skip-rule}
+
+Bot Fight Mode以外のすべてのケースに対する修正方法です。店舗のREST APIへのリクエストにチャレンジを要求しないようCloudflareに指示します。これらのエンドポイントは引き続き、WordPress独自のログインと権限チェックで保護されます。
+
+1. Cloudflareダッシュボードでサイトを開き、**Security → Security rules**（旧ダッシュボード: **Security → WAF → Custom rules**）を開いて、**Create rule → Custom rules**を選択します。
+2. ルール名を`WCPOS REST API`にします。
+3. **When incoming requests match**で**Edit expression**を選択し、次を貼り付けます。
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   後半の条件はWordPressのフォールバックアドレス`/?rest_route=/...`に一致し、サイトのルートに限って適用されます。そのため、ほかのページのクエリに含まれる`rest_route=`文字列によって、そのページの保護が無効になることはありません。WordPressが`https://example.com/shop`のようなサブフォルダーにある場合は、`/shop/wp-json/`と`/shop/`の代わりに`/wp-json/`と`/`を使用してください。
+
+4. **Then take action**で**Skip**を選択します。
+5. **All remaining custom rules**にチェックを入れます。スキップするコンポーネントの一覧で、**All Super Bot Fight Mode rules**と**Security Level**にチェックを入れます。マネージドルールがチャレンジの原因である場合に限り、**All managed rules**にもチェックを入れてください。「(Previous version)」と表示された項目はそのままにします。
+6. ルールをデプロイします。チャレンジまたはブロックを行うほかのカスタムルールがある場合は、このルールがそれらより上に配置されていることを確認してください。
+
+もう一度`curl`で確認します。`cf-mitigated`ヘッダーがなくなり、JSONが返されるはずです。
+
+:::tip FreeプランとBot Fight Mode
+Skipルールを設定しても`curl`の確認で引き続きチャレンジが表示され、**Bot Fight Mode**が有効な場合は、Bot Fight Modeが原因です。Freeプランでの唯一の解決方法は、Security → Settings → Bot trafficで無効にすることです。Cloudflareの公式ドキュメントでも、ルールで回避できないことが説明されています。Bot Fight Modeがすでに無効の場合は、[まだブロックされる場合](#still-blocked)を参照してください。
+:::
+
+## キャッシュ {#caching}
+
+CloudflareがREST APIの応答をキャッシュすると、アプリに古い商品や注文が表示されることがあります。上記のSkipルールではキャッシュ設定は変更されません。HTMLページのキャッシュまたはAutomatic Platform OptimizationにCloudflareを使用している場合は、同じ式に対して**Bypass cache**を設定する**Cache Rule**を追加してください。
+
+## まだブロックされますか？ {#still-blocked}
+
+Skipルールが下書き保存ではなくデプロイ済みであること、またIP Accessルールによってレジのネットワークがブロックされていないことを確認してください。サイトの前段にあるほかのサービスもCloudflareと同様に動作します。セキュリティプラグインについては[プラグインの競合](/support/troubleshooting/plugin-conflicts)、GoDaddyやWP Engineなどについては[ホスティングに関する注意事項](/support/performance/server#hosting-specific-notes)を参照してください。
+
+<SupportContact />

@@ -1,0 +1,78 @@
+---
+title: Cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Voorkom dat de beveiligingscontroles van Cloudflare de verbinding van de WCPOS-app met je winkel blokkeren."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+
+Cloudflare beschermt je site door bezoekers een beveiligingscontrole te laten uitvoeren voordat ze worden toegelaten. Een browser doorloopt die controle ongemerkt. De WCPOS-app is geen browser: de app communiceert met de REST API van je winkel. Als Cloudflare die verzoeken beantwoordt met een beveiligingspagina in plaats van gegevens, kan de app geen verbinding maken.
+
+Op deze pagina lees je hoe je het probleem herkent en Cloudflare toestaat de app door te laten. Alle stappen zijn bedoeld voor de winkeleigenaar of degene die het Cloudflare-account van de site beheert.
+
+## Zo herken je het {#how-to-recognise-it}
+
+- Op het verbindingsscherm staat **"De hostingconfiguratie van deze winkel blokkeert de app"** met foutcode [HOST121](/error-codes/HOST121).
+- Tijdens het verbinden of synchroniseren opent de desktopapp een klein venster **"Beveiligingscontrole voor your-store.com"**.
+- Oudere versies meldden **"De site lijkt geen WordPress-site te zijn"** of **"De site reageerde te traag"** bij een site die duidelijk online is.
+- Cloud printen stopt met de melding "een beveiligingsservice blokkeert WCPOS Cloud Print".
+
+Voer ter bevestiging deze opdracht uit in een terminal:
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+Een geblokkeerde winkel antwoordt met status `403` en de header `cf-mitigated: challenge`. Een goed werkende winkel antwoordt met `200` en `content-type: application/json`. Krijg je `404`, dan gebruikt je site geen mooie permalinks; voer dezelfde controle uit met `'https://your-store.com/?rest_route=/'`. Staat WordPress in een submap, voeg die dan toe: `https://example.com/shop/wp-json/`.
+
+:::note De desktopapp kan een eenmalige controle doorlopen
+Recente versies van de desktopapp doorlopen de controle van Cloudflare waar mogelijk in een klein venster. Zo kun je blijven verkopen, maar de toestemming die Cloudflare verleent verloopt (standaard na 30 minuten) en daarna verschijnt de controle opnieuw. Beschouw het venster als een tijdelijke oplossing en pas de onderstaande oplossing toe.
+:::
+
+## Welke Cloudflare-functie veroorzaakt dit? {#which-feature}
+
+De oplossing hangt af van de functie die de app controleert. Controleer deze functies in het Cloudflare-dashboard van je site. Cloudflare heeft de menu's verplaatst; de oude locatie staat tussen haakjes.
+
+| Functie | Locatie | Kan de API worden uitgezonderd? |
+| --- | --- | --- |
+| **Bot Fight Mode** (Free-abonnement) | Security → Settings → Bot traffic (ouder dashboard: Security → Bots) | **Nee.** Cloudflare staat niet toe dat Skip- of Allow-regels deze functie omzeilen. Schakel de functie uit of upgrade naar Pro en gebruik Super Bot Fight Mode, die je met de onderstaande Skip-regel kunt uitzonderen. |
+| **Under Attack Mode** | De schakelaar "Under Attack Mode" op het siteoverzicht, of Security → Settings | Ja. De onderstaande Skip-regel slaat Security Level over, dat door Under Attack Mode wordt verhoogd. Je kunt Under Attack Mode ook uitschakelen zodra de aanval voorbij is. |
+| **Super Bot Fight Mode** (Pro en hoger) | Security → Settings → Bot traffic (ouder dashboard: Security → Bots) | Ja, met de onderstaande Skip-regel. |
+| **Aangepaste of beheerde WAF-regels** ingesteld op _Managed Challenge_ | Security → Security rules (ouder dashboard: Security → WAF) | Ja, met de onderstaande Skip-regel. Plaats deze boven aangepaste regels die een controle uitvoeren. Beheerde regels worden altijd na aangepaste regels uitgevoerd, dus de volgorde daarvan maakt niet uit. |
+
+Met de officiële Cloudflare WordPress-plug-in kun je Under Attack Mode in- en uitschakelen en de WAF activeren, maar geen Skip-regels aanmaken. Die beheer je in het Cloudflare-dashboard.
+
+## Een Skip-regel toevoegen voor de REST API {#add-a-skip-rule}
+
+Dit is de oplossing voor alle gevallen behalve Bot Fight Mode. Hiermee voorkom je dat Cloudflare verzoeken aan de REST API van je winkel controleert. De eigen aanmeldings- en machtigingscontroles van WordPress blijven deze eindpunten beschermen.
+
+1. Open in het Cloudflare-dashboard je site, ga naar **Security → Security rules** (ouder dashboard: **Security → WAF → Custom rules**) en kies **Create rule → Custom rules**.
+2. Geef de regel de naam `WCPOS REST API`.
+3. Kies onder **When incoming requests match** de optie **Edit expression** en plak:
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   De tweede helft komt overeen met het terugvaladres van WordPress, `/?rest_route=/...`, en geldt alleen voor de hoofdmap van de site. Zo zorgt een `rest_route=`-tekst in de query van een andere pagina er niet voor dat de beveiliging voor die pagina wordt uitgeschakeld. Staat WordPress in een submap, zoals `https://example.com/shop`, gebruik dan `/shop/wp-json/` en `/shop/` in plaats van `/wp-json/` en `/`.
+
+4. Kies onder **Then take action** de optie **Skip**.
+5. Vink **All remaining custom rules** aan. Vink in de lijst met over te slaan onderdelen **All Super Bot Fight Mode rules** en **Security Level** aan. Vink **All managed rules** alleen aan als een beheerde regel de controle uitvoert en laat vermeldingen met "(Previous version)" ongemoeid.
+6. Implementeer de regel. Als andere aangepaste regels verzoeken controleren of blokkeren, zorg er dan voor dat deze regel erboven staat.
+
+Voer de `curl`-controle opnieuw uit. De header `cf-mitigated` hoort verdwenen te zijn en het antwoord moet JSON bevatten.
+
+:::tip Free-abonnement en Bot Fight Mode
+Als de `curl`-controle na de Skip-regel nog steeds een controle toont en **Bot Fight Mode** is ingeschakeld, is Bot Fight Mode de oorzaak. Op het Free-abonnement is de enige oplossing om deze functie uit te schakelen via Security → Settings → Bot traffic. De documentatie van Cloudflare bevestigt dat geen enkele regel deze functie kan omzeilen. Staat Bot Fight Mode al uit, bekijk dan [Nog steeds geblokkeerd?](#still-blocked).
+:::
+
+## Caching {#caching}
+
+Cloudflare kan ook REST API-antwoorden cachen, waardoor de app verouderde producten en bestellingen toont. De bovenstaande Skip-regel wijzigt de caching niet. Gebruik je de cache van Cloudflare voor HTML-pagina's of Automatic Platform Optimization, voeg dan een **Cache Rule** toe die voor dezelfde expressie **Bypass cache** instelt.
+
+## Nog steeds geblokkeerd? {#still-blocked}
+
+Controleer of de Skip-regel is geïmplementeerd en niet als concept is opgeslagen, en of er geen IP Access-regel het netwerk van de kassa blokkeert. Andere diensten vóór je site werken hetzelfde als Cloudflare: bekijk [Pluginconflicten](/support/troubleshooting/plugin-conflicts) voor beveiligingsplug-ins en de [hostingnotities](/support/performance/server#hosting-specific-notes) voor GoDaddy, WP Engine en andere providers.
+
+<SupportContact />

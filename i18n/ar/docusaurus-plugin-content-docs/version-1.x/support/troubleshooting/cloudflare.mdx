@@ -1,0 +1,78 @@
+---
+title: Cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "أوقف فحوصات Cloudflare الأمنية من حظر اتصال تطبيق WCPOS بمتجرك."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+
+يحمي Cloudflare موقعك بأن يطلب من الزوار اجتياز فحص أمني قبل السماح لهم بالوصول إليه. يجتاز المتصفح هذا الفحص بصمت. لكن تطبيق WCPOS ليس متصفحًا؛ فهو يتصل بـ REST API الخاص بمتجرك، وعندما يرد Cloudflare على هذه الطلبات بصفحة فحص أمني بدلًا من البيانات، يتعذر على التطبيق الاتصال.
+
+تشرح هذه الصفحة كيفية التعرف على المشكلة وإعداد Cloudflare للسماح للتطبيق بالوصول. جميع الخطوات هنا مخصصة لمالك المتجر أو لمن يدير حساب Cloudflare الخاص بالموقع.
+
+## كيفية التعرف على المشكلة {#how-to-recognise-it}
+
+- تعرض شاشة الاتصال الرسالة **"إعداد استضافة هذا المتجر يحظر التطبيق"** مع رمز الخطأ [HOST121](/error-codes/HOST121).
+- يفتح تطبيق الكمبيوتر نافذة صغيرة بعنوان **"فحص أمني لـ your-store.com"** أثناء الاتصال أو المزامنة.
+- كانت الإصدارات الأقدم تعرض الرسالة **"لا يبدو أن الموقع موقع WordPress"** أو **"استغرق الموقع وقتًا طويلًا جدًا للرد"** رغم أن الموقع متاح بوضوح.
+- تتوقف الطباعة السحابية مع رسالة "خدمة أمنية تحظر WCPOS Cloud Print".
+
+للتأكد، افتح الطرفية ونفّذ:
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+يرد المتجر المحظور برمز الحالة `403` وترويسة `cf-mitigated: challenge`. أما المتجر السليم فيرد بالرمز `200` مع `content-type: application/json`. إذا حصلت على `404`، فهذا يعني أن موقعك لا يستخدم الروابط الدائمة المنسقة؛ أجرِ الفحص نفسه على `'https://your-store.com/?rest_route=/'` بدلًا من ذلك. إذا كان WordPress مثبتًا في مجلد فرعي، فأدرجه: `https://example.com/shop/wp-json/`.
+
+:::note قد يجتاز تطبيق الكمبيوتر فحصًا لمرة واحدة
+تُكمل الإصدارات الحديثة من تطبيق الكمبيوتر فحص Cloudflare في نافذة صغيرة متى أمكن. يتيح لك ذلك مواصلة العمل، لكن الإذن الذي يصدره Cloudflare تنتهي صلاحيته (بعد 30 دقيقة افتراضيًا) ويعود الفحص للظهور. اعتبر هذه النافذة حلًا مؤقتًا وطبّق الإصلاح أدناه.
+:::
+
+## ما ميزة Cloudflare التي تسبب المشكلة؟ {#which-feature}
+
+يعتمد الإصلاح على الميزة التي تفرض الفحص على التطبيق. تحقق من هذه الإعدادات في لوحة تحكم Cloudflare لموقعك. غيّر Cloudflare مواضع قوائمه؛ وقد أُدرج الموضع القديم بين قوسين.
+
+| الميزة | المكان | هل يمكن استثناء API؟ |
+| --- | --- | --- |
+| **وضع مكافحة الروبوتات Bot Fight Mode** (الخطة المجانية) | Security → Settings → Bot traffic (في لوحة التحكم القديمة: Security → Bots) | **لا.** لا يسمح Cloudflare لقواعد Skip أو Allow بتجاوزه. أوقفه، أو رقِّ إلى Pro واستخدم Super Bot Fight Mode الذي يمكن استثناؤه بقاعدة Skip أدناه. |
+| **وضع Under Attack Mode** | مفتاح "Under Attack Mode" في صفحة نظرة عامة على الموقع، أو Security → Settings | نعم. تتجاوز قاعدة Skip أدناه مستوى الأمان Security Level، الذي يرفعه Under Attack Mode. أو أوقف Under Attack Mode بعد انتهاء الهجوم. |
+| **Super Bot Fight Mode** (خطة Pro وما فوقها) | Security → Settings → Bot traffic (في لوحة التحكم القديمة: Security → Bots) | نعم، باستخدام قاعدة Skip أدناه. |
+| **قواعد WAF المخصصة أو المُدارة** المضبوطة على _Managed Challenge_ | Security → Security rules (في لوحة التحكم القديمة: Security → WAF) | نعم، باستخدام قاعدة Skip أدناه، مع وضعها فوق أي قاعدة مخصصة تفرض الفحص. تُنفذ القواعد المُدارة دائمًا بعد القواعد المخصصة، لذا لا يهم ترتيبها. |
+
+يمكن لإضافة Cloudflare الرسمية لـ WordPress تبديل وضع Under Attack Mode وتشغيل WAF، لكنها لا تستطيع إنشاء قواعد Skip. تُدار هذه القواعد من لوحة تحكم Cloudflare.
+
+## إضافة قاعدة Skip لـ REST API {#add-a-skip-rule}
+
+هذا هو الإصلاح لجميع الحالات باستثناء Bot Fight Mode. فهو يطلب من Cloudflare عدم فرض فحص على الطلبات الموجهة إلى REST API الخاص بمتجرك. وتظل نقاط النهاية هذه محمية بعمليات تسجيل الدخول والتحقق من الأذونات الخاصة بـ WordPress.
+
+1. في لوحة تحكم Cloudflare، افتح موقعك، ثم اختر **Security → Security rules** (في لوحة التحكم القديمة: **Security → WAF → Custom rules**) ثم **Create rule → Custom rules**.
+2. سمّها `WCPOS REST API`.
+3. ضمن **When incoming requests match**، اختر **Edit expression** والصق:
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   يتطابق النصف الثاني مع عنوان WordPress الاحتياطي، `/?rest_route=/...`، وذلك في جذر الموقع فقط؛ لذا فإن وجود السلسلة `rest_route=` ضمن استعلام صفحة أخرى لا يعطّل الحماية عن تلك الصفحة. إذا كان WordPress مثبتًا في مجلد فرعي، مثل `https://example.com/shop`، فاستخدم `/shop/wp-json/` و`/shop/` بدلًا من `/wp-json/` و`/`.
+
+4. ضمن **Then take action**، اختر **Skip**.
+5. حدّد **All remaining custom rules**. وفي قائمة المكونات التي ينبغي تخطيها، حدّد **All Super Bot Fight Mode rules** و**Security Level**. حدّد **All managed rules** فقط إذا كانت إحدى القواعد المُدارة هي التي تفرض الفحص، واترك أي إدخال يحمل العلامة "(Previous version)" دون تغيير.
+6. انشر القاعدة. إذا كانت لديك قواعد مخصصة أخرى تفرض الفحص أو الحظر، فتأكد من وضع هذه القاعدة قبلها.
+
+أعِد فحص `curl`. من المفترض أن تختفي الترويسة `cf-mitigated` وأن تكون الاستجابة JSON.
+
+:::tip الخطة المجانية وBot Fight Mode
+إذا ظل فحص `curl` يعرض تحديًا بعد إعداد قاعدة Skip وكان **Bot Fight Mode** مفعّلًا، فهو سبب المشكلة. في الخطة المجانية، الحل الوحيد هو إيقافه من Security → Settings → Bot traffic. تؤكد وثائق Cloudflare الرسمية أن أي قاعدة لا يمكنها تجاوزه. إذا كان Bot Fight Mode متوقفًا بالفعل، فراجع [هل ما زلت محظورًا؟](#still-blocked).
+:::
+
+## التخزين المؤقت {#caching}
+
+يمكن لـ Cloudflare أيضًا تخزين استجابات REST API مؤقتًا، ما يجعل التطبيق يعرض منتجات وطلبات قديمة. لا تؤثر قاعدة Skip أعلاه في التخزين المؤقت. إذا كنت تستخدم ذاكرة Cloudflare المؤقتة لصفحات HTML أو ميزة Automatic Platform Optimization، فأضف **Cache Rule** تضبط **Bypass cache** للتعبير نفسه.
+
+## هل ما زلت محظورًا؟ {#still-blocked}
+
+تحقق من نشر قاعدة Skip وعدم حفظها كمسودة، ومن عدم وجود قاعدة IP Access تحظر شبكة نقطة البيع. تعمل الخدمات الأخرى الموضوعة أمام موقعك بالطريقة نفسها التي يعمل بها Cloudflare: راجع [تعارضات الإضافات](/support/troubleshooting/plugin-conflicts) لإضافات الأمان، و[ملاحظات الاستضافة](/support/performance/server#hosting-specific-notes) بشأن GoDaddy وWP Engine وغيرها.
+
+<SupportContact />
