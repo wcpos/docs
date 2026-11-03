@@ -37,12 +37,17 @@
  * catalogue may still run AHEAD of the registry, so the ordering stays
  * docs-first. Land the docs page before the monorepo PR that adds the code and
  * nothing ever goes red; land the code first and this check is what tells you.
+ *
+ * 2026-11-03: repointed to `main`. The monorepo deleted `next`, and the front desk
+ * ruled, citing Paul's roadmap#195 comment, that nothing targets `next` until 2.0 GA
+ * re-cuts it from `main`, so `main` is the dev trunk for now. When `next` is re-cut,
+ * revisit this: point it back at the lane where new codes are written.
  */
 const path = require('path');
 const fs = require('fs');
 
 const REGISTRY_URL =
-  'https://raw.githubusercontent.com/wcpos/monorepo/next/packages/utils/src/logger/error-registry.json';
+  'https://raw.githubusercontent.com/wcpos/monorepo/main/packages/utils/src/logger/error-registry.json';
 const MANIFEST = path.join(__dirname, '../src/data/error-catalogue.json');
 /** The facts ErrorMeta renders — the only fields the catalogue mirrors. */
 const MIRRORED_FIELDS = ['symbol', 'domain', 'severity', 'introducedIn'];
