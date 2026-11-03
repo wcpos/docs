@@ -1,8 +1,16 @@
 const { parseDocsMdxUnits, applyDocsMdxTranslations } = require('../docs-translation/mdx-units');
 const {
   decodeDocsUnitSource, unitKey, unitFingerprint, alignUnits, pairLooksRight, tableCellCount,
-  recoverTranslations, STRUCTURAL_ISSUE_CODES, CJK_LOCALES,
+  recoverTranslations, STRUCTURAL_ISSUE_CODES, CJK_LOCALES, sourceNumbersKept,
 } = require('../docs-translation/recover');
+
+const ARABIC_NUMBER_CASES = [
+  ['ar dual drops a standalone 2', 'by default a licence activates on **2 domains**.', 'يُفعّل الترخيص افتراضيًا على **نطاقين**.', 'ar', true],
+  ['the dual allowance is ar-only', 'by default a licence activates on **2 domains**.', 'يُفعّل الترخيص افتراضيًا على **نطاقين**.', 'es', false],
+  ['ar rejects a dropped joined number', 'Requires version 1.2 or later.', 'يتطلب الإصدار أو أحدث.', 'ar', false],
+  ['ar rejects a dropped 3', 'Wait 3 days.', 'انتظر أيامًا.', 'ar', false],
+  ['a droppable 2 never covers a required 12', 'Allow 12 then 2.', 'اسمح بـ 2.', 'ar', false],
+];
 
 describe('decodeDocsUnitSource', () => {
   it.each([
@@ -168,6 +176,10 @@ describe('pairLooksRight', () => {
     expect(pairLooksRight({ source: 'Wait 30 days.', translation: 'Espere días.', locale: 'es', file: 'es.mdx' })).toBe(false);
   });
 
+  it.each(ARABIC_NUMBER_CASES)('checks ar numbers: %s', (_name, source, translation, locale, expected) => {
+    expect(pairLooksRight({ source, translation, locale, file: 'ar.mdx' })).toBe(expected);
+  });
+
   it.each([
     ['es', 12, true], ['es', 11, false], ['es', 120, true], ['es', 121, false],
     ['ja', 4, true], ['ja', 3, false], ['ko', 80, true], ['ko', 81, false],
@@ -186,6 +198,15 @@ describe('pairLooksRight', () => {
       'code_block_changed', 'import_changed', 'link_url_changed', 'inline_code_changed',
       'inline_code_punctuation_changed', 'inline_code_spacing_changed', 'protected_term_removed',
     ]);
+  });
+});
+
+describe('sourceNumbersKept', () => {
+  it.each([
+    ...ARABIC_NUMBER_CASES,
+    ['non-ar multiset', '10 then 20.', '20 después de 10.', 'es', true],
+  ])('checks %s', (_name, source, translation, locale, expected) => {
+    expect(sourceNumbersKept(source, translation, locale)).toBe(expected);
   });
 });
 

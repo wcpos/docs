@@ -111,6 +111,33 @@ function alignUnits(oldUnits, targetUnits) {
   return pairs;
 }
 
+// Arabic writes 1 and 2 as the singular or dual form (دقيقة واحدة "1 minute",
+// نطاقين "2 domains"), so an ar translation may drop a standalone 1 or 2. A run
+// joined to another digit run by . , : / - (1.11, 4.2, 1/2, 10:1) is not standalone.
+function isArabicDroppableNumber(english, match) {
+  if (match[0] !== '1' && match[0] !== '2') return false;
+  const start = match.index;
+  const end = start + match[0].length;
+  const joined = (sep, digit) => /[.,:/-]/.test(sep ?? '') && /\d/.test(digit ?? '');
+  return !joined(english[start - 1], english[start - 2]) && !joined(english[end], english[end + 1]);
+}
+
+// apply.js and recover.js share this rule: every source digit run must appear in the
+// translation; extra runs ("three" -> "3") are allowed. In ar a standalone 1 or 2
+// may be dropped (see isArabicDroppableNumber).
+function sourceNumbersKept(source, translation, locale) {
+  const numbers = translation.match(/\d+/g) ?? [];
+  // Required runs are matched first, so a translated 1 or 2 is never spent on a droppable one.
+  const required = [...source.matchAll(/\d+/g)]
+    .filter((match) => !(locale === 'ar' && isArabicDroppableNumber(source, match))).map((match) => match[0]);
+  return required.every((number) => {
+    const index = numbers.indexOf(number);
+    if (index === -1) return false;
+    numbers.splice(index, 1);
+    return true;
+  });
+}
+
 function pairLooksRight({ source, translation, locale, file }) {
   if (translation.trim() === '') return false;
   if (tableCellCount(source) !== tableCellCount(translation)) return false;
@@ -119,14 +146,7 @@ function pairLooksRight({ source, translation, locale, file }) {
     ...validateProtectedTermsInText(source, translation, file),
   ];
   if (issues.some((issue) => STRUCTURAL_ISSUE_CODES.has(issue.code))) return false;
-  // apply.js rule: every source digit run must appear; extra runs ("three" -> "3") are allowed.
-  const translationNumbers = translation.match(/\d+/g) ?? [];
-  if ((source.match(/\d+/g) ?? []).some((number) => {
-    const index = translationNumbers.indexOf(number);
-    if (index === -1) return true;
-    translationNumbers.splice(index, 1);
-    return false;
-  })) return false;
+  if (!sourceNumbersKept(source, translation, locale)) return false;
   if (source.length >= 40) {
     const ratio = translation.length / source.length;
     const [min, max] = CJK_LOCALES.has(locale) ? [0.1, 2] : [0.3, 3];
@@ -160,5 +180,5 @@ function recoverTranslations({ file, locale, oldEnglishPath, oldEnglish, target 
 
 module.exports = {
   decodeDocsUnitSource, unitKey, unitFingerprint, alignUnits, pairLooksRight, tableCellCount,
-  recoverTranslations, STRUCTURAL_ISSUE_CODES, CJK_LOCALES,
+  recoverTranslations, STRUCTURAL_ISSUE_CODES, CJK_LOCALES, isArabicDroppableNumber, sourceNumbersKept,
 };
