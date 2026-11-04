@@ -57,6 +57,19 @@ describe('journeyShotProps', () => {
     expect(pins).toEqual([[21.2, 18.8], [10.5, 51.3]]);
   });
 
+  it('moves a pin with an offset by that many viewport pixels', () => {
+    const offsets = [[30, -22]];
+    const [wide] = props({ device: 'tablet', step: 5, offsets }).pins;
+    // x: (200 + 12 + 30) / 1000 = 24.2%; y: (120 + 30 - 22) / 800 = 16%
+    expect(wide).toEqual([24.2, 16]);
+  });
+
+  it('keeps a pin with no offset entry where it was', () => {
+    const offsets = [[30, -22]];
+    const [, narrow] = props({ device: 'tablet', step: 5, offsets }).pins;
+    expect(narrow).toEqual([10.5, 51.3]); // as with no offsets at all
+  });
+
   it('throws naming device and step when no capture matches', () => {
     const desktop = { device: 'desktop', step: 5 };
     expect(() => props(desktop)).toThrow(/desktop.*step 5/);
