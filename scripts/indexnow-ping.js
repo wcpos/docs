@@ -17,10 +17,10 @@ const MAX_URLS = 10000;
 // Don't let a slow endpoint hold the workflow runner.
 const REQUEST_TIMEOUT_MS = 30000;
 
-// Only the current version (1.x) is built and served at the site root;
-// 0.4.x is noindex, 2.x is unbuilt, docs/ is excluded (includeCurrentVersion: false).
-const EN_RE = /^versioned_docs\/version-1\.x\/(.+)\.mdx?$/;
-const I18N_RE = /^i18n\/([^/]+)\/docusaurus-plugin-content-docs\/version-1\.x\/(.+)\.mdx?$/;
+// Only the current version (2.x) is served at the site root, the URLs this maps
+// to; 1.x lives under /1.x, docs/ is excluded (includeCurrentVersion: false).
+const EN_RE = /^versioned_docs\/version-2\.x\/(.+)\.mdx?$/;
+const I18N_RE = /^i18n\/([^/]+)\/docusaurus-plugin-content-docs\/version-2\.x\/(.+)\.mdx?$/;
 
 function readSlug(fileText) {
   const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fileText || '');

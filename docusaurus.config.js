@@ -313,31 +313,17 @@ module.exports = {
           routeBasePath: '/',
           // Feeds the sitemap lastmod.
           showLastUpdateTime: true,
-          lastVersion: '1.x',
+          // 2.x is the live version, served at the site root. 1.x stays complete
+          // at /1.x, indexed and in the sitemap, for merchants who cannot upgrade
+          // yet: 2.0 needs WooCommerce 9.0 or later (wcpos/roadmap#367). Its
+          // banner is src/theme/DocVersionBanner. 0.4.x is no longer built; its
+          // source stays in git and vercel.json sends /0.4.x/* to the root. Pages
+          // only 1.x has (legacy error codes, the beta guide) redirect from the
+          // root to /1.x in vercel.json, because shipped 1.x apps link to them;
+          // scripts/__tests__/launch-flip.test.js keeps those redirects complete.
+          lastVersion: '2.x',
           includeCurrentVersion: false,
-          // 2.x is CUT BUT NOT BUILT. The next release renumbers 1.11 to 2.0 and
-          // rewrites large parts of the UI, so its pages are authored now, in
-          // versioned_docs/version-2.x, and must not reach the public site before
-          // launch. Omitting '2.x' here means Docusaurus emits no /2.x/ route at
-          // all: nothing to crawl, nothing in the sitemap, nothing in llms.txt,
-          // and no entry in the version dropdown. This is a stronger guarantee
-          // than hiding the dropdown item, which would still ship the HTML.
-          //
-          // AT LAUNCH: add '2.x' to this array and set lastVersion to '2.x', and
-          // redirect /error-codes/(API|DB|PY|SY)* and the group pages
-          // /error-codes/(api|db|py|sy) to their /1.x/error-codes/ equivalents in
-          // vercel.json: 2.x drops the pre-1.10 codes, and shipped 1.9 apps link
-          // to those root URLs.
-          // `pnpm build:preview-2x` builds WITH 2.x so the unbuilt tree cannot
-          // rot unseen in the meantime. The locale-coverage test in
-          // scripts/__tests__/docusaurus-config.test.js fails this change until
-          // every locale has 2.x translated.
-          onlyIncludeVersions: ['1.x', '0.4.x'],
-          // 0.4.x is the 2016-era product: kept reachable for old installs, but out of
-          // search (robots noindex) and out of sitemap.xml.
-          versions: {
-            '0.4.x': {noIndex: true},
-          },
+          onlyIncludeVersions: ['2.x', '1.x'],
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl: 'https://github.com/wcpos/docs/edit/main/',
         },
@@ -347,8 +333,6 @@ module.exports = {
         },
         sitemap: {
           lastmod: 'date',
-          // Belt and braces with versions['0.4.x'].noIndex: no legacy URLs in sitemap.xml.
-          ignorePatterns: ['/0.4.x/**', '/*/0.4.x/**'],
         },
         // Analytics: PostHog (self-hosted) via ./src/analytics/posthog.js,
         // replacing Google Analytics. See plans/2026-06-16-posthog-docs-analytics.md.
@@ -403,7 +387,7 @@ module.exports = {
     //   /llms-full.txt   - the entire docs corpus in a single file
     //   /<route>.md      - a clean Markdown version of every page
     // Works off the rendered HTML, so it always matches what is actually
-    // published (version 1.x at the root) and resolves MDX/partials/icons.
+    // published (version 2.x at the root) and resolves MDX/partials/icons.
     [
       '@signalwire/docusaurus-plugin-llms-txt',
       {
@@ -412,10 +396,9 @@ module.exports = {
         // llms.txt, so it is the first thing an agent reads about WCPOS. Keep it
         // word-for-word identical to the opening paragraph of
         // getting-started/is-wcpos-right-for-you.mdx and getting-started/index.mdx
-        // for the version served at the root (1.x today). AT THE 2.x LAUNCH FLIP
-        // (see lastVersion above) swap in the 2.x wording from those pages.
+        // for the version served at the root (2.x).
         siteDescription:
-          'WCPOS is a point of sale (POS) for WooCommerce. It runs in a web browser or as a Windows, macOS or Linux desktop app, with iOS and Android apps in beta. It sells from the same catalogue, stock and prices as your online store and records every sale as a WooCommerce order. The free plugin takes cash and external card payments and prints receipts; WCPOS Pro adds integrated card readers, refunds, stock editing, order history, reports and multiple stores.',
+          'WCPOS is a point of sale (POS) for WooCommerce. It runs in a web browser or as a Windows, macOS or Linux desktop app, with iOS and Android apps in beta. It sells from the same catalogue, stock and prices as your online store and records every sale as a WooCommerce order. The free plugin takes cash, split and external card payments, runs a cash-drawer register and prints receipts; WCPOS Pro adds integrated card readers, refunds, stock editing, order history, the customer-facing display, and multiple registers and stores.',
         depth: 2,
         enableDescriptions: true,
         // Sidebar order, so the index reads top-down the way a reader would:
@@ -443,8 +426,8 @@ module.exports = {
           enableMarkdownFiles: true,
           enableLlmsFullTxt: true,
           includeDocs: true,
-          // Only the current version (1.x, served at the root). Older versions
-          // (e.g. /0.4.x/) would add stale, contradictory answers for agents.
+          // Only the current version (2.x, served at the root). The /1.x/ pages
+          // would add stale, contradictory answers for agents.
           includeVersionedDocs: false,
           includePages: false,
           includeBlog: false,
@@ -452,7 +435,7 @@ module.exports = {
           // not content; they only add a meaningless '## category' section.
           includeGeneratedIndex: false,
           // Drop the Algolia search page and any older version paths.
-          excludeRoutes: ['/search', '/search/**', '/0.4.x/**'],
+          excludeRoutes: ['/search', '/search/**', '/1.x/**'],
         },
         // Preserve the curated outbound links from the previous hand-written
         // static/llms.txt so agents still see the key entry points.

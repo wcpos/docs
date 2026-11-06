@@ -42,8 +42,9 @@ Notable features:
 
 ```
 versioned_docs/
-  version-1.x/        # ← the live documentation content (MDX), served at the site root
-  version-0.4.x/      # legacy docs
+  version-2.x/        # ← the live documentation content (MDX), served at the site root
+  version-1.x/        # WCPOS 1.x docs, served at /1.x (corrections only)
+  version-0.4.x/      # legacy docs, kept in git but no longer built
 versioned_sidebars/   # checked-in per-version sidebar config
 i18n/                 # translations for all 12 locales
 src/
@@ -56,7 +57,7 @@ docs/                 # internal notes only (ADRs) — NOT site content
 docusaurus.config.js  # site configuration
 ```
 
-> Heads up: the live content is **not** in `docs/` (that folder holds internal ADRs). Because the config sets `lastVersion: '1.x'` and `includeCurrentVersion: false`, all current content is authored under `versioned_docs/version-1.x/` and served at the site root.
+> Heads up: the live content is **not** in `docs/` (that folder holds internal ADRs). Because the config sets `lastVersion: '2.x'` and `includeCurrentVersion: false`, all current content is authored under `versioned_docs/version-2.x/` and served at the site root. 1.x is served at `/1.x` and takes corrections and update notes only.
 
 ## 👩‍💻 Development
 
@@ -85,9 +86,9 @@ pnpm start      # local dev server with hot reload
 
 ## ✍️ Writing docs
 
-1. Add or edit an `.mdx` file under `versioned_docs/version-1.x/<category>/`.
+1. Add or edit an `.mdx` file under `versioned_docs/version-2.x/<category>/`.
 2. Include the required frontmatter — `title`, `sidebar_label`, `sidebar_position`, and optionally `slug` and `description`. Frontmatter is validated at build time.
-3. Update `versioned_sidebars/version-1.x-sidebars.json` when adding or moving pages. The live `1.x` docs are served with `includeCurrentVersion: false`, so new MDX files under `versioned_docs/version-1.x/` are omitted from navigation until this checked-in sidebar JSON is updated or regenerated.
+3. Update `versioned_sidebars/version-2.x-sidebars.json` when adding or moving pages. The live `2.x` docs are served with `includeCurrentVersion: false`, so new MDX files under `versioned_docs/version-2.x/` are omitted from navigation until this checked-in sidebar JSON is updated or regenerated.
 4. Reuse the MDX components in `src/components/` (e.g. `<Steps>`, `<LinkCard>`, `<ProBadge>`) for consistent styling.
 5. Write so a page stands on its own when an AI answer engine quotes one section of it (see `plans/2026-10-22-agent-readable-docs-research.md` for the sources):
    - Open every page, and every H2 section, with the answer in the first one or two sentences.

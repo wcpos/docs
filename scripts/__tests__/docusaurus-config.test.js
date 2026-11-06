@@ -12,7 +12,8 @@ describe('git-backed sitemap freshness', () => {
   it('provides last-update times for sitemap dates', () => {
     expect(preset.docs.showLastUpdateTime).toBe(true);
     expect(preset.sitemap.lastmod).toBe('date');
-    expect(preset.sitemap.ignorePatterns).toContain('/0.4.x/**');
+    // 1.x stays indexed at /1.x for merchants who cannot upgrade yet.
+    expect(preset.sitemap.ignorePatterns || []).not.toContain('/1.x/**');
   });
 });
 
