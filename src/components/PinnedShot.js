@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { linkPinsToLegend } from './pin-legend-link';
 
 /**
  * A screenshot with numbered pins. The numbered legend that explains the pins
@@ -11,8 +12,11 @@ import React from 'react';
  * moves the pins.
  */
 export default function PinnedShot({ src, alt, pins }) {
+  const figureRef = useRef(null);
+  useEffect(() => linkPinsToLegend(figureRef.current), []);
+
   return (
-    <figure className="pinned-shot">
+    <figure className="pinned-shot" ref={figureRef}>
       <img src={src} alt={alt} loading="lazy" />
       {pins.map(([x, y], index) => (
         <span
