@@ -11,6 +11,7 @@ import JourneyShot from '@site/src/components/JourneyShot';
 import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
 import manifest from '@site/static/img/2.x/reference/sync-performance/en/manifest.json';
+import storeHealthManifest from '@site/static/img/2.x/support/store-health/en/manifest.json';
 
 To set how hard a till works your server:
 
@@ -22,14 +23,14 @@ The setting is saved on this device only, for the store it is on, so set each ti
 
 ## If your server still struggles {#troubleshooting}
 
-- **Easing off** or **Paused until …** shows most days — your server is regularly struggling with what it is serving, usually a sign the hosting is short of capacity. Choose **Eco** on each till, and see [Server Performance](../support/performance/server.mdx) for hosting, caching and slow-response checks.
-- **⚠ Needs attention** on the status line — the till is offline, sync is blocked, or records have errors. See [Store health](../support/store-health.mdx#performance).
+- **Easing off** or **Paused until …** shows most days — your server is regularly turning the till away, returning errors or answering slowly, and the pace line says which. Choose **Eco** on each till, and see [Server Performance](../support/performance/server.mdx) for hosting, plugin, firewall and slow-response checks.
+- **⚠ Needs attention** on the status line — the till is offline, sync is blocked, a first download failed, or a sync job's last run failed. See [Store health](../support/store-health.mdx#performance).
 - **Your server doesn't report its load** — nothing is wrong. The pace and the request counts still work.
 - **0.0 MB** next to hundreds of requests — your server doesn't state the size of its answers, so they count as 0. See [What the numbers don't tell you](#honest-limits).
 
 ## The Performance tab, and what sits behind it {#performance-tab}
 
-<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[383, 0], [131, -80], [181, -22], [181, -22], [181, -22], [181, -20], [151, -16], [456, 0]]} alt="Store health's Performance tab: the status line with the last 24 hours, the Engine uptime strip, the Eco, Balanced and Realtime presets, the Check for changes and Records per request sliders, and the Right now line" />
+<JourneyShot manifest={storeHealthManifest} device="tablet" step={5} offsets={[[383, 0], [111, -74], [181, -22], [181, -22], [181, -22], [141, -20], [151, -16], [456, 0]]} alt="Store health's Performance tab: the status line with the last 24 hours, the Engine uptime strip, the Eco, Balanced and Realtime presets, the Check for changes and Records per request sliders, and the Right now line" />
 
 <div className="pinned-legend">
 
@@ -46,7 +47,7 @@ The setting is saved on this device only, for the store it is on, so set each ti
 
 ## Four rules the engine follows {#the-four-rules}
 
-Every till keeps checking your store for changes. Most stores run on shared hosting, where each of those requests starts WordPress from scratch and competes with your website's own visitors. So the POS treats your server's time as something to spend carefully. The rest of this page gives the numbers behind these rules, for store owners and developers; for a walk through the whole tab, see [Store health › Performance](../support/store-health.mdx#performance).
+Every till keeps checking your store for changes. Most stores run on shared hosting, where each of those requests starts WordPress from scratch, competes with your website's own visitors, and can trip a security plugin's rate limit. Every till adds its own checks on top. So the POS treats your server's time as something to spend carefully. The rest of this page gives the numbers behind these rules, for store owners and developers; for a walk through the whole tab, see [Store health › Performance](../support/store-health.mdx#performance).
 
 1. **Cost follows what changed, not how big your catalogue is.** Every check starts with a cheap question, and an unchanged store answers it with an empty reply. An unchanged 50,000-product store costs about the same to keep in sync as an unchanged 500-product store.
 2. **Background work has a ceiling.** Every background maintenance job declares the most requests it may make in one run, and the engine's tests fail if it makes more. Bigger jobs run in small batches and pick up where they left off next time.
@@ -72,11 +73,11 @@ Records per request decides how much work each download is for your server. A pa
 
 - **An unchanged store answers with an empty reply.** The till sends what it last saw, and the server replies `304 Not Modified` with no body. It still counts as one request.
 - **Checks are spread out.** Each wait is between 80% and 120% of your setting, so several tills don't all ask at the same moment. That's why the **Right now** countdown is rarely exactly your setting.
-- **A till nobody is using slows down,** on settings faster than a minute. After 10 minutes with no tap, key press or barcode scan, it steps to a check every 30 seconds, then every 60 seconds. A hidden app goes straight to 60 seconds. Any use brings it back and checks at once. **Balanced** and **Eco** are already at a minute or slower, so they don't change.
+- **A till nobody is using slows down,** on settings faster than a minute. After 10 minutes with no tap, key press or barcode scan, it steps to a check every 30 seconds, then every 60 seconds. A hidden app goes straight to 60 seconds. Any use brings it back and checks at once, unless your server has slowed the till down. **Balanced** and **Eco** are already at a minute or slower, so they don't change.
 
 ### Background maintenance {#maintenance-budgets}
 
-On top of the change checks, a few background jobs keep the till's copy complete and honest: they find records deleted on the server, and fill in what a till hasn't downloaded yet, so it can sell offline. Each run has a fixed ceiling: at most 11 requests, and most jobs make 1.
+On top of the change checks, a few background jobs keep the till's copy complete and honest: they find records deleted on the server, and fill in what a till hasn't downloaded yet, so it can sell offline. Each run has a fixed ceiling: at most 11 requests, and the top-ups make 1.
 
 <Accordion>
 <AccordionItem question="Every background job and its ceiling">
@@ -89,6 +90,7 @@ On top of the change checks, a few background jobs keep the till's copy complete
 | Product top-up, one page in the order the product list is sorted | 5 min | 1 |
 | Customer top-up | 5 min | 1 |
 | Variation download | 5 min | 1 |
+| Server totals for Store health (one count per request, fetched when stale) | 30 s checks | 11 |
 
 </AccordionItem>
 <AccordionItem question="How the deletion audit stays inside 11 requests">
@@ -131,7 +133,7 @@ When the till does slow down, the pace line names the reason. **Easing off — c
 - **… your server returned errors** — several requests failed on the server within a minute.
 - **… requests to your server timed out** — several requests got no answer in time.
 - **… your server was answering slowly** — typical answers are taking more than 2 seconds.
-- **… your server reported high load** — most recent answers came marked as under high load.
+- **… your server reported high load** — most recent answers came marked as under high load, or the load your server reports has doubled.
 
 **Paused until … — your server asked the POS to wait** means your server refused a request and said when to try again. The till waits as asked, up to 15 minutes.
 
@@ -147,6 +149,7 @@ Errors while the device is offline don't count: that's your connection, not your
 | requests … timed out | doesn't answer in time | after 3 within a minute |
 | was answering slowly | answers slowly | when the middle of the last 10 response times is above 2 seconds |
 | reported high load | marks its answers `X-WCPOS-Pressure: high` | on about 6 of the last 10 |
+| reported high load | reports a load at least twice its usual level (and at least 1) | after 2 readings in a row, 2× at most |
 | Paused until … | sends `Retry-After` with a refusal | at once, for up to 15 minutes |
 
 </AccordionItem>
@@ -164,7 +167,7 @@ A server that marks its answers `elevated` or `high` but still answers quickly s
 <AccordionItem question="How far each setting slows, and which maintenance still runs">
 
 - **Each step doubles the wait between checks,** up to about 5 minutes: **Realtime** can slow 32×, **Balanced** 8×, and **Eco** 2× (to 10 minutes). A custom setting slows to 5 minutes, or to twice its own interval if that is longer. A `Retry-After` pause can run past those limits, up to its 15 minutes.
-- **Background maintenance waits.** The [background jobs](#maintenance-budgets) hold off. A job that has waited twice its usual interval (the deletion audit, once) does one run anyway, within its ceiling, unless your server has asked the POS to wait. The deletion audit's run is cut to 1 summary page per kind of record and 1 detail request.
+- **Background maintenance waits.** The [background jobs](#maintenance-budgets) hold off. A job that has waited twice its usual interval (the deletion audit and the fingerprint job, once) does one run anyway, within its ceiling, unless your server has asked the POS to wait. The deletion audit's run is cut to 1 summary page per kind of record and 1 detail request.
 
 </AccordionItem>
 </Accordion>
