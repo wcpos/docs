@@ -11,29 +11,18 @@ import LinkCard from '@site/src/components/LinkCard';
 
 This page is for the store's administrator. The extension works only with Smart Coupons by StoreApps (sold on WooCommerce.com), not with other plugins that have "Smart Coupons" in their name.
 
-:::warning Add Discount can't take a gift card
-In WCPOS 2.0, the cart's **Add Discount** only applies percentage, fixed cart and fixed product coupons. A store-credit coupon there gets **Coupon not found**, with or without this extension; see [Applying Coupons](../coupons/applying-coupons.mdx) for the coupons it does take. The one way to put a gift card on a POS order is the payment page on the checkout's **Legacy** tab, below.
+:::warning The till can't apply store credit yet
+In WCPOS 2.0, the cart's **Add Discount** only applies percentage, fixed cart and fixed product coupons. Try to apply a store-credit coupon there and the till says **Coupon not found**. Take the payment another way, and keep the customer's card for later: nothing has been taken off it.
 :::
 
 {/* pending: roadmap#88 */}
-
-## Take a gift card at the till {#at-the-till}
-
-This needs [WCPOS Pro](../getting-started/pro-license.mdx) and a gateway on the checkout's [Legacy tab](../pos/checkout/legacy-tab.mdx), because only that tab opens the store's payment page, which has a coupon box.
-
-1. Build the cart, press **Checkout** and open the **Legacy** tab.
-2. Choose the gateway. The store's payment page opens.
-3. Type the gift card's code in **Coupon code** and press **Apply coupon**. The order total drops by the amount the card covers.
-4. Take the rest of the payment on that page, then press **Process Payment**.
-
-If the customer can't pay that way, take the payment as usual and ask them to keep their gift card for a later purchase. Nothing has come off it.
 
 ## What it does {#what-it-does}
 
 When a POS order carries a store-credit coupon, the extension:
 
 - **Takes off what was spent, and no more.** It records how much of the card the order used, so StoreApps deducts that amount and leaves the rest on the card.
-- **Lowers the balance when the order is paid.** Never when the coupon goes on, and never twice.
+- **Deducts when the order is paid.** A POS order is paid from the POS's own open statuses, which StoreApps doesn't watch, so the extension asks StoreApps to deduct at that moment. It can't deduct twice.
 - **Forgets a coupon you took off.** If the coupon is removed before payment, nothing is deducted for it.
 - **Notes it on the order.** A private order note names the coupon, the amount used and the balance left.
 - **Prints the balance on the receipt.** The coupon's discount row ends with the balance left.
@@ -63,21 +52,25 @@ The Extensions screen lists the extension, but its buttons need Pro. Instead:
 3. Choose the file you downloaded and press **Install Now**.
 4. Press **Activate Plugin**.
 
-There is nothing to set up after that. Without Pro there is no Legacy tab, so the till has no way to take a gift card yet.
+There is nothing to set up after that.
 
 ## What the receipt shows {#receipt}
 
 The coupon's discount row ends with the card's balance after the sale. On the **Standard Receipt**, a store-credit coupon whose description is **Gift card** prints:
 
-> Discount · Gift card — Store credit balance: $61.50
+```text
+Discount · Gift card — Store credit balance: $61.50
+```
 
-Your receipt template needs nothing new. To print **Gift Card** instead of **Discount** on that row, see [For developers](#developers).
+The balance is the card's balance when the receipt is made, which at checkout is right after the sale. Your receipt template needs nothing new. To print **Gift Card** instead of **Discount** on that row, see [For developers](#developers).
 
 ## The note on the order {#order-note}
 
-When the order is paid, the extension adds one private note to it. Staff see it on the order in **WP Admin → WooCommerce → Orders**:
+When the order is paid, the extension adds one private note to it, which staff see on the order in **WP Admin → WooCommerce → Orders**:
 
-> StoreApps Smart Coupons store credit recorded for WCPOS: Coupon store100 used $38.50. Current balance: $61.50.
+```text
+StoreApps Smart Coupons store credit recorded for WCPOS: Coupon store100 used $38.50. Current balance: $61.50.
+```
 
 Use it to check which card paid, how much it covered, and what was left on it. The note is added once per order.
 
@@ -87,11 +80,11 @@ The extension doesn't put credit back. When you refund or cancel an order paid p
 
 ## If something goes wrong {#goes-wrong}
 
-**Coupon not found** when you apply a gift card from **Add Discount**. Add Discount can't take store credit. Use [the payment page on the Legacy tab](#at-the-till) instead.
+**Coupon not found** when you apply a gift card at the till. The WCPOS 2.0 till can't apply store-credit coupons. See the warning at the top of this page.
 
-**The balance didn't go down after the sale.** Check that both **Smart Coupons** and **WCPOS StoreApps Smart Coupons** are active in **Plugins**, and that the order is paid. An order with no store-credit note was not deducted by the extension.
+**The balance didn't go down after the sale.** Check that both **Smart Coupons** and **WCPOS StoreApps Smart Coupons** are active in **Plugins**. The deduction happens when the order is paid, not when the coupon goes on. An order with no store-credit note was not deducted by the extension.
 
-**The receipt has no balance.** Print it again once the till is online. If it's still missing, your receipt template doesn't print the discount row's label; see [Receipt Data](../receipts/receipt-data.mdx#discounts).
+**The receipt has no balance.** A receipt printed while the till is offline is built on the device, and the balance comes from your store. Print it again once the till is back online. If your store's receipt template doesn't print the discount row's label, add it; see [Receipt Data](../receipts/receipt-data.mdx#discounts).
 
 <details>
 <summary>For developers: stored data and hooks</summary>
@@ -101,10 +94,10 @@ The extension doesn't put credit back. When you refund or cancel an order paid p
 The extension adds no WCPOS coupon fields. It works through WooCommerce order meta and StoreApps' own balance logic. It applies only to POS orders (`wcpos_is_pos_order()`: `created_via` is `woocommerce-pos`) and only to coupons of type `smart_coupon`.
 
 - **Usage.** On `woocommerce_order_after_calculate_totals` it writes StoreApps' `smart_coupons_contribution` order meta (coupon code → amount used) and `wc_sc_environment`, when StoreApps hasn't. It drops entries for coupons no longer on the unpaid order.
-- **Payment-page coupon box.** That form is a plain front-end POST to `WC_Order::apply_coupon()`, which StoreApps doesn't treat as an order context. While an unpaid POS order with a `smart_coupon` line recalculates outside a REST request, the extension reports a REST context so StoreApps' own order-discount logic runs.
-- **Deduction.** A POS order is paid from `pos-open` or `pos-partial`, and StoreApps only deducts on a move from `pending` or `failed`. On `woocommerce_order_status_changed` from any other status to a paid status or `on-hold`, the extension calls StoreApps' `WC_SC_Coupon_Process::update_smart_coupon_balance()`, which marks each coupon line so it never deducts twice.
+- **Calculation outside REST.** While an unpaid POS order with a `smart_coupon` line recalculates outside a REST request (the coupon form on the payment page), it reports a REST context so StoreApps' own order-discount logic runs.
+- **Deduction.** On `woocommerce_order_status_changed` from any status other than `pending` or `failed` (for a POS order, `pos-open` or `pos-partial`) to a paid status or `on-hold`, it calls StoreApps' `WC_SC_Coupon_Process::update_smart_coupon_balance()`, which marks each coupon line so it never deducts twice.
 - **Order note.** Added on the move to `processing`, `completed` or `on-hold`, once per order (`_wcpos_storeapps_smart_coupons_audit_note_added`).
-- **Receipt.** It filters `woocommerce_coupon_get_description` while a WCPOS receipt renders, and on the receipt data filter it adds `gift_card: true` to the store-credit row in `discounts` and appends the balance to its `label`. The balance is the card's balance when the receipt data is built, which at checkout is right after the sale. A receipt built on the device while offline comes from local data and has neither. A template can print:
+- **Receipt.** It filters `woocommerce_coupon_get_description` while a WCPOS receipt renders, and on the receipt data filter it adds `gift_card: true` to the store-credit row in `discounts` and appends the balance to its `label`. A template can then print:
 
 ```text
 {{#discounts}}{{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}} · {{label}}{{/discounts}}
@@ -117,13 +110,13 @@ Source: [github.com/wcpos/wcpos-storeapps-smart-coupons](https://github.com/wcpo
 </details>
 
 :::info With WCPOS Pro
-The till can take a gift card on the Legacy tab's payment page, and you install and update the extension from **POS → Settings → Extensions**. Without Pro, install it by hand from its release.
+Install and update the extension from **POS → Settings → Extensions**. Without Pro, install it by hand from its release, as above. It works the same either way.
 :::
 
 ## Related Documentation {#related-documentation}
 
 <LinkCards>
-  <LinkCard to="/pos/checkout/legacy-tab" title="The Legacy Tab" description="Pay through a gateway's own payment page at the till" />
+  <LinkCard to="/coupons/applying-coupons" title="Applying Coupons" description="Put one of your store's coupons on a sale at the till" />
   <LinkCard to="/receipts/receipt-data" title="Receipt Data" description="Every field a receipt template can print, including discount rows" />
   <LinkCard to="/extensions" title="Extensions" description="Install, update and turn off WCPOS extensions" />
 </LinkCards>
