@@ -1,87 +1,105 @@
 ---
-title: Understanding the WooCommerce REST API
-sidebar_label: WooCommerce REST API
+title: "The WooCommerce REST API"
+sidebar_label: "WooCommerce REST API"
 sidebar_position: 1
+description: "How WCPOS reads your store through the WooCommerce REST API, how to see the data the POS holds on the JSON tab, and why plugins that change prices or products on the fly don't reach the till."
 ---
 
-import LocalizedSVG from "@site/src/components/LocalizedSVG";
-import Image from "@theme/IdealImage";
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/wc-rest-api/en/manifest.json';
 
-The **WooCommerce REST API** is like a set of standardised “channels” that allows store owners to connect their WooCommerce store to other applications and services.
+The **WooCommerce REST API** is the way other apps talk to your store. Instead of running inside your WordPress site, an app sends requests over the internet to fixed addresses, one for each kind of store data: products, orders, customers, coupons and so on. Your store answers in **JSON**, a plain-text format that lists every field by name.
 
-Here's a simple explanation of how it works:
-
-1. It acts as a bridge between your WooCommerce store and external applications, allowing them to communicate and share data.
-
-2. The API works by sending requests to specific **endpoints** - think of these as "channels" for different types of store data. For example, there are endpoints for products, orders, and customers.
-
-3. External applications can use these endpoints to:
-
-- Get information (like fetching a list of products)
-- Add new data (like creating a new order)
-- Update existing information (like changing a product's price)
-- Delete data (like removing an outdated product)
-
-Instead of relying on PHP hooks and filters (like many traditional WordPress plugins do), it works by sending and receiving data in a structured, predictable format, known as **JSON**.
+WCPOS is one of those apps. The POS on your till asks your store for products and customers, and sends each sale back as a WooCommerce order.
 
 <LocalizedSVG svgName="wc-rest-api" />
 
-## Viewing the JSON Data in the POS {#viewing-the-json-data-in-the-pos}
+## What the POS gets from your store {#what-the-pos-gets}
 
-To help you understand what the POS is “seeing,” we’ve included a JSON view in many parts of the interface.
-For example, when you edit the order meta or a cart line item in the POS, you’ll see a JSON tab (like in the screenshot below).
+- **The API must be there.** When you connect a store, the POS checks that your site offers the WooCommerce REST API. If it doesn't, connecting stops with [AUTH321: WooCommerce missing](../error-codes/AUTH321.mdx).
+- **A copy on the device.** The POS downloads products and variations, categories, tags and brands, customers, tax rates, coupons and orders, and keeps a copy on the device. Searching and selling read that copy, so the till stays fast and keeps working when the internet drops.
+- **WooCommerce's own data.** The WCPOS plugin adds its own `wcpos/v2` routes to your store. They pass each request on to WooCommerce's `wc/v3` API and return WooCommerce's answer, so the POS gets the same fields any WooCommerce app gets.
+- **Sales go back as orders.** A sale, a new customer or a product edit made at the till goes to your store the same way, and WooCommerce saves it. Each sale becomes a normal WooCommerce order you can open in **WooCommerce > Orders**.
+- **Changes come in the background.** The POS checks your store for changes while it runs, so an edit made in WP Admin reaches the till without a restart. [How the Sync Engine Works](./sync-engine.mdx) explains how.
 
-<div class="image-container">
-  <Image
-    alt="Editing a line item in the POS"
-    img="/img/edit-line-item.png"
-    style={{ maxHeight: 400 }}
-  />
-  <p class="image-caption">Viewing the JSON data for a line item in the POS</p>
+## See the data the POS holds {#viewing-the-json-data-in-the-pos}
+
+Every panel that shows one record has a **JSON** tab beside **Form**: a product, a variation, a customer, a coupon, an order, **Order details** in the cart, and a cart line's **Edit** dialog. It shows that record as this device holds it, in WooCommerce's own JSON. You won't need it to sell. It answers the question "what did the POS actually get?" when a price, a stock count or a custom field looks wrong at the till.
+
+To open it for a product:
+
+1. Open **Products** from the menu and search for the product.
+2. Tap the open arrow (›) at the end of its row. The panel opens on the **Form** tab.
+3. Tap **JSON**, beside **Form**.
+
+<JourneyShot manifest={manifest} device="tablet" step={1} alt="The Products screen searched for Aim Analog Watch, with its panel open on the Form tab: Name, Regular Price, SKU, Barcode, Stock and the other fields, with Sync and Close at the foot" />
+
+<div className="pinned-legend">
+
+1. **Name** — the first field on the **Form** tab, which holds what you can change at the till. **JSON** is the tab beside **Form**, at the top of the panel.
+2. **Sync** — fetches this product from your store again. Only on the **Form** tab.
+3. **Close** — puts the panel away. **✕** at the top does the same.
+
 </div>
 
-The browser also includes a Network Inspector, a tool that lets you monitor the data being sent and received between your browser and the server, including JSON data.
+<JourneyShot manifest={manifest} device="tablet" step={2} alt="The same panel on the JSON tab: the Aim Analog Watch's WooCommerce fields listed by name, starting with id, name, slug and permalink, then price, regular_price and sale_price further down" />
 
-<div class="image-container">
-  <Image
-    alt="Network Inspector in the browser"
-    img="/img/network-inspector.png"
-  />
-  <p class="image-caption">Network Inspector in the browser</p>
+Every field your store sent for the product is listed by name, with the count of fields at the top. Fields that hold more fields, such as `categories` or `meta_data`, start folded: tap one to open it. Scroll to see the rest.
+
+If a value here doesn't match WP Admin, the change hasn't reached this device yet. Tap **Form**, then **Sync**, to fetch the product again.
+
+To see the order you're building, tap **⋮** beside **Checkout** to open **Order details**, then **JSON**. Each cart line has its own **JSON** tab too, in the line's **Edit** dialog (see [Edit or remove a line](../pos/cart/line-items.mdx#remove-item)).
+
+<JourneyShot manifest={manifest} device="tablet" step={3} alt="Order details for a cart with one Aim Analog Watch, on the JSON tab: status pos-open, created_via woocommerce-pos, line_items with 1 item, total 45 and the other order fields, with Void, Close, Print and Sync order at the foot" />
+
+<div className="pinned-legend">
+
+1. **Sync order** — sends the order to your store now. A new order has no `id` in its JSON until your store has saved it. See [Sync the order](../pos/cart/order-actions.mdx#sync-order).
+2. **Print** — prints the order.
+3. **Void** — deletes the order and empties the cart. See [Void the order](../pos/cart/order-actions.mdx#void).
+
 </div>
 
-## Why Don’t Some Plugins Work in the POS? {#why-dont-some-plugins-work-in-the-pos}
+<details>
+<summary>Watch the requests in the browser</summary>
 
-WCPOS downloads the product, order, and customer data from your WooCommerce store through the REST API.
-It then keeps a local copy of that data so it can continue running even if your internet connection is spotty.
-This approach makes the POS faster and more reliable in a busy checkout environment.
+In the web app you can watch the POS talk to your store with your browser's developer tools:
 
-However, this means our POS doesn’t “see” changes that happen dynamically on your site in real-time. For example:
+1. Open the POS in Chrome, Edge or Firefox.
+2. Press **F12** (on a Mac, **Option + Command + I**) and choose the **Network** tab.
+3. Type `wcpos` or `wc/v3` in the filter box.
+4. Use the POS: search, add a product, check out. Each request your store answers appears in the list. Select one and choose **Response** to read the JSON.
 
-<table>
-  <tr>
-    <th style={{ width: "200px" }}>Plugin Type</th>
-    <th>Why It Doesn't Work</th>
-  </tr>
-  <tr>
-    <td>Dynamic Pricing</td>
-    <td>
-      If another plugin on your store calculates a unique price for each
-      logged-in customer, the POS won't automatically get that personalised
-      price.
-    </td>
-  </tr>
-  <tr>
-    <td>Product Add-ons</td>
-    <td>
-      If another plugin on your store adds extra product data, the POS won't
-      automatically get that data. The POS only gets the data that's exposed
-      through the REST API.
-    </td>
-  </tr>
-</table>
+</details>
 
-## Next Steps {#next-steps}
+## Why some plugins don't change the POS {#why-dont-some-plugins-work-in-the-pos}
 
-For a deeper technical dive, check out the official WooCommerce REST API documentation:
-https://woocommerce.github.io/woocommerce-rest-api-docs/
+The POS works from its copy of your store's data. A plugin that only changes what a web page shows, or works something out while a shopper browses your website, never reaches that copy. The POS sees what the REST API sends, nothing more.
+
+| Plugin type | What happens at the till | What to do |
+|---|---|---|
+| Dynamic pricing (prices per customer, per role or per quantity) | The POS shows the product's normal price. The plugin works its price out on the website, so the API never sends it. | Use [discounts at the till](../pos/cart/discounts.mdx), or a coupon. |
+| Product add-ons (gift wrap, engraving, extra options) | The options don't appear on the product. The plugin builds them on the product page, and they aren't part of the product the API sends. | Add a [fee](../pos/cart/index.mdx#fees) for the extra cost, and a [custom field](../pos/cart/line-items.mdx#meta-data) for the detail. |
+| Plugins that change the API itself | The POS can break. wePOS changes how your store sends variable products, so WCPOS turns itself off while wePOS is active. | See [wePOS](../integrations/index.mdx#wepos). |
+
+A plugin that saves its data on the product, the customer or the order (as custom fields) usually does reach the POS. Open the **JSON** tab and look in `meta_data` to check.
+
+## If something goes wrong {#goes-wrong}
+
+- **Connecting fails with AUTH321** — your site isn't offering the WooCommerce REST API. See [AUTH321: WooCommerce missing](../error-codes/AUTH321.mdx).
+- **A price or field at the till doesn't match WP Admin** — open the product's **JSON** tab. If the value there is the old one, tap **Sync** on the **Form** tab. If the value is already wrong there, your store is sending it that way: check the product in WP Admin.
+- **A plugin's change never shows in the POS** — see [Why some plugins don't change the POS](#why-dont-some-plugins-work-in-the-pos).
+- **Something stopped working after you installed a plugin** — see [Plugin Conflicts](../support/troubleshooting/plugin-conflicts.mdx).
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/reference/architecture" title="Architecture" description="The plugin, the app and how they fit together" />
+  <LinkCard to="/reference/sync-engine" title="How the Sync Engine Works" description="How the POS keeps its copy of your store up to date" />
+  <LinkCard to="/integrations" title="Integrations" description="Plugins that work with WCPOS, and two that don't" />
+</LinkCards>
+
+For developers, WooCommerce documents every endpoint and field in the [WooCommerce REST API docs](https://woocommerce.github.io/woocommerce-rest-api-docs/).
