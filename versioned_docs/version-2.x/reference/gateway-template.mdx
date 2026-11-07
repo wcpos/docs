@@ -10,11 +10,11 @@ import RequirementItem from '@site/src/components/RequirementItem';
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
 
+This page is for developers building a payment method for the POS. To take a payment with a gateway that's already installed, see [Taking payment on the Legacy tab](../pos/checkout/legacy-tab.mdx).
+
 :::info Pro Feature
 Gateways other than Cash and Card need [WCPOS Pro](../getting-started/pro-license.mdx). Without it, your gateway is listed in the POS checkout settings but can't be turned on.
 :::
-
-This page is for developers building a payment method for the POS. If you're a cashier taking payment with a gateway that's already installed, see [The Legacy Tab](../pos/checkout/legacy-tab.mdx).
 
 The gateway template is a starting point for your own payment method at the till: a WordPress plugin made of one PHP file. A setup script fills in your gateway's name and builds the plugin for you. The gateway stays off on your web store's checkout, and appears in the POS once you turn it on in the POS settings.
 
@@ -72,7 +72,7 @@ The gateway shows on the POS's Legacy tab the next time the POS loads.
 
 ## What happens at the till {#at-the-till}
 
-The cashier opens the **Legacy** tab, picks your gateway on the payment page and presses the payment button. WooCommerce calls your gateway's `process_payment()`. When that returns the order-received address, the POS reads the order's status:
+The cashier opens the **Legacy** tab, picks your gateway on the payment page and presses **Pay for order**. WooCommerce calls your gateway's `process_payment()`. When that returns the order-received address, the POS reads the order's status:
 
 - **Paid (Processing or Completed), or the gateway's Order Status** from the POS checkout settings — the POS closes the sale.
 - **Anything else** — the POS keeps waiting, and the sale stays open.
@@ -93,7 +93,10 @@ The plugin also loads its own text domain, `woocommerce-pos-<your-slug>-gateway`
 
 ### Ask the cashier for something {#payment-fields}
 
-If your gateway needs input from the cashier, such as a reference number, set `$this->has_fields = true;` in the constructor and add a `payment_fields()` method. Its fields show on the gateway's payment page in the Legacy tab:
+If your gateway needs input from the cashier, such as a reference number, set `$this->has_fields = true;` in the constructor and add a `payment_fields()` method. Its fields show on the gateway's payment page in the Legacy tab. Read the value in `process_payment()` from `$_POST['my_gateway_reference']`, cleaned with `sanitize_text_field( wp_unslash( ... ) )`.
+
+<details>
+<summary>Show the payment_fields() code</summary>
 
 ```php
 public function payment_fields() {
@@ -109,11 +112,14 @@ public function payment_fields() {
 }
 ```
 
-Read the value in `process_payment()` from `$_POST['my_gateway_reference']`, cleaned with `sanitize_text_field( wp_unslash( ... ) )`.
+</details>
 
 ### Let the customer pay later {#pay-later}
 
-The template marks the order paid straight away. For a gateway where the money arrives later, such as an invoice, set the status yourself instead:
+The template marks the order paid straight away. For a gateway where the money arrives later, such as an invoice, set the order to **Pending payment** in `process_payment()` and reduce stock yourself, since `payment_complete()` isn't called.
+
+<details>
+<summary>Show the process_payment() code</summary>
 
 ```php
 public function process_payment( $order_id ) {
@@ -135,6 +141,8 @@ public function process_payment( $order_id ) {
     );
 }
 ```
+
+</details>
 
 Then set the gateway's **Order Status** to **Pending payment** in **WP Admin > POS > Settings > Checkout**. **Pending payment** isn't a paid status, so without that setting the POS keeps waiting and the sale stays open. See [How the till treats the status](../settings/wp-admin/checkout.mdx#order-status-at-the-till).
 
