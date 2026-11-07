@@ -8,14 +8,14 @@ description: "Developer reference: which WCPOS REST endpoints the administrator,
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
 
-This page is for developers and site administrators. It lists which WCPOS REST endpoints each default role can reach, and what the server answers when it refuses one. To change what a role may do, use [Accessing the POS](../settings/wp-admin/access.mdx).
+This page is for developers and site administrators, for when a till keeps showing AUTH101, AUTH201 or SYNC341 and you need to know whether the sign-in, the user's role or the app version is the cause. A cashier who sees one of these needs only that code's page: [AUTH101](../error-codes/AUTH101.mdx), [AUTH201](../error-codes/AUTH201.mdx) or [SYNC341](../error-codes/SYNC341.mdx). Below are the WCPOS REST endpoints each default role can reach, and what the server answers when it refuses one. To change what a role may do, use [Accessing the POS](../settings/wp-admin/access.mdx).
 
 - [Fix an error the app showed](#diagnosing-failures)
 - [Check what each role can reach](#summary)
 
 ## Diagnosing Failures {#diagnosing-failures}
 
-If the app showed one of these messages, start here.
+If the app showed one of these errors, start here.
 
 **"Request still unauthorized after token refresh - please log in again" (AUTH101).** Sign in again as the same cashier, in the WordPress sign-in window WCPOS opens. Sales waiting to send go by themselves once you are back in. If the message comes back straight away, follow [AUTH101](../error-codes/AUTH101.mdx).
 
@@ -26,16 +26,18 @@ The app got a `401`, refreshed the token, and the retry was still a `401`. This 
 
 </details>
 
-**"Insufficient role" (AUTH201).** Ask an administrator to check the user's role in [Accessing the POS](../settings/wp-admin/access.mdx), then follow [AUTH201](../error-codes/AUTH201.mdx).
+**AUTH201: Insufficient role.** Ask an administrator to check the user's role in [Accessing the POS](../settings/wp-admin/access.mdx), then follow [AUTH201](../error-codes/AUTH201.mdx).
 
 <details>
 <summary>Role permission details</summary>
 
 The server answered `403` to a signed-in user. Either the user lacks `access_woocommerce_pos`, or the route needs `manage_woocommerce_pos` or `install_plugins`. Find the endpoint in the lists below. If they say the user's role should reach it, the role has most likely been changed from the defaults: on the Access screen, where it shows **Changed from the WCPOS defaults**, by a role-editor plugin, or by custom code. An extra role on the user can also deny a capability.
 
+If the endpoint is not in the lists, the tests behind them do not cover it: read that route's own permission check. WCPOS Pro can also refuse a user for a store they are not authorized for, for example `403` `wcpos_display_store_forbidden` ("You are not authorized for this store.").
+
 </details>
 
-**"App update required" (SYNC341).** Update the app, then reopen it:
+**SYNC341: App update required** (the app says "Update the POS app on this device."). Update the app, then reopen it:
 
 - **Web:** reload the browser tab. If the message comes back, hold **Shift** while reloading.
 - **Desktop:** install the update the app offers. If none is offered, download the latest build for Windows, Mac (Intel or Apple Silicon) or Linux from [Installation](../getting-started/installation.mdx#accessing-the-pos).
@@ -52,26 +54,26 @@ The server answered `426` on a v2 route, because the app is older than the plugi
 
 ### Permission failure vs. token failure {#permission-failure-vs-token-failure}
 
-- **"Insufficient role"**: the user is signed in but does not have permission for this action. Check the role's capabilities, and what the endpoint needs in the lists below.
-- **"Request still unauthorized after token refresh"**: the server could not authenticate the app's request. Sign in again; if it keeps coming back, check the token and anything between the app and WordPress that strips or refuses it.
+- **`403` (AUTH201)**: the user is signed in but does not have permission for this action. Check the role's capabilities, and what the endpoint needs in the lists below.
+- **`401` (AUTH101, "Request still unauthorized after token refresh")**: the server could not authenticate the app's request, and nobody is signed in. Sign in again; if it keeps coming back, check the token and anything between the app and WordPress that strips or refuses it.
 
 <details>
-<summary>Response fields and where to read them</summary>
+<summary>How to tell them apart</summary>
 
-Read the refused response in the browser's network panel, or in a server-side log. **WP Admin > POS > Settings > Tools > Logs** also records each `401` whose token was malformed or refused for a reason other than plain expiry. The status, the error code and the signed-in user tell the two apart:
+Read the refused response in the browser's network panel, or in a server-side log. **WP Admin > POS > Settings > Tools > Logs** also records each `401` whose token was malformed or refused for a reason other than plain expiry. The status and the error code are in the response body. The signed-in user is not: read it on the server, for example with `get_current_user_id()` in a debug log while the request runs.
 
 **Role or capability failure:**
 
 - Status: `403`
 - Code: `woocommerce_pos_rest_forbidden`, or the route's own, such as `rest_forbidden`
-- User: the cashier's WordPress user ID
+- Signed-in user (server side): the cashier's WordPress user ID
 
 **Token or sign-in failure:**
 
 - Status: `401`
 - Code: `woocommerce_pos_rest_unauthorized`
 - `data.reason`: the token error, such as `woocommerce_pos_auth_token_expired`
-- User: `0` (nobody signed in)
+- Signed-in user (server side): `0` (nobody signed in)
 
 A non-zero user points at capabilities. A user of `0` points at the token, or at something between the app and WordPress.
 
@@ -81,7 +83,7 @@ A non-zero user points at capabilities. A user of `0` points at the token, or at
 
 - **`administrator`**: every endpoint on this page.
 - **`shop_manager`**: every endpoint except Pro's extension install and update action, which needs the WordPress `install_plugins` capability.
-- **`cashier`**: everything the selling workflow uses, including refunds. No settings, logs, extensions or store management.
+- **`cashier`**: everything the selling workflow uses, including refunds. No settings screens, logs, extensions or store management; the only settings it can read are the Cloud Print printers (`GET /wcpos/v1/settings/cloud-print`), so the till can send receipts to them.
 
 <details>
 <summary>How these lists were checked</summary>
@@ -101,7 +103,7 @@ A request to `/wcpos/v1/` or `/wcpos/v2/` passes these checks in order, and the 
 
 The checks use three capabilities. The plugin grants its own two to the default roles when it is activated; an update grants only capabilities new in that release, so one removed on the Access screen stays removed. `install_plugins` is WordPress's own.
 
-- **`access_woocommerce_pos`**: administrator, shop manager and cashier. Required for every POS endpoint except the public sign-in routes and printer polling; some also need one of the two below.
+- **`access_woocommerce_pos`**: administrator, shop manager and cashier. Required for every POS endpoint except the public sign-in routes, printer polling and three sync maintenance routes (`/wcpos/v2/uuid/backfill`, `/orders/index/backfill`, `/integrity/rebuild`), which need WooCommerce's `manage_woocommerce` instead; some also need one of the two below.
 - **`manage_woocommerce_pos`**: administrator and shop manager. Opens settings, logs, the extensions list and Pro store management.
 - **`install_plugins`** (WordPress): administrator only. Opens Pro's extension install and update.
 
@@ -123,7 +125,7 @@ The 2.0 app syncs through `/wcpos/v2/`. Every default role can reach every route
 These `/wcpos/v1/` routes serve sign-in, checkout, receipts and the settings screens.
 
 <details>
-<summary>Every role (administrator, shop manager, cashier): 20 endpoints</summary>
+<summary>Every role (administrator, shop manager, cashier): 27 endpoints</summary>
 
 - `GET /wcpos/v1/stores`: stores the app can open
 - `GET /wcpos/v1/cashier/{id}`: the signed-in cashier
