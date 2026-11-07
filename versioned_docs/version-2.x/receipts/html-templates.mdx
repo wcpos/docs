@@ -2,18 +2,58 @@
 title: HTML Templates
 sidebar_label: HTML Templates
 sidebar_position: 3
-description: "Create and customise logicless HTML receipt templates using Mustache-style placeholders."
+description: "Write and edit HTML receipt templates with Mustache placeholders, check them on a real order, and fix the common mistakes."
 ---
 
-HTML templates use a logicless Mustache-style syntax with `{{variable}}` placeholders. They render client-side in the POS app, which means they **work offline** — no server connection needed to display or print a receipt.
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import checkoutManifest from '@site/static/img/2.x/pos/checkout/en/manifest.json';
 
-This is the recommended engine for most users.
+An HTML template is a receipt laid out like a web page, with `{{placeholders}}` where the order's details go. The POS fills it in on the device itself, so an HTML template previews and prints even when the connection to your store is down.
+
+Use HTML for browser printing, PDFs, A4 invoices and printers that print web pages. For a receipt printer that takes ESC/POS commands, use a [thermal template](./thermal-templates.mdx) instead.
+
+## Write a template {#write}
+
+Templates live in **WP Admin → POS → Templates**. Don't start from a blank page:
+
+1. In the **Template Gallery**, press **Use Template** on the card closest to what you want. You get your own copy under **Your Templates**; the gallery original stays as it is.
+2. Open your copy. **Fields** lists every placeholder: search it, then **Insert**, so you don't have to remember the names. **Preview** fills the template in with **Sample Data** or one of your POS orders as you type.
+3. Change what you need, then press **Update**.
+4. Turn on **Active**, so the POS offers the template at the till.
+5. In the POS, make a sale and pick your template on the paid screen. This is the real test: the editor's preview is lenient, and the POS is not.
+
+<JourneyShot manifest={checkoutManifest} device="tablet" step={6} offsets={[[279, 0], [260, 0], [292, 0], [292, 0], [0, 0], [48, -38], [49, -38], [128, 0]]} alt="The paid screen after a cash sale with the Standard Receipt HTML template picked: the change and amount paid, the Template and Printer pickers, the filled-in receipt preview with its zoom controls, and the Email Receipt, Download PDF, Print Receipt and New sale buttons" />
+
+<div className="pinned-legend">
+
+1. **Change** — what to give back. It is part of the sale, not of the receipt.
+2. **Paid with** — the amount and how it was paid.
+3. **Template** — pick your template here. Only active templates are listed; a pick lasts for this sale. See [Customise Your Receipt](./customise.mdx).
+4. **Printer** — where it prints. See [Print the receipt](./at-checkout.mdx#print-receipt).
+5. **Preview** — your template, filled in with this sale by the POS: the receipt as it will print. **−** and **+** zoom it.
+6. **Print Receipt** — prints it on the printer above.
+7. **Email Receipt** — sends it to the customer.
+8. **New sale** — an empty cart for the next customer.
+
+</div>
+
+**Download PDF**, beside **Email Receipt**, has the store render the receipt as a PDF, so it needs a connection.
+
+To check a template without making a sale, put an item in the cart, press **⋮** beside **Checkout**, then **Print**: the same Template picker and preview open for the cart's order. An HTML template previews there even before the order reaches the store; the **Legacy PHP Template** asks you to sync the order first. See [Receipts at Checkout](./at-checkout.mdx).
+
+:::tip Keep the original
+Every **Use Template** makes a fresh copy. While you experiment, make two copies (*Receipt v1*, *Receipt v2*) and switch between them at the till.
+:::
 
 ## Syntax {#syntax}
 
+The placeholders are [Mustache](https://mustache.github.io/mustache.5.html), a small template language with no logic of its own: it fills in values, repeats a block for each item in a list, and shows or hides a block.
+
 ### Variables {#variables}
 
-Insert data using double curly braces:
+Put a field's name in double curly braces:
 
 ```html
 <h1>{{store.name}}</h1>
@@ -21,11 +61,15 @@ Insert data using double curly braces:
 <p>Total: {{totals.total_display}}</p>
 ```
 
-Use `_display` variants for pre-formatted currency values (e.g., `$12.50` instead of `12.5`). See the [Receipt Data Reference](/receipts/receipt-data) for all available fields.
+A field ending in `_display` is the money already formatted for your store (`$12.50` rather than `12.5`). The [Receipt Data Reference](./receipt-data.mdx) lists every field.
+
+### Escaping {#escaping}
+
+`{{field}}` prints text exactly as it is: a `<` in a product name shows as `<`, never as HTML. Three braces, `{{{field}}}`, print the value as HTML. The result is still cleaned before it prints (see [Styling](#styling)), so a field can never add a script.
 
 ### Sections (Loops and Conditionals) {#sections-loops-and-conditionals}
 
-Use `{{#section}}...{{/section}}` to loop over arrays or conditionally show content:
+`{{#section}}...{{/section}}` repeats the block for each item in a list, or shows it once when the value is there:
 
 ```html
 {{#lines}}
@@ -36,9 +80,11 @@ Use `{{#section}}...{{/section}}` to loop over arrays or conditionally show cont
 {{/lines}}
 ```
 
+Inside a section, a name is looked up on the current item first, then outside it. That is why `{{i18n.tendered}}` works inside `{{#payments}}`. `{{.}}` is the current item itself, for a list of plain text such as `store.address_lines`.
+
 ### Inverted Sections {#inverted-sections}
 
-Use `{{^section}}...{{/section}}` to show content when a value is empty or false:
+`{{^section}}...{{/section}}` shows the block when the value is missing, empty, `false` or `0`:
 
 ```html
 {{#customer.id}}
@@ -51,18 +97,29 @@ Use `{{^section}}...{{/section}}` to show content when a value is empty or false
 
 ### Localised Labels {#localised-labels}
 
-Use `{{i18n.key}}` for translatable labels that adapt to the store's language:
+`{{i18n.key}}` prints a label in your store's language, so one template works in every store:
 
 ```html
 <th>{{i18n.subtotal}}</th>
 <td>{{totals.subtotal_display}}</td>
 ```
 
+The labels follow the store's WordPress language, not the language the cashier has chosen in the app. Every key is in the [i18n reference](./receipt-data.mdx#i18n).
+
+<details>
+<summary>What the POS doesn't support</summary>
+
+- **Partials** (`{{> name}}`) print nothing in the POS. Put everything in one template.
+- **Lambdas** (a function as a value) can't exist: the data is plain values.
+- **Comments** (`{{! a note }}`) and changed delimiters (`{{=<% %>=}}`) work as in any Mustache.
+
+</details>
+
 ## Common Patterns {#common-patterns}
 
 ### Store Header {#store-header}
 
-The `store.address_lines` array is pre-formatted for receipts — loop it instead of stitching individual address fields together.
+`store.address_lines` is the address already split into lines for a receipt. Loop it instead of joining the address fields yourself.
 
 ```html
 <div style="text-align: center;">
@@ -70,13 +127,15 @@ The `store.address_lines` array is pre-formatted for receipts — loop it instea
   <h1 style="margin: 8px 0;">{{store.name}}</h1>
   {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
   {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
-  {{#store.tax_ids}}<div>{{#label}}{{label}} {{/label}}{{value}}</div>{{/store.tax_ids}}
+  {{#store.tax_ids}}<div>{{label}}: {{value}}</div>{{/store.tax_ids}}
 </div>
 ```
 
+The logo comes from the store's settings, not the template. See [Customise Your Receipt](./customise.mdx).
+
 ### Line Items with Discounts {#line-items-with-discounts}
 
-A line item's `discounts` field is the discount amount as a positive number, or `0` when there's no discount. Mustache treats `0` as falsy, so `{{#discounts}}...{{/discounts}}` is the right guard.
+A line's `discounts` is the discount as a positive number, or `0` when there is none. Mustache treats `0` as empty, so `{{#discounts}}...{{/discounts}}` shows the block only on a discounted line.
 
 ```html
 {{#lines}}
@@ -84,8 +143,8 @@ A line item's `discounts` field is the discount amount as a positive number, or 
   <div>
     <div>{{name}} × {{qty}}</div>
     {{#discounts}}
-      <div style="font-size: 0.9em; color: #6b7280;">
-        <s>{{unit_subtotal_display}}</s> {{unit_price_display}}
+      <div style="font-size: 0.9em;">
+        <s>{{line_subtotal_display}}</s> −{{discounts_display}}
       </div>
     {{/discounts}}
   </div>
@@ -94,16 +153,20 @@ A line item's `discounts` field is the discount amount as a positive number, or 
 {{/lines}}
 ```
 
+`line_subtotal_display` is the line before discounts, `line_total_display` after. For sale prices and savings, see [Displaying regular price and savings](./receipt-data.mdx#displaying-regular-price-and-savings).
+
 ### Tax Summary {#tax-summary}
 
 ```html
 {{#tax_summary}}
-<div class="tax-line">
-  <span>{{label}} ({{rate}}%)</span>
+<div class="tax-line" style="display: flex; justify-content: space-between;">
+  <span>{{label}}{{#rate}} ({{rate}}%){{/rate}}</span>
   <span>{{tax_amount_display}}</span>
 </div>
 {{/tax_summary}}
 ```
+
+`rate` is a percentage, such as `10`. It can be empty (a 0% rate, or a receipt printed offline), so the `{{#rate}}` guard keeps a bare `(%)` off the receipt.
 
 ### Payment Details {#payment-details}
 
@@ -124,30 +187,33 @@ A line item's `discounts` field is the discount amount as a positive number, or 
 {{/payments}}
 ```
 
+Tendered and change come from your store. A receipt printed while the POS is offline has neither, so the `{{#tendered}}` block is skipped; a reprint after the order syncs shows them.
+
 ### Barcodes and QR Codes {#barcodes-and-qr-codes}
 
-Use the `<barcode>` element — the same syntax as [thermal templates](/receipts/thermal-templates). The value goes inside the element; the symbology is set on the `type` attribute. The renderer replaces each element with an inline SVG.
+Use the same elements as [thermal templates](./thermal-templates.mdx). The value goes inside the element, and the POS draws the code in its place.
 
 ```html
 <!-- Code 128 barcode of the order number -->
 <barcode type="code128" height="40">{{order.number}}</barcode>
 
-<!-- QR code -->
-<barcode type="qrcode" scale="3">{{order.payment_url}}</barcode>
-
 <!-- EAN-13 -->
 <barcode type="ean13">{{order.number}}</barcode>
+
+<!-- QR code: size sets how big, 4 by default -->
+{{#order.payment_url}}<qrcode size="4">{{order.payment_url}}</qrcode>{{/order.payment_url}}
 ```
 
-The `type` attribute must be set **literally** in the template — it can't come from a placeholder. A `type` of `qr` or `qrcode` renders as a QR code in both HTML and thermal templates.
+- **Always set `type`.** Without it, the POS draws Code 128 and the store's PDF draws a QR code.
+- **`type` can be a placeholder**, such as `type="{{presentation_hints.order_barcode_type}}"`, because the placeholders are filled in before the codes are drawn.
+- **Use `<qrcode size="…">` for QR codes.** `<barcode type="qrcode">` (or `qr`) also draws one, but the POS sizes it from `height` and the PDF from `size`, so the two don't match.
+- **Pick from these types:** `code128`, `code39`, `code93`, `ean13`, `ean8`, `upca`, `upce`, `codabar`, `itf` and `qrcode`. The POS can draw other [bwip-js types](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types) such as `pdf417`, but the editor preview and the PDF draw those as Code 128.
 
-If the selected barcode type can't encode the value (for example non-numeric or wrong-length EAN-13 data), the preview shows a `Barcode error` or `QR code error` block with the original value, so you can fix the value or switch to a compatible type.
-
-All [bwip-js symbologies](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types) are supported — `code128`, `qrcode`, `ean13`, `ean8`, `upca`, `pdf417`, `datamatrix`, and many more.
+If the value doesn't fit the type (letters in an EAN-13, say), the POS shows a **Barcode error** or **QR code error** block with the value in it. Fix the value or pick a type that takes it. The PDF prints the bare value instead.
 
 ## Styling {#styling}
 
-Logicless templates are sanitised through WordPress's `wp_kses_post` before rendering, which **strips `<style>`, `<head>`, and document-level tags**. Use **inline styles** on each element:
+The receipt is cleaned before it prints, so it can never run code: scripts, `<link>` and `<meta>` tags and `on…` attributes are removed wherever it prints. The store's PDF and the mobile apps also remove `<style>` blocks and `<head>`. Style each element **inline**, as the gallery templates do:
 
 ```html
 <div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
@@ -161,20 +227,44 @@ Logicless templates are sanitised through WordPress's `wp_kses_post` before rend
 </div>
 ```
 
-The same restriction applies to `<script>`, `<link>`, and other non-content tags — they're stripped, so don't rely on external CSS or JavaScript.
+:::warning The editor preview doesn't clean
+The template editor shows a `<style>` block working. The PDF and the mobile apps remove it, and the receipt prints unstyled there. Keep every style inline.
+:::
 
 :::tip Designed for black and white
-Receipts are usually printed on black-and-white thermal or laser printers. Design with that in mind — use **font weight, whitespace, type contrast, and horizontal rules** for hierarchy rather than coloured fills. Coloured backgrounds and grey text either disappear on B&W output or print as muddy halftones.
+Receipts are usually printed on black-and-white thermal or laser printers. Use **font weight, whitespace, type size and horizontal rules** for hierarchy rather than coloured fills. Coloured backgrounds and grey text either disappear or print as muddy halftones.
 :::
 
 :::tip Need a thermal-paper look without a thermal printer?
-Click **Use Template** on the **Narrow Receipt** card in the gallery — it's a monospace, 72mm-wide layout that prints cleanly on browser print, HTML-capable thermal printers (Sunmi/Imin WebView devices), and standard paper. Not for raw ESC/POS thermal printers — use the **Simple Thermal Receipt** XML templates for those.
+Press **Use Template** on the **Narrow Receipt** card in the gallery. It's a monospace layout 72 mm wide that prints cleanly from the browser, on printers that print web pages (Sunmi and iMin devices), and on standard paper. For a raw ESC/POS printer, use a **Simple Thermal Receipt** (58mm or 80mm) instead.
 :::
 
 ## Best Practices {#best-practices}
 
-- **Use `_display` fields** for all currency values — they handle locale-aware formatting automatically
-- **Use `{{i18n.*}}` labels** instead of hardcoding text so templates work across languages
-- **Use sections for conditionals** — wrap optional fields in `{{#field}}...{{/field}}` so they're hidden when empty
-- **Start from a gallery template** rather than building from scratch
-- **Test with the preview** in the template editor before activating
+- **Use `_display` fields** for money: they carry your store's currency format.
+- **Use `{{i18n.*}}` labels** instead of typed text, so the template works in every store's language.
+- **Wrap optional fields in sections**, `{{#field}}...{{/field}}`, so nothing prints when they're empty.
+- **Start from a gallery template** rather than a blank page.
+- **Check it in the POS** on a real order, with a discount, a tax line and a cash payment, before the till relies on it.
+
+## If something goes wrong {#goes-wrong}
+
+**Styles show in the editor but not on the receipt.** A `<style>` block is removed in the PDF and the mobile apps. Move the styles inline. See [Styling](#styling).
+
+**A field prints nothing.** Check its name against the [Receipt Data Reference](./receipt-data.mdx); a misspelt or unknown field prints empty, with no error. Inside a section, the name is looked up on the current item first.
+
+**The receipt shows a Barcode error block.** The value doesn't fit the barcode type. See [Barcodes and QR Codes](#barcodes-and-qr-codes).
+
+**Tendered and change are missing.** The receipt was printed offline. Reprint it once the order has synced. See [Offline Mode](../getting-started/offline.mdx).
+
+**The template isn't in the till's Template list.** It isn't **Active**, or a store has its own template list. See [Customise Your Receipt](./customise.mdx#per-store-assignments).
+
+**The editor's preview says "Template rendering error".** A section isn't closed, or a closing tag doesn't match its opening one. Every `{{#x}}` and `{{^x}}` needs its own `{{/x}}`.
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/receipts/receipt-data" title="Receipt Data Reference" description="Every field a template can print" />
+  <LinkCard to="/receipts/thermal-templates" title="Thermal Templates" description="Templates for ESC/POS receipt printers" />
+  <LinkCard to="/receipts/customise" title="Customise Your Receipt" description="Pick, copy and switch templates" />
+</LinkCards>
