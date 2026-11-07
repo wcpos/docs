@@ -10,13 +10,19 @@ import { linkPinsToLegend } from './pin-legend-link';
  * so the pins stay on their elements at any rendered width. A plain `img` is
  * used on purpose: IdealImage swaps in a placeholder of a different box, which
  * moves the pins.
+ *
+ * `colorScheme` is the capture's own scheme: the pins' ring takes it, not the
+ * page theme, so a light capture on a dark page keeps a white ring.
  */
-export default function PinnedShot({ src, alt, pins }) {
+export default function PinnedShot({ src, alt, pins, colorScheme = 'light' }) {
   const figureRef = useRef(null);
   useEffect(() => linkPinsToLegend(figureRef.current), []);
 
   return (
-    <figure className="pinned-shot" ref={figureRef}>
+    <figure
+      className={`pinned-shot pinned-shot--${colorScheme}`}
+      ref={figureRef}
+    >
       <img src={src} alt={alt} loading="lazy" />
       {pins.map(([x, y], index) => (
         <span
