@@ -50,7 +50,7 @@ Where this guide and a proof page differ, the proof page wins. Where a proof pag
 
 **A leaf** is one subject a layer down, with a name a cashier would search for. Each layer down is more specific, with more examples and the technical detail for troubleshooting. [#534 comment]
 
-- **No catch-all leaf.** > *"I am not a big fan of putting things under a page like 'Checkout in Detail'. This page covers too much information and it is too vague. I would rather it splits into multiple pages."* Never "X in Detail", "Advanced X" or "More about X": split it. [#534 comment]
+- **No catch-all leaf.** *"I am not a big fan of putting things under a page like 'Checkout in Detail'. This page covers too much information and it is too vague. I would rather it splits into multiple pages."* Never "X in Detail", "Advanced X" or "More about X": split it. [#534 comment]
 - What moves down: every status chip and what it means; every setting that changes the task, and its default; Pro variants; the edge cases and error codes behind a failure entry; the per-vendor detail of a card reader. [#522 §2]
 - A leaf may be longer than a task page. It still opens with what the subject is in one or two sentences, then goes from common to rare.
 
@@ -90,7 +90,7 @@ Only where the path branches in a way prose cannot carry. The J2 checkout chart 
 
 ## The length and image floor
 
-#526 says the proof page sets these numbers, and sweep 3 tests every task page against them. The three proof pages measure (prose words, imports and components excluded):
+#526 says the proof page sets these numbers, and sweep 3 tests every task page against them. The three proof pages measure (approximate prose words, imports and components excluded; the count moves by about 8% with how words are split):
 
 | Page | Words | Captures | Labels per capture | H2 sections | Call-outs |
 |---|---:|---:|---|---:|---:|
