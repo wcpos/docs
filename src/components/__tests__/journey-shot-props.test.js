@@ -77,6 +77,16 @@ describe('journeyShotProps', () => {
     expect(() => props(dark)).toThrow(/tablet.*step 5/);
   });
 
+  it("returns the capture's colorScheme", () => {
+    const dark = { ...capture('tablet', 5, []), colorScheme: 'dark' };
+    const both = { ...manifest, captures: [...manifest.captures, dark] };
+    const pick = (colorScheme) =>
+      journeyShotProps(both, { device: 'tablet', step: 5, colorScheme })
+        .colorScheme;
+    expect(pick('dark')).toBe('dark');
+    expect(pick(undefined)).toBe('light');
+  });
+
   it('returns an empty pin list for a capture with no pins', () => {
     expect(props({ device: 'phone', step: 5 }).pins).toEqual([]);
   });
