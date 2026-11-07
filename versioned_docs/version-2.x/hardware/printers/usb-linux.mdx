@@ -2,28 +2,41 @@
 title: "USB printer permissions on Linux"
 sidebar_label: USB on Linux
 sidebar_position: 6
-description: "An access error when printing over USB on Linux means the device belongs to root — add a udev rule to hand it to your user."
+description: "On Linux the desktop app needs your permission to use a USB receipt printer. One udev rule gives it, and the printer then prints."
 ---
 
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
 import SupportContact from '@site/src/components/SupportContact';
 
-**Symptom:** the printer shows up when you scan, but printing fails with an access or permission error.
+On Linux, the desktop app talks to a USB receipt printer directly, over the cable. Linux keeps USB devices for its administrator account (`root`) unless a rule says otherwise, so the app, running as you, is not allowed to open the printer. You fix it once, with a short rule file.
 
-## Why it happens {#why-it-happens}
+This page is for you if, in the desktop app on Linux:
 
-On Linux a USB device belongs to `root` unless a rule says otherwise, so an app running as you cannot open it. The kernel's own printer driver may also have claimed the device already.
+- After **Print a test page**, the panel says **Nothing printed** and **The app was not allowed to reach the printer. Allow it in your system settings, then try again.** Linux has no settings screen for this: the rule below is the setting.
+- **Support details**, under that message, shows `LIBUSB_ERROR_ACCESS`.
+- In the search, your printer's card is named **USB printer** and a row of numbers, not the printer's own name. That usually means the app could not open the printer to read its name.
 
-## Do this {#do-this}
+## Give the app the printer {#do-this}
 
-1. Find the printer's vendor and product ids:
+You need a terminal and your computer's administrator password.
+
+1. Plug the printer in and switch it on.
+2. Find the printer's two ids. In a terminal, run:
 
    ```bash
    lsusb
    ```
 
-   Look for your printer's line — the ids are the two four-character values after `ID`, for example `04b8:0e28`.
+   Each line is one USB device. Find your printer's line, for example:
 
-2. Create a rule file, replacing the ids with yours:
+   ```text
+   Bus 001 Device 007: ID 04b8:0e28 Seiko Epson Corp.
+   ```
+
+   The ids are the two four-character codes after `ID`: here `04b8` (the maker) and `0e28` (the model). If you can't tell which line is the printer, unplug it, run `lsusb` again, and see which line is gone.
+
+3. Create the rule. Copy all three lines into the terminal, with your two ids in place of `04b8` and `0e28`, typed exactly as `lsusb` shows them:
 
    ```bash
    sudo tee /etc/udev/rules.d/99-receipt-printer.rules <<'RULE'
@@ -31,18 +44,64 @@ On Linux a USB device belongs to `root` unless a rule says otherwise, so an app 
    RULE
    ```
 
-3. Reload the rules and re-apply them:
+   `MODE="0666"` lets every account on this computer use the printer, which is what a till needs.
+
+4. Load the rule:
 
    ```bash
    sudo udevadm control --reload-rules && sudo udevadm trigger
    ```
 
-4. Unplug the printer, plug it back in, and restart the app. Print a test page.
+5. Unplug the printer and plug it back in.
+6. In the desktop app, go to **Settings → Printing** and press **Add Printer**. Pick your printer's card, marked **USB**. Now that the app can open the printer, the card shows the name the printer gives itself.
+7. Press **Print a test page**, then answer **Did the test page print?** See [Print a test page](./setup-wizard.mdx#test-page).
 
-Run the app as your normal user, not with `sudo` — a rule that works only for root defeats the point.
+If you saved the printer before, with **Save without testing**, delete that one first: in **Settings → Printing**, open its **More actions** menu and choose **Delete**.
+
+:::tip Start the app as yourself
+Open the desktop app the usual way, never with `sudo`. The rule is what lets the app use the printer as you.
+:::
+
+## Why the app needs this {#why-it-happens}
+
+Most programs print through Linux's own print system. A receipt printer needs commands sent straight to it (cut the paper, open the drawer), so the desktop app opens the printer itself.
+
+Linux also has its own driver for USB printers, which takes hold of the printer when you plug it in. The app releases it from that driver by itself before each print, so you don't need to remove or block it. But releasing it needs the same permission as printing, which is why one rule fixes both.
+
+## If something goes wrong {#goes-wrong}
+
+**Still not allowed, after the rule.** Check, in order:
+
+- The two ids in the rule match `lsusb` exactly, lower case included.
+- The file name ends in `.rules`. Show it with `cat /etc/udev/rules.d/99-receipt-printer.rules`.
+- You unplugged the printer and plugged it back in after step 4.
+
+Then look at the printer's device file. Take the `Bus` and `Device` numbers from its `lsusb` line, for example `ls -l /dev/bus/usb/001/007`. The line should start `crw-rw-rw-`. If it starts `crw-rw-r--` or `crw-------`, the rule did not match.
+
+**`lsusb: command not found`.** Install the `usbutils` package: `sudo apt install usbutils` on Ubuntu or Debian, `sudo dnf install usbutils` on Fedora.
+
+**The card is named `ttyUSB0`, `ttyACM0` or `rfcomm0`.** That printer connects through a serial port, not as a USB printer, and Linux gives serial ports to the `dialout` group. Add yourself to it, then log out and back in:
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+On Arch Linux the group is `uucp`.
+
+**No printer found.** The app lists only USB devices that say they are printers. Check the cable and that the printer is on, then press **Scan again**. See [No printer found](./setup-wizard.mdx#not-found).
+
+**The test page prints, then later receipts don't.** That is not a permission problem. Start from [Still not printing?](./setup-wizard.mdx#troubleshoot)
 
 ## Still stuck? {#still-stuck}
 
-Use **Copy setup report** on the trouble screen and paste it into your message, along with the `lsusb` line for your printer.
+Press **Copy setup report** on the **Nothing printed** panel, or in the printer's **More actions** menu in **Settings → Printing**. Paste it into your message, with your printer's `lsusb` line and the `ls -l` line from above.
 
 <SupportContact />
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/printers/setup-wizard" title="Printer Setup Wizard" description="Add a printer, print the test page and answer its questions" />
+  <LinkCard to="/hardware/printers" title="Receipt Printers" description="What each app can connect to, and every printer guide" />
+  <LinkCard to="/hardware/printers/supported-printers" title="Supported receipt printers" description="Which printers work, and how well" />
+</LinkCards>
