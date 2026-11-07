@@ -332,7 +332,7 @@ module.exports = {
           // rot unseen in the meantime. The locale-coverage test in
           // scripts/__tests__/docusaurus-config.test.js fails this change until
           // every locale has 2.x translated.
-          onlyIncludeVersions: ['1.x', '0.4.x'],
+          onlyIncludeVersions: ['2.x', '1.x', '0.4.x'],
           // 0.4.x is the 2016-era product: kept reachable for old installs, but out of
           // search (robots noindex) and out of sitemap.xml.
           versions: {
