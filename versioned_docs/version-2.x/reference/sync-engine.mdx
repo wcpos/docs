@@ -2,125 +2,242 @@
 title: How the Sync Engine Works
 sidebar_label: Sync Engine
 sidebar_position: 3
-description: "Developer reference for the WCPOS sync engine introduced in v1.10.0: scopes, sync lanes, change detection, declared demand, coverage reporting, and the offline write queue."
+description: "Developer reference for the WCPOS 2.x sync engine: one database per store and cashier, background lanes, the change check, coverage, the write queue, one live browser tab and local storage."
 ---
 
-:::info New in v1.10.0
-This page describes the sync engine introduced in **WCPOS v1.10.0**. Earlier versions use a different, per-screen replication model — see [What changed in v1.10.0](#what-changed-in-v1100) at the end of this page.
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.json';
+
+Open the POS menu, then [**Store health**](../support/store-health.mdx) at the foot of it, to see everything this page describes on your own till. Looking for what to do rather than how it works?
+
+- **Check changes waiting to send.** Open **Store health → Database** and read **changes waiting to send**: what this till still has to send to your store. See [Database](../support/store-health.mdx#database), and ["changes waiting to send" won't go down](../support/store-health.mdx#waiting-to-send) if it stays above 0. How sending works: [How changes get back to your store](#write-path).
+- **Check what's downloaded.** Open **Store health → Database** and read the table: how much of your store is on this device. See [What's on this device](../support/store-health.mdx#coverage). How downloads are counted: [Is everything downloaded?](#coverage).
+- **When does a change made in WooCommerce reach the till?** See [How the POS learns about changes](#change-signal).
+- **A sale or edit didn't reach your store.** See [Changes that never reached your server](../support/store-health.mdx#refused-changes).
+- **"The POS is open in another tab."** See [One tab runs the POS](#multi-tab).
+- **Updating to 2.0.** See [Before you click Update](../getting-started/upgrading-to-2.mdx#before-you-click-update).
+
+:::warning Before updating to 2.0
+On every till, open **Store health → Database** and wait until **changes waiting to send** reads 0, then update. Changes still waiting on a till are not sent after the update. See [Upgrading to 2.0](#upgrading).
 :::
 
-WCPOS is local-first: every screen reads and writes a database on the device, and a **sync engine** keeps that database and your WooCommerce store convergent in the background. This page explains how the engine decides what to fetch, when to fetch it, and how your sales get back to the server — the level of detail useful to developers, integrators, and store owners who want to understand what the POS is doing to their hosting.
+WCPOS is local-first. Every screen reads and writes a database on the device, and a **sync engine** keeps that database and your WooCommerce store in step in the background. The rest of this page explains what the engine fetches, when, and how sales get back to your store, for developers, integrators and store owners who want to know what the POS asks of their hosting.
 
-## One engine per store and cashier {#one-engine-per-scope}
+## One database per store and cashier {#one-engine-per-scope}
 
-The POS runs **one sync engine per site + store + cashier combination** on each device. That engine owns its own local database, so switching store or cashier switches the whole data plane rather than filtering one shared pile of records. Per-cashier isolation is deliberate: two cashiers on the same device never share local data.
+Each store and cashier on a device has its own local database. Two cashiers on one device never share local data.
 
-Switching scope is **transactional**: the new store or cashier hydrates its data plane and only commits once it's ready, and any error is surfaced instead of leaving you half-switched between two stores.
+- **Switching is all or nothing.** The new store or cashier loads its database first and only takes over once it is ready. An error is shown, never a half-switched till.
+- **Every request names its store.** On WCPOS Pro with several stores, a price changed at the till updates that store's price, not the web store's.
+- **A new version starts a new database.** Nothing is migrated in place. See [Upgrading to 2.0](#upgrading).
 
-On upgrades, local databases are never migrated in place — the app starts a fresh database and re-downloads from the server, which always holds the authoritative copy (see [Upgrading from v1.9](#upgrading-from-v19)).
+<Accordion>
+<AccordionItem question="How engines and scopes are arranged">
 
-On Pro multi-store installs, every sync request identifies its store, so a price edited at the till updates that store's price rather than the web store's.
+Each device runs **one sync engine per site**. Inside it, every store and cashier pair is a **scope** with its own local database. Switching store or cashier switches the scope, and its whole database, on the same engine. Connecting to a different site replaces the engine.
+
+</AccordionItem>
+</Accordion>
 
 ## What runs in the background {#sync-lanes}
 
-Everything the engine does on a schedule is a **lane** — a named, bounded unit of background work. Lanes fall into three groups:
+The till's **change check** asks your store whether anything changed, every 60 seconds on **Balanced**. The [sync presets](../support/store-health.mdx#sync-presets) set it from every 10 seconds (**Realtime**) to every 5 minutes (**Eco**).
 
-| Group | Lanes | Default cadence |
+- **Background work waits for the cashier.** Top-ups of products, customers and variations only run after 60 seconds with no one using the till and no screen waiting for data, and they hold off while your server is under pressure. Audits and the server-totals retry hold off under pressure too.
+
+<Accordion>
+<AccordionItem question="Every lane, its cadence and its request ceiling">
+
+Everything the engine does on a timer is a **lane**: a named, bounded piece of background work. The change check is the one you can tune. Changes made on the device go out about 0.3 seconds after they are made.
+
+Seeds, trickles, totals and audits each declare how many requests one run may make. The three paths a cashier waits on (the change check, the write drain and the demand drain) don't have a ceiling yet. The budgets are in [Sync Performance](sync-performance.mdx).
+
+| Lane | Cadence | Requests per run |
 | --- | --- | --- |
-| **Pull** | Change check (change signal) | 10 s – 5 min, set by your [sync preset](/support/store-health#sync-presets) |
-| | Recent orders, product catalogue seed, reference data seed | ~5 min |
-| | Customer trickle (idle-time only) | ~5 min |
-| **Push** | Write drain — sends queued local changes | ~10 s |
-| **Maintenance** | Integrity and deletion audits, server totals refresh | every few minutes to ~17 min |
+| Change check | Your preset: 10 s (Realtime), 60 s (Balanced), 5 min (Eco); custom from 5 s | No ceiling yet |
+| Write drain | About 0.3 s after each change, 10 s backstop | No ceiling yet |
+| Demand drain (fetches what screens declared) | 30 s | No ceiling yet |
+| Recent orders, product and reference seeds | 5 min | 0 (they queue work for the demand drain) |
+| Customer, product and variation trickles | 5 min, after 60 s idle | 1 |
+| Server totals retry | 30 s | 11 |
+| Coverage compaction | 60 s | 0 |
+| Existence prime | 15 min | 5 |
+| Deletion audit | 17 min | 11 |
 
-Two properties hold for every lane:
+</AccordionItem>
+</Accordion>
 
-- **Each lane declares a per-run request ceiling.** No lane may fan out an unbounded number of requests in one run; larger jobs use bounded batches with resumable cursors. This is a core design invariant, covered in depth in [Sync Performance](/reference/sync-performance).
-- **Maintenance yields to the cashier.** Audits and background primes run after the interactive work that gets a till ready to sell, never before it, and they are the first thing paused when your server shows signs of pressure.
+The check interval and the records per request are set per device on **Store health → Performance**:
 
-The cadences above are defaults. The check interval and records-per-request are merchant-tunable per device from **Store health → Performance** in the POS — see [Store Health](/support/store-health).
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[368, 0], [506, -55], [186, -27], [186, -27], [186, -27], [161, -24], [161, -20], [456, 0]]} alt="Store health on the Performance tab: the status line, the engine uptime strip, the Eco, Balanced and Realtime presets, the two sliders and the Right now line" />
+
+<div className="pinned-legend">
+
+1. **Status** — **✓ Normal**, or **⚠ Needs attention** when the till is offline, sync is blocked, a first download failed, or a sync job's last run failed. Then the last 24 hours of requests on this till.
+2. **Engine uptime** — one cell per hour for the last 24 hours. Green: requests and no errors. Amber: at least one request failed. Empty: the app was closed.
+3. **Eco** — the change check every 5 minutes, 25 records per request.
+4. **Balanced** — the default: every 60 seconds, 50 records.
+5. **Realtime** — every 10 seconds, 75 records.
+6. **Check for changes** — the change check interval, 5 seconds to 5 minutes.
+7. **Records per request** — how many records one pull fetches, 10 to 100.
+8. **Right now** — when the next check is due, and about how many requests an hour these settings make.
+
+</div>
 
 ## How the POS learns about changes {#change-signal}
 
-The engine doesn't re-download data to find out whether it changed. The server keeps a change log, and the POS polls a lightweight **change check** that answers one question: has anything moved since my last position?
+The POS doesn't download your catalog again to spot changes. At each change check it asks your store one light question: has anything moved since last time? On **Balanced**, a connected till checks for price and stock changes about once a minute. Checks can take longer when your server is under pressure. Orders follow their own, separate schedule.
 
-- **One check covers eight collections** — products, variations, tax rates, customers, coupons, categories, brands, and tags. Orders are deliberately not on the change check; order freshness comes from its own recent-orders lane, which is why product and order updates can arrive on different rhythms.
-- **An idle till costs almost nothing.** The engine sends conditional requests: when nothing has changed, the server answers a single bodyless `304 Not Modified`. A quiet store settles at one tiny response per check.
-- **Checks are jittered ±20%** so several registers on one site drift apart instead of hitting the server in synchronized bursts.
-- **Idle decay:** after 10 minutes with no interaction, checks stretch out (to a 60-second floor). Any real activity — a touch, a keypress, an accepted barcode scan — snaps straight back to full cadence and fires an immediate catch-up check. Decay only ever stretches the interval; it never polls faster than the configured setting.
-- **A till that was closed for days re-baselines instead of replaying history.** If the change log has moved too far past the till's last position, replaying every row would cost hundreds of requests. Instead the engine jumps its cursor to the head and re-checks the current server state of what the device already holds — so the cost scales with the size of the local copy, not with how long the till was away.
+<Accordion>
+<AccordionItem question="How the change check works">
+
+Your store keeps a **change log**, and the POS asks whether anything moved since its last position in it.
+
+- **One check covers eight kinds of record:** products, variations, tax rates, customers, coupons, categories, brands and tags. Orders are not on it; open and recent orders have their own lane, so product and order updates arrive on different rhythms.
+- **A quiet store costs almost nothing.** The request is conditional. When nothing changed, your server answers `304 Not Modified` with no body.
+- **Checks are spread out by ±20%,** so several tills on one site drift apart instead of asking at the same moment.
+- **An unused till slows down, a little.** After 10 minutes with no touch, key press or accepted scan, checks stretch to at least 30 seconds, then at least 60. A hidden window goes straight to 60. On **Balanced** and **Eco** that changes nothing. The next touch brings the full rate back with an immediate check, unless your server has asked the POS to back off. The idle rate is never faster than your setting.
+- **A till that was closed for days starts from now.** If more than 5,000 changes piled up, or your store pruned its log past the till's position, the engine jumps to the head of the log and re-checks what the device already holds. The cost follows the size of the local copy, not the time away.
+
+</AccordionItem>
+</Accordion>
 
 ## How screens get their data {#declared-demand}
 
-In v1.10.0, screens don't run their own sync. **A screen declares what it's showing — search term, filters, sort, page — and the engine decides whether that needs a request at all.** Each declaration resolves one of three ways:
+A screen always shows what is already on the device, straight away. When it needs records the device doesn't have yet, such as a search past the first products, the engine fetches them from your store while the till is online. Not everything is on the device from the start; what is depends on the kind of record:
 
-- **Fetched** — the engine did work on the wire to satisfy it.
-- **Served locally** — the device already had the answer, or an identical recent fetch covers it.
-- **Superseded** — the screen moved on (you scrolled, changed a filter) and a newer declaration replaced it. This is routine, not an error.
+1. **Tax rates** are fetched at start-up, first: the cart can't do its sums without them.
+2. **Products:** the first 100 in the default order are fetched at start-up. The rest arrive when a screen asks for them, and through an idle top-up in the cashier's sort order.
+3. **Customers** are not fetched at start-up. A screen asks for them, an idle top-up adds 10 at a time, and the change check brings new and edited ones.
+4. **Categories, tags, brands and coupons** are not fetched at start-up either. They load when first opened (a reopen within 15 seconds doesn't ask again), are filled in the background once your store reports it has some, are refreshed every 30 minutes and follow the change check.
 
-A filter that can only be answered locally never travels to the server. And a successful declaration does not mean a collection is fully downloaded — completeness is tracked separately (next section).
+When the till is online, opening the variation picker refreshes its prices and stock. Variations already on the device show at once while it does.
 
-Not everything is downloaded eagerly, and what's on the device at boot varies by collection:
+<Accordion>
+<AccordionItem question="How a screen asks for data">
 
-1. **Seeded** — products fill through a bounded catalogue seed; tax rates are pulled at boot (a POS can't do cart math without them).
-2. **On demand, plus an idle trickle** — customers have no eager seed. The customer trickle downloads a small batch per idle interval, skipping entirely whenever the cashier is active, and new or changed customers arrive through the change check.
-3. **Fetched on first open** — categories, tags, brands, and coupons are pulled when a cashier first opens them. A collection nobody opens generates zero requests, ever.
+Screens don't sync. **A screen declares what it shows (search, filters, sort, page) and the engine decides whether that needs a request.** Each declaration ends one of three ways:
 
-Variation pickers additionally refresh price and stock once per open, so a resident variation renders instantly but never shows stale stock from days ago.
+- **Served locally** — every record it needs is already on the device.
+- **Fetched** — the engine went to your store for it.
+- **Released** — the screen let it go, usually because you scrolled or changed a filter and a newer declaration replaced it. This is routine, not an error.
 
-## "Is everything downloaded?" — honest coverage {#coverage}
+A filter your store can't express is applied on the device; the rest of the query may still go to your store. A declaration that resolves doesn't mean a kind of record is fully downloaded. That is tracked separately, [below](#coverage).
 
-A readout like *"1,240 of 5,000 products"* needs a **server-side** total for the denominator. The engine maintains one per collection (refreshed roughly every 15 minutes, usually free — real sync responses already carry the total, so a dedicated request is rarely needed) and follows a strict honesty contract:
+</AccordionItem>
+</Accordion>
 
-- A stale or missing server total is shown as *checking…* — never silently substituted with a local count. A local denominator would always read 100% and hide exactly the gap the number exists to reveal.
-- When the engine can't vouch for completeness, the verdict is *unknown* and the UI labels the figure as a local count.
-- The orders coverage bar measures against the **whole** server order history, while the till deliberately keeps only open and recent orders — so a healthy till reads as partial there by design.
+## Is everything downloaded? {#coverage}
 
-These numbers surface on **Store health → Database**, along with a *Ready to sell* milestone that flips as soon as the first product is on the device — being offline doesn't block it, because selling offline is the point. See [Store Health](/support/store-health).
+**Store health → Database** lists each kind of record with the count on the device, your store's total and a coverage bar. See [What's on this device](../support/store-health.mdx#coverage). A number there is never made up from what the device holds:
+
+- **A total that is out of date or missing reads *checking…*.** Out of date, the last figure from your store stays beside it. A count from the device would always read 100% and hide the very gap the figure is there to show.
+- **Orders read partial by design.** The bar measures against every order in your store, while the till keeps only open and recent ones (**open + recent stay on device · older download when viewed**).
+- **Ready to sell comes early.** It turns on as soon as the first products are on the device, and being offline doesn't hold it back: selling offline is the point.
+
+<Accordion>
+<AccordionItem question="How download totals are checked">
+
+A figure like *1,240 of 5,000 products* needs your store's total for the second number. The engine keeps one per kind of record. Each is a cheap request of its own, one record per page, reading WooCommerce's `X-WP-Total` header, at most once every 15 minutes or so per kind.
+
+</AccordionItem>
+</Accordion>
 
 ## How changes get back to your store {#write-path}
 
-Every local write — a sale, a product edit, a customer update — lands in a **durable outbound queue** on the device first, and a drain lane pushes the queue to WooCommerce every few seconds. This is what makes offline selling safe: a sale rung with no connection sits in the queue and drains when the connection returns.
+Every change made on the device (a sale, a product edit, a new customer) is saved on the device first and sent to your store within a second or so. **A sale rung up offline waits on the device and goes when the connection comes back.** Most changes need nothing from you. Two kinds wait for a choice on **Store health → Database**:
 
-Details that matter:
+- **An order that clashes is retried once.** If your store has a newer copy of the order, the engine reconciles and sends once more. If that fails too, or the record is not an order, the change is held for you to choose: **Send again** or **Use server version**. See [Changes held because your store had a newer version](../support/store-health.mdx#held-changes).
+- **A change your store refuses is never retried on its own.** It is kept with your store's reason and shown on **Store health → Database** as **changes never reached your server**. **Send again** rebuilds it from the record as it is on the device now; **Discard** drops it. See [Changes that never reached your server](../support/store-health.mdx#refused-changes).
 
-- **Cart writes are serialised per order.** Rapid-fire scanner bursts apply one at a time, and a repeated add merges into the line it duplicates rather than queueing a second line.
-- **Order acknowledgements adopt the server's copy.** WooCommerce assigns IDs to order line items on create; the engine adopts the acknowledged order so later updates match those lines instead of appending duplicates. Adoption is conservative — it never overwrites a local edit the server hasn't seen, and only applies to orders.
-- **An order write conflict recovers itself once.** If an order write collides with a newer server copy, the engine reconciles and retries a single time; if it still can't, the conflict is surfaced for you to resolve rather than looping silently.
-- **A write the server permanently refuses is never silently retried.** It's parked with the server's own reason and surfaced on **Store health → Database** as *"changes never reached your server"*, with two explicit actions: **Send again** (rebuilds the request from the record as it stands now, so later fixes apply) and **Discard**. There is no automatic retry loop — recovery is always a visible, deliberate action. See [Store Health](/support/store-health#database) for the merchant-facing walkthrough.
+<Accordion>
+<AccordionItem question="How changes are sent">
 
-### Multiple browser tabs {#multi-tab}
+- **A durable queue comes first.** Each change goes into a queue on the device before anything is sent. About 0.3 seconds later the write drain sends it; a 10-second poll catches anything a nudge missed.
+- **Cart changes go one at a time per order.** A fast run of scans applies in order. Adding a product that already has exactly one line in the cart raises that line's quantity instead of adding a second line.
+- **What your store sends back is kept.** When your store accepts a change, the device takes your store's copy, so later edits match it. For orders that keeps the line IDs WooCommerce assigned, so an update doesn't add duplicate lines. A local edit your store hasn't seen yet is never overwritten.
 
-Running the web POS in several tabs of the same store is supported. Every tab can ring a sale — writes append to the shared queue — but **one elected tab does the sending** for each store + cashier scope. If that tab closes, the browser promotes the next one automatically. Two tabs signed in as different cashiers are separate scopes and each manage their own queue.
+</AccordionItem>
+</Accordion>
+
+## One tab runs the POS {#multi-tab}
+
+In a web browser, **only one tab per site runs the POS**. A second tab of the same site, for any store or cashier, stops at this screen. It never opens the local database, so it can't ring a sale or send anything, and nothing in the first tab is disturbed.
+
+<JourneyShot manifest={manifest} device="tablet" step={5} offsets={[[637, 37], [334, 0]]} alt="A second browser tab of the POS: The POS is open in another tab, Only one tab can run the register, and the Take over here button" />
+
+<div className="pinned-legend">
+
+1. **The POS is open in another tab** — this tab is parked. **Only one tab can run the register.**
+2. **Take over here** — asks the other tab to hand over. It finishes a payment in progress and waits up to 15 seconds for a save, then parks itself, and this tab loads the POS.
+
+</div>
+
+- **A parked tab doesn't wake up by itself.** Closing the live tab leaves the other one parked until you press **Take over here** or reload it.
+- **"The other tab isn't answering"** — the live tab didn't hand over. Close it, or reload it, to carry on in this one.
+- **A payment the old tab tries to start after it has let go of the register** is refused before it is sent, and logged as [CLIENT161](../error-codes/CLIENT161.mdx). A payment that started first, even one that starts while the handover waits for a save, finishes before the tab hands over.
+- **Desktop and mobile apps** have no tabs and no gate. A browser without the Web Locks API runs every tab without the check.
 
 ## Local storage {#local-storage}
 
-The web and desktop apps store data through an **OPFS (Origin Private File System) worker**; the iOS and Android apps use the same on-disk format through a filesystem engine. All four platforms share one storage format and the same corruption-recovery tooling. (Earlier versions used IndexedDB on web and SQLite on native.)
+In 2.0 every platform keeps its data in a **SQLite** database on the device.
 
-If the local store becomes **unreadable**, WCPOS blocks checkout and prompts for a reload rather than letting a sale run against broken data and lose it, and barcode scans in that state fail loudly instead of going quiet — so a corrupted store can't silently swallow a sale before the recovery tooling rebuilds it.
+If the storage worker is lost, or a local save stalls, the POS stops anything that could lose a sale. A banner reads **Local database unavailable — scanning, checkout, saving and voiding are blocked until the app is reloaded.** Refunds are blocked too, and a scan shows **Scanning unavailable** instead of going quiet. Press **Reload the app**. The code is [SYNC161](../error-codes/SYNC161.mdx).
 
-Queries execute inside the database layer — selector, sort, and page — so only the visible page of rows crosses into the app. On a synthetic 10,000-order fixture, that pushdown took per-write update cost under a live subscription from ~27 ms to ~0.06 ms.
+<Accordion>
+<AccordionItem question="Where the data lives on each platform">
 
-## Upgrading from v1.9 {#upgrading-from-v19}
+The database runs through RxDB Premium:
 
-v1.10.0 does not migrate local databases — it performs a **cold resync**:
+| Platform | Where the data lives |
+| --- | --- |
+| Web | SQLite-wasm in one dedicated worker, in the browser's private file system (OPFS) |
+| Desktop | SQLite in the app's main process |
+| iOS and Android | SQLite through expo-sqlite |
 
-1. On first launch, the app opens a fresh local database and re-downloads from your store. Expect a one-time full re-download on every device.
-2. Nothing is lost: your WooCommerce server is the authoritative copy of all synced data. Pending unsent changes are drained or surfaced **before** old data is cleaned up — the upgrade cannot destroy an unsent sale.
-3. **The app and the plugin ship in lockstep.** v1.10.0 clients speak the plugin's v2 sync API. If only one side is upgraded, requests fail with `rest_no_route` errors — that signature means "update the other half", not a broken install.
+Queries run inside the database: filter, sort and page. Only the rows on screen reach the app.
 
-## What changed in v1.10.0 {#what-changed-in-v1100}
+</AccordionItem>
+</Accordion>
 
-| | v1.9.x | v1.10.0 |
-| --- | --- | --- |
-| Unit of sync | One replication stream per mounted screen query | One engine per site + store + cashier |
-| What drives a fetch | A screen mounting | A screen declaring what it needs |
-| Change detection | Periodic polls + hourly full audit | Change log cursor with conditional `304` responses |
-| Server totals | Not tracked | Per-collection totals with honest *checking…* states |
-| Failed writes | Retried opaquely | Durable queue, visible recovery panel, no silent retries |
-| Multi-tab web | Uncoordinated | One elected sender per scope |
-| Local search | Word-prefix matching | Substring matching (3-character minimum) |
-| Storage | IndexedDB (web), SQLite (native) | OPFS-format storage on all platforms |
-| Sync tuning | Fixed | Per-device presets and dials in Store health |
+## Upgrading to 2.0 {#upgrading}
 
-For the performance philosophy behind the engine — request ceilings, back-off under server pressure, and the measured numbers — see [Sync Performance](/reference/sync-performance).
+2.0 doesn't migrate local data. It does a **cold resync**:
+
+1. **Every device starts a fresh database** and downloads again from your store, once. Your store holds the full copy of everything synced.
+2. **Changes queued before the update are not sent.** On every till, wait until **changes waiting to send** reads 0 on **Store health → Database** before you update. See [Before you click Update](../getting-started/upgrading-to-2.mdx#before-you-click-update). The old 1.x databases are deleted once the store is ready to sell.
+3. **The app and the plugin go together.** The 2.0 app needs the WCPOS 2.0 plugin. With only one side updated, the app says which: [AUTH331](../error-codes/AUTH331.mdx) when the plugin is older, [SYNC341](../error-codes/SYNC341.mdx) when the app is older.
+
+## What changed since 1.9 {#what-changed-in-v1100}
+
+<Accordion>
+<AccordionItem question="1.9, 1.10–1.11 and 2.0 side by side">
+
+| | 1.9 | 1.10–1.11 | 2.0 |
+| --- | --- | --- | --- |
+| Unit of sync | One stream per screen query | One engine, a database per site, store and cashier | Same |
+| What drives a fetch | A screen opening | A screen declaring what it needs | Same |
+| Change detection | Periodic polls and an hourly full audit | Change log with conditional `304` answers | Same |
+| Your store's totals | Not tracked | Per kind of record, with *checking…* | Same |
+| Refused changes | Retried out of sight | Durable queue, recovery panel, no silent retries | Same |
+| Browser tabs | Not coordinated | Every tab live, one elected sender | One live tab per site, others parked |
+| Storage | IndexedDB (web), SQLite (apps) | File-system storage (OPFS on web) | SQLite on every platform |
+| Sync tuning | Fixed | Presets and sliders in Store health | Same |
+| Local search | Word-prefix matching | Substring matching | Every word, any length, anywhere in the record |
+
+</AccordionItem>
+</Accordion>
+
+For the request budgets, the back-off when your server struggles and the measured numbers, see [Sync Performance](sync-performance.mdx).
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Store Health" to="/support/store-health" description="Where the store owner sees all of this on the till." />
+  <LinkCard title="Sync Performance" to="/reference/sync-performance" description="Request budgets and back-off under server pressure." />
+  <LinkCard title="Upgrading to 2.0" to="/getting-started/upgrading-to-2" description="What to do on every till before you update." />
+</LinkCards>
