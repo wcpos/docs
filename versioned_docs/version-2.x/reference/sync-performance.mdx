@@ -12,13 +12,13 @@ import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
 import manifest from '@site/static/img/2.x/reference/sync-performance/en/manifest.json';
 
-Open **Store health** from the pulse icon at the foot of the menu, then **Performance**. The settings are saved on this device only, for the store it is on.
+To set how hard a till works your server:
 
-**Which to choose:** leave the till on **Balanced**, the default. If your server regularly struggles, and the pace line often reads **Easing off** or **Paused until …**, choose **Eco** on each till and see [If your server still struggles](#troubleshooting). The presets are compared in [What syncing costs your server](#request-budgets).
+1. Open **Store health** from the pulse icon at the foot of the menu.
+2. Tap **Performance**.
+3. Leave **Balanced** selected: it is the default. If your server regularly struggles, and the pace line often reads **Easing off** or **Paused until …**, tap **Eco** instead.
 
-Every till keeps checking your store for changes. Most stores run on shared hosting, where each of those requests starts WordPress from scratch and competes with your website's own visitors. So the POS treats your server's time as something to spend carefully: an unchanged store costs almost nothing to keep in sync, background work has fixed limits, and the till slows itself down when your server struggles.
-
-This page gives the numbers behind those promises, for store owners and developers. For a walk through the whole tab, see [Store health › Performance](../support/store-health.mdx#performance).
+The setting is saved on this device only, for the store it is on, so set each till. The presets are compared in [What syncing costs your server](#request-budgets). If your server struggles even on **Eco**, see [If your server still struggles](#troubleshooting).
 
 ## The Performance tab, and what sits behind it {#performance-tab}
 
@@ -39,6 +39,8 @@ This page gives the numbers behind those promises, for store owners and develope
 
 ## Four rules the engine follows {#the-four-rules}
 
+Every till keeps checking your store for changes. Most stores run on shared hosting, where each of those requests starts WordPress from scratch and competes with your website's own visitors. So the POS treats your server's time as something to spend carefully. The rest of this page gives the numbers behind these rules, for store owners and developers; for a walk through the whole tab, see [Store health › Performance](../support/store-health.mdx#performance).
+
 1. **Cost follows what changed, not how big your catalogue is.** Every check starts with a cheap question, and an unchanged store answers it with an empty reply. An unchanged 50,000-product store costs about the same to keep in sync as an unchanged 500-product store.
 2. **Background work has a ceiling.** Every background maintenance job declares the most requests it may make in one run, and the engine's tests fail if it makes more. Bigger jobs run in small batches and pick up where they left off next time.
 3. **The cashier comes first.** The requests that make a till ready to sell run first. Audits wait until the first page of products has downloaded, then a further minute. While the app is hidden or in the background, maintenance waits.
@@ -48,12 +50,10 @@ This page gives the numbers behind those promises, for store owners and develope
 
 Two settings set the steady cost: how often the till checks, and how many records it fetches per request.
 
-| Preset | Check for changes | Records per request | Checks per hour |
-| --- | --- | --- | --- |
-| **Eco** | every 5 min | 25 | 12 |
-| **Balanced** (default) | every 60 s | 50 | 60 |
-| **Realtime** | every 10 s | 75 | 360 |
-| Custom | 5 s to 5 min, in 5 s steps | 10 to 100, in steps of 5 | 720 to 12 |
+- **Eco** — a check every 5 minutes, 25 records per request. 12 checks an hour.
+- **Balanced** (the default) — a check every 60 seconds, 50 records per request. 60 checks an hour.
+- **Realtime** — a check every 10 seconds, 75 records per request. 360 checks an hour.
+- **Custom** — a check every 5 seconds to 5 minutes, in 5-second steps, and 10 to 100 records per request, in steps of 5. From 720 checks an hour down to 12.
 
 Moving either slider makes the setting **Custom**; **Reset to Balanced** puts the default back.
 
@@ -69,7 +69,10 @@ Records per request decides how much work each download is for your server. A pa
 
 ### Background maintenance {#maintenance-budgets}
 
-On top of the change checks, a few background jobs keep the till's copy complete and honest: they find records deleted on the server, and fill in what a till hasn't downloaded yet, so it can sell offline. Each run has a fixed ceiling.
+On top of the change checks, a few background jobs keep the till's copy complete and honest: they find records deleted on the server, and fill in what a till hasn't downloaded yet, so it can sell offline. Each run has a fixed ceiling: at most 11 requests, and most jobs make 1.
+
+<Accordion>
+<AccordionItem question="Every background job and its ceiling">
 
 | Job | Runs about every | Most requests per run |
 | --- | --- | --- |
@@ -80,7 +83,7 @@ On top of the change checks, a few background jobs keep the till's copy complete
 | Customer top-up | 5 min | 1 |
 | Variation download | 5 min | 1 |
 
-<Accordion>
+</AccordionItem>
 <AccordionItem question="How the deletion audit stays inside 11 requests">
 
 The audit compares the till's records with the server in buckets. It reads at most 9 summary pages (3 for each kind of record it checks), and skips every bucket whose summary matches. Only a bucket that differs gets a detail request, and at most 2 of those per run. If there is more to check, the audit saves its place and carries on next run, rather than catching up in one burst. Under server pressure a run drops to 1 summary page per kind and 1 detail request.
@@ -109,22 +112,37 @@ Every answer the till gets feeds a pressure check, one per website on this devic
 
 The pace line names the reason. **Easing off — checking 2× less often** is followed by one of these, and the number grows with each step:
 
-- **… your server asked the POS to slow down** — your server answered `429 Too Many Requests`. The till reacts at once.
-- **… your server returned errors** — 3 `5xx` errors within a minute.
-- **… requests to your server timed out** — 3 requests without an answer in time, within a minute.
-- **… your server was answering slowly** — the middle of the last 10 response times is above 2 seconds.
-- **… your server reported high load** — about 6 of the last 10 answers were marked `X-WCPOS-Pressure: high`.
+- **… your server asked the POS to slow down** — your server turned a request away as one too many.
+- **… your server returned errors** — several requests failed on the server within a minute.
+- **… requests to your server timed out** — several requests got no answer in time.
+- **… your server was answering slowly** — typical answers are taking more than 2 seconds.
+- **… your server reported high load** — most recent answers came marked as under high load.
 
-**Paused until … — your server asked the POS to wait** means your server refused a request and sent `Retry-After`. The till waits as asked, up to 15 minutes.
+**Paused until … — your server asked the POS to wait** means your server refused a request and said when to try again. The till waits as asked, up to 15 minutes.
 
 Errors while the device is offline don't count: that's your connection, not your server.
+
+<Accordion>
+<AccordionItem question="Exactly what trips each pace line">
+
+| Pace line ends | Your server | The till reacts |
+| --- | --- | --- |
+| asked the POS to slow down | answers `429 Too Many Requests` | at once |
+| returned errors | returns `5xx` errors | after 3 within a minute |
+| requests … timed out | doesn't answer in time | after 3 within a minute |
+| was answering slowly | answers slowly | when the middle of the last 10 response times is above 2 seconds |
+| reported high load | marks its answers `X-WCPOS-Pressure: high` | on about 6 of the last 10 |
+| Paused until … | sends `Retry-After` with a refusal | at once, for up to 15 minutes |
+
+</AccordionItem>
+</Accordion>
 
 A server that marks its answers `elevated` or `high` but still answers quickly shows **Normal pace — your server reports high load; the till only slows down if its answers do**. The header can start a slowdown but never keep one going on its own: the till trusts how fast your server actually answers.
 
 ### What slowing down means {#back-off-steps}
 
 - **Each step doubles the wait between checks,** up to about 5 minutes: **Realtime** can slow 32×, **Balanced** 8×, and **Eco** 2× (to 10 minutes). A custom setting slows to 5 minutes, or to twice its own interval if that is longer. A `Retry-After` pause can run past those limits, up to its 15 minutes.
-- **Background maintenance waits.** The jobs in the table above hold off. A job that has waited twice its usual interval (the deletion audit, once) does one run anyway, within its ceiling, unless your server has asked the POS to wait. The deletion audit's run is cut to 1 summary page per kind of record and 1 detail request.
+- **Background maintenance waits.** The [background jobs](#maintenance-budgets) hold off. A job that has waited twice its usual interval (the deletion audit, once) does one run anyway, within its ceiling, unless your server has asked the POS to wait. The deletion audit's run is cut to 1 summary page per kind of record and 1 detail request.
 - **The cashier is never slowed.** Searches, barcode lookups, opening a record and saving a sale go straight through.
 
 ### Coming back up {#recovery}
@@ -150,16 +168,32 @@ Background sync must never make the screen stutter.
 - **The first result stays quick while sync runs.** The first results of a query still arrive in about **7–10 ms** while a 10,000-product audit runs, and about **40–54 ms** during a 50,000-product audit.
 - **Only the rows you can see leave the database,** when the filter and sort can run inside it, so a screen update moves ten rows, not ten thousand. Searches, and filters the database can't run itself, are worked out on the till instead.
 
-These figures come from the engine's performance tests, measured on an Apple silicon computer with the database in memory. The tests run on their own in CI whenever the sync engine changes. Their limits sit about 11–18 times above the measured figures (3 times for the 30 ms chunk), and three times higher again in CI, so they catch a slowdown of that size, not a slow test machine.
+These figures come from the engine's performance tests, measured on one computer with the database in memory.
+
+<Accordion>
+<AccordionItem question="How these figures are measured">
+
+The tests run on an Apple silicon computer with the database in memory, and on their own in CI whenever the sync engine changes. Their limits sit about 11–18 times above the measured figures (3 times for the 30 ms chunk), and three times higher again in CI, so they catch a slowdown of that size, not a slow test machine.
+
+</AccordionItem>
+</Accordion>
 
 ## Checked against a live store {#live-verification}
 
-The rules above are also checked on a real WordPress store. After a release is deployed, a test run by hand reloads the POS with an audit due and checks that:
+The rules above are also checked on a real WordPress store, by hand, after a release is deployed: the till makes **no** audit requests before the product list first shows, and stays inside the audit's ceilings after that.
+
+<Accordion>
+<AccordionItem question="What the live test checks, and why it exists">
+
+The test reloads the POS with an audit due and checks that:
 
 - the till makes **no** audit requests before the product list first shows, and
 - after the minute's hold, the audit makes at most **9** summary pages and **2** detail requests.
 
 The test came from a real regression: an early development build sent **41** detail requests (**1.2 MB**) in one audit when a till rebuilt its records. The design that replaced it checks summaries first and keeps detail requests under the ceilings above, and the engine's tests enforce those ceilings on every change.
+
+</AccordionItem>
+</Accordion>
 
 ## What the numbers don't tell you {#honest-limits}
 
