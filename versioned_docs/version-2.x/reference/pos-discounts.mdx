@@ -1,69 +1,116 @@
 ---
 title: POS Discount Technical Reference
 sidebar_label: POS Discounts
-description: "Developer reference for how WCPOS stores POS line-item price overrides, how they interact with WooCommerce coupons, and the available filters."
+description: "Developer reference for how WCPOS records a price changed at the till and an Add Discount line on the WooCommerce order, how both interact with coupons, and the filter and receipt fields that expose them."
 ---
 
-# POS Discount Technical Reference
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
 
-This page documents how WCPOS handles cashier-applied line-item price overrides — how they're stored, how they interact with WooCommerce coupons, and what filters are available. For user-facing documentation, see [Cart Discounts](/pos/cart/discounts) and [Coupons](/coupons).
+This page is for developers and for anyone reading WCPOS orders in reports, exports or another plugin. It shows where each kind of till discount is stored on the WooCommerce order and how coupons treat it. What the cashier does is on [Cart Discounts](../pos/cart/discounts.mdx).
 
-## How POS Price Overrides Are Stored {#how-pos-price-overrides-are-stored}
+## Where each discount is recorded {#where-recorded}
 
-When a cashier sets or changes a line item's price in the POS, the per-unit prices are stored in the `_woocommerce_pos_data` line item meta as JSON:
+The cashier has three ways to take money off. Each lands in a different place on the order.
+
+| The cashier uses | Stored as | In `discount_total` | Coupon rules |
+|---|---|---|---|
+| A quick discount key or a typed price on a line | The line's price: `_woocommerce_pos_data` meta and the line `subtotal` | No | None |
+| **Add Discount** | A coupon line, `pos-discount`, with `_wcpos_quick_discount` meta | Yes | None, but it can't join a coupon marked **Individual use only** |
+| A store coupon | A coupon line with the coupon's code | Yes | The coupon's own |
+
+## How POS price overrides are stored {#how-pos-price-overrides-are-stored}
+
+Every product line the POS creates carries the per-unit prices in the `_woocommerce_pos_data` line item meta:
 
 ```json
 {
-  "price": "16.00",
-  "regular_price": "18.00",
+  "price": "40.00",
+  "regular_price": "45.00",
   "tax_status": "taxable"
 }
 ```
 
-For misc (custom) products, this meta can also carry `virtual`, `downloadable`, and `categories` fields used during coupon validation.
+- `price` is what the line is sold at, after any change at the till.
+- `regular_price` is the product's regular price when it was added. Changing the price at the till never changes it, so a price raised at the till sits above it.
+- A [misc product](../pos/cart/index.mdx#miscellaneous-products) also carries `virtual`, `downloadable` and `categories`, so coupon rules can check them.
 
-This meta is the authoritative source of per-unit prices for the line. WooCommerce's stored `subtotal` on the line item is derived from `price * qty` (with tax extraction and rounding applied). The stored `total` may be lower when coupon discounts are applied, so for per-unit precision you should always read `_woocommerce_pos_data.price` and `regular_price`.
+This meta is the authoritative per-unit price. The line's `subtotal` is worked out from `price` × quantity, with tax taken out and rounding applied, and `total` drops below it when a coupon or **Add Discount** applies. For per-unit precision, read `price` and `regular_price` from the meta.
 
-New POS orders also record the server plugin version in the private `_woocommerce_pos_version` order meta. This provides an explicit version marker for future compatibility checks. Receipt calculations still treat the stored line-item shape as authoritative because an offline order may be accepted by a newer server than the app that created it.
+**Read it with a decoder that takes both shapes.** Lines from older apps hold the meta as a JSON string. The 2.0 app writes it as an object, so WordPress stores a serialized array, and values may be numbers rather than strings. A bare `json_decode()` fails on the array. The meta is hidden in WooCommerce's order screen.
 
-## Subtotal Model (v1.9.0+) {#subtotal-model-v190}
+New POS orders also carry the private `_woocommerce_pos_version` order meta: the version of the WCPOS plugin that saved the order. Receipts still treat the stored line shape as authoritative, because an order taken offline may reach a newer plugin than the app that made it.
 
-As of v1.9.0, WCPOS aligns with WooCommerce's native sale-price semantics:
+## Line totals and the Discount total {#subtotal-model-v190}
 
-- `line_item.subtotal = price * qty` where `price` is the POS price (after any override).
-- `line_item.total = subtotal - coupon_discount_for_line`.
-- `order.discount_total` reflects **coupon discounts only**, not POS price overrides.
+WCPOS records a till price the way WooCommerce records a sale price:
 
-This matches how WooCommerce treats a product on sale: the `sale_price` becomes the subtotal, and `discount_total` is reserved for coupons. There is no separate "POS discount" line on the order.
+- `line_item.subtotal` = `price` × quantity, where `price` is the till price.
+- `line_item.total` = `subtotal` − the line's share of coupons and **Add Discount**.
+- `order.discount_total` = coupons and **Add Discount** lines only. A till price is never in it.
 
-:::note Migration from pre-1.9.0
-Earlier versions sent `subtotal = regular_price * qty`, which caused WooCommerce to compute `discount_total = subtotal - total` and include POS price overrides as a discount. This was changed because it conflicted with coupon math: `recalculate_coupons()` uses `subtotal` as the base price, so coupons would calculate against the original price and produce incorrect totals.
+A worked example: one $45.00 watch, its price typed as $40.00 at the till, then a 10% **Add Discount**, with no tax:
 
-The previous server-side workaround — a `woocommerce_order_item_get_subtotal` filter active during `recalculate_coupons()` — was removed in v1.9.0. See the [ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md) for the full history.
-:::
+| Field | Value | Why |
+|---|---|---|
+| `_woocommerce_pos_data.regular_price` | 45.00 | The watch's regular price |
+| `_woocommerce_pos_data.price` | 40.00 | Typed at the till |
+| `line_items[0].subtotal` | 40.00 | 40.00 × 1 |
+| `line_items[0].total` | 36.00 | 40.00 − the 10% **Add Discount** |
+| `discount_total` | 4.00 | The **Add Discount** line only |
+| `total` | 36.00 | |
+
+The $5.00 the till price took off shows only by comparing `regular_price` with `price`. Receipts do that comparison for you; see [Receipt data](#receipt-data-exposure).
+
+<details>
+<summary>Orders from before v1.9.0</summary>
+
+Before v1.9.0 the app sent `subtotal` = `regular_price` × quantity. WooCommerce then worked out `discount_total` = `subtotal` − `total`, so a till price counted as a discount. That broke coupon maths: `recalculate_coupons()` works from `subtotal`, so coupons were calculated on the original price. A server-side `woocommerce_order_item_get_subtotal` filter worked around it during `recalculate_coupons()`.
+
+v1.9.0 moved to the sale-price model above and removed the filter. Orders saved before then keep their old figures, which is why a report can show a till price inside `discount_total` on an old order. Receipts allow for it: see [Receipt data](#receipt-data-exposure).
+
+</details>
+
+## Add Discount lines {#add-discount-lines}
+
+**Add Discount** takes an amount or a percentage off the whole order. It is a coupon line, not a coupon in your store:
+
+- **Code** — `pos-discount` for the first on an order, then `pos-discount-2`, `pos-discount-3` and so on.
+- **Meta** — `_wcpos_quick_discount` on the coupon line: `{ "discount_type": "percent", "amount": "10" }`. `discount_type` is `percent` (up to 100) or `fixed_cart`; `amount` is a positive decimal string.
+- **Rules** — none. It never excludes sale items, so it also applies to lines whose price was lowered at the till.
+- **Recalculate** — WCPOS stores the coupon details on the line, so **Recalculate** in WooCommerce's order screen keeps the discount.
+
+The virtual coupon exists only while WCPOS saves a POS order: the storefront can't redeem `pos-discount`. If a store coupon already has a code the request uses, the save is refused with **Quick discount code "…" belongs to a store coupon. Use another code.**
+
+The 2.0 app no longer takes money off with a negative fee: it asks for **Add Discount** instead. The plugin still accepts a negative fee line from older apps and other clients.
 
 ## Coupon Interaction Behaviour {#coupon-interaction-behaviour}
 
-Coupon support is a [WCPOS Pro](https://wcpos.com/pro) feature. When a coupon is applied to an order that contains POS-discounted items:
+Applying a store coupon at the till works on the free plugin; creating one at the till needs [WCPOS Pro](../getting-started/pro-license.mdx). When a coupon is applied to an order that has a till price:
 
-1. The coupon calculates against the **POS-discounted price** (the value in `_woocommerce_pos_data.price`), not the original `regular_price`.
-2. When a coupon is removed, the line item returns to its POS-discounted price.
+1. The coupon works from the **till price** (`_woocommerce_pos_data.price`), not `regular_price`.
+2. Removing the coupon returns the line to its till price.
+
+The app works coupons out on the device, so it can apply one offline, and the plugin works them out again with the same product context when it saves the order.
 
 ### `exclude_sale_items` Behaviour {#exclude_sale_items-behaviour}
 
-POS-discounted items are treated as "on sale" by WooCommerce when `_woocommerce_pos_data.price < regular_price`. Coupons with `exclude_sale_items` enabled will therefore skip them, consistent with how WooCommerce treats regular sale prices.
+A line whose `_woocommerce_pos_data.price` is below its `regular_price` counts as on sale, the same as a WooCommerce sale price. A price raised at the till doesn't. So a coupon with **Exclude sale items**:
 
-If you need different behaviour, see the `wcpos_item_is_on_sale` filter below.
+- skips a line whose price was lowered at the till;
+- can't be used at all while one is in the cart, if it is a fixed cart coupon. This is WooCommerce's own rule for fixed cart coupons.
+
+To change what counts as on sale, use the `wcpos_item_is_on_sale` filter below.
 
 ## Available Filters {#available-filters}
 
 ### `wcpos_item_is_on_sale` {#wcpos_item_is_on_sale}
 
-Override whether a POS-discounted item is considered "on sale" for coupon validation purposes. Before WCPOS 2.0 this filter was named `woocommerce_pos_item_is_on_sale`; that name still works but is deprecated since 2.0 and is removed in 2.2 at the earliest (see [Hook naming](../extensions/index.mdx#hook-naming)).
+Override whether a line with POS price data counts as "on sale" when the plugin validates coupons. Before WCPOS 2.0 this filter was named `woocommerce_pos_item_is_on_sale`; that name still works but is deprecated since 2.0 and is removed in 2.2 at the earliest (see [Hook naming](../extensions/index.mdx#hook-naming)).
 
 ```php
 add_filter( 'wcpos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
-    // Allow coupons with exclude_sale_items to apply to POS-discounted items
+    // Let coupons with exclude_sale_items apply to lines lowered at the till.
     return false;
 }, 10, 4 );
 ```
@@ -72,35 +119,37 @@ add_filter( 'wcpos_item_is_on_sale', function ( $is_on_sale, $product, $item, $p
 
 | Parameter | Type | Description |
 |---|---|---|
-| `$is_on_sale` | `bool` | Whether the item is considered on sale (default: `price < regular_price`) |
+| `$is_on_sale` | `bool` | Whether the line counts as on sale (default: `price < regular_price`) |
 | `$product` | `WC_Product` | The product object |
 | `$item` | `WC_Order_Item_Product` | The order line item |
-| `$pos_data` | `array` | The decoded `_woocommerce_pos_data` JSON |
+| `$pos_data` | `array` | The decoded `_woocommerce_pos_data` |
+
+The filter runs on the server. The app's own on-sale check, used while the cashier is still building the cart, is always `price < regular_price`; the server's answer applies when the order is saved.
 
 ## REST API Endpoint {#rest-api-endpoint}
 
-The coupons REST endpoint lives in the **free plugin** at `/wp-json/wcpos/v1/coupons` so that the POS app never receives a 404 when querying coupons — even on sites without WCPOS Pro installed. The user-facing coupon feature itself, however, requires Pro.
+Coupon endpoints live in the **free plugin**, so the app never gets a 404 when it asks for coupons, even without WCPOS Pro.
 
-The controller extends `WC_REST_Coupons_Controller` with POS-specific additions:
+- **The 2.0 app** syncs coupons through `GET /wp-json/wcpos/v2/coupons`, which forwards to WooCommerce's `wc/v3/coupons` with the POS read permission. A coupon made at the till (Pro) is saved as an ordinary WooCommerce coupon, and the cashier needs permission to create coupons.
+- **Apps before 2.0** use `/wp-json/wcpos/v1/coupons`. Its controller extends `WC_REST_Coupons_Controller` and adds UUIDs for offline sync, read access for any user with the `access_woocommerce_pos` capability, and a fast ID-only path when `posts_per_page=-1` and `fields=id` (or `fields=id,date_modified_gmt`) are requested.
 
-- UUID handling for offline-first sync
-- `access_woocommerce_pos` capability for permission checks
-- Optimised bulk-ID query path when `posts_per_page=-1` and `fields=id` (or `fields=id,date_modified_gmt`) are requested
+For who can reach which endpoint, see [Role and Endpoint Access](./role-endpoint-access.mdx).
 
 ## Receipt Data Exposure {#receipt-data-exposure}
 
-The receipt data builder (`Receipt_Data_Builder`) exposes:
+Receipt templates get the savings without reading `_woocommerce_pos_data` themselves:
 
-- `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — per-line discount amount, computed as `subtotal - total`. From v1.9.0 this reflects **coupon discounts only** for POS price overrides, since `subtotal === total` when no coupon is applied.
-- `totals.discount_total`, `totals.discount_total_incl`, `totals.discount_total_excl` — order-level coupon discount total from `WC_Order::get_discount_total()`.
-- `totals.sale_savings_total`, `totals.sale_savings_total_incl`, `totals.sale_savings_total_excl` — total recorded regular-to-selling-price savings across product lines, including catalogue sale prices and till overrides.
-- `totals.total_saved`, `totals.total_saved_incl`, `totals.total_saved_excl` — combined WooCommerce discount and regular-price savings totals. The builder excludes line savings already represented in a pre-v1.9.0 order's WooCommerce discount total.
-- `totals.total_saved_complete` — false when any line lacks enough recorded price data for a reliable aggregate; the nullable savings totals are `null` in this case.
-- `discounts[]` — array of coupon line items with `label`, `code`, and `total`.
+- **Each line** — `regular_price`, `unit_savings` and `line_savings` give what a till price or a sale price saved. `discounts` is the line's `subtotal` − `total`: its share of coupons and **Add Discount**, never a till price.
+- **`discounts[]`** — one row per coupon line, **Add Discount** included. An **Add Discount** row is labelled **Discount (10%)**, or **Discount** for a fixed amount, with `code` `pos-discount` and `discount_type` `percent` or `fixed_cart`.
+- **Totals** — `discount_total` (coupons and **Add Discount**), `sale_savings_total` (regular-to-selling-price savings, till prices included), and `total_saved` for one figure. `total_saved` removes the overlap on orders from before v1.9.0.
+- **`total_saved_complete`** — false when a line lacks the price data for a reliable sum; the savings totals are then `null`.
 
-The line item's underscore-prefixed meta (including `_woocommerce_pos_data`) is filtered out of `lines[].meta` by `Receipt_Data_Builder::get_item_meta_pairs()`. Receipt Data v1.1 instead exposes the recorded regular price, pre-coupon selling price, line savings, and aggregate savings through canonical fields. See [Displaying regular price and savings](/receipts/receipt-data#displaying-regular-price-and-savings) and [Totals](/receipts/receipt-data#totals) for template examples.
+Each has `_incl` and `_excl` variants. The `_woocommerce_pos_data` meta itself is left out of `lines[].meta`. See [Displaying regular price and savings](../receipts/receipt-data.mdx#displaying-regular-price-and-savings) and [Totals](../receipts/receipt-data.mdx#totals) for template examples.
 
-## Related {#related}
+## Related Documentation {#related}
 
-- [Cart Discounts](/pos/cart/discounts) — user-facing guide to cashier-applied discounts
-- [Coupons](/coupons) — user-facing guide to WooCommerce coupons in the POS (Pro)
+<LinkCards>
+  <LinkCard to="/pos/cart/discounts" title="Cart Discounts" description="Change a price, add a discount or apply a coupon at the till" />
+  <LinkCard to="/coupons/applying-coupons" title="Applying Coupons" description="Put a store coupon on a sale, and what its messages mean" />
+  <LinkCard to="/receipts/receipt-data" title="Receipt Data" description="Every field a receipt template can show, savings included" />
+</LinkCards>
