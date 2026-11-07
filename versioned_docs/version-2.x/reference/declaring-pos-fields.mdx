@@ -1,5 +1,5 @@
 ---
-title: Declaring Fields for the Tender Pane
+title: "Developer Reference: Declaring Tender Pane Fields"
 sidebar_label: Declaring POS Fields
 sidebar_position: 10
 description: "For gateway developers: two filters let the POS draw your gateway's checkout fields on the tender pane with its own controls, then run your gateway's process_payment() with what the cashier enters."
@@ -10,7 +10,7 @@ import RequirementItem from '@site/src/components/RequirementItem';
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
 
-This page is for developers of a WooCommerce payment gateway. Two filters tell the POS which fields your gateway needs. The POS then draws those fields with its own controls on the [tender pane](../pos/checkout/tender-pane.mdx), gives your gateway its own tile, and runs your gateway's own `validate_fields()` and `process_payment()` with what the cashier typed. Your payment code does not change.
+**Taking a payment at the till?** Go to [The Tender Pane](../pos/checkout/tender-pane.mdx). This page is for developers of a WooCommerce payment gateway. Two filters tell the POS which fields your gateway needs. The POS then draws those fields with its own controls on the [tender pane](../pos/checkout/tender-pane.mdx), gives your gateway its own tile, and runs your gateway's own `validate_fields()` and `process_payment()` with what the cashier typed. Your payment code does not change.
 
 To build a gateway from scratch first, start from the [Gateway Template](./gateway-template.mdx). The gateway that uses these filters today is [Email Invoice](../payment/gateways/email-invoice.mdx).
 
@@ -98,12 +98,29 @@ The POS posts each value under its component's `id`, as the browser would post y
 
 The list is flat and drawn in the order you declare it. There is no layout, grouping or conditional visibility: each component is its own line.
 
-| Component | Keys | What the cashier sees | Value posted |
-|---|---|---|---|
-| `field` | `id`, `label`, `input` (`text`, `email`, `tel` or `number`), `required`, `default`, `prefill` | A text box with the matching keyboard | the text typed |
-| `checkbox` | `id`, `label`, `default` (`true` or `false`) | A checkbox with its label | `'1'` when ticked, nothing when not |
-| `select` | `id`, `label`, `required`, `default`, `options`: a list of `value` and `label` pairs | A list to choose from | the chosen option's `value` |
-| `note` | `text` | One muted line of text | nothing |
+### `field` {#component-field}
+
+- **Keys:** `id`, `label`, `input` (`text`, `email`, `tel` or `number`), `required`, `default`, `prefill`
+- **The cashier sees:** a text box with the matching keyboard
+- **Posted:** the text typed
+
+### `checkbox` {#component-checkbox}
+
+- **Keys:** `id`, `label`, `default` (`true` or `false`)
+- **The cashier sees:** a checkbox with its label
+- **Posted:** `'1'` when ticked, nothing when not
+
+### `select` {#component-select}
+
+- **Keys:** `id`, `label`, `required`, `default`, `options`: a list of `value` and `label` pairs
+- **The cashier sees:** a list to choose from
+- **Posted:** the chosen option's `value`
+
+### `note` {#component-note}
+
+- **Keys:** `text`
+- **The cashier sees:** one muted line of text
+- **Posted:** nothing
 
 <details>
 <summary>The rules the store applies to your block</summary>
@@ -149,16 +166,12 @@ The POS reads what happened from the order after `process_payment()` returns:
 - **Paid** — your gateway called `payment_complete()`, or set a status WooCommerce counts as paid. The POS records one payment for the order total, and the sale completes with its receipt, as for any other method.
 - **Finished at your gateway's status** — your gateway returned `success` and left the order unpaid, on the **Order Status** the store chose for your gateway in its POS checkout settings. The sale finishes at the till, with an order note. See [How the till treats the status](../settings/wp-admin/checkout.mdx#order-status-at-the-till).
 - **Sent** — your gateway returned `success` and left the order unpaid on any other status, for example **Pending payment** with an invoice emailed. The checkout turns into the **Invoice sent** screen, with **to** and the address the cashier entered, and the amount **due**. The sale leaves the till and the order waits for the customer on the [Orders](../orders/index.mdx) screen, where the cashier can **Send again** or **Cancel invoice**. See [After you send it](../payment/gateways/email-invoice.mdx#invoice-sent).
-- **Refused** — `process_payment()` returned `failure`, threw an exception, or tried to send the cashier to another site. The POS shows your error notice on a toast and logs [PAYMENT212](../error-codes/PAYMENT212.mdx). Nothing is recorded, and the order goes back to the payment method it had before.
+- **Refused** — `process_payment()` returned `failure` or tried to send the cashier to another site. The POS shows your error notice on a toast and logs [PAYMENT212](../error-codes/PAYMENT212.mdx). The POS records no payment, and the order goes back to the payment method it had before.
+- **Threw an exception** — the POS shows PAYMENT212 the same way, but the store can't tell whether money moved. Before anyone tries again, check with the payment provider whether money was taken: the store leaves the attempt open and adds an order note asking staff to check, then cancel the attempt at the POS.
 
 A redirect to your own store counts as success, so returning `get_return_url( $order )` is fine.
 
-<details>
-<summary>An exception after your gateway started: check with the provider</summary>
-
-The store can't tell whether money moved when `process_payment()` throws. It leaves the attempt open and adds an order note telling staff to check with the provider whether money was taken, then cancel the attempt at the POS. The exception is written to the store log, source `woocommerce-pos`. Catch your own errors and return `failure` with an error notice instead.
-
-</details>
+The exception is written to the store log, source `woocommerce-pos`. Catch your own errors and return `failure` with an error notice instead of throwing.
 
 <details>
 <summary>More on a sent order: the address, Send again, Cancel invoice</summary>
