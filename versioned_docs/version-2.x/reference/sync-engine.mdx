@@ -12,10 +12,10 @@ import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
 import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.json';
 
-Open the POS menu, then [**Store health**](../support/store-health.mdx) at the foot of it, to see everything this page describes on your own till. Looking for what to do rather than how it works?
+Open the POS menu, then [**Store health**](../support/store-health.mdx) at the foot of it, to see everything this page describes on your own till. Looking for what to do rather than how it works? The first two checks are both on **Store health → Database**.
 
-- **Check changes waiting to send.** Open **Store health → Database** and read **changes waiting to send**: what this till still has to send to your store. See [Database](../support/store-health.mdx#database), and ["changes waiting to send" won't go down](../support/store-health.mdx#waiting-to-send) if it stays above 0. How sending works: [How changes get back to your store](#write-path).
-- **Check what's downloaded.** Open **Store health → Database** and read the table: how much of your store is on this device. See [What's on this device](../support/store-health.mdx#coverage). How downloads are counted: [Is everything downloaded?](#coverage).
+- **Check changes waiting to send.** See [Database](../support/store-health.mdx#database), or ["changes waiting to send" won't go down](../support/store-health.mdx#waiting-to-send).
+- **Check what's downloaded.** See [What's on this device](../support/store-health.mdx#coverage).
 - **When does a change made in WooCommerce reach the till?** See [How the POS learns about changes](#change-signal).
 - **A sale or edit didn't reach your store.** See [Changes that never reached your server](../support/store-health.mdx#refused-changes).
 - **"The POS is open in another tab."** See [One tab runs the POS](#multi-tab).
@@ -73,18 +73,27 @@ Seeds, trickles, totals and audits each declare how many requests one run may ma
 
 The check interval and the records per request are set per device on **Store health → Performance**:
 
-<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[368, 0], [506, -55], [186, -27], [186, -27], [186, -27], [161, -24], [161, -20], [456, 0]]} alt="Store health on the Performance tab: the status line, the engine uptime strip, the Eco, Balanced and Realtime presets, the two sliders and the Right now line" />
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[368, 0], [506, -55]]} alt="Top of the Performance tab in Store health: the Normal status line and the engine uptime strip" />
 
 <div className="pinned-legend">
 
 1. **Status** — **✓ Normal**, or **⚠ Needs attention** when the till is offline or sync is blocked. Then the last 24 hours of requests on this till.
 2. **Engine uptime** — one cell per hour for the last 24 hours. Green: requests and no errors. Amber: at least one request failed. Empty: the app was closed.
-3. **Eco** — the change check every 5 minutes, 25 records per request.
-4. **Balanced** — the default: every 60 seconds, 50 records.
-5. **Realtime** — every 10 seconds, 75 records.
-6. **Check for changes** — the change check interval, 5 seconds to 5 minutes.
-7. **Records per request** — how many records one pull fetches, 10 to 100.
-8. **Right now** — when the next check is due, and about how many requests an hour these settings make.
+
+</div>
+
+Below it, the **Sync** settings for this till:
+
+<JourneyShot manifest={manifest} device="tablet" step={6} offsets={[[186, -27], [186, -27], [186, -27], [161, -24], [161, -20], [456, 0]]} alt="Sync settings on the Performance tab: the Eco, Balanced and Realtime presets, the Check for changes and Records per request sliders, and the Right now line" />
+
+<div className="pinned-legend">
+
+1. **Eco** — the change check every 5 minutes, 25 records per request.
+2. **Balanced** — the default: every 60 seconds, 50 records.
+3. **Realtime** — every 10 seconds, 75 records.
+4. **Check for changes** — the change check interval, 5 seconds to 5 minutes.
+5. **Records per request** — how many records one pull fetches, 10 to 100.
+6. **Right now** — when the next check is due, and about how many requests an hour these settings make.
 
 </div>
 
@@ -150,14 +159,16 @@ A figure like *1,240 of 5,000 products* needs your store's total for the second 
 
 Every change made on the device (a sale, a product edit, a new customer) is saved on the device first and sent to your store within a second or so. **A sale rung up offline waits on the device and goes when the connection comes back.** Most changes need nothing from you. Two kinds wait for a choice on **Store health → Database**:
 
-- **An order that clashes is retried once.** If your store has a newer copy of the order, the engine reconciles and sends once more. If that fails too, or the record is not an order, the change is held for you to choose: **Send again** or **Use server version**. See [Changes held because your store had a newer version](../support/store-health.mdx#held-changes).
-- **A change your store refuses is never retried on its own.** It is kept with your store's reason and shown on **Store health → Database** as **changes never reached your server**. **Send again** rebuilds it from the record as it is on the device now; **Discard** drops it. See [Changes that never reached your server](../support/store-health.mdx#refused-changes).
+- **Someone changed it first, on another till or in WooCommerce.** The change is held instead of going over theirs. **Send again** sends this till's change on top of your store's version, so compare the two first. **Use server version** drops this till's change and puts your store's version back on the till. See [Changes held because your store had a newer version](../support/store-health.mdx#held-changes).
+- **Your store refused it and gave a reason**, listed as **changes never reached your server**. It is never retried on its own. Correct the record if the reason asks for it, then **Send again**. **Discard** drops this till's change and keeps your store's version. See [Changes that never reached your server](../support/store-health.mdx#refused-changes).
 
 <Accordion>
 <AccordionItem question="How changes are sent">
 
 - **A durable queue comes first.** Each change goes into a queue on the device before anything is sent. About 0.3 seconds later the write drain sends it; a 10-second poll catches anything a nudge missed.
 - **Cart changes go one at a time per order.** A fast run of scans applies in order. Adding a product that already has exactly one line in the cart raises that line's quantity instead of adding a second line.
+- **An order that clashes is retried once before it is held.** If your store has a newer copy of an order, the engine reconciles the two and sends once more. Only if that fails too, or the record is not an order, is the change held.
+- **Send again on a refused change rebuilds it** from the record as it is on the device now, so a correction you made is what gets sent.
 - **What your store sends back is kept.** When your store accepts a change, the device takes your store's copy, so later edits match it. For orders that keeps the line IDs WooCommerce assigned, so an update doesn't add duplicate lines. A local edit your store hasn't seen yet is never overwritten.
 
 </AccordionItem>
