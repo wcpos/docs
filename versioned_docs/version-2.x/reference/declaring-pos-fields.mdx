@@ -179,17 +179,28 @@ A notice without an `id`, or one naming an `id` you didn't declare, shows below 
 If the cashier sees PAYMENT212 and isn't sure the payment went through, check with the payment provider before trying again.
 :::
 
+What the cashier sees, and does next, for each result:
+
+- **Paid** — the sale completes, as for any other method. Next: hand over the receipt.
+- **Finished at your gateway's status** — the sale finishes at the till, unpaid. Next: the next sale.
+- **Sent** — the **Invoice sent** screen, with **to** and the address entered, and the amount **due**. Next: **New sale**; the order waits on the [Orders](../orders/index.mdx) screen with **Send again** and **Cancel invoice**. See [After you send it](../payment/gateways/email-invoice.mdx#invoice-sent).
+- **Refused** — a toast with your error notice, logged as [PAYMENT212](../error-codes/PAYMENT212.mdx). Next: correct the details and press the button again, or take a different payment method.
+- **Threw an exception** — the same toast and PAYMENT212. Next: stop and check with the payment provider whether money was taken, before trying again.
+
+<details>
+<summary>What your gateway did for each result</summary>
+
 The POS reads what happened from the order after `process_payment()` returns:
 
-- **Paid** — your gateway called `payment_complete()`, or set a status WooCommerce counts as paid. The POS records one payment for the order total, and the sale completes with its receipt, as for any other method.
-- **Finished at your gateway's status** — your gateway returned `success` and left the order unpaid, on the **Order Status** the store chose for your gateway in its POS checkout settings. The sale finishes at the till, with an order note. See [How the till treats the status](../settings/wp-admin/checkout.mdx#order-status-at-the-till).
-- **Sent** — your gateway returned `success` and left the order unpaid on any other status, for example **Pending payment** with an invoice emailed. The checkout turns into the **Invoice sent** screen, with **to** and the address the cashier entered, and the amount **due**. The sale leaves the till and the order waits for the customer on the [Orders](../orders/index.mdx) screen, where the cashier can **Send again** or **Cancel invoice**. See [After you send it](../payment/gateways/email-invoice.mdx#invoice-sent).
-- **Refused** — `process_payment()` returned `failure` or tried to send the cashier to another site. The POS shows your error notice on a toast and logs [PAYMENT212](../error-codes/PAYMENT212.mdx). The POS records no payment, and the order goes back to the payment method it had before.
-- **Threw an exception** — the POS shows PAYMENT212 the same way, but the store can't tell whether money moved. Before anyone tries again, check with the payment provider whether money was taken: the store leaves the attempt open and adds an order note asking staff to check, then cancel the attempt at the POS.
+- **Paid** — your gateway called `payment_complete()`, or set a status WooCommerce counts as paid. The POS records one payment for the order total.
+- **Finished at your gateway's status** — your gateway returned `success` and left the order unpaid, on the **Order Status** the store chose for your gateway in its POS checkout settings. The store adds an order note. See [How the till treats the status](../settings/wp-admin/checkout.mdx#order-status-at-the-till).
+- **Sent** — your gateway returned `success` and left the order unpaid on any other status, for example **Pending payment** with an invoice emailed.
+- **Refused** — `process_payment()` returned `failure` or tried to send the cashier to another site. The POS records no payment, and the order goes back to the payment method it had before.
+- **Threw an exception** — the store can't tell whether money moved. It leaves the attempt open, adds an order note asking staff to check with the provider and then cancel the attempt at the POS, and writes the exception to its log, source `woocommerce-pos`. Catch your own errors and return `failure` with an error notice instead of throwing.
 
 A redirect to your own store counts as success, so returning `get_return_url( $order )` is fine.
 
-The exception is written to the store log, source `woocommerce-pos`. Catch your own errors and return `failure` with an error notice instead of throwing.
+</details>
 
 <details>
 <summary>More on a sent order: the address, Send again, Cancel invoice</summary>
