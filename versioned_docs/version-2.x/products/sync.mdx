@@ -1,80 +1,133 @@
 ---
-title: Product Synchronisation
+title: Download & Sync
 sidebar_label: Download & Sync
 sidebar_position: 1
-description: "How WCPOS downloads and synchronises products from WooCommerce, including sync presets, coverage, and keeping the catalogue fresh."
+description: "How products reach each till: the boot screen, the first download on a new device, keeping up with changes in your store, and refreshing the product list."
 ---
 
-import Accordion from '@site/src/components/Accordion';
-import AccordionItem from '@site/src/components/AccordionItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/products/sync/en/manifest.json';
 
-WCPOS keeps a local copy of your products on each device, so the catalogue browses and searches instantly and keeps working offline. This guide explains how products get onto the device and how they stay up to date.
+Each till keeps its own copy of your products, so the product list is fast and sales keep going when the internet drops. This page covers how that copy fills up on a new device, how it keeps up with changes in your store, and what to do when a product looks wrong.
 
-:::info Changed in v1.10.0
-v1.10.0 introduces a new sync engine. If your POS predates v1.10.0, see [What changed in v1.10.0](#what-changed-in-v1100) below.
+You don't have to wait for a download before selling. The first products arrive within moments, and anything not here yet can still be found with search.
+
+## When the POS starts {#boot}
+
+Each time the POS opens, it shows the logo and a progress bar.
+
+<div style={{ maxWidth: 360 }}>
+
+![The boot screen: the POS logo with a blue progress bar below it, about 40% full](/img/2.x/products/sync/en/tablet-light-regular--s1-1-boot-screen.png)
+
+</div>
+
+The bar tracks the POS opening this device's own database and your sign-in. It doesn't track products: they download after the POS has opened, while you work. The screen stays light even when the POS uses a dark theme.
+
+If the POS can't start, it shows **Something went wrong** instead:
+
+- **Try again** — starts again and keeps everything on this device. Use this first.
+- **Reset app data and restart** — deletes everything stored on this device and starts over, after you confirm. Your sales download again only if they reached your store. The confirm says how many changes have never reached your store; any it counts are lost for good.
+
+:::warning Try again first
+Reset only if **Try again** keeps failing. If the confirm counts changes that never reached your store, or says it couldn't check, ask for help before you reset. Sales that exist only on this device can't be recovered.
 :::
 
-## How products arrive on the device {#how-products-arrive}
+## On a new device {#first-download}
 
-- **A catalogue seed runs in the background.** From first launch, the POS downloads your catalogue in small batches on a schedule, without you doing anything. You can start selling as soon as the first products land — checkout doesn't wait for a complete download.
-- **What you're looking at downloads on demand.** Searching, filtering by category, or scanning a barcode fetches the matching products directly if they aren't local yet. A search no longer pulls unrelated products along with it — it fetches what you asked for.
-- **Updates arrive through change checks.** Once a product is local, the POS doesn't re-download it to see if it changed. It polls a lightweight change log (every 60 seconds on the default preset) and fetches only what actually changed — an idle store answers with a single, nearly free "nothing changed" response.
+When you sign in on a new device, the POS opens straight away with the first page of products, in the order your product list is sorted. Searching asks your store for anything that isn't on the device yet, so you can find and sell any product from the start.
 
-## How big are the batches? {#batch-size}
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[300, 0], [-30, 0], [36, 0]]} alt="A new device's product list after a search for Jacket: 17 jackets found, with the count and sync arrow in the bottom right corner" />
 
-By default the POS requests **50 products at a time**. This is no longer a fixed constant — it's one of two dials set by your sync preset in **Store health → Performance**:
+<div className="pinned-legend">
 
-| Preset | Check interval | Records per request |
-| --- | --- | --- |
-| Eco | 5 min | 25 |
-| Balanced (default) | 60 s | 50 |
-| Realtime | 10 s | 75 |
+1. **Search products** — finds products by name, SKU or barcode. On a new device, search asks your store as well. See [Search & Filtering](../pos/product-panel/search-filtering.mdx#how-search-works).
+2. **The count and sync arrow** — how many products the list shows, then the sync arrow. See [Refresh or start over](#refresh).
+3. **Store health** — shows how much of your catalogue is on this device. See [How far along it is](#progress).
 
-Small batches exist to protect your server: large pages take real server time to build, and on shared hosting they can slow the storefront or trip rate limits. Choose Eco for modest hosting, Realtime for multi-till shops on strong hosting. See [Store Health](/support/store-health#sync-presets) for details.
+</div>
 
-## Checking download progress {#checking-progress}
+The rest of the catalogue downloads in the background, a few products at a time, once the till has been idle for about a minute:
 
-Open **Store health → Database** to see, per collection, how many records are on this device versus on your server, with a coverage bar. The *on server* number is a real server-reported total — while the POS is still confirming it, the row shows *checking…* rather than a guess.
+1. The products you're looking at, in the order you have them sorted. Changing the sort starts this again in the new order.
+2. Then every other product, out of stock ones included, so the till can sell anything even when it's offline.
 
-A partial products bar simply means the seed hasn't finished; it will keep filling in the background. If a specific product seems missing, search for it — that fetches it directly.
+On a large catalogue this can take a while, and it never gets in the way of a sale. Once every product is on the device, search answers from the device instead of asking your store.
 
-:::tip
-If a collection seems stuck, use **Clear & re-download** on its row in Store health → Database before reaching for the full [clear all local data](/support/troubleshooting/clear-local-data) reset.
+:::info Offline before the download finishes
+Offline, the till only sells and scans what is already on the device. If it goes offline before its first products arrive, it can't sell until it's back online.
 :::
 
-## What changed in v1.10.0 {#what-changed-in-v1100}
+## How far along it is {#progress}
 
-Earlier versions downloaded the catalogue *progressively through use*: each search or scroll pulled another batch of products, and a full poll ran every 5 minutes. That model is retired. In v1.10.0:
+Open **Store health** from the pulse icon in the menu. The **Database** tab shows how much of each kind of record is on this device.
 
-- The catalogue fills through a scheduled background seed — you don't need to search or scroll to make products download.
-- A search fetches the products that match it, not an arbitrary next batch.
-- Change checks run on your chosen preset interval (default 60 seconds) using conditional requests, instead of a fixed 5-minute full poll.
-- Download progress is visible per collection in **Store health → Database**.
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[-28, 0], [-28, 0], [0, -22]]} alt="Store health on a new device: Ready to sell, and the table shows 115 of 224 products on this device with a part-filled bar" />
 
-Developers can find the full mechanics in [How the Sync Engine Works](/reference/sync-engine).
+<div className="pinned-legend">
 
-## F.A.Q. {#faq}
+1. **Ready to sell** — appears as soon as the first products are on this device. Until then it reads **Preparing…**.
+2. **Products** — how many of your store's products are on this device. The bar fills as the background download goes on.
+3. **⋮ menu** — check your store for product changes now, or clear the products on this device and download them again. See [Check now, or clear and re-download](../support/store-health.mdx#clear-and-redownload).
 
-<Accordion>
-  <AccordionItem question="Do I need to do anything to download my products?">
+</div>
 
-  No. The catalogue seed downloads your products in the background automatically. Searching or filtering fetches specific products immediately if they aren't local yet, but ordinary browsing is not what completes the download — the background seed is.
+The other rows fill in as the POS needs them, so a count below your store's total is normal on a new till. See [What's on this device](../support/store-health.mdx#coverage).
 
-  </AccordionItem>
+## How changes reach the till {#changes}
 
-  <AccordionItem question="How quickly do product changes reach the POS?">
+A till that's online checks your store for changes about once a minute, and downloads only what changed: a new price, new stock, a new or deleted product. You don't need to do anything.
 
-  On the default Balanced preset, the POS checks for changes every 60 seconds (checks are slightly randomised so multiple tills don't hit the server together). Only changed products are fetched. If several tills need to see each other's changes faster, use the Realtime preset.
+To make the checks more or less frequent, choose a preset in [Store health → Performance](../support/store-health.mdx#sync-presets). **Balanced** checks every minute and is the default. **Eco** checks every five minutes, to go easy on a slow server. **Realtime** checks every ten seconds. The preset is set on each device separately.
 
-  </AccordionItem>
+When the till is offline, sales keep working and are sent once it's back online. Changes made in your store in the meantime arrive at the next check.
 
-  <AccordionItem question="I can't see all my products in the POS">
+## Refresh, or start over {#refresh}
 
-  A few possibilities:
+The sync arrow sits beside the product count, at the bottom right of the product list.
 
-  - The background seed may simply not have finished — check the products row in **Store health → Database**.
-  - The POS hides out-of-stock items by default. This can be changed in the product display settings.
-  - The WooCommerce REST API only supports the standard product types (simple, variable, grouped, external). Custom product types might not display in the POS.
+- **Tap it** to check your store for changes now, instead of waiting for the next check.
+- **Press and hold it** for more options: **Sync** does the same as a tap, and **Clear and Refresh** clears the products on this device and downloads them again.
 
-  </AccordionItem>
-</Accordion>
+<div style={{ maxWidth: 569 }}>
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[-30, 0]]} alt="The sync arrow held down: a menu with Sync and Clear and Refresh, above the product count" />
+
+<div className="pinned-legend">
+
+1. **The count and sync arrow** — tap the arrow to sync now. Press and hold it for the menu shown here.
+
+</div>
+
+</div>
+
+**Clear and Refresh** starts at once, with no confirm. It also clears the search and resets the filters. It clears products and their variations only: orders and customers stay. The first products come back right away, and the rest come back as before.
+
+If this device has product changes that haven't reached your store yet, the POS refuses and nothing is cleared:
+
+> Nothing was cleared: this list has changes that haven't reached your store yet.
+
+Let them send, or settle them in [Store health → Database](../support/store-health.mdx#waiting-to-send), then try again.
+
+[Store health](../support/store-health.mdx#clear-and-redownload) can clear and download any kind of record again, with a confirm first. To wipe everything on a device, see [Clear All Local Data](../support/troubleshooting/clear-local-data.mdx); you rarely need it.
+
+## When a product is missing or out of date {#goes-wrong}
+
+<span id="faq"></span>
+
+- **A product isn't in the list** — check the filters first. **In Stock** is on by default and hides products with no stock; see [Show out-of-stock products](../pos/product-panel/display-settings.mdx#show-out-of-stock-products). Then search for it by name or SKU: search asks your store for anything not on this device.
+- **A product never shows, even in search** — it may be marked online only, and those are never sent to the POS. See [POS Only Products](./pos-only-products.mdx).
+- **A price or stock level is out of date** — wait for the next check, or tap the sync arrow. A device that's offline keeps its old copy until it's back online.
+- **A barcode won't scan while offline** — only products already on this device scan offline. The message names the code and says it isn't on this device.
+- **Clear and Refresh says Nothing was cleared** — see [Refresh, or start over](#refresh).
+- **Something went wrong when the POS opens** — see [When the POS starts](#boot).
+
+## Related Documentation {#related}
+
+<LinkCards>
+  <LinkCard to="/support/store-health" title="Store Health" description="What is on this device, what hasn't reached your store, and the sync presets." />
+  <LinkCard to="/pos/product-panel/search-filtering" title="Search & Filtering" description="How search finds products on this device and in your store." />
+  <LinkCard to="/reference/sync-engine" title="How the Sync Engine Works" description="How the POS keeps each device in step with your store." />
+</LinkCards>
