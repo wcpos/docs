@@ -6,11 +6,28 @@ import { journeyShotProps } from './journey-shot-props';
 /**
  * A journey capture with its pins, read from the capture manifest that sits
  * beside the captures; pins are never baked into the image or typed by hand.
- * As with PinnedShot, the numbered legend stays a markdown list on the page,
- * and its numbers follow the manifest's pin order. Props: manifest, device,
- * step, alt, and optional colorScheme, scale and offsets.
+ * The numbered legend is the component's children, a markdown list whose
+ * numbers follow the manifest's pin order. Props: manifest, device, step, alt,
+ * and optional colorScheme, scale, offsets and maxWidth (the close-up's width
+ * in px); the capture's colorScheme goes on to PinnedShot for the pins' ring.
  */
-export default function JourneyShot({ manifest, alt, ...capture }) {
-  const { src, pins } = journeyShotProps(manifest, capture);
-  return <PinnedShot src={src} alt={alt} pins={pins} />;
+export default function JourneyShot({
+  manifest,
+  alt,
+  maxWidth,
+  children,
+  ...capture
+}) {
+  const { src, pins, colorScheme } = journeyShotProps(manifest, capture);
+  return (
+    <PinnedShot
+      src={src}
+      alt={alt}
+      pins={pins}
+      colorScheme={colorScheme}
+      maxWidth={maxWidth}
+    >
+      {children}
+    </PinnedShot>
+  );
 }
