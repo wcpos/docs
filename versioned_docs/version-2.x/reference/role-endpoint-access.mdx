@@ -2,117 +2,199 @@
 title: Role Endpoint Access
 sidebar_label: Role Endpoint Access
 sidebar_position: 3
-description: "Developer reference for which WCPOS REST endpoints are accessible to each default role (administrator, shop_manager, cashier), plus token-expiry behaviour and diagnostic tips."
+description: "Developer reference: which WCPOS REST endpoints the administrator, shop_manager and cashier roles can reach, how a refused request is answered, and how to tell a role problem from a sign-in problem."
 ---
 
-This page documents which WCPOS REST endpoints are accessible to each of the three default roles used in POS workflows:
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
 
-- `administrator`
-- `shop_manager`
-- `cashier`
+This page is for developers and site administrators, for when a till keeps showing AUTH101, AUTH201 or SYNC341 and you need to know whether the sign-in, the user's role or the app version is the cause. A cashier who sees one of these needs only that code's page: [AUTH101](../error-codes/AUTH101.mdx), [AUTH201](../error-codes/AUTH201.mdx) or [SYNC341](../error-codes/SYNC341.mdx). Below are the WCPOS REST endpoints each default role can reach, and what the server answers when it refuses one. To change what a role may do, use [Accessing the POS](../settings/wp-admin/access.mdx).
 
-For user-facing role and capability configuration, see [Accessing the POS](/settings/wp-admin/access).
-
-## Summary {#summary}
-
-The default access model is:
-
-- **`administrator`** — full POS and management access.
-- **`shop_manager`** — full POS and management access, except plugin-extension actions that require plugin-install capabilities.
-- **`cashier`** — normal POS selling workflow access, but no management, settings, logs, or store-admin access.
-
-The endpoint matrix is verified by integration tests that exercise the same authentication path as the POS app (WCPOS bearer access tokens, not just `wp_set_current_user()`). Allowed-endpoint assertions confirm a role does not receive `401` or `403`. Some endpoints may still return normal data or business errors such as `400` or `404` when the test uses minimal fixtures — those responses still prove the user passed the auth/permission layer.
-
-## Free Plugin Endpoint Access Matrix {#free-plugin-endpoint-access-matrix}
-
-| Area | Endpoint examples | Admin | Shop Manager | Cashier | Notes |
-|---|---|---:|---:|---:|---|
-| Settings index | `GET /wcpos/v1/settings` | ✅ | ✅ | ✅ | Public/readable POS settings index |
-| Stores | `GET /wcpos/v1/stores` | ✅ | ✅ | ✅ | POS boot data |
-| Cashier profile | `GET /wcpos/v1/cashier/{id}` | ✅ | ✅ | ✅ | Own cashier data |
-| Cashier stores | `GET /wcpos/v1/cashier/{id}/stores` | ✅ | ✅ | ✅ | Store access for current cashier |
-| Products | `GET /wcpos/v1/products` | ✅ | ✅ | ✅ | Catalog browsing |
-| Variations | `GET /wcpos/v1/products/variations` | ✅ | ✅ | ✅ | Catalog browsing |
-| Categories | `GET /wcpos/v1/products/categories` | ✅ | ✅ | ✅ | Catalog filters |
-| Tags | `GET /wcpos/v1/products/tags` | ✅ | ✅ | ✅ | Catalog filters |
-| Brands | `GET /wcpos/v1/products/brands` | ✅ | ✅ | ✅ | Catalog filters |
-| Coupons | `GET /wcpos/v1/coupons` | ✅ | ✅ | ✅ | POS coupon lookup |
-| Orders read | `GET /wcpos/v1/orders` | ✅ | ✅ | ✅ | POS order history |
-| Orders create | `POST /wcpos/v1/orders` | ✅ | ✅ | ✅ | Selling workflow |
-| Orders update | `PATCH /wcpos/v1/orders/{id}` | ✅ | ✅ | ✅ | Completing/updating POS orders |
-| Checkout read/create | `/wcpos/v1/orders/{id}/checkout` | ✅ | ✅ | ✅ | Payment flow |
-| Receipts | `GET /wcpos/v1/receipts/{order_id}` | ✅ | ✅ | ✅ | Receipt rendering |
-| Order statuses | `GET /wcpos/v1/data/order_statuses` | ✅ | ✅ | ✅ | POS status data |
-| Customers read | `GET /wcpos/v1/customers` | ✅ | ✅ | ✅ | Customer search/list |
-| Customers create | `POST /wcpos/v1/customers` | ✅ | ✅ | ✅ | Create customer in POS |
-| Customers update | `PATCH /wcpos/v1/customers/{id}` | ✅ | ✅ | ✅ | Edit customer in POS |
-| Taxes | `GET /wcpos/v1/taxes` | ✅ | ✅ | ✅ | Checkout/tax calculation data |
-| Tax classes | `GET /wcpos/v1/taxes/classes` | ✅ | ✅ | ✅ | Checkout/tax calculation data |
-| Shipping methods | `GET /wcpos/v1/shipping_methods` | ✅ | ✅ | ✅ | Checkout/shipping data |
-| Payment gateways | `GET /wcpos/v1/payment-gateways` | ✅ | ✅ | ✅ | Payment options |
-| Gateway bootstrap | `POST /wcpos/v1/payment-gateways/{id}/bootstrap` | ✅ | ✅ | ✅ | Payment setup |
-| Templates | `GET /wcpos/v1/templates` | ✅ | ✅ | ✅ | Receipt/template reads |
-| Active template | `GET /wcpos/v1/templates/active` | ✅ | ✅ | ✅ | Receipt/template reads |
-| Template gallery | `GET /wcpos/v1/templates/gallery` | ✅ | ✅ | ✅ | Template reads |
-| General settings | `GET /wcpos/v1/settings/general` | ✅ | ✅ | ❌ | Management-only |
-| Checkout settings | `GET /wcpos/v1/settings/checkout` | ✅ | ✅ | ❌ | Management-only |
-| Tax ID settings | `GET /wcpos/v1/settings/tax_ids` | ✅ | ✅ | ❌ | Management-only |
-| Payment gateway settings | `GET /wcpos/v1/settings/payment-gateways` | ✅ | ✅ | ❌ | Management-only |
-| Extensions catalog/admin | `GET /wcpos/v1/extensions` | ✅ | ✅ | ❌ | Management-only |
-| Logs | `GET /wcpos/v1/logs` | ✅ | ✅ | ❌ | Management-only |
-
-## Pro Plugin Endpoint Access Matrix {#pro-plugin-endpoint-access-matrix}
-
-| Area | Endpoint examples | Admin | Shop Manager | Cashier | Notes |
-|---|---|---:|---:|---:|---|
-| Store edit data | `GET /wcpos/v1/stores/{id}/edit` | ✅ | ✅ | ❌ | Store management |
-| Store create | `POST /wcpos/v1/stores` | ✅ | ✅ | ❌ | Store management |
-| Store update | `PATCH /wcpos/v1/stores/{id}` | ✅ | ✅ | ❌ | Store management |
-| License settings update | `POST /wcpos/v1/settings/license` | ✅ | ✅ | ❌ | Pro management |
-| Extension actions | `POST /wcpos/v1/extensions/action` | ✅ | ❌ | ❌ | Requires plugin install/manage capability |
-| Order refunds | `POST /wcpos/v1/orders/{id}/refunds` | ✅ | ✅ | ✅ | Treated as POS operation |
-
-## Token Expiry Coverage {#token-expiry-coverage}
-
-| Scenario | Admin | Shop Manager | Cashier | Expected result |
-|---|---:|---:|---:|---|
-| Valid access token | ✅ tested | ✅ tested | ✅ tested | Allowed endpoints do not return `401` or `403` |
-| Expired access token | ✅ tested | ✅ tested | ✅ tested | Request fails at WCPOS auth gate with user `0` |
-| Valid refresh token after expired access | ✅ tested | ✅ tested | ✅ tested | New access token is issued and access is restored |
-| Expired refresh token | ✅ tested | ✅ tested | ✅ tested | Cannot mint a new access token |
+- [Fix an error the app showed](#diagnosing-failures)
+- [Check what each role can reach](#summary)
 
 ## Diagnosing Failures {#diagnosing-failures}
 
-If a default `shop_manager` sees an error like:
+If the app showed one of these errors, start here.
 
-> Request still unauthorized after token refresh - please log in again
+**"Request still unauthorized after token refresh - please log in again" (AUTH101).** Sign in again as the same cashier, in the WordPress sign-in window WCPOS opens. Sales waiting to send go by themselves once you are back in. If the message comes back straight away, follow [AUTH101](../error-codes/AUTH101.mdx).
 
-The endpoint matrix indicates this is **not** because the default `shop_manager` role fundamentally lacks POS access. Likely causes to investigate:
+<details>
+<summary>Sign-in failure details</summary>
 
-1. Site-specific role/capability corruption.
-2. An endpoint not covered by the matrix.
-3. Stale or expired access token retry behaviour in the client.
-4. Third-party security or authentication plugin interference.
-5. Pro or store-specific access rules, or custom code.
+The app got a `401`, refreshed the token, and the retry was still a `401`. This is the sign-in layer, not the role: a `403` never triggers a refresh. Something between the app and WordPress is dropping or refusing the token, often a security or authentication plugin ([AUTH301](../error-codes/AUTH301.mdx)).
+
+</details>
+
+**AUTH201: Insufficient role.** Ask an administrator to check the user's role in [Accessing the POS](../settings/wp-admin/access.mdx), then follow [AUTH201](../error-codes/AUTH201.mdx).
+
+<details>
+<summary>Role permission details</summary>
+
+The server answered `403` to a signed-in user. Either the user lacks `access_woocommerce_pos`, or the route needs `manage_woocommerce_pos` or `install_plugins`. Find the endpoint in the lists below. If they say the user's role should reach it, the role has most likely been changed from the defaults: on the Access screen, where it shows **Changed from the WCPOS defaults**, by a role-editor plugin, or by custom code. An extra role on the user can also deny a capability.
+
+If the endpoint is not in the lists, the tests behind them do not cover it: read that route's own permission check. WCPOS Pro can also refuse a user for a store they are not authorized for, for example `403` `wcpos_display_store_forbidden` ("You are not authorized for this store.").
+
+</details>
+
+**SYNC341: App update required** (the app says "Update the POS app on this device."). Update the app, then reopen it:
+
+- **Web:** reload the browser tab. If the message comes back, hold **Shift** while reloading.
+- **Desktop:** install the update the app offers. If none is offered, download the latest build for Windows, Mac (Intel or Apple Silicon) or Linux from [Installation](../getting-started/installation.mdx#accessing-the-pos).
+- **Phone or tablet:** update WCPOS in TestFlight on iOS, or in the Play testing programme on Android.
+
+[SYNC341](../error-codes/SYNC341.mdx) has the rest, including what a site administrator can do when no newer app exists yet.
+
+<details>
+<summary>App version details</summary>
+
+The server answered `426` on a v2 route, because the app is older than the plugin's sync protocol.
+
+</details>
 
 ### Permission failure vs. token failure {#permission-failure-vs-token-failure}
 
-The POS frontend may display the same token-refresh error for both cases after it receives a `401` or `403`, attempts a token refresh, and the retry is still unauthorised. The two failure modes look different on the server side:
+- **`403` (AUTH201)**: the user is signed in but does not have permission for this action. Check the role's capabilities, and what the endpoint needs in the lists below.
+- **`401` (AUTH101, "Request still unauthorized after token refresh")**: the server could not authenticate the app's request, and nobody is signed in. Sign in again; if it keeps coming back, check the token and anything between the app and WordPress that strips or refuses it.
 
-A **real role/capability failure** usually looks like:
+<details>
+<summary>How to tell them apart</summary>
 
-```text
-status: 403
-current_user: <actual user id>
-access token expired: false
-```
+Read the refused response in the browser's network panel, or in a server-side log. **WP Admin > POS > Settings > Tools > Logs** also records each `401` whose token was malformed or refused for a reason other than plain expiry. The status and the error code are in the response body. The signed-in user is not: read it on the server, for example with `get_current_user_id()` in a debug log while the request runs.
 
-A **token/auth failure** usually looks like:
+**Role or capability failure:**
 
-```text
-status: 403
-current_user: 0
-access token expired: true or invalid
-```
+- Status: `403`
+- Code: `woocommerce_pos_rest_forbidden`, or the route's own, such as `rest_forbidden`
+- Signed-in user (server side): the cashier's WordPress user ID
 
-Use this distinction when triaging POS access issues — a non-zero `current_user` points at capabilities, while `current_user: 0` points at the auth/token layer.
+**Token or sign-in failure:**
+
+- Status: `401`
+- Code: `woocommerce_pos_rest_unauthorized`
+- `data.reason`: the token error, such as `woocommerce_pos_auth_token_expired`
+- Signed-in user (server side): `0` (nobody signed in)
+
+A non-zero user points at capabilities. A user of `0` points at the token, or at something between the app and WordPress.
+
+</details>
+
+## Summary {#summary}
+
+- **`administrator`**: every endpoint on this page.
+- **`shop_manager`**: every endpoint except Pro's extension install and update action, which needs the WordPress `install_plugins` capability.
+- **`cashier`**: everything the selling workflow uses, including refunds. No settings screens, logs, extensions or store management; the only settings it can read are the Cloud Print printers (`GET /wcpos/v1/settings/cloud-print`), so the till can send receipts to them.
+
+<details>
+<summary>How these lists were checked</summary>
+
+The lists come from the plugin's integration tests. Each test signs in with a WCPOS access token, the way the app does, and calls the endpoint as each role. In the Free tests an allowed endpoint must answer with a status below `400`. The Pro tests also accept `400` or `404`, because their fixtures are minimal: either answer still proves the user got past the permission check. A refused endpoint must answer `403` with the user still signed in.
+
+</details>
+
+## How the server checks a request {#how-the-server-checks}
+
+A request to `/wcpos/v1/` or `/wcpos/v2/` passes these checks in order, and the first one that fails answers. The public sign-in routes and printer polling skip them.
+
+1. **App protocol** (most v2 routes). Fails with `426`, code `wcpos_update_required`. The app shows [SYNC341](../error-codes/SYNC341.mdx): update the app.
+2. **Access token.** Fails with `401`, code `woocommerce_pos_rest_unauthorized`, no user signed in. The app refreshes the token once and retries; if the retry fails too, it shows [AUTH101](../error-codes/AUTH101.mdx): Session expired.
+3. **POS access.** A signed-in user without `access_woocommerce_pos` gets `403`, code `woocommerce_pos_rest_forbidden`. The app shows [AUTH201](../error-codes/AUTH201.mdx): Insufficient role.
+4. **The route's own check.** Fails with `403`, for example `rest_forbidden`. The app shows [AUTH201](../error-codes/AUTH201.mdx) too.
+
+The checks use three capabilities. The plugin grants its own two to the default roles when it is activated; an update grants only capabilities new in that release, so one removed on the Access screen stays removed. `install_plugins` is WordPress's own.
+
+- **`access_woocommerce_pos`**: administrator, shop manager and cashier. Required for every POS endpoint except the public sign-in routes, printer polling and three sync maintenance routes (`/wcpos/v2/uuid/backfill`, `/orders/index/backfill`, `/integrity/rebuild`), which need WooCommerce's `manage_woocommerce` instead; some also need one of the two below.
+- **`manage_woocommerce_pos`**: administrator and shop manager. Opens settings, logs, the extensions list and Pro store management.
+- **`install_plugins`** (WordPress): administrator only. Opens Pro's extension install and update.
+
+## Sync endpoints (v2) {#sync-endpoints}
+
+The 2.0 app syncs through `/wcpos/v2/`. Every default role can reach every route below.
+
+- **Status**: `GET /wcpos/v2/status`
+- **Catalogue**: `GET /wcpos/v2/products`, `/variations`, `/products/categories`, `/products/tags`, `/products/brands`
+- **Customers, coupons, taxes**: `GET /wcpos/v2/customers`, `/coupons`, `/taxes`
+- **Orders**: `GET /wcpos/v2/orders`, `/orders/pull`
+- **Change feed**: `GET /wcpos/v2/changes/sequence-log`, `/changes/revision-hash`, `/changes/range-checksum`, `/changes/config-fingerprint`, `/changes/tick`
+- **Integrity checks**: `GET /wcpos/v2/digests`, `/integrity/scan`, `/integrity/bucket`
+- **Barcode lookup**: `GET /wcpos/v2/resolve/barcode`
+- **Send a new order**: `POST /wcpos/v2/push/orders`
+
+## Free Plugin Endpoint Access Matrix {#free-plugin-endpoint-access-matrix}
+
+These `/wcpos/v1/` routes serve sign-in, checkout, receipts and the settings screens.
+
+<details>
+<summary>Every role (administrator, shop manager, cashier): 27 endpoints</summary>
+
+- `GET /wcpos/v1/stores`: stores the app can open
+- `GET /wcpos/v1/cashier/{id}`: the signed-in cashier
+- `GET /wcpos/v1/cashier/{id}/stores`: stores this cashier may use
+- `GET /wcpos/v1/products`, `/products/variations`: catalogue
+- `GET /wcpos/v1/products/categories`, `/tags`, `/brands`: catalogue filters
+- `GET /wcpos/v1/coupons`: coupon lookup
+- `GET /wcpos/v1/orders`: order history
+- `POST /wcpos/v1/orders`: selling
+- `PATCH /wcpos/v1/orders/{id}`: completing an order
+- `GET` and `POST /wcpos/v1/orders/{id}/checkout`: taking payment
+- `GET /wcpos/v1/receipts/{order_id}`: receipt rendering
+- `GET /wcpos/v1/data/order_statuses`: status names
+- `GET /wcpos/v1/customers`: customer search
+- `POST /wcpos/v1/customers`: add a customer
+- `PATCH /wcpos/v1/customers/{id}`: edit a customer
+- `GET /wcpos/v1/taxes`, `/taxes/classes`: tax rates and classes
+- `GET /wcpos/v1/shipping_methods`: shipping lines
+- `GET /wcpos/v1/payment-gateways`: payment options
+- `POST /wcpos/v1/payment-gateways/{id}/bootstrap`: payment setup
+- `GET /wcpos/v1/templates`, `/templates/active`, `/templates/gallery`: receipt templates
+
+</details>
+
+**Administrator and shop manager only** (needs `manage_woocommerce_pos`; a cashier gets `403`):
+
+- `GET /wcpos/v1/settings/general`: General settings screen
+- `GET /wcpos/v1/settings/checkout`: Checkout settings screen
+- `GET /wcpos/v1/settings/tax_ids`: Tax ID settings screen
+- `GET /wcpos/v1/settings/payment-gateways`: Payment gateway settings screen
+- `GET /wcpos/v1/extensions`: Extensions list
+- `GET /wcpos/v1/logs`: Logs screen
+
+`/wcpos/v1/settings` itself has no readable index: read a section such as `/settings/general` instead.
+
+## Pro Plugin Endpoint Access Matrix {#pro-plugin-endpoint-access-matrix}
+
+WCPOS Pro adds these routes.
+
+**Every role:**
+
+- `POST /wcpos/v1/orders/{id}/refunds`: refund an order
+
+**Administrator and shop manager only** (needs `manage_woocommerce_pos`):
+
+- `GET /wcpos/v1/stores/{id}/edit`: open a store for editing
+- `POST /wcpos/v1/stores`: add a store
+- `PATCH /wcpos/v1/stores/{id}`: save a store
+- `POST /wcpos/v1/settings/license`: save the license key
+
+**Administrator only** (needs the WordPress `install_plugins` capability):
+
+- `POST /wcpos/v1/extensions/action`: install or update an extension
+
+## Token Expiry Coverage {#token-expiry-coverage}
+
+The app signs in with an access token that lasts 30 minutes and a refresh token that lasts 30 days. Code can change both with the `wcpos_jwt_access_token_expire` and `wcpos_jwt_refresh_token_expire` filters. The same tests cover what happens when each one runs out, for all three roles:
+
+- **Valid access token**: the endpoint answers normally.
+- **Expired, missing or malformed access token**: `401`, code `woocommerce_pos_rest_unauthorized`, no user signed in. The app refreshes the token once and retries.
+- **Expired access token, valid refresh token**: the refresh returns a new access token, and the retry succeeds.
+- **Expired refresh token**: the refresh is refused with `woocommerce_pos_auth_token_expired`, and the cashier signs in again ([AUTH101](../error-codes/AUTH101.mdx)).
+
+An expired access token never signs a user in, so it never reaches a role check: it is always a `401`, never a `403`. The tests prove the same on the v2 routes for the cashier role.
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Accessing the POS" to="/settings/wp-admin/access" description="Grant or remove what each role can do." />
+  <LinkCard title="Sessions" to="/settings/wp-admin/sessions" description="Signed-in devices and ending a session." />
+  <LinkCard title="Error codes" to="/error-codes" description="Every code the app can show, with fixes." />
+</LinkCards>
