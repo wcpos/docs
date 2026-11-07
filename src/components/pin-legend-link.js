@@ -1,16 +1,14 @@
 /**
  * Lights pin N and legend entry N together (class `is-linked`) while either is
- * hovered or an entry's link has focus. The legend is markdown on the page, the
- * figure's next sibling `.pinned-legend`, so this toggles DOM classes instead of
- * React state. Returns a cleanup that removes the listeners and the light.
+ * hovered or an entry's link has focus. The legend is markdown children, not
+ * React state, so this toggles DOM classes. Returns a cleanup that removes the
+ * listeners and the light.
  */
-export function linkPinsToLegend(figure) {
-  const legend = figure && figure.nextElementSibling;
-  const list =
-    legend && legend.classList.contains('pinned-legend')
-      ? legend.querySelector('ol')
-      : null;
-  if (!list) return () => {};
+export function linkPinsToLegend(unit) {
+  const figure = unit && unit.querySelector('.pinned-shot');
+  const list = unit && unit.querySelector('.pinned-legend ol');
+  if (!figure || !list) return () => {};
+  const legend = list.closest('.pinned-legend');
 
   const pins = () => [...figure.querySelectorAll('.pinned-shot__pin')];
   const entries = () => [...list.children].filter((el) => el.tagName === 'LI');
