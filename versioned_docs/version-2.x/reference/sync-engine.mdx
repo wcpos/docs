@@ -14,7 +14,16 @@ import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.jso
 
 WCPOS is local-first. Every screen reads and writes a database on the device, and a **sync engine** keeps that database and your WooCommerce store in step in the background. This page explains what the engine fetches, when, and how sales get back to your store. It is written for developers, integrators and store owners who want to know what the POS asks of their hosting.
 
-Everything here shows up for the store owner in **Store health**, at the foot of the POS menu. The cashier side is on [Store Health](../support/store-health.mdx); this page is the machinery behind it.
+Everything here shows up in **Store health**, at the foot of the POS menu. Looking for what to do rather than how it works?
+
+- **Is this till up to date?** Check [Store Health](../support/store-health.mdx).
+- **A sale or edit didn't reach your store.** See [Changes that never reached your server](../support/store-health.mdx#refused-changes).
+- **"The POS is open in another tab."** See [One tab runs the POS](#multi-tab).
+- **Updating to 2.0.** See [Before you click Update](../getting-started/upgrading-to-2.mdx#before-you-click-update).
+
+:::warning Before updating to 2.0
+Let every till finish syncing first. Changes still waiting on a till are not sent after the update. See [Upgrading to 2.0](#upgrading).
+:::
 
 ## One database per store and cashier {#one-engine-per-scope}
 
@@ -26,18 +35,14 @@ Each device runs **one sync engine per site**. Inside it, every store and cashie
 
 ## What runs in the background {#sync-lanes}
 
-Everything the engine does on a timer is a **lane**: a named, bounded piece of background work.
+Everything the engine does on a timer is a **lane**: a named, bounded piece of background work. The one you can tune is the **change check**: it asks your store whether anything changed, every 60 seconds on **Balanced**, or 10 seconds to 5 minutes with the [sync presets](../support/store-health.mdx#sync-presets). Changes made on the device go out about 0.3 seconds after they are made.
 
-| Group | What it does | How often |
-| --- | --- | --- |
-| **Pull** | Asks your store whether anything changed | Every 60 s on **Balanced**; 10 s to 5 min with the [sync presets](../support/store-health.mdx#sync-presets) |
-| | Fetches what screens asked for | Every 30 s |
-| | Tops up products, customers and variations while nobody is using the till | Every 5 min, idle only |
-| **Push** | Sends changes made on the device | About 0.3 s after each change |
-| **Maintenance** | Refreshes your store's totals, audits deletions | 30 s to about 17 min |
+- **Background work waits for the cashier.** Top-ups of products, customers and variations only run after 60 seconds with no one using the till and no screen waiting for data, and they hold off while your server is under pressure.
 
 <Accordion>
 <AccordionItem question="Every lane, its cadence and its request ceiling">
+
+Seeds, trickles, totals and audits each declare how many requests one run may make. The three paths a cashier waits on (the change check, the write drain and the demand drain) don't have a ceiling yet. The budgets are in [Sync Performance](sync-performance.mdx).
 
 | Lane | Cadence | Requests per run |
 | --- | --- | --- |
@@ -53,9 +58,6 @@ Everything the engine does on a timer is a **lane**: a named, bounded piece of b
 
 </AccordionItem>
 </Accordion>
-
-- **Background lanes have a request ceiling.** Seeds, trickles, totals and audits each declare how many requests one run may make. The three paths a cashier waits on (the change check, the write drain and the demand drain) don't have a ceiling yet. The budgets are in [Sync Performance](sync-performance.mdx).
-- **Background work waits for the cashier.** The trickles only run after 60 seconds with no one using the till and no screen waiting for data, and they hold off while your server is under pressure.
 
 The check interval and the records per request are set per device on **Store health → Performance**:
 
@@ -106,6 +108,20 @@ The variation picker refreshes price and stock once each time it opens, so a var
 ## Is everything downloaded? {#coverage}
 
 A figure like *1,240 of 5,000 products* needs your store's total for the second number. The engine keeps one per kind of record. Each is a cheap request of its own, one record per page, reading WooCommerce's `X-WP-Total` header, at most once every 15 minutes or so per kind.
+
+**Store health → Database** lists each kind of record with the count on the device, your store's total and a coverage bar:
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[90, 0], [80, 0], [80, 0], [220, 0], [153, 0]]} alt="Part of the Database table in Store health: Customers with a short coverage bar, Categories, Brands, Tags, Coupons and Tax rates with full bars, cached images, other app storage, and the footer with the server totals line and How syncing works" />
+
+<div className="pinned-legend">
+
+1. **Customers** — a short bar: customers reach the device as screens ask for them and through the idle top-up, so most stay on your store.
+2. **Coupons** — a full bar: the count on the device matches your store's total.
+3. **Tax rates** — fetched first, at start-up: the cart needs them for its sums.
+4. **Cached images** — product images kept for offline use. They take space but are not records.
+5. **The footer** — when your store's totals were last read and when the next read is due. See [What's on this device](../support/store-health.mdx#coverage).
+
+</div>
 
 The totals follow one rule: a number is never made up from what the device holds.
 
