@@ -7,17 +7,23 @@ description: "Developer reference for how WCPOS records a price changed at the t
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
 
-This page is for developers and for anyone reading WCPOS orders in reports, exports or another plugin. It shows where each kind of till discount is stored on the WooCommerce order and how coupons treat it. What the cashier does is on [Cart Discounts](../pos/cart/discounts.mdx).
+When a cashier takes money off a sale, WCPOS records it on the WooCommerce order in one of three places. This page shows where, so a report, an export or another plugin reads it right.
+
+## Take money off at the till {#at-the-till}
+
+The cashier has three ways to take money off. The steps are on [Cart Discounts](../pos/cart/discounts.mdx).
+
+1. **Change one item's price.** Tap the price on a line, then press a quick discount key or type a new price. See [Take money off one item](../pos/cart/discounts.mdx#quick-discounts).
+2. **Add Discount.** Press **+** at the top of the cart, choose **Add Discount**, and take an amount or a percentage off the whole order. See [Take money off the whole order](../pos/cart/discounts.mdx#order-level-discounts).
+3. **Apply a coupon.** In **Add Discount**, switch to **Coupon** and pick one of your store's coupons. See [Apply a coupon](../pos/cart/discounts.mdx#coupon).
 
 ## Where each discount is recorded {#where-recorded}
 
-The cashier has three ways to take money off. Each lands in a different place on the order.
+Each way lands in a different place on the order:
 
-| The cashier uses | Stored as | In `discount_total` | Coupon rules |
-|---|---|---|---|
-| A quick discount key or a typed price on a line | The line's price: `_woocommerce_pos_data` meta and the line `subtotal` | No | None |
-| **Add Discount** | A coupon line, `pos-discount`, with `_wcpos_quick_discount` meta | Yes | None, but it can't join a coupon marked **Individual use only** |
-| A store coupon | A coupon line with the coupon's code | Yes | The coupon's own |
+- **A changed price** is the line's price: the `_woocommerce_pos_data` meta and the line `subtotal`. It is **not** in `discount_total`, and no coupon rule applies to it.
+- **Add Discount** is a coupon line with the code `pos-discount` and `_wcpos_quick_discount` meta. It **is** in `discount_total`. It applies to every line, sale items included, but can't be combined with a coupon marked **Individual use only**.
+- **A store coupon** is a coupon line with the coupon's code. It **is** in `discount_total`, and the coupon's own rules apply.
 
 ## How POS price overrides are stored {#how-pos-price-overrides-are-stored}
 
@@ -49,16 +55,16 @@ WCPOS records a till price the way WooCommerce records a sale price:
 - `line_item.total` = `subtotal` − the line's share of coupons and **Add Discount**.
 - `order.discount_total` = coupons and **Add Discount** lines only. A till price is never in it.
 
-A worked example: one $45.00 watch, its price typed as $40.00 at the till, then a 10% **Add Discount**, with no tax:
+A worked example, with no tax: a watch with a regular price of $45.00, its price typed as $40.00 at the till, then a 10% **Add Discount**. $45.00 → $40.00 at the till → $40.00 − $4.00 = **$36.00**. The order stores it as:
 
-| Field | Value | Why |
-|---|---|---|
-| `_woocommerce_pos_data.regular_price` | 45.00 | The watch's regular price |
-| `_woocommerce_pos_data.price` | 40.00 | Typed at the till |
-| `line_items[0].subtotal` | 40.00 | 40.00 × 1 |
-| `line_items[0].total` | 36.00 | 40.00 − the 10% **Add Discount** |
-| `discount_total` | 4.00 | The **Add Discount** line only |
-| `total` | 36.00 | |
+| Field | Value |
+|---|---|
+| `_woocommerce_pos_data.regular_price` | 45.00 |
+| `_woocommerce_pos_data.price` | 40.00 (the till price) |
+| `line_items[0].subtotal` | 40.00 (40.00 × 1) |
+| `line_items[0].total` | 36.00 (less the **Add Discount**) |
+| `discount_total` | 4.00 (the **Add Discount** only) |
+| `total` | 36.00 |
 
 The $5.00 the till price took off shows only by comparing `regular_price` with `price`. Receipts do that comparison for you; see [Receipt data](#receipt-data-exposure).
 
@@ -77,7 +83,7 @@ v1.9.0 moved to the sale-price model above and removed the filter. Orders saved 
 
 - **Code** — `pos-discount` for the first on an order, then `pos-discount-2`, `pos-discount-3` and so on.
 - **Meta** — `_wcpos_quick_discount` on the coupon line: `{ "discount_type": "percent", "amount": "10" }`. `discount_type` is `percent` (up to 100) or `fixed_cart`; `amount` is a positive decimal string.
-- **Rules** — none. It never excludes sale items, so it also applies to lines whose price was lowered at the till.
+- **Rules** — it applies to sale items, including prices lowered at the till. It can't be combined with a coupon marked **Individual use only**.
 - **Recalculate** — WCPOS stores the coupon details on the line, so **Recalculate** in WooCommerce's order screen keeps the discount.
 
 The virtual coupon exists only while WCPOS saves a POS order: the storefront can't redeem `pos-discount`. If a store coupon already has a code the request uses, the save is refused with **Quick discount code "…" belongs to a store coupon. Use another code.**
