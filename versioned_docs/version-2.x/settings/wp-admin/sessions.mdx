@@ -2,59 +2,91 @@
 title: Sessions
 sidebar_label: Sessions
 sidebar_position: 6
-description: "View active POS login sessions per user and device, and remotely sign devices out of WCPOS."
+description: "See who is signed in to the POS and on which devices, and sign a lost device or a departed cashier out from WP Admin."
 ---
 
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
 
-The **Sessions** screen lets you see who is currently logged in to the POS, on which devices, and sign individual devices out remotely. It's the place to go when a device is lost or stolen, when a cashier leaves, or when you simply want to review active logins.
+Each time someone signs in to the POS, the store keeps a session for that device: one per sign-in in the desktop app, and usually one per browser for the POS in a browser. **Sessions** lists them person by person, so you can sign out a lost tablet or a cashier who has left without touching the device.
 
-You'll find it at **`WP Admin > POS > Settings > Sessions`**.
+Open it at **WP Admin > POS > Settings > Sessions**. Administrators and Shop Managers can use it. A Shop Manager sees everyone's sessions except an administrator's.
 
-> _Manage active user sessions. You can view all logged-in users, see their devices, and terminate sessions if needed._
+## Find a person's devices {#find}
 
-## How it works {#how-it-works}
+The screen has two columns.
 
-The screen has two panes:
+- **People on the left.** Everyone with at least one session you may manage. You're at the top with a **You** chip, then the rest by most recent activity. The number on each row is how many sessions that person has, and a green dot means **Active now**. Type in **Filter users** to search by name or username.
+- **Their sessions on the right.** Select a person to see their name, their username and how many sessions they have, the **Logout All** button, and one card per device, the most recent first.
 
-- **Users** (left) — every user with at least one active session, with a green dot on anyone active in the last few minutes, a **You** chip for your own account, and a count of how many sessions each user has. A filter box lets you search by name or username.
-- **Sessions** (right) — select a user to see one card per active session.
+Each card shows:
 
-Each session card shows:
-
-| Field | What it means |
+| On the card | What it tells you |
 | --- | --- |
-| **Application** | Where the user is logged in — **iOS Application**, **Android Application**, **Desktop Application**, or **Web Application** — plus the browser/version |
-| **Current device** | A chip marking the session you're using right now |
-| **Last active** | How recently the session made a request (e.g. _Just now_, _5 minutes ago_) |
-| **IP** | The IP address the session connected from (or _N/A_) |
-| **Created** | When the session first signed in |
-| **Expires** | When the session token expires |
-| **User Agent** | Expand to see the raw browser/device user-agent string |
+| **Application** | The kind of app the person signed in from, with its version: **Desktop Application** or **Web Application**. Below it, the browser and the operating system. |
+| **Last active** | When the device last signed in or renewed its sign-in, as _Just now_, _5 minutes ago_ or _3 hours ago_. A POS in use renews about every 30 minutes. |
+| **IP** | The internet address the device signed in from, or _N/A_. |
+| **Created** | When the person signed in on that device. |
+| **Expires** | When the sign-in runs out and the person has to sign in again: 30 days after **Created**. Using the POS doesn't push it back. |
+| **User Agent** | Press it to see the raw text the device sent. Support may ask for it. |
 
-A session is shown as **Active now** when it has made a request within the last 5 minutes.
+**Active now** means the person signed in or renewed a sign-in in the last 5 minutes. A till that is in use but between renewals doesn't show it, so read **Last active** before you decide a device is idle.
 
-## Signing devices out {#signing-devices-out}
+## Sign a device out {#signing-devices-out}
 
-Three actions are available, each behind a confirmation dialog:
+1. Select the person on the left.
+2. Find the device by its **Application**, **IP** and **Created** time.
+3. Press **Terminate** on its card. **Terminate session?** asks you to confirm. Press **Terminate**.
 
-- **Terminate** — sign out a single session. Use the button on that session's card.
-- **Logout Other Devices** — sign the selected user out of every device **except** the one they're currently using. Shown when the user has more than one session.
-- **Logout All** — sign the selected user out of **every** device, including the current one.
+To sign the person out everywhere at once, press **Logout All** instead. **Terminate all sessions?** asks you to confirm. Press **Logout All**.
+
+**Session terminated successfully** or **Sessions terminated successfully** confirms it, and the session leaves the list.
+
+### What happens on the device {#on-the-device}
+
+The store stops answering that device straight away. The next time the POS reaches the store, it opens the WordPress sign-in window, and the POS shows **Session expired**: the same as when a sign-in runs out. See [AUTH101](../../error-codes/AUTH101.mdx).
+
+Nothing on the device is wiped. Sales that haven't reached the store wait on the device and send once someone signs in again. On the Connect screen the person's row shows **Sign in again**. See [Connect to your store](../../getting-started/connect.mdx#multiple-users-per-store).
+
+Ending your own session from here signs your POS out, not WP Admin.
+
+:::warning Ending a session doesn't change the password
+Anyone who knows the password can sign straight back in. For a cashier who has left, also remove their POS access in [Access](./access.mdx) or change their password.
+:::
 
 :::tip Lost or stolen device
-If a phone, tablet, or laptop with the POS on it goes missing, open Sessions, select the affected user, and use **Terminate** on that device's session (or **Logout All** to be safe). The device loses access on its next request.
+Change the password of each person who was signed in on it. That ends every POS session they have, on every device, and stops anyone signing back in with the old one. They sign in again on their other devices. If you only need to end that one device, **Terminate** its session here.
 :::
 
-:::note
-Terminating your own current session signs you out of the device you're on right now — you'll be asked to confirm before that happens.
-:::
+## Other ways a session ends {#other-ways}
 
-## Related {#related}
+You don't have to clear sessions by hand. A session also ends when:
+
+- it reaches **Expires**, 30 days after the sign-in;
+- the person's password is changed or reset: every POS session they have ends;
+- the person signs out of WordPress in a browser: the POS session in that browser ends, and their other devices stay signed in.
+
+<details>
+<summary>For developers: session length and the session limit</summary>
+
+The 30 days come from the `wcpos_jwt_refresh_token_expire` filter, and the 30-minute renewal from `wcpos_jwt_access_token_expire`. See [Token Expiry Coverage](../../reference/role-endpoint-access.mdx#token-expiry-coverage).
+
+A person can hold up to 200 sessions. When a new sign-in would go over that, the store removes the sessions that have been idle longest, and only ones not seen for a week. A device in use is never removed this way.
+
+</details>
+
+## If something goes wrong {#goes-wrong}
+
+**No active sessions found.** Nobody you can manage is signed in to the POS.
+
+**A person you expect isn't listed.** They have no session that hasn't expired, or they are an administrator and you're signed in as a Shop Manager.
+
+**The device signed straight back in.** Someone there still knows the password. Change it, or remove the person's POS access in [Access](./access.mdx).
+
+## Related Documentation {#related-documentation}
 
 <LinkCards>
-  <LinkCard to="/settings/wp-admin/access" title="Accessing the POS" description="User roles and capabilities that control POS access" />
-  <LinkCard to="/getting-started/connect" title="Connecting to Your Store" description="How users log in from the desktop and mobile apps" />
-  <LinkCard to="/reference/role-endpoint-access" title="Role Endpoint Access" description="Token expiry behaviour and per-endpoint access" />
+  <LinkCard to="/settings/wp-admin/access" title="Access" description="Which roles can use the POS and manage its settings." />
+  <LinkCard to="/getting-started/connect" title="Connect to your store" description="How people sign in on each device." />
+  <LinkCard to="/error-codes/AUTH101" title="AUTH101: Session expired" description="What a signed-out device shows, and what happens to its sales." />
 </LinkCards>
