@@ -1,12 +1,10 @@
 ---
-title: Windcave Terminal Gateway
-description: "Take in-person card payments on Windcave terminals (HIT) in WCPOS"
+title: "Windcave Terminal Gateway"
+description: "Take card payments on a Windcave terminal from the POS checkout, and set up the Windcave Terminal extension (HIT) in WP Admin."
 ---
 
-import FeatureCard from '@site/src/components/FeatureCard';
-import FeatureGrid from '@site/src/components/FeatureGrid';
-import Accordion from '@site/src/components/Accordion';
-import AccordionItem from '@site/src/components/AccordionItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
 import RequirementsList from '@site/src/components/RequirementsList';
 import RequirementItem from '@site/src/components/RequirementItem';
 import Steps from '@site/src/components/Steps';
@@ -14,81 +12,109 @@ import StepCard from '@site/src/components/StepCard';
 
 # Windcave Terminal Gateway
 
-The Windcave Terminal gateway lets you take in-person card payments on a Windcave terminal through Windcave HIT. Payments are started from WCPOS and completed on the terminal, with confirmation written back to the WooCommerce order.
+The till sends the order total to a Windcave terminal, the customer pays on the terminal, and the sale finishes on its own when Windcave approves it. This page is in two parts: [taking a payment](#take-payment) at the till, and [setting it up](#setup) in WP Admin.
 
-:::warning New in 0.1.0 — pending Windcave certification
-0.1.0 is the first release. Windcave requires QA certification of an integration before it is used in production, and this integration is not yet certified. Use it with Windcave **UAT** (test) credentials until certification is complete. The **Vendor ID** is issued by Windcave during certification.
-
-Until certification the extension is a pre-release: install the zip by hand on a test store.
+:::warning Not certified by Windcave yet
+Windcave requires every point-of-sale integration to pass its QA certification before it takes real payments. This one hasn't passed yet. Until it does, run it with Windcave's **UAT** (test) credentials only.
 :::
 
-## Features {#features}
+:::info Pro Feature
+The Windcave Terminal extension needs [WCPOS Pro](../../getting-started/pro-license.mdx), both to install it from the extension directory and to use it at the till.
+:::
 
-<FeatureGrid>
-  <FeatureCard icon="link" title="Cloud HIT Connection">
-    Connect through Windcave's cloud HIT service with one Station ID per terminal and no local pairing
-  </FeatureCard>
-  <FeatureCard icon="terminal" title="Terminal Prompts on Screen">
-    Follow the terminal's prompts and buttons from the payment panel, including YES/NO for signature verification and CANCEL
-  </FeatureCard>
-  <FeatureCard icon="shield" title="Verified Completion">
-    Orders complete only after the payment reference, amount, environment, order total, and currency are checked
-  </FeatureCard>
-  <FeatureCard icon="clock" title="Set a Payment Aside">
-    After a timeout, set the pending payment aside and carry on while a background check follows it up
-  </FeatureCard>
-  <FeatureCard icon="sync" title="Result Notifications">
-    Enable optional result notifications (FPRN) so Windcave can notify your site as a backup to polling
-  </FeatureCard>
-</FeatureGrid>
+{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves Station selection and logs into Pro and adds refunds; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
 
-## How It Works {#how-it-works}
+## Take a payment {#take-payment}
 
-The gateway uses Windcave **HIT (Host Initiated Transaction)** over HTTPS. **Environment** selects the UAT or production endpoint, and each terminal is addressed by its Windcave-issued **Station ID**.
+:::note Before you start
+Your store needs to be online: the payment runs on your store's own payment page, inside the POS. Someone with WP Admin access has to [set the gateway up](#setup) first.
+:::
 
-Starting a payment sends the full order total and currency to the terminal. The payment page polls Windcave every **1.5 seconds**, mirroring the terminal's prompts and available buttons. Optional **Result notifications (FPRN)** let Windcave notify the site as a backup to polling.
+1. Build the cart and press **Checkout**.
+2. Open the **Legacy** tab. Your store's payment page opens inside the POS. See [The Legacy Tab](../../pos/checkout/legacy-tab.mdx).
+3. Choose **Windcave Terminal**. Your store may have given it another name.
+4. Pick the terminal under **Terminal**. With one terminal, or a locked default, it is already chosen. With two or more and no default, you must pick one.
+5. Press **Start Terminal Payment**. The panel says **Sending to terminal…** and the full order total goes to that terminal.
+6. The customer taps, inserts or swipes their card on the terminal. Whatever the terminal shows appears in the panel too, with its buttons. When the terminal asks you to check a signature, answer **YES** or **NO** in the panel.
+7. When Windcave approves, the panel says **Payment complete — finishing order…** and the POS moves on to the receipt.
 
-## Setup {#setup}
+You don't need **Process Payment** at the foot of the Legacy tab: the sale finishes on its own when the terminal approves.
+
+The terminal is always charged the whole order, so it can't share a sale with another method. Once a payment has been taken on the order, the Legacy tab can't be used; [cancel that payment](../../pos/checkout/cancelling-a-payment.mdx) first.
+
+### Stop or set aside a payment {#payment-controls}
+
+- **Cancel Terminal Payment** replaces **Start Terminal Payment** while a payment runs. It presses **CANCEL** on the terminal when the terminal offers it. When it doesn't, the panel says so: cancel on the terminal itself, or set the payment aside.
+- **Set payment aside** appears when a payment has run for 5 minutes with no answer, or when the terminal won't cancel. It lets you take payment another way. It does **not** cancel the payment at Windcave: a check on your store keeps following it up every 10 minutes, even after the till is closed.
+- **Reloading the page** picks up the payment already in progress, with **Cancel Terminal Payment** showing.
+
+## If something goes wrong {#goes-wrong}
+
+**Select a terminal first.** Pick a terminal under **Terminal**, then press **Start Terminal Payment** again.
+
+**The terminal is still finishing an earlier transaction.** Finish or cancel that transaction on the terminal, then start again.
+
+**Payment declined. You can try again.** The card was declined. Press **Start Terminal Payment** to try again, or take another method.
+
+**Timed out waiting for the terminal.** Five minutes passed with no result. Check the terminal. If the customer paid, wait; if not, press **Cancel Terminal Payment** or **Set payment aside**.
+
+**Windcave has no record of this transaction. Start the payment again.** The payment never reached Windcave. Press **Start Terminal Payment** again.
+
+**Windcave already approved a payment for this order that could not be applied.** Don't charge the card again. Check the order notes and the Windcave portal first, and call your manager.
+
+**The terminal payment could not be verified.** Windcave's answer didn't match this order, for example its total changed. Check the payment in the Windcave portal before trying again.
+
+**This payment was started in UAT** (or **production**). Someone changed **Environment** while the payment was running. Switch it back to finish the payment, or check it in the Windcave portal.
+
+**Windcave reported code …: Check the Station ID and HIT settings.** Windcave refused the request, often because a Station ID is wrong. Ask whoever set up the gateway to check the [settings](#settings), or set the payment aside.
+
+Setup messages:
+
+**Windcave HIT credentials are not configured.** The **HIT username** or **HIT key** is empty. Enter both and save, and check **Environment** matches them.
+
+**No Station IDs configured** in the **Terminal** list. Add the Station IDs Windcave gave you, one per line, and save.
+
+**Activation is refused.** The server needs **PHP 7.4** or newer and the PHP DOM extension (**php-xml**). Ask your host to enable it.
+
+## Set it up {#setup}
+
+This part is for whoever runs the store's WP Admin.
 
 <Steps>
-  <StepCard number="1" title="Install Windcave Terminal for WooCommerce">
+  <StepCard number="1" title="Install the extension">
 
-Download the **plugin zip asset** (not the GitHub source-code zip) from the [GitHub releases page](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases). Upload it via `Plugins > Add New > Upload Plugin` and activate it with WooCommerce installed and active.
+Open `WP Admin > POS > Settings > Extensions`, find **Windcave Terminal for WooCommerce**, click **Install**, then **Activate**. See [Installing an Extension](../../extensions/index.mdx#installing-an-extension).
 
-Activation requires **PHP 7.4+** and the **PHP DOM extension (php-xml)**. If either is missing, activation is refused with a message.
+Without the directory, download the **plugin zip** (not the source-code zip) from the [GitHub releases page](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases) and upload it with `Plugins > Add New > Upload Plugin`. WooCommerce must be active.
 
   </StepCard>
   <StepCard number="2" title="Get HIT credentials from Windcave">
 
-Ask Windcave for a **HIT username**, a **HIT key**, and one **Station ID** per terminal. Request a development account through Windcave's [Integration Requirements form](https://www.windcave.com/merchant-attended-developer-hit).
+Ask Windcave for a **HIT username**, a **HIT key** and one **Station ID** for each terminal. For a development account, use Windcave's [Integration Requirements form](https://www.windcave.com/merchant-attended-developer-hit).
 
-UAT and production credentials are separate. Use UAT credentials while this integration is awaiting certification.
-
-  </StepCard>
-  <StepCard number="3" title="Configure the gateway">
-
-1. Go to `WP Admin > WooCommerce > Settings > Payments` and open **Windcave Terminal**
-2. Set **Environment** to `UAT (testing)` (the default). `Production` is for use after Windcave certification with production credentials
-3. Enter the **HIT username** and **HIT key** issued by Windcave
-4. Enter your **Station IDs**, one per line
-5. *(Optional)* Set a **Default Station ID**. Enable **Lock terminal selection** to always use that default and prevent cashiers from changing it
-6. Leave **Vendor ID** empty until Windcave issues one during certification
-7. Save your settings
+UAT and production credentials are separate. Use UAT ones until Windcave certifies this integration.
 
   </StepCard>
-  <StepCard number="4" title="Turn on result notifications (optional)">
+  <StepCard number="3" title="Fill in the gateway settings">
 
-Enable **Result notifications (FPRN)** and save to ask Windcave to notify your site when a transaction result is ready. This is a backup to polling.
+1. Go to `WP Admin > WooCommerce > Settings > Payments` and open **Windcave Terminal**.
+2. Leave **Environment** on **UAT (testing)**, the default. **Production** is for after certification, with production credentials.
+3. Enter the **HIT username** and **HIT key**.
+4. Enter your **Station IDs**, one per line.
+5. Optional: set a **Default Station ID**, and tick **Lock terminal selection** so cashiers always use it.
+6. Leave **Vendor ID** empty. Windcave issues one during certification.
+7. Optional: tick **Result notifications (FPRN)**, so Windcave also tells your store when a result is ready, as a backup to the till's own checks.
+8. Save.
+
+There is no test-connection button. The credentials and Station IDs are checked by the first payment, so run a test payment on a UAT terminal.
 
   </StepCard>
-  <StepCard number="5" title="Enable in WCPOS" isLast>
+  <StepCard number="4" title="Turn it on for the POS" isLast>
 
-1. Go to `WP Admin > POS > Settings > Checkout`
-2. Find the **Windcave Terminal** gateway and enable it for the POS
-3. Save your settings
+Go to `WP Admin > POS > Settings > Checkout`, find **Windcave Terminal** and switch **Enabled** on. See [Enabling a Gateway](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
 
 :::note
-The **Enable/Disable** checkbox on the WooCommerce settings screen controls the *online store* checkout only. WCPOS uses this gateway once it is configured, whether or not that box is ticked.
+The **Enable/Disable** box in the WooCommerce settings is for the online store only. The POS uses the gateway once it is enabled in POS Settings, whether that box is ticked or not.
 :::
 
   </StepCard>
@@ -96,138 +122,93 @@ The **Enable/Disable** checkbox on the WooCommerce settings screen controls the 
 
 ## Settings reference {#settings}
 
+On `WP Admin > WooCommerce > Settings > Payments > Windcave Terminal`:
+
 | Setting | What it does |
 |---|---|
-| **Enable/Disable** | Enables the gateway for online store checkout. POS enablement is controlled under `POS > Settings > Checkout` |
-| **Title** | The checkout label; defaults to `Windcave Terminal` |
-| **Description** | The checkout description; defaults to `Pay in person on the Windcave terminal.` |
-| **Environment** | `UAT (testing)` (default) or `Production`. Each uses separate HIT credentials; production requires Windcave certification |
-| **HIT username** | The HIT username issued by Windcave for the selected environment |
-| **HIT key** | The HIT key issued by Windcave for the selected environment |
-| **Station IDs** | One Windcave-issued Station ID per line, one for each terminal |
-| **Default Station ID** | The preselected Station, also used when no Station is selected |
-| **Lock terminal selection** | Always uses the default Station so cashiers cannot change it. Only takes effect when a default is set |
-| **Vendor ID** | Issued by Windcave during certification. Leave empty until Windcave provides it |
-| **POS name** | The name sent to Windcave to identify the POS; defaults to `WCPOS` |
-| **Result notifications (FPRN)** | Asks Windcave to notify the site when a transaction result is ready, as a backup to polling. Off by default |
-| **Checkout logs** | Shows log tools on the payment panel. Off by default |
-| **Log level** | `Off`, `Errors only`, or `Debug`. Defaults to Debug, logging requests and responses with keys and card data masked |
-| **Support** | Provides **Download support bundle** and a link to view logs in `WooCommerce > Status > Logs` |
+| **Enable/Disable** | Offers the gateway at the online store's checkout. Off by default. The POS uses its own switch, under `POS > Settings > Checkout` |
+| **Title** | The name cashiers choose on the payment page. Defaults to `Windcave Terminal` |
+| **Description** | The line shown under the title. Defaults to `Pay in person on the Windcave terminal.` |
+| **Environment** | **UAT (testing)** (default) or **Production**. Each has its own HIT credentials; production needs Windcave certification |
+| **HIT username** | Issued by Windcave, for the environment you chose |
+| **HIT key** | Issued by Windcave, for the environment you chose |
+| **Station IDs** | One Station ID per line, one per terminal. Windcave issues them; they aren't found automatically |
+| **Default Station ID** | The terminal chosen at the start, and the one used when none is picked |
+| **Lock terminal selection** | Cashiers can't change the terminal: the default is always used. Works only when a default is set |
+| **Vendor ID** | Issued by Windcave during certification. Leave it empty until then |
+| **POS name** | The name your POS goes by at Windcave. Defaults to `WCPOS` |
+| **Result notifications (FPRN)** | Windcave also tells your store when a result is ready, as a backup to the till's checks. Off by default |
+| **Checkout logs** | Shows **Show logs**, **Copy** and **Clear** on the payment panel. Off by default |
+| **Log level** | **Off**, **Errors only** or **Debug** (the default) |
+| **Support** | **Download support bundle**, and a link to the logs |
 
-There is no connection-test button: credentials and Station IDs are checked when the first payment runs.
+## After the sale {#receipts}
 
-## Usage {#usage}
-
-### Processing Payments {#processing-payments}
-
-1. **Add Items**: Add products to your cart in the POS
-2. **Select Gateway**: Press **Checkout**, open the **Legacy** tab and choose Windcave Terminal. The steps below describe its payment page there; a version of the extension with a tender-pane tile shows it on the **Payments** tab instead
-3. **Choose Terminal**: Select a Station, or use the locked default. Selection is required when there are two or more Stations and no default
-4. **Start Payment**: Click **Start Terminal Payment** to send the order total to the terminal
-5. **Follow Prompts**: The terminal's prompts and available buttons appear on screen, including **YES/NO** for signature verification and **CANCEL** when offered
-6. **Automatic Completion**: After approval and verification, the order completes and the POS goes to the receipt
-
-### Payment Controls {#payment-controls}
-
-- **Start Terminal Payment**: Send a new payment request to the selected Station
-- **Cancel Terminal Payment**: Presses the terminal's **CANCEL** button when the terminal offers it. Otherwise, cancel on the terminal or set the payment aside when that option appears
-- **Set payment aside**: Appears after the **5-minute timeout**. It leaves the attempt to a **10-minute background check** so you can take payment another way; it does not cancel the payment at Windcave
-- **Reloading the page**: Resumes a payment already in progress
-
-### Receipts {#receipts}
-
-Terminal receipt text, when Windcave returns it, is saved as a **private order note** in WooCommerce.
+When Windcave sends receipt text from the terminal, it is saved to the order as a **private note**. The POS still shows its own receipt as usual.
 
 ## Refunds {#refunds}
 
-Refunds from WooCommerce are **not supported in 0.1.0**. Refund in the Windcave portal (**Payline**) or on the terminal, then record the refund in WooCommerce **manually**.
+Refunds from WooCommerce aren't supported in this version. Refund in the Windcave portal (Payline) or on the terminal, then record the refund on the order in WooCommerce by hand. See [Refunds](../../pos/refunds.mdx).
 
 ## Logs and support bundle {#logs-and-support-bundle}
 
-Find logs in `WooCommerce > Status > Logs`, under source `windcave-terminal`. The log level defaults to **Debug**, recording Windcave requests and responses with keys and card data masked.
+Logs are in `WP Admin > WooCommerce > Status > Logs`, under the source `windcave-terminal`. **Log level** starts on **Debug**, which records every request to Windcave and every answer, with the HIT key and card numbers masked.
 
-Click **Download support bundle** on the gateway settings screen to download a `.json` file, and send it with the **order number**. It contains environment details, settings with the HIT key and username masked, payment attempts from up to 20 recent orders with receipts removed, and the last 1,000 lines from the two newest log files; log lines may include terminal receipt text with card numbers masked.
+When a payment fails, click **Download support bundle** on the gateway's settings page and send the `.json` file to support with the **order number**.
 
-If WooCommerce uses the **database log handler**, the bundle contains no log lines. Export logs from `WooCommerce > Status > Logs` instead.
+<details>
+<summary>What the support bundle holds</summary>
 
-Enable **Checkout logs** to show log tools on the payment panel.
+- Your store's setup: the WordPress, WooCommerce, PHP and extension versions, the environment and the number of terminals.
+- The gateway settings, with the HIT key masked and the HIT username cut to its first three characters.
+- Payment attempts from up to 20 recent orders, without receipts.
+- The last 1,000 lines of the two newest `windcave-terminal` log files. These can hold terminal receipt text, with card numbers masked.
+
+If WooCommerce keeps its logs in the database, the bundle has no log lines: export them from `WooCommerce > Status > Logs` and send them too.
+
+</details>
 
 ## Requirements {#requirements}
 
 <RequirementsList>
-  <RequirementItem label="Windcave Account">HIT username, HIT key, and a Station ID per terminal; production use requires Windcave certification</RequirementItem>
-  <RequirementItem label="Compatible Hardware">A Windcave terminal using HIT</RequirementItem>
-  <RequirementItem label="Connections">Internet-connected only. The store sends each payment to a Windcave terminal, so every till can use it; a till picks its Station at checkout</RequirementItem>
-  <RequirementItem label="WCPOS">Pro version required for POS checkout</RequirementItem>
-  <RequirementItem label="Server">WordPress 5.2+, WooCommerce, and PHP 7.4+ with the DOM extension (php-xml)</RequirementItem>
-  <RequirementItem label="Currency">A two-decimal currency</RequirementItem>
-  <RequirementItem label="Stable Connection">Reliable internet connection for API communication</RequirementItem>
+  <RequirementItem label="Windcave Account">A HIT username, a HIT key and one Station ID per terminal. Real payments need Windcave certification</RequirementItem>
+  <RequirementItem label="Terminal">A Windcave terminal that takes HIT payments</RequirementItem>
+  <RequirementItem label="Connection">Online only. The store sends each payment to the terminal over the internet, so any till can use any terminal and picks one at checkout</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
+  <RequirementItem label="Server">WordPress 5.2 or newer, WooCommerce, and PHP 7.4 or newer with the DOM extension (php-xml)</RequirementItem>
+  <RequirementItem label="Currency">A currency with two decimal places</RequirementItem>
 </RequirementsList>
 
-## Scope & Limitations {#scope-and-limitations}
+## What it doesn't do {#scope-and-limitations}
 
-:::warning Certification required
-This integration is not yet certified by Windcave. Use **UAT** credentials until Windcave QA certification is complete; do not use it in production before certification.
-:::
+- Refunds from WooCommerce.
+- Tips, surcharges and cash-out.
+- Currencies without two decimal places.
+- Part-payments: the terminal is always charged the whole order.
+- Finding terminals on its own: you type in each Station ID.
+- The online store's checkout. Online, it works only on an order's payment page.
 
-- Refunds from WooCommerce are not supported in 0.1.0
-- Tips, surcharge, and cash-out are not supported
-- Only **two-decimal currencies** are supported
-- The terminal is charged the **full order total**; paying only part of an order on the terminal is not supported
-- **Station IDs** are entered by hand; terminals are not discovered automatically
-- The gateway is built for the POS. On the online store, it only works on the **order-pay page**
+<details>
+<summary>How it works, for developers</summary>
 
-## Troubleshooting {#troubleshooting}
+The gateway uses Windcave **HIT (Host Initiated Transaction)** over HTTPS. **Environment** picks the UAT or production endpoint, and each terminal is addressed by its **Station ID**.
 
-### Common Issues {#common-issues}
+Starting a payment records a transaction reference on the order, then sends a Purchase for the order total and currency. The panel asks Windcave for the status every 1.5 seconds and mirrors the terminal's display lines and enabled buttons. With **Result notifications (FPRN)** on, Windcave also calls the store when a result is ready.
 
-<Accordion>
-  <AccordionItem question="Activation is refused: PHP DOM extension (php-xml) required">
+The order completes only when the result is approved and matches the attempt recorded on the order: the reference, the amount, the environment, and the order's total and currency. Windcave gets 30 seconds to register a new transaction before "no record" counts as declined. A scheduled check every 10 minutes follows up payments that went quiet or were set aside.
 
-  - The server is missing the PHP DOM extension
-  - Ask your host to enable **php-xml**. Activation also requires **PHP 7.4+**
+</details>
 
-  </AccordionItem>
-  <AccordionItem question="No Station IDs configured">
+## Related Documentation {#related-documentation}
 
-  - The **Station IDs** setting is empty
-  - Add the Station IDs issued by Windcave in the gateway settings, one per line, and save
+- [The Legacy Tab](../../pos/checkout/legacy-tab.mdx)
+- [Checkout](../../pos/checkout/index.mdx)
+- [Checkout Settings](../../settings/wp-admin/checkout.mdx)
+- [Extensions](../../extensions/index.mdx)
+- [Report an issue on GitHub](https://github.com/wcpos/windcave-terminal-for-woocommerce/issues). For your account, credentials and terminals, contact Windcave.
 
-  </AccordionItem>
-  <AccordionItem question="Windcave HIT credentials are not configured">
-
-  - The **HIT username** or **HIT key** is empty
-  - Enter both in the gateway settings and save. Make sure **Environment** matches those credentials
-
-  </AccordionItem>
-  <AccordionItem question="The terminal is still finishing an earlier transaction">
-
-  - An earlier transaction is still in progress on that Station
-  - Complete or cancel it on the terminal, then try again
-
-  </AccordionItem>
-  <AccordionItem question="Windcave has no record of this transaction">
-
-  - Windcave still has no record after the initial 30-second grace period
-  - Start the payment again
-
-  </AccordionItem>
-  <AccordionItem question="Windcave approved a payment but it could not be applied">
-
-  - The approved result did not pass the checks needed to complete this order
-  - Check the **Windcave portal** and **order notes before charging again**
-
-  </AccordionItem>
-  <AccordionItem question="This payment was started in a different environment">
-
-  - **Environment** was changed while the payment was in progress
-  - Switch back to the environment where the payment started, or check the Windcave portal
-
-  </AccordionItem>
-</Accordion>
-
-### Getting Help {#getting-help}
-
-- Send the **support bundle** from the gateway settings screen with the **order number**
-- Visit the [GitHub repository](https://github.com/wcpos/windcave-terminal-for-woocommerce) to report issues
-- Contact Windcave support for account, credentials, and hardware questions
+<LinkCards>
+  <LinkCard to="/pos/checkout/legacy-tab" title="The Legacy Tab" description="Gateways that take payment on the store's own payment page" />
+  <LinkCard to="/settings/wp-admin/checkout" title="Checkout Settings" description="Turn gateways on for the POS" />
+  <LinkCard to="/payment/gateways" title="All Gateways" description="The other card terminals WCPOS works with" />
+</LinkCards>
