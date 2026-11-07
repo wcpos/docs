@@ -119,7 +119,7 @@ Every part of a printed receipt comes from one section of the data contract. Hov
 
 ## Common recipes {#common-recipes}
 
-Most template edits are one of these three. Each card shows the printed result first, then the exact markup — copy it into any logicless HTML or thermal XML template. The third card shows an order made before WCPOS 1.9.0 rather than the sample order above: its saving is already inside the discount, so the card prints the discount and leaves the saving out.
+Most template edits are one of these three. Each card shows the new rows in place on a receipt, then the markup for the added rows only: the item name, amount and TOTAL come from the rest of your template. Copy the markup into any logicless HTML or thermal XML template. The third card shows an order made before WCPOS 1.9.0 rather than the sample order above: its saving is already inside the discount, so the card prints the discount and leaves the saving out.
 
 <Recipes>
   <Recipe
@@ -171,139 +171,33 @@ Most template edits are one of these three. Each card shows the printed result f
   />
 </Recipes>
 
-## Extending receipt data {#extending}
-
-WCPOS keeps the contract above vendor-neutral. When a plugin needs the receipt to know something WooCommerce does not model, it adds that itself through the `wcpos_receipt_data` filter, the same way plugins filter WooCommerce's own order totals. The filter runs on every receipt the server builds: live receipts, fiscal snapshots at payment time, PDF downloads, and legacy PHP templates. Before WCPOS 2.0 this filter was named `woocommerce_pos_receipt_data`; that name still works but is deprecated since 2.0 and is removed in 2.2 at the earliest (see [Hook naming](../extensions/index.mdx#hook-naming)).
-
-The third argument, `$mode`, says which document is being built: `live`, `fiscal`, `refund`, `preview` (sample receipts in the template editor and gallery), `closure` or `xreport` (register closure and X-report documents). In `preview`, `closure` and `xreport` the order is an unsaved one whose ID is `0`; a plugin that needs a saved order should return `$data` unchanged when `$order->get_id()` is `0`.
-
-```php
-add_filter( 'wcpos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
-    foreach ( $data['discounts'] as &$row ) {
-        if ( 'smart_coupon' === $row['discount_type'] ) {
-            $row['gift_card'] = true;
-        }
-    }
-    return $data;
-}, 10, 3 );
-```
-
-A template can then guard on the new key like any other section:
-
-```
-{{#discounts}}
-  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
-{{/discounts}}
-```
-
-Keys defined in the schema should keep their documented types. Added keys are not part of the schema, so they do not appear in the template editor's field picker, and fiscal snapshots only carry what the filter added at the time the order was paid. The filter is available from WCPOS 1.10.8.
-
-Every added key reaches the receipts the server renders itself: PDF downloads and legacy PHP templates. HTML and thermal templates rendered in the POS app rebuild the data first: a key added inside `order`, `store`, `cashier` or `customer` comes through, but a key added anywhere else, such as on the discounts row above, is left out. The app leaves out `discount_type` too, so in the POS the guard above falls back to the plain discount label. {/* pending: monorepo#3363 */} On a live receipt with a fiscal snapshot, the fiscal identity, `register` and `software` are copied from the snapshot after the filter runs, so changing them in this filter has no effect; enrich the snapshot instead.
-
-## Rendering rules {#rendering-rules}
-
-### Currency fields {#currency-fields}
-
-Numeric money fields are preserved as numbers and the renderer adds locale-aware `_display` fields for template output:
-
-| Numeric field | Display field |
-|---------------|---------------|
-| `totals.total` | `totals.total_display` |
-| `lines[].line_total` | `lines[].line_total_display` |
-| `payments[].amount` | `payments[].amount_display` |
-| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
-
-Prefer `_display` fields when printing receipts. Use numeric fields only for conditional sections or machine-readable output.
-
-### Tax display-aware fields {#tax-display-aware-fields}
-
-Several fields have inclusive and exclusive variants plus a display-side convenience value. The convenience value follows the store's cart tax display setting.
-
-| Convenience field | Inclusive field | Exclusive field |
-|-------------------|-----------------|-----------------|
-| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
-| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
-| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
-| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
-| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
-| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
-| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
-| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
-| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
-| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
-| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
-| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
-| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
-| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
-| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
-| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
-| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
-| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
-| `totals.total` | `totals.total_incl` | `totals.total_excl` |
-
-### Date objects {#date-objects}
-
-Date fields are objects with multiple preformatted variants. This avoids doing date formatting inside Mustache.
-
-| Field | Description |
-|-------|-------------|
-| `datetime`, `date`, `time` | Default date/time strings |
-| `datetime_short`, `datetime_long`, `datetime_full` | Locale-aware combined formats |
-| `date_short`, `date_long`, `date_full` | Locale-aware date-only formats |
-| `date_ymd`, `date_dmy`, `date_mdy` | Fixed-order date formats |
-| `weekday_short`, `weekday_long` | Day names |
-| `day`, `month`, `month_short`, `month_long`, `year` | Individual date parts |
-
-Available date objects: `order.created`, `order.paid`, `order.completed`, `order.printed`, `refunds[].date`, `fiscal.sale_time`, and `fiscal.received_at`. `order.printed` is refreshed at render time, which is useful for reprints. The two `fiscal` dates are `null` when the receipt has no fiscal record, so wrap them in a section.
-
-## Top-level sections {#top-level-sections}
-
-| Section | Type | Description |
-|---------|------|-------------|
-| `order` | object | Order identity, status, dates, note, and payment URL information |
-| `store` | object | Store identity, address, contact details, tax IDs, logo, hours, and footer text |
-| `cashier` | object | User who processed the order |
-| `customer` | object | Customer display name, addresses, and tax IDs |
-| `lines` | array | Product line items |
-| `fees` | array | Fee rows |
-| `shipping` | array | Shipping rows |
-| `discounts` | array | Coupon/discount rows |
-| `totals` | object | Order totals, payment totals, refund summary, and item counts |
-| `tax` | object | Tax display mode flags for section guards |
-| `tax_summary` | array | Per-rate tax summary rows |
-| `has_tax_summary` | boolean | Convenience guard for `tax_summary` |
-| `payments` | array | Payment rows |
-| `refunds` | array | Refund records applied to the order |
-| `fiscal` | object | Fiscal snapshot fields populated by fiscal integrations |
-| `register` | object | The register that took the sale: `id` and `name`. Empty strings when unknown |
-| `software` | object | The software that issued the receipt: `name` (`WCPOS`), `plugin_version`, `app_version`, `app_build`, `platform` |
-| `presentation_hints` | object | Formatting and renderer hints |
-| `i18n` | object | Translated labels for bundled and custom templates |
-
-## How the prices relate {#price-model}
-
-One product line carries several prices, and the names make sense once you see them on the money itself. This is the espresso line from the sample order — a $17.00 product on sale for $14.50, with a 10% coupon on top:
-
-<PriceFlow
-  caption="Espresso Beans — one unit (the order has two)"
-  scaleLabel="regular price 17.00"
-  segments={[
-    { kind: 'paid', amount: 13.05, label: "13.05 paid" },
-    { kind: 'coupon', amount: 1.45, label: "1.45" },
-    { kind: 'savings', amount: 2.5, label: "2.50" },
-  ]}
-  summary={[
-    { label: "Sale savings across the order", value: '`totals.sale_savings_total` = 5.00' },
-    { label: "All coupon discounts across the order", value: '`totals.discount_total` = 5.28' },
-    { label: "Savings + discounts, legacy overlap removed", value: '`totals.total_saved` = 10.28' },
-  ]}
-/>
-
-Sale savings and coupon discounts are different things: sale savings compare the selling price with the recorded regular price, while `discounts` is WooCommerce's own coupon arithmetic. WooCommerce order totals and reports only ever contain the coupon part — which is why `total_saved` exists as the one customer-facing figure that combines both.
-
 ## Field reference {#field-reference}
 
-The full field reference is grouped by section below. Everything is collapsed by default — expand the group you need.
+The receipt data has the sections below. Each section's fields are collapsed further down — expand the group you need.
+
+### Top-level sections {#top-level-sections}
+
+| Section | What it holds |
+|---------|---------------|
+| `order` (object) | Order identity, status, dates, note, and payment URL information |
+| `store` (object) | Store identity, address, contact details, tax IDs, logo, hours, and footer text |
+| `cashier` (object) | User who processed the order |
+| `customer` (object) | Customer display name, addresses, and tax IDs |
+| `lines` (array) | Product line items |
+| `fees` (array) | Fee rows |
+| `shipping` (array) | Shipping rows |
+| `discounts` (array) | Coupon/discount rows |
+| `totals` (object) | Order totals, payment totals, refund summary, and item counts |
+| `tax` (object) | Tax display mode flags for section guards |
+| `tax_summary` (array) | Per-rate tax summary rows |
+| `has_tax_summary` (boolean) | Convenience guard for `tax_summary` |
+| `payments` (array) | Payment rows |
+| `refunds` (array) | Refund records applied to the order |
+| `fiscal` (object) | Fiscal snapshot fields populated by fiscal integrations |
+| `register` (object) | The register that took the sale: `id` and `name`. Empty strings when unknown |
+| `software` (object) | The software that issued the receipt: `name` (`WCPOS`), `plugin_version`, `app_version`, `app_build`, `platform` |
+| `presentation_hints` (object) | Formatting and renderer hints |
+| `i18n` (object) | Translated labels for bundled and custom templates |
 
 <Accordion>
   <AccordionItem question="order — identity, status, dates">
@@ -829,6 +723,139 @@ Use `i18n` labels instead of hardcoding text where possible:
 ```
 
 Common keys include `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, the fiscal labels `copy` (prints COPY), `reprint`, `register`, `sale_time`, `software`, `document_refund`, `document_void` and `document_cancellation`, and the tax-ID label keys such as `store_tax_id_label_eu_vat` and `customer_tax_id_label_other`. Extra keys may be added by extensions.
+
+  </AccordionItem>
+</Accordion>
+
+## How the prices relate {#price-model}
+
+One product line carries several prices, and the names make sense once you see them on the money itself. This is the espresso line from the sample order — a $17.00 product on sale for $14.50, with a 10% coupon on top:
+
+<PriceFlow
+  caption="Espresso Beans — one unit (the order has two)"
+  scaleLabel="regular price 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 paid" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  summary={[
+    { label: "Sale savings across the order", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "All coupon discounts across the order", value: '`totals.discount_total` = 5.28' },
+    { label: "Savings + discounts, legacy overlap removed", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Sale savings and coupon discounts are different things: sale savings compare the selling price with the recorded regular price, while `discounts` is WooCommerce's own coupon arithmetic. WooCommerce order totals and reports only ever contain the coupon part — which is why `total_saved` exists as the one customer-facing figure that combines both.
+
+## Rendering rules {#rendering-rules}
+
+How money, tax-aware and date fields behave. Expand the rule you need.
+
+<Accordion>
+  <AccordionItem question="Currency fields — a number for guards, a _display string for printing">
+
+### Currency fields {#currency-fields}
+
+Numeric money fields are preserved as numbers and the renderer adds locale-aware `_display` fields for template output:
+
+| Numeric field | Display field |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+Prefer `_display` fields when printing receipts. Use numeric fields only for conditional sections or machine-readable output.
+
+  </AccordionItem>
+
+  <AccordionItem question="Tax display-aware fields — the plain, _incl and _excl variants">
+
+### Tax display-aware fields {#tax-display-aware-fields}
+
+Several fields have inclusive and exclusive variants plus a display-side convenience value. The convenience value follows the store's cart tax display setting.
+
+| Convenience field | Inclusive field | Exclusive field |
+|-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+  </AccordionItem>
+
+  <AccordionItem question="Date objects — preformatted dates and times">
+
+### Date objects {#date-objects}
+
+Date fields are objects with multiple preformatted variants. This avoids doing date formatting inside Mustache.
+
+| Field | Description |
+|-------|-------------|
+| `datetime`, `date`, `time` | Default date/time strings |
+| `datetime_short`, `datetime_long`, `datetime_full` | Locale-aware combined formats |
+| `date_short`, `date_long`, `date_full` | Locale-aware date-only formats |
+| `date_ymd`, `date_dmy`, `date_mdy` | Fixed-order date formats |
+| `weekday_short`, `weekday_long` | Day names |
+| `day`, `month`, `month_short`, `month_long`, `year` | Individual date parts |
+
+Available date objects: `order.created`, `order.paid`, `order.completed`, `order.printed`, `refunds[].date`, `fiscal.sale_time`, and `fiscal.received_at`. `order.printed` is refreshed at render time, which is useful for reprints. The two `fiscal` dates are `null` when the receipt has no fiscal record, so wrap them in a section.
+
+  </AccordionItem>
+
+</Accordion>
+
+## Extending receipt data {#extending}
+
+WCPOS keeps the contract above vendor-neutral. When a plugin needs the receipt to know something WooCommerce does not model, it adds that itself through the `wcpos_receipt_data` filter, the same way plugins filter WooCommerce's own order totals. The filter runs on every receipt the server builds: live receipts, fiscal snapshots at payment time, PDF downloads, and legacy PHP templates. Before WCPOS 2.0 this filter was named `woocommerce_pos_receipt_data`; that name still works but is deprecated since 2.0 and is removed in 2.2 at the earliest (see [Hook naming](../extensions/index.mdx#hook-naming)).
+
+<Accordion>
+  <AccordionItem question="The filter — its arguments, the six modes and an example">
+
+The third argument, `$mode`, says which document is being built: `live`, `fiscal`, `refund`, `preview` (sample receipts in the template editor and gallery), `closure` or `xreport` (register closure and X-report documents). In `preview`, `closure` and `xreport` the order is an unsaved one whose ID is `0`; a plugin that needs a saved order should return `$data` unchanged when `$order->get_id()` is `0`.
+
+```php
+add_filter( 'wcpos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+A template can then guard on the new key like any other section:
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+Keys defined in the schema should keep their documented types. Added keys are not part of the schema, so they do not appear in the template editor's field picker, and fiscal snapshots only carry what the filter added at the time the order was paid. The filter is available from WCPOS 1.10.8.
+
+  </AccordionItem>
+
+  <AccordionItem question="Which receipts print an added key">
+
+Every added key reaches the receipts the server renders itself: PDF downloads and legacy PHP templates. HTML and thermal templates rendered in the POS app rebuild the data first: a key added inside `order`, `store`, `cashier` or `customer` comes through, but a key added anywhere else, such as on the discounts row above, is left out. The app leaves out `discount_type` too, so in the POS the guard above falls back to the plain discount label. {/* pending: monorepo#3363 */} On a live receipt with a fiscal snapshot, the fiscal identity, `register` and `software` are copied from the snapshot after the filter runs, so changing them in this filter has no effect; enrich the snapshot instead.
 
   </AccordionItem>
 </Accordion>
