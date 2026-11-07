@@ -8,9 +8,12 @@ import { journeyShotProps } from './journey-shot-props';
  * beside the captures; pins are never baked into the image or typed by hand.
  * As with PinnedShot, the numbered legend stays a markdown list on the page,
  * and its numbers follow the manifest's pin order. Props: manifest, device,
- * step, alt, and optional colorScheme, scale and offsets.
+ * step, alt, and optional colorScheme, scale and offsets; the capture's
+ * colorScheme goes on to PinnedShot for the pins' ring.
  */
 export default function JourneyShot({ manifest, alt, ...capture }) {
-  const { src, pins } = journeyShotProps(manifest, capture);
-  return <PinnedShot src={src} alt={alt} pins={pins} />;
+  const { src, pins, colorScheme } = journeyShotProps(manifest, capture);
+  return (
+    <PinnedShot src={src} alt={alt} pins={pins} colorScheme={colorScheme} />
+  );
 }

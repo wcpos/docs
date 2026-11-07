@@ -6,8 +6,9 @@ const percent = (value, total) => Math.round((value / total) * 1000) / 10;
 
 /**
  * Picks one capture from a capture manifest and returns the props PinnedShot
- * needs: the image path and its pins as [x, y] percentages of the viewport, in
- * the manifest's pin order. Throws when no capture matches, so the build fails.
+ * needs: the image path, its pins as [x, y] percentages of the viewport in the
+ * manifest's pin order, and the capture's colorScheme. Throws when no capture
+ * matches, so the build fails.
  * `offsets` moves a pin off the thing it points at, in viewport pixels from its
  * default place, and the pin still follows the manifest box.
  */
@@ -37,5 +38,5 @@ export function journeyShotProps(
       percent(box.y + box.height / 2 + dy, height),
     ];
   });
-  return { src, pins };
+  return { src, pins, colorScheme: capture.colorScheme };
 }
