@@ -13,15 +13,18 @@ WCPOS comes in two halves: a plugin on your WordPress site, and the POS app on e
 ## The two halves {#two-part-system}
 
 ```mermaid
-flowchart LR
-  subgraph till["Each till: browser, desktop, iOS or Android"]
-    screens["POS screens"] <--> db[("Local database")]
+flowchart TB
+  subgraph till["This till"]
+    direction TB
+    screens["POS screens"] <--> db[("Database on the till")]
     db <--> engine["Sync engine"]
   end
-  subgraph site["Your WordPress site"]
+  subgraph site["Your store"]
+    direction TB
     plugin["WCPOS plugin"] <--> woo["WooCommerce"]
   end
-  engine <-->|"REST API: wcpos/v2"| plugin
+  engine -->|"Sales and edits send"| plugin
+  plugin -->|"Products, customers and orders download"| engine
 ```
 
 1. **The WCPOS plugin** runs on your WordPress site. It adds its own REST routes and answers them from WooCommerce, so WooCommerce stays the one true copy of every product, customer and order.
@@ -46,35 +49,51 @@ A few things live outside this table. Payment methods, tax classes, shipping met
 
 ### How the database is kept {#storage}
 
+Each cashier in each store has their own copy on the till, and in a browser one tab runs the POS for a site at a time. When an app update changes how that copy is stored, the till downloads it again, after sending anything still waiting.
+
+<details>
+<summary>Developer detail: storage engine, tabs and app updates</summary>
+
 - **One database per site, store and cashier.** Two cashiers on one till, or one cashier in two stores, never share local data.
 - **SQLite on every platform.** In the browser it is SQLite running over the browser's private file storage, in one worker; in the iOS and Android apps it is the system's SQLite; the desktop app keeps it in SQLite in the app's main process.
 - **One live tab per site.** In a browser, one tab runs the POS for a site. Open a second tab and it offers to take over; the first tab stops.
 - **Lists are worked out in the database.** Filtering, sorting and paging run inside the database where they can, so a list of thousands of orders hands the screen only the rows it shows.
 - **No migration in place.** When an app update changes the database layout, the app opens a fresh database and downloads again from your store. Anything still waiting to send in the old one is sent first.
 
+</details>
+
 ## How the till and your store stay in step {#data-synchronization}
 
 The sync engine doesn't mirror your whole store on a timer. It works from what the till's screens need, and asks your server as little as it can.
 
-- **Change check.** The till asks your store what has changed, as often as its [sync preset](../support/store-health.mdx#sync-presets) says (**Eco**, **Balanced** or **Realtime**). A store with nothing new answers `304 Not Modified` with no body.
-- **What the screen needs.** Each screen tells the engine what it is showing. The engine answers from the local database when it already has the records, and asks your store only when it doesn't.
-- **Background work.** The first batch of products, a window of open and recent orders, and quiet-time downloads of the rest of the products and customers. Each till keeps its own preset: changing it on one till doesn't change the others.
-- **Sending changes.** Every sale or edit goes into a queue on the till first, and the queue sends it to your store. A change your store refuses is never retried on its own: it waits under **Changes that never reached your server** with **Send again** and **Discard**. See [Store Health](../support/store-health.mdx#refused-changes).
+- **Checking for changes.** The till asks your store what has changed, as often as its [sync preset](../support/store-health.mdx#sync-presets) says (**Eco**, **Balanced** or **Realtime**). Each till keeps its own preset: changing it on one till doesn't change the others.
+- **What the screen needs.** Each screen tells the engine what it is showing. The engine answers from the till's database when it already has the records, and asks your store only when it doesn't.
+- **In the background.** The first batch of products and the open and recent orders download first. The rest of the products and customers follow while the till is quiet.
+- **Sending changes.** Every sale or edit is saved on the till first, then sent to your store. A change your store refuses is never retried on its own: it waits under **Changes that never reached your server** with **Send again** and **Discard**. See [Store Health](../support/store-health.mdx#refused-changes).
 
-The request budgets, back-off and measured numbers are on [Sync Performance](./sync-performance.mdx). Every lane is on [How the Sync Engine Works](./sync-engine.mdx).
+<details>
+<summary>Developer detail: change feed, request budgets and lanes</summary>
+
+- A store with nothing new answers the change check with `304 Not Modified` and no body.
+- Writes go through a durable queue on the till, which posts them to `wcpos/v2/push/{collection}`.
+- The request budgets, back-off and measured numbers are on [Sync Performance](./sync-performance.mdx). Every lane is on [How the Sync Engine Works](./sync-engine.mdx).
+
+</details>
 
 ## How checkout records a sale {#checkout-architecture}
 
 The checkout is part of the POS. The till takes each payment itself and records it against one WooCommerce order, instead of opening WooCommerce's order-pay page for every sale.
 
-- **Payment methods.** `GET wcpos/v2/payment-methods` describes every gateway: its `kind` (`cash`, `card`, `stored_value`, `bank_transfer` or `other`), how it takes the money (`capture`), and what it allows (`capabilities`: partial amounts, change, refunds, tips, offline, void). The till draws a tile for each method switched on for the POS. A method it can't drive shows greyed out with the reason, never hidden. See [When a tile can't be used](../payment/index.mdx#unavailable-tiles).
-- **One order, many payments.** Each payment is a row in the order's `_wcpos_payments` meta. A split sale stays one WooCommerce order, with one set of items, taxes, stock changes and one order number, so reports count it once. A refund is a normal WooCommerce refund, shared out across the payments it pays back.
-- **The store decides.** After each payment, your store answers with the order's `paid` and `balance`, and the till completes the sale on your store's figures, not its own.
+- **A tile for each method.** The till draws a tile for each payment method switched on for the POS. A method it can't drive shows greyed out with the reason, never hidden. See [When a tile can't be used](../payment/index.mdx#unavailable-tiles).
+- **One order, many payments.** A split sale stays one WooCommerce order, with one set of items, taxes, stock changes and one order number, so reports count it once. A refund is a normal WooCommerce refund, shared out across the payments it pays back.
+- **The store decides.** After each payment, your store answers with what has been paid and what is left, and the till completes the sale on your store's figures, not its own.
 - **Safe to retry.** Each payment has an ID the till creates, so a payment sent twice is recorded once.
-- **Offline.** A method that allows it (Cash, for example) records the payment on the till as **Settles later** and sends it when the connection returns. This works for an order your store has already received. See [Take a payment offline](../getting-started/offline.mdx#take-payment-offline).
+- **Offline.** On a sale your store already has (its order number shows above the items in Checkout), Cash still completes when the connection drops: the payment is recorded as **Settles later** and sent when the connection returns. A sale started after the connection dropped has no number yet, so it waits on the till and is paid once the store is back. See [Take a payment offline](../getting-started/offline.mdx#take-payment-offline).
 
 <details>
 <summary>Capture modes and payment routes</summary>
+
+`GET wcpos/v2/payment-methods` describes every gateway: its `kind` (`cash`, `card`, `stored_value`, `bank_transfer` or `other`), how it takes the money (`capture`), and what it allows (`capabilities`: partial amounts, change, refunds, tips, offline, void). Each payment is a row in the order's `_wcpos_payments` meta, and after each payment the store answers with the order's `paid` and `balance`.
 
 Each method's `capture.mode` says who takes the money. Every payment call goes to the handler registered for its mode.
 
@@ -100,12 +119,24 @@ To build a POS-only gateway, start from the [Gateway Template](./gateway-templat
 
 ## The REST API {#api-extensions}
 
-The plugin registers two namespaces next to WooCommerce's own `wc/v3`. New to the REST API? Start with [Understanding the WooCommerce REST API](./wc-rest-api.mdx).
+The till talks to your store only through the plugin's REST routes, which read from WooCommerce inside your site. So a plugin that changes WooCommerce's REST responses changes what the till sees, and one that changes only the web checkout or your theme doesn't. New to the REST API? Start with [Understanding the WooCommerce REST API](./wc-rest-api.mdx).
+
+<details>
+<summary>Developer detail: the wcpos/v2 and wcpos/v1 namespaces</summary>
+
+The plugin registers two namespaces next to WooCommerce's own `wc/v3`.
 
 - **`wcpos/v2`** is what the app uses: reading records, the change feed, the queue of changes, payments, registers and sessions. Its read routes forward to `wc/v3` inside your site, so a plugin that changes WooCommerce's REST responses changes what the till sees.
 - **`wcpos/v1`** still registers. Its data routes (products, variations, orders, customers, coupons, taxes, categories, tags, brands) are frozen. Its service routes (stores, settings, receipts, templates, print jobs and the rest) are the same code as their `wcpos/v2` versions.
 
+</details>
+
 ### What integrators need to know {#wcpos-v2-namespace}
+
+The app and the plugin are updated together: a till on an older app than the plugin needs shows [SYNC341](../error-codes/SYNC341.mdx) until the app is updated. POS prices on line items are stored where other sync tools can read them; see [How POS price overrides are stored](./pos-discounts.mdx#how-pos-price-overrides-are-stored).
+
+<details>
+<summary>Developer detail: routes, headers, sign-in and order IDs</summary>
 
 - **Routes load for POS requests.** The plugin registers its routes only on requests aimed at them: a `wcpos/` route, an `X-WCPOS` header or `?wcpos=1`. The rest of your site's REST traffic doesn't load them.
 - **The app and the plugin move together.** Each app request carries `X-WCPOS-Protocol`. A plugin that needs a newer protocol answers `426` with `wcpos_update_required`, and the till shows [SYNC341](../error-codes/SYNC341.mdx) until the app is updated.
@@ -113,18 +144,22 @@ The plugin registers two namespaces next to WooCommerce's own `wc/v3`. New to th
 - **Signing in.** The app signs in through the `/wcpos-auth` page on your site and receives a JWT access token that lasts 30 minutes and a refresh token that lasts 30 days. The filters `wcpos_jwt_access_token_expire` and `wcpos_jwt_refresh_token_expire` change them. Which role reaches which route is on [Role Endpoint Access](./role-endpoint-access.mdx).
 - **Orders carry a UUID.** The till creates a UUID for each order, sends it as the `_woocommerce_pos_uuid` meta, and your store keeps it. Order pulls key on the UUID.
 - **POS prices on line items** are stored so other sync tools can read them. See [How POS price overrides are stored](./pos-discounts.mdx#how-pos-price-overrides-are-stored).
+- **Stores (Pro).** With several stores, the till sends its store in the `X-WCPOS-Store` header and the plugin passes it to WooCommerce as `store_id`. An order's store comes from the `_pos_store` entry in its meta. Pro's routes for editing stores and pairing a customer display register under both namespaces.
+
+</details>
 
 :::info With WCPOS Pro
-Pro adds the `server` and `device` capture modes for card readers, and routes for editing stores and pairing a customer display, under both namespaces. With several stores, the till sends its store in the `X-WCPOS-Store` header and the plugin passes it to WooCommerce, so each store gets its own prices. An order's store comes from the `_pos_store` entry in its meta. See [Setting up stores](../stores/setup.mdx).
+Pro adds card readers (the `server` and `device` capture modes), editing stores, and pairing a customer display. With several stores, each store gets its own prices on the till. See [Setting up stores](../stores/setup.mdx).
 :::
 
 ## What the design gives and costs {#architecture-pros-and-cons}
 
-| What you get | What it costs |
-| --- | --- |
-| Search and adding to the cart are instant: they read the till's own database. | The till's copy has to be kept in step with your store. That is the sync engine's whole job. |
-| The till keeps selling offline, and sales send when the connection returns. | The POS sees your store through the REST API. A plugin that changes only the web checkout or your theme doesn't reach the till. See [Why don't some plugins work in the POS?](./wc-rest-api.mdx#why-dont-some-plugins-work-in-the-pos) |
-| Desktop, iOS and Android apps built for a till, not a web page in a frame. | WordPress themes and hooks can't restyle the POS. |
+- **Instant search and cart.** Both read the till's own database.
+  - **The cost:** the till's copy has to be kept in step with your store. That is the sync engine's whole job.
+- **Selling through a dropped connection.** Sales and edits wait on the till and send when the connection returns.
+  - **The cost:** a payment taken offline needs a sale your store already has. See [Take a payment offline](../getting-started/offline.mdx#take-payment-offline).
+- **Apps built for a till.** Desktop, iOS and Android apps, not a web page in a frame.
+  - **The cost:** the POS sees your store only through the REST API. WordPress themes and hooks can't restyle it, and a plugin that changes only the web checkout or your theme doesn't reach the till. See [Why don't some plugins work in the POS?](./wc-rest-api.mdx#why-dont-some-plugins-work-in-the-pos)
 
 ## Related Documentation {#related-documentation}
 
