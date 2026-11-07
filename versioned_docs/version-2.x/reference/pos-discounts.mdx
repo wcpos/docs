@@ -11,11 +11,31 @@ When a cashier takes money off a sale, WCPOS records it on the WooCommerce order
 
 ## Take money off at the till {#at-the-till}
 
-The cashier has three ways to take money off. The steps are on [Cart Discounts](../pos/cart/discounts.mdx).
+The cashier has three ways to take money off. Use one, or combine them. Screenshots and every option are on [Cart Discounts](../pos/cart/discounts.mdx).
 
-1. **Change one item's price.** Tap the price on a line, then press a quick discount key or type a new price. See [Take money off one item](../pos/cart/discounts.mdx#quick-discounts).
-2. **Add Discount.** Press **+** at the top of the cart, choose **Add Discount**, and take an amount or a percentage off the whole order. See [Take money off the whole order](../pos/cart/discounts.mdx#order-level-discounts).
-3. **Apply a coupon.** In **Add Discount**, switch to **Coupon** and pick one of your store's coupons. See [Apply a coupon](../pos/cart/discounts.mdx#coupon).
+### Change one item's price {#change-price}
+
+1. Tap the price on a line. A keypad opens.
+2. Press a quick discount key, or type the new price.
+3. Press **Done**. The line total changes to the quantity × the new price.
+
+More: [Take money off one item](../pos/cart/discounts.mdx#quick-discounts).
+
+### Add Discount {#add-discount}
+
+1. Press **+** at the top of the cart and choose **Add Discount**.
+2. On **Quick discount**, type the amount and choose **$** or **%**.
+3. Press **Add Discount**. A **Discount (10%)** row, or **Discount** for a fixed amount, appears with the totals.
+
+It can't be combined with a coupon marked **Individual use only**; see [Add Discount lines](#add-discount-lines). More: [Take money off the whole order](../pos/cart/discounts.mdx#order-level-discounts).
+
+### Apply a coupon {#apply-coupon}
+
+1. Press **+** at the top of the cart and choose **Add Discount**.
+2. Switch to **Coupon** and find the coupon in **Select coupon**.
+3. Press **Apply**. The POS checks the coupon's rules and puts it on the order, or says why it can't be used.
+
+More: [Apply a coupon](../pos/cart/discounts.mdx#coupon).
 
 ## Where each discount is recorded {#where-recorded}
 
@@ -43,9 +63,16 @@ Every product line the POS creates carries the per-unit prices in the `_woocomme
 
 This meta is the authoritative per-unit price. The line's `subtotal` is worked out from `price` × quantity, with tax taken out and rounding applied, and `total` drops below it when a coupon or **Add Discount** applies. For per-unit precision, read `price` and `regular_price` from the meta.
 
-**Read it with a decoder that takes both shapes.** Lines from older apps hold the meta as a JSON string. The 2.0 app writes it as an object, so WordPress stores a serialized array, and values may be numbers rather than strings. A bare `json_decode()` fails on the array. The meta is hidden in WooCommerce's order screen.
+The meta is hidden in WooCommerce's order screen.
+
+<details>
+<summary>Reading the meta from code</summary>
+
+**Use a decoder that takes both shapes.** Lines from older apps hold the meta as a JSON string. The 2.0 app writes it as an object, so WordPress stores a serialized array, and values may be numbers rather than strings. A bare `json_decode()` fails on the array.
 
 New POS orders also carry the private `_woocommerce_pos_version` order meta: the version of the WCPOS plugin that saved the order. Receipts still treat the stored line shape as authoritative, because an order taken offline may reach a newer plugin than the app that made it.
+
+</details>
 
 ## Line totals and the Discount total {#subtotal-model-v190}
 
@@ -57,14 +84,12 @@ WCPOS records a till price the way WooCommerce records a sale price:
 
 A worked example, with no tax: a watch with a regular price of $45.00, its price typed as $40.00 at the till, then a 10% **Add Discount**. $45.00 → $40.00 at the till → $40.00 − $4.00 = **$36.00**. The order stores it as:
 
-| Field | Value |
-|---|---|
-| `_woocommerce_pos_data.regular_price` | 45.00 |
-| `_woocommerce_pos_data.price` | 40.00 (the till price) |
-| `line_items[0].subtotal` | 40.00 (40.00 × 1) |
-| `line_items[0].total` | 36.00 (less the **Add Discount**) |
-| `discount_total` | 4.00 (the **Add Discount** only) |
-| `total` | 36.00 |
+- `_woocommerce_pos_data.regular_price`: **45.00**
+- `_woocommerce_pos_data.price`: **40.00**, the till price
+- `line_items[0].subtotal`: **40.00**, 40.00 × 1
+- `line_items[0].total`: **36.00**, less the **Add Discount**
+- `discount_total`: **4.00**, the **Add Discount** only
+- `total`: **36.00**
 
 The $5.00 the till price took off shows only by comparing `regular_price` with `price`. Receipts do that comparison for you; see [Receipt data](#receipt-data-exposure).
 
@@ -114,6 +139,9 @@ To change what counts as on sale, use the `wcpos_item_is_on_sale` filter below.
 
 Override whether a line with POS price data counts as "on sale" when the plugin validates coupons. Before WCPOS 2.0 this filter was named `woocommerce_pos_item_is_on_sale`; that name still works but is deprecated since 2.0 and is removed in 2.2 at the earliest (see [Hook naming](../extensions/index.mdx#hook-naming)).
 
+<details>
+<summary>Example and parameters</summary>
+
 ```php
 add_filter( 'wcpos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
     // Let coupons with exclude_sale_items apply to lines lowered at the till.
@@ -121,14 +149,12 @@ add_filter( 'wcpos_item_is_on_sale', function ( $is_on_sale, $product, $item, $p
 }, 10, 4 );
 ```
 
-**Parameters:**
+- `$is_on_sale` (`bool`) — whether the line counts as on sale. Default: `price < regular_price`.
+- `$product` (`WC_Product`) — the product object.
+- `$item` (`WC_Order_Item_Product`) — the order line item.
+- `$pos_data` (`array`) — the decoded `_woocommerce_pos_data`.
 
-| Parameter | Type | Description |
-|---|---|---|
-| `$is_on_sale` | `bool` | Whether the line counts as on sale (default: `price < regular_price`) |
-| `$product` | `WC_Product` | The product object |
-| `$item` | `WC_Order_Item_Product` | The order line item |
-| `$pos_data` | `array` | The decoded `_woocommerce_pos_data` |
+</details>
 
 The filter runs on the server. The app's own on-sale check, used while the cashier is still building the cart, is always `price < regular_price`; the server's answer applies when the order is saved.
 
@@ -136,8 +162,14 @@ The filter runs on the server. The app's own on-sale check, used while the cashi
 
 Coupon endpoints live in the **free plugin**, so the app never gets a 404 when it asks for coupons, even without WCPOS Pro.
 
-- **The 2.0 app** syncs coupons through `GET /wp-json/wcpos/v2/coupons`, which forwards to WooCommerce's `wc/v3/coupons` with the POS read permission. A coupon made at the till (Pro) is saved as an ordinary WooCommerce coupon, and the cashier needs permission to create coupons.
-- **Apps before 2.0** use `/wp-json/wcpos/v1/coupons`. Its controller extends `WC_REST_Coupons_Controller` and adds UUIDs for offline sync, read access for any user with the `access_woocommerce_pos` capability, and a fast ID-only path when `posts_per_page=-1` and `fields=id` (or `fields=id,date_modified_gmt`) are requested.
+The 2.0 app syncs coupons through `GET /wp-json/wcpos/v2/coupons`, which forwards to WooCommerce's `wc/v3/coupons` with the POS read permission. A coupon made at the till (Pro) is saved as an ordinary WooCommerce coupon, and the cashier needs permission to create coupons.
+
+<details>
+<summary>The v1 endpoint, for apps before 2.0</summary>
+
+Apps before 2.0 use `/wp-json/wcpos/v1/coupons`. Its controller extends `WC_REST_Coupons_Controller` and adds UUIDs for offline sync, read access for any user with the `access_woocommerce_pos` capability, and a fast ID-only path when `posts_per_page=-1` and `fields=id` (or `fields=id,date_modified_gmt`) are requested.
+
+</details>
 
 For who can reach which endpoint, see [Role and Endpoint Access](./role-endpoint-access.mdx).
 
