@@ -9,21 +9,25 @@ import SupportContact from '@site/src/components/SupportContact';
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
 
-Cloudflare protects a website by asking visitors to pass a security check before it lets them in. A web browser passes that check without you noticing. The WCPOS app is not a web browser: it talks to your store's REST API, the part of WordPress that answers apps with data. When Cloudflare answers the app with a security-check page instead of data, the app cannot connect or sync.
-
-The fix is a rule in your Cloudflare dashboard. Every step on this page is for the store owner, or whoever manages the site's Cloudflare account. A cashier who sees one of the signs below should pass this page on to them.
+Cloudflare sits in front of some stores and asks every visitor to pass a security check. The WCPOS app cannot always pass it, and then it cannot connect to your store or sync. The fix is one rule in your Cloudflare dashboard, made by the store owner or whoever manages the site's Cloudflare account.
 
 ## Signs that Cloudflare is blocking the app {#how-to-recognise-it}
 
 - **"This store's hosting setup is blocking the app"** on the connect screen, with error code [HOST121](../../error-codes/HOST121.mdx).
 - A small window titled **Security check for your-store.com** opens on the desktop app while it connects or syncs.
 - **"Your store is behind Cloudflare"** at the top of **WP Admin > POS > Settings > General**. The plugin shows this notice whenever your site runs through Cloudflare, as a warning before anything goes wrong.
-- Cloud printing stops, and the printer card under **WP Admin > POS > Settings > Cloud Print** says **"A security service (like Cloudflare or a firewall plugin) is blocking WCPOS Cloud Print"**. The [relay](../../receipts/cloud-printing.mdx#relay) reaches your store through the same REST API, so the Skip rule below fixes printing too.
+- Cloud printing stops, and the printer card under **WP Admin > POS > Settings > Cloud Print** says **"A security service (like Cloudflare or a firewall plugin) is blocking WCPOS Cloud Print"**. The [relay](../../receipts/cloud-printing.mdx#relay) reaches your store the same way the app does, so the fix below fixes printing too.
 - Older app versions reported **"Site does not seem to be a WordPress site"** or **"The site took too long to respond"** on a store that opens fine in a browser.
 
-### Check it from a computer {#check}
+## At the till {#at-the-till}
 
-Open a terminal (Terminal on a Mac, PowerShell on Windows) and run this, with your store's address in place of `your-store.com`. On Windows, type `curl.exe` in place of `curl`.
+- **Security check window on the desktop app:** tick the box in the window within two minutes. The app carries on, and Cloudflare lets it through for 30 minutes (unless the owner has changed that) before it asks again.
+- **iPad, iPhone or Android:** these apps cannot pass Cloudflare's check. The app stays blocked until the rule below is in place.
+- **Either way,** send this page to the store owner. The window keeps you selling today; only the rule stops it coming back.
+
+## Check it from a computer {#check}
+
+The rest of this page is for the store owner. Open a terminal (Terminal on a Mac, PowerShell on Windows) and run this, with your store's address in place of `your-store.com`. On Windows, type `curl.exe` in place of `curl`.
 
 ```bash
 curl -sI https://your-store.com/wp-json/
@@ -39,22 +43,31 @@ Read the first lines of the answer:
 
 If WordPress lives in a subfolder, include it: `https://example.com/shop/wp-json/`.
 
-:::note The desktop app can get past the check for a while
-When it can, the desktop app passes Cloudflare's check on its own in a hidden window. If Cloudflare asks for a tick box, the **Security check** window appears and you have two minutes to tick it. Cloudflare lets the app through for 30 minutes by default (the **Challenge Passage** setting), and then the check comes back. The iPad, iPhone and Android apps cannot pass the check at all. Treat the window as a way to keep selling today, and add the rule below.
-:::
+<details>
+<summary>How the desktop app gets past the check</summary>
+
+The app talks to your store's REST API, the part of WordPress that answers apps with data. A web browser passes Cloudflare's check without you noticing; an app usually cannot. When Cloudflare answers with a check instead of data, the desktop app opens a hidden browser window and tries to pass the check on its own. If Cloudflare wants a tick box, the window appears and waits two minutes. Cloudflare then lets the app through for the time set in **Challenge Passage** (30 minutes by default), and the check comes back after that. The iPad, iPhone and Android apps have no such window.
+
+</details>
 
 ## Find the Cloudflare feature that is blocking it {#which-feature}
 
-Open your site in the Cloudflare dashboard and check these features. The fix depends on which one is on.
+Open your site in the Cloudflare dashboard and check which of these is on. The fix depends on which one it is.
 
-| Feature | Where to find it | Fix |
-| --- | --- | --- |
-| **Bot Fight Mode** (Free plan) | **Security > Settings**, filter by **Bot traffic** | Turn it off. No rule can exempt the API from it ([why](#bot-fight-mode)). |
-| **Super Bot Fight Mode** (Pro plan and above) | **Security > Settings**, filter by **Bot traffic** | [Add a Skip rule](#add-a-skip-rule). |
-| **Custom rules** or **managed rules** that challenge visitors | **Security rules** | [Add a Skip rule](#add-a-skip-rule). |
-| **Under Attack Mode** | **Quick Actions** on the site's overview, or the **Security level** setting under **Security > Settings** | Turn it off once the attack has passed. To keep it on for the rest of the site, add a **Configuration Rule** (**Rules > Overview > Create rule > Configuration Rule**) with the [expression below](#add-a-skip-rule), and set **I'm Under Attack** to off. |
+- **Bot Fight Mode** (Free plan)
+  - Where: **Security > Settings**, filter by **Bot traffic**.
+  - Fix: turn it off. No rule can exempt the app from it ([why](#bot-fight-mode)).
+- **Super Bot Fight Mode** (Pro plan and above)
+  - Where: **Security > Settings**, filter by **Bot traffic**.
+  - Fix: [add a Skip rule](#add-a-skip-rule).
+- **Custom rules** or **managed rules** that challenge visitors
+  - Where: **Security rules**.
+  - Fix: [add a Skip rule](#add-a-skip-rule).
+- **Under Attack Mode**
+  - Where: **Quick Actions** on the site's overview, or the **Security level** setting under **Security > Settings**.
+  - Fix: turn it off once the attack has passed. To keep it on for the rest of the site, add a **Configuration Rule** (**Rules > Overview > Create rule > Configuration Rule**) with the [Skip rule's expression](#add-a-skip-rule), and set **I'm Under Attack** to off.
 
-The Cloudflare plugin for WordPress does not manage these rules. They live in the Cloudflare dashboard.
+The Cloudflare plugin for WordPress does not manage any of these. They live in the Cloudflare dashboard.
 
 ## Add a Skip rule for the REST API {#add-a-skip-rule}
 
@@ -68,7 +81,14 @@ A Skip rule tells Cloudflare not to challenge requests to your store's REST API.
    (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
    ```
 
-   The first half matches the API's normal address, `/wp-json/`. The second half matches the fallback address, `/?rest_route=/`, and only on the site's home address, so a page that happens to carry `rest_route=` in its link keeps its protection. If WordPress lives in a subfolder, such as `https://example.com/shop`, use `/shop/wp-json/` and `/shop/` in place of `/wp-json/` and `/`.
+   If WordPress lives in a subfolder, such as `https://example.com/shop`, use `/shop/wp-json/` and `/shop/` in place of `/wp-json/` and `/`.
+
+   <details>
+   <summary>What the expression matches</summary>
+
+   The first half matches the API's normal address, `/wp-json/`. The second half matches the fallback address, `/?rest_route=/`, and only on the site's home address, so a page that happens to carry `rest_route=` in its link keeps its protection.
+
+   </details>
 
 4. Under **Then take action**, choose **Skip**.
 5. Tick **All remaining custom rules** and **All Super Bot Fight Mode rules**. Under the other components to skip, tick **Security Level**. Tick **All managed rules** only if a managed rule is the one challenging the app. Leave the entries marked **(Previous version)** alone.
