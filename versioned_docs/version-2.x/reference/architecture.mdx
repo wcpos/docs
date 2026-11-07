@@ -16,12 +16,12 @@ WCPOS comes in two halves: a plugin on your WordPress site, and the POS app on e
 flowchart TB
   subgraph till["This till"]
     direction TB
-    screens["POS screens"] <--> db[("Database on the till")]
-    db <--> engine["Sync engine"]
+    screens["2 · POS app screens"] <--> db[("Database on the till")]
+    db <--> engine["3 · Sync engine"]
   end
   subgraph site["Your store"]
     direction TB
-    plugin["WCPOS plugin"] <--> woo["WooCommerce"]
+    plugin["1 · WCPOS plugin"] <--> woo["WooCommerce"]
   end
   engine -->|"Sales and edits send"| plugin
   plugin -->|"Products, customers and orders download"| engine
@@ -33,19 +33,19 @@ flowchart TB
 
 ## What the till keeps on the device {#local-database}
 
-**Health** → **Database** shows the till's copy of your store, one row per kind of record, with how much of it is on this device.
+**Health** → **Database** shows the till's copy of your store, one row per kind of record, with how much of it is on this device. What each row's menu does is on [Store Health](../support/store-health.mdx#coverage).
 
-1. **changes waiting to send** — sales and edits made on this till that your store hasn't received yet. They stay on the device until it has. See [Sales waiting to send](../getting-started/offline.mdx#offline-writes).
-2. **Products** — a starting batch of 100 in the POS's default sort (name, A to Z), then the rest while the till is quiet. See [Download & Sync](../products/sync.mdx).
-3. **Variations** — download with their products.
-4. **Orders** — open and recent orders stay on the till. Older ones download when someone opens them.
-5. **Refunds** — refunds from the last 92 days, plus any refund on an order you've opened.
-6. **Customers** — download a little at a time while the till is quiet.
-7. **Categories** — with **Brands** and **Tags** below it.
-8. **Coupons** — on the till with or without Pro.
-9. **Tax rates** — your store's tax rates.
+- **changes waiting to send** — sales and edits made on this till that your store hasn't received yet. They stay on the device until it has. See [Sales waiting to send](../getting-started/offline.mdx#offline-writes).
+- **Products** — a starting batch of 100 in the POS's default sort (name, A to Z), then the rest while the till is quiet. See [Download & Sync](../products/sync.mdx).
+- **Variations** — download with their products.
+- **Orders** — open and recent orders stay on the till. Older ones download when someone opens them.
+- **Refunds** — refunds from the last 92 days, plus any refund on an order you've opened.
+- **Customers** — download a little at a time while the till is quiet.
+- **Categories** — with **Brands** and **Tags** below it.
+- **Coupons** — on the till with or without Pro.
+- **Tax rates** — your store's tax rates.
 
-A few things live outside this table. Payment methods, tax classes, shipping methods and order statuses are read from your store each time the app starts, and the last answer is kept for when the till is offline. Register sessions, closures and cash movements have their own records, and their own queue to your store. For what each row's menu does, see [Store Health](../support/store-health.mdx#coverage).
+A few things live outside this table. Payment methods, tax classes, shipping methods and order statuses are read from your store each time the app starts, and the last answer is kept for when the till is offline. Register sessions, closures and cash movements have their own records, and their own queue to your store.
 
 ### How the database is kept {#storage}
 
@@ -84,11 +84,15 @@ The sync engine doesn't mirror your whole store on a timer. It works from what t
 
 The checkout is part of the POS. The till takes each payment itself and records it against one WooCommerce order, instead of opening WooCommerce's order-pay page for every sale.
 
+:::warning Paying offline needs a sale your store already has
+A payment can be taken offline only on a sale that reached your store before the connection dropped: its order number shows above the items in Checkout. A sale started after the connection dropped waits on the till and is paid once the store is back.
+:::
+
 - **A tile for each method.** The till draws a tile for each payment method switched on for the POS. A method it can't drive shows greyed out with the reason, never hidden. See [When a tile can't be used](../payment/index.mdx#unavailable-tiles).
 - **One order, many payments.** A split sale stays one WooCommerce order, with one set of items, taxes, stock changes and one order number, so reports count it once. A refund is a normal WooCommerce refund, shared out across the payments it pays back.
 - **The store decides.** After each payment, your store answers with what has been paid and what is left, and the till completes the sale on your store's figures, not its own.
 - **Safe to retry.** Each payment has an ID the till creates, so a payment sent twice is recorded once.
-- **Offline.** On a sale your store already has (its order number shows above the items in Checkout), Cash still completes when the connection drops: the payment is recorded as **Settles later** and sent when the connection returns. A sale started after the connection dropped has no number yet, so it waits on the till and is paid once the store is back. See [Take a payment offline](../getting-started/offline.mdx#take-payment-offline).
+- **Offline.** On a sale your store already has, Cash still completes when the connection drops: the payment is recorded as **Settles later** and sent when the connection returns. See [Take a payment offline](../getting-started/offline.mdx#take-payment-offline).
 
 <details>
 <summary>Capture modes and payment routes</summary>
@@ -156,8 +160,8 @@ Pro adds card readers (the `server` and `device` capture modes), editing stores,
 
 - **Instant search and cart.** Both read the till's own database.
   - **The cost:** the till's copy has to be kept in step with your store. That is the sync engine's whole job.
-- **Selling through a dropped connection.** Sales and edits wait on the till and send when the connection returns.
-  - **The cost:** a payment taken offline needs a sale your store already has. See [Take a payment offline](../getting-started/offline.mdx#take-payment-offline).
+- **Selling through a dropped connection.** Sales and edits wait on the till and send when the connection returns. Cash still completes on a sale your store already has.
+  - **The cost:** a sale started after the connection dropped is paid only once the store is back. See [Take a payment offline](../getting-started/offline.mdx#take-payment-offline).
 - **Apps built for a till.** Desktop, iOS and Android apps, not a web page in a frame.
   - **The cost:** the POS sees your store only through the REST API. WordPress themes and hooks can't restyle it, and a plugin that changes only the web checkout or your theme doesn't reach the till. See [Why don't some plugins work in the POS?](./wc-rest-api.mdx#why-dont-some-plugins-work-in-the-pos)
 
