@@ -13,19 +13,6 @@ This page is for developers and site administrators. It lists which WCPOS REST e
 - [Fix an error the app showed](#diagnosing-failures)
 - [Check what each role can reach](#summary)
 
-## Summary {#summary}
-
-- **`administrator`**: every endpoint on this page.
-- **`shop_manager`**: every endpoint except Pro's extension install and update action, which needs the WordPress `install_plugins` capability.
-- **`cashier`**: everything the selling workflow uses, including refunds. No settings, logs, extensions or store management.
-
-<details>
-<summary>How these lists were checked</summary>
-
-The lists come from the plugin's integration tests. Each test signs in with a WCPOS access token, the way the app does, and calls the endpoint as each role. In the Free tests an allowed endpoint must answer with a status below `400`. The Pro tests also accept `400` or `404`, because their fixtures are minimal: either answer still proves the user got past the permission check. A refused endpoint must answer `403` with the user still signed in.
-
-</details>
-
 ## Diagnosing Failures {#diagnosing-failures}
 
 If the app showed one of these messages, start here.
@@ -33,7 +20,7 @@ If the app showed one of these messages, start here.
 **"Request still unauthorized after token refresh - please log in again" (AUTH101).** Sign in again. If the message comes back straight away, follow [AUTH101](../error-codes/AUTH101.mdx).
 
 <details>
-<summary>Why this happens</summary>
+<summary>Sign-in failure details</summary>
 
 The app got a `401`, refreshed the token, and the retry was still a `401`. This is the sign-in layer, not the role: a `403` never triggers a refresh. Something between the app and WordPress is dropping or refusing the token, often a security or authentication plugin ([AUTH301](../error-codes/AUTH301.mdx)).
 
@@ -42,7 +29,7 @@ The app got a `401`, refreshed the token, and the retry was still a `401`. This 
 **"Insufficient role" (AUTH201).** Ask an administrator to check the user's role in [Accessing the POS](../settings/wp-admin/access.mdx), then follow [AUTH201](../error-codes/AUTH201.mdx).
 
 <details>
-<summary>Why this happens</summary>
+<summary>Role permission details</summary>
 
 The server answered `403` to a signed-in user. Either the user lacks `access_woocommerce_pos`, or the route needs `manage_woocommerce_pos` or `install_plugins`. Find the endpoint in the lists below. If they say the user's role should reach it, the role has most likely been changed from the defaults: on the Access screen, where it shows **Changed from the WCPOS defaults**, by a role-editor plugin, or by custom code. An extra role on the user can also deny a capability.
 
@@ -51,7 +38,7 @@ The server answered `403` to a signed-in user. Either the user lacks `access_woo
 **"App update required" (SYNC341).** Update the app. [SYNC341](../error-codes/SYNC341.mdx) has the steps.
 
 <details>
-<summary>Why this happens</summary>
+<summary>App version details</summary>
 
 The server answered `426` on a v2 route, because the app is older than the plugin's sync protocol.
 
@@ -59,7 +46,13 @@ The server answered `426` on a v2 route, because the app is older than the plugi
 
 ### Permission failure vs. token failure {#permission-failure-vs-token-failure}
 
-Read the refused response in the browser's network panel, or in a server-side log. **WP Admin > POS > Settings > Tools > Logs** also records each `401` whose token was malformed or refused for a reason other than plain expiry. The status, the error code and the signed-in user tell the two apart.
+- **`403`**: the user is signed in, and the role is refused. Look at capabilities.
+- **`401`**: sign-in failed, and nobody is signed in. Look at the token, or at something between the app and WordPress.
+
+<details>
+<summary>Response fields and where to read them</summary>
+
+Read the refused response in the browser's network panel, or in a server-side log. **WP Admin > POS > Settings > Tools > Logs** also records each `401` whose token was malformed or refused for a reason other than plain expiry. The status, the error code and the signed-in user tell the two apart:
 
 **Role or capability failure:**
 
@@ -75,6 +68,21 @@ Read the refused response in the browser's network panel, or in a server-side lo
 - User: `0` (nobody signed in)
 
 A non-zero user points at capabilities. A user of `0` points at the token, or at something between the app and WordPress.
+
+</details>
+
+## Summary {#summary}
+
+- **`administrator`**: every endpoint on this page.
+- **`shop_manager`**: every endpoint except Pro's extension install and update action, which needs the WordPress `install_plugins` capability.
+- **`cashier`**: everything the selling workflow uses, including refunds. No settings, logs, extensions or store management.
+
+<details>
+<summary>How these lists were checked</summary>
+
+The lists come from the plugin's integration tests. Each test signs in with a WCPOS access token, the way the app does, and calls the endpoint as each role. In the Free tests an allowed endpoint must answer with a status below `400`. The Pro tests also accept `400` or `404`, because their fixtures are minimal: either answer still proves the user got past the permission check. A refused endpoint must answer `403` with the user still signed in.
+
+</details>
 
 ## How the server checks a request {#how-the-server-checks}
 
