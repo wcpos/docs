@@ -37,14 +37,14 @@ To try a field:
 2. Type the field where it should print, or insert it from the field list beside the code.
 3. Check the preview below the code, then click **Update** to save.
 
-Receipts print offline too: the app builds the same receipt data from the order on the device.
+Receipts print offline too: the app builds a copy of the receipt data from the order on the device.
 
 <Accordion>
   <AccordionItem question="Why receipts can differ">
 
 ### Where the data comes from {#where-the-data-comes-from}
 
-Your store's server builds the receipt data for each order, and the app builds the same fields from the order on the device. An HTML or thermal template opens at once from the device's copy and switches to the server's when it arrives; offline, the device's copy is the one that prints. A legacy PHP template is always rendered by the server. That's why a template uses the fields below and never PHP order methods. A few fields print only when the server renders the template, as it does for a PDF download; [If something goes wrong](#if-something-goes-wrong) lists them.
+Your store's server builds the receipt data for each order, and the app builds a shorter copy from the order on the device: it has no `cashier`, no store opening hours, notes or policies, and no `totals.paid_total` or `totals.change_total`. An HTML or thermal template opens at once from the device's copy and switches to the server's when it arrives; offline, the device's copy is the one that prints, so those fields print empty. A legacy PHP template is always rendered by the server. That's why a template uses the fields below and never PHP order methods. A few fields print only when the server renders the template, as it does for a PDF download; [If something goes wrong](#if-something-goes-wrong) lists them.
 
   </AccordionItem>
 </Accordion>
@@ -288,7 +288,7 @@ Expand a section to see its fields. The first item lists every section and its t
 |-------|------|-------------|
 | `type` | string | Identifier such as `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein`, or `other` |
 | `value` | string | Tax ID value to print |
-| `country` | string | ISO country code when known |
+| `country` | string/null | ISO country code; null for `eu_vat` and `other` |
 | `label` | string | Localised display label, resolved before rendering |
 
 Example:
@@ -497,7 +497,7 @@ Loop with `{{#discounts}}...{{/discounts}}`.
 
 Formatted variants: `total_display`, `total_incl_display`, and `total_excl_display`. Add your own minus sign in the template if you want discounts shown as negative rows.
 
-`discount_type` was added in Receipt Data v1.2. Fiscal receipt snapshots captured before then do not carry it, and templates rendered in the POS app leave it out (see [Extending receipt data](#extending)). {/* pending: monorepo#3363 */}
+`discount_type` was added in Receipt Data v1.2. Fiscal receipt snapshots captured before then do not carry it. {/* pending: monorepo#3363 */}
 
   </AccordionItem>
 
@@ -658,7 +658,7 @@ Loop with `{{#refunds}}...{{/refunds}}`. Refund amounts are positive magnitudes;
 | `refunded_by_id` | number/null | User ID that issued the refund |
 | `refunded_by_name` | string | User display name that issued the refund |
 | `refunded_payment` | boolean | Whether the payment was refunded through the gateway |
-| `destination` | string | Where the money went back: `original_method` or `cash` for a refund made in the POS |
+| `destination` | string | Where the money went back: `original_method`, `cash` or `manual` for a refund made in the POS; empty otherwise |
 | `gateway_id` | string | Gateway ID used for the refund |
 | `gateway_title` | string | Gateway display title |
 | `processing_mode` | string | Provider/manual processing mode |
@@ -735,7 +735,7 @@ These fields are mainly consumed by the renderer and formatter. Templates render
 | `presentation_hints.price_decimal_separator` | string | Decimal separator |
 | `presentation_hints.price_num_decimals` | number | Decimal places |
 | `presentation_hints.price_display_suffix` | string | WooCommerce price display suffix |
-| `presentation_hints.order_barcode_type` | string | Barcode type used by gallery templates: `code128` (the default), `qrcode`, `ean13`, `ean8` or `upca`. Filled in by the app |
+| `presentation_hints.order_barcode_type` | string | Barcode type for a template that reads it: `code128` (the default), `qrcode`, `ean13`, `ean8` or `upca`. Filled in by the app; the server leaves it out, and the gallery templates set their barcode type in the template |
 
 The pre-formatted money fields (the `*_display` values such as `totals.total_display`) render amounts with the **currency symbol** in the order's currency, using the position and separators above — so receipts show `$12.00`, not `USD 12.00`. The raw `order.currency` field remains the ISO code for any logic in your template.
 
@@ -888,7 +888,7 @@ Keys defined in the schema should keep their documented types. Added keys are no
 
   <AccordionItem question="Which receipts print an added key">
 
-Every added key reaches the receipts the server renders itself: PDF downloads and legacy PHP templates. HTML and thermal templates rendered in the POS app rebuild the data first: a key added inside `order`, `store`, `cashier` or `customer` comes through, but a key added anywhere else, such as on the discounts row above, is left out. The app leaves out `discount_type` too, so in the POS the guard above falls back to the plain discount label. {/* pending: monorepo#3363 */} On a live receipt with a fiscal snapshot, the fiscal identity, `register` and `software` are copied from the snapshot after the filter runs, so changing them in this filter has no effect; enrich the snapshot instead.
+Every added key reaches the receipts the server renders itself: PDF downloads and legacy PHP templates. HTML and thermal templates rendered in the POS app rebuild the data first: a key added inside `order`, `store`, `cashier` or `customer` comes through, but a key added anywhere else, such as on the discounts row above, is left out. {/* pending: monorepo#3363 */} On a live receipt with a fiscal snapshot, the fiscal identity, `register` and `software` are copied from the snapshot after the filter runs, so changing them in this filter has no effect; enrich the snapshot instead.
 
   </AccordionItem>
 </Accordion>
@@ -901,7 +901,7 @@ Every added key reaches the receipts the server renders itself: PDF downloads an
 
 **The total is less than the customer paid.** The store shows prices excluding tax, so `totals.total` is the total before tax. Print `totals.total_incl_display` for the amount charged.
 
-**A field prints in the PDF download but not in the POS.** Templates rendered in the app rebuild the data first and leave out a few fields, which print only in PDF downloads and legacy PHP templates. Print a field from the list below only in those, or guard it with a section so the POS receipt leaves it out.
+**A field prints in the PDF download but not in the POS.** Templates rendered in the app rebuild the data first and leave out a few fields, which print only in PDF downloads and legacy PHP templates. Print a field from the list below only in those, or guard it with a section so the POS receipt leaves it out. {/* pending: monorepo#3363 */}
 
 <Accordion>
   <AccordionItem question="Fields that differ between PDF and POS receipts">
@@ -911,8 +911,6 @@ Every added key reaches the receipts the server renders itself: PDF downloads an
 - `presentation_hints` other than `display_tax`, `prices_entered_with_tax`, `rounding_mode`, `locale` and `order_barcode_type`
 - customer tax IDs of the German, Dutch, French, UK company and Swiss types
 - keys a plugin adds outside `order`, `store`, `cashier` and `customer`; see [Extending receipt data](#extending)
-
-`discount_type` and the fiscal `is_…` flags other than `is_refund_document` are left out too, and on a store that shows prices excluding tax the app prints the tax-inclusive amounts. {/* pending: monorepo#3363 */}
 
   </AccordionItem>
 </Accordion>
