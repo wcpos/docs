@@ -2,45 +2,140 @@
 title: What Search Matches
 sidebar_label: Search
 sidebar_position: 8
-description: "Reference for WCPOS search in v2.0: which fields each screen searches, how terms and phone numbers are matched, and the wcpos_search_fields filter for custom fields."
+description: "Which fields each search box in WCPOS looks at, how the words you type are matched, phone numbers, and the wcpos_search_fields filter for a store's own fields."
 ---
 
-:::info New in v2.0
-Search in v2.0 matches the same fields on the till and on the server, matches order line items and the shipping recipient, and finds phone numbers however they were typed. The field list is fixed (there is no setting); developers extend it with one filter, and the till picks up the added fields too.
-:::
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/search/en/manifest.json';
 
-## How a search is matched {#how-a-search-is-matched}
+Start with a few letters of each word you remember, in any order: the list keeps only what has all of them. This page lists what each search box looks at, how your store's search differs from the device's, and, for developers, how to add a field of your own. Can't find something? See [When a search finds nothing](#goes-wrong).
 
-- The text you type is split on whitespace into **terms**. Every term must appear somewhere in the record, in any order and across fields: `shirt lovelace` finds an order for Ada Lovelace that contains a shirt.
-- A term matches as a **substring**, anywhere in a field: `saippua` finds `Kuorintasaippua`; `jo` finds `Bjorn`. There is no minimum length.
-- Matching ignores **case and accents**: `creme` finds `Crème`.
-- Punctuation inside a term is part of it (`0.4`, `K-2`, `3/4`), while punctuation wrapping a term is not (`(shirt)` searches for `shirt`). A term is never split on punctuation, so a full email address is one term.
-- **Phone numbers** also match by their digits. A term made of digits (with or without `+ - ( ) .` and spaces) is compared with the stored number's digits, so `0412` finds `(04) 1234 5678` and `412345` finds `+61 412-345-678`. Country codes and trunk prefixes are not normalised: `0412` does not find `+61 412 345 678`.
+What each search box looks at: [Products](#products) · [Orders](#orders) · [Customers](#customers) · [Coupons](#coupons) · [Category, Tag and Brand](#category-tag-brand) · [Phone numbers](#phone-numbers)
 
-Results on the till come from the records already on the device; the server searches the same fields, so the rows that arrive from the server for a term are the rows the till would have found with them.
+## How the words you type are matched {#how-a-search-is-matched}
 
-## What each screen searches {#what-each-screen-searches}
+- **Every word must match.** Spaces separate your search into words. Every word must appear somewhere in the product, order or customer details [listed below](#what-each-screen-searches); the words can be in any order. `shirt lovelace` finds an order for Ada Lovelace that has a shirt in it.
+- **Any part of a word.** `saippua` finds `Kuorintasaippua`, and `jo` finds `Bjorn`. There is no minimum length outside the Logs screen.
+- **Not capitals or accents.** `creme` finds `Crème`.
+- **Punctuation inside a word stays.** `0.4`, `K-2`, `3/4` and a whole email address are each one word, never split at the dot or dash.
 
-| Screen | Fields |
-|---|---|
-| **Products** | Name, SKU, barcode |
-| **Variations** | SKU, barcode, and the parent product's name |
-| **Orders** | Order number; billing first name, last name, company, email, phone; shipping first name, last name, company, phone; each line item's name and SKU |
-| **Customers** | First name, last name, email, username; billing first name, last name, company, email, phone; shipping first name, last name, company, phone; tax IDs |
-| **Categories, tags, brands** | Name |
-| **Coupons** | Code, description |
+For example:
 
-Line items match the product **name as it was sold** — an order is still found after the product is renamed — and the product's current SKU. The shipping recipient is searched because a click-and-collect or delivery order is often looked up by the person collecting it, who is not the person who paid.
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[170, 0], [0, 0], [-60, 0]]} alt="The Product Panel with wat aim typed in the search field and one tile, Aim Analog Watch, with the count 1 product under it" />
 
-Order numbers from sequential-order-number plugins (`_order_number`, `_order_number_formatted`) are searched on the server alongside the WooCommerce order id.
+<div className="pinned-legend">
 
-## Why there is no search-fields setting {#why-there-is-no-setting}
+1. **Search products** — `wat aim` is two words. Each one is part of a word in the name, and they are typed in the other order.
+2. **Aim Analog Watch** — the one product with both words in it.
+3. **… product** — how many products match. Out-of-stock products are not counted while **In Stock** is lit; see [Search & Filtering](../pos/product-panel/search-filtering.mdx#no-match).
 
-Searching more fields costs nothing noticeable, and a term only matches a phone or a company name when that is what the cashier typed, so there is nothing to gain from turning fields off. A setting would also have to reach every till and the server together before the two agreed. The field list above is therefore fixed, and the one case that needs more — a store's own custom field — is a developer filter.
+</div>
 
-## Adding a custom field {#adding-a-custom-field}
+The list updates a moment after you stop typing. Clear the field to get everything back. Results that come from your store follow these rules too, with [a few differences](#device-and-store).
 
-`wcpos_search_fields` receives a collection's search declaration and the collection slug. Before WCPOS 2.0 this filter was named `woocommerce_pos_search_fields`; that name still works but is deprecated since 2.0 and is removed in 2.2 at the earliest (see [Hook naming](../extensions/index.mdx#hook-naming)). To make a customer findable by a loyalty number stored in user meta:
+<details>
+<summary>Exceptions: Logs searches and punctuation around a word</summary>
+
+- **Logs.** On the [Logs](../support/logs.mdx) screen, a word shorter than three letters is left out of the search.
+- **Punctuation around a word.** Leave it out: brackets, quotes, a `#` before an order number, a comma or full stop after a word. The device ignores it (`(shirt)` finds `shirt`, `#4120` finds order 4120), but your store searches for it as typed, so there `#4120` does not find order 4120.
+
+</details>
+
+## Phone numbers {#phone-numbers}
+
+Type a phone number as digits only, with no spaces, brackets or dashes. The digits are compared with the digits of the stored number, however it was written:
+
+- `0412` finds `(04) 1234 5678`.
+- `412345` finds `+61 412-345-678`.
+- `0412` does **not** find `+61 412 345 678`.
+
+The country code and the leading `0` are not converted: `0412` and `+61 412` are different digits.
+
+## What each search box looks at {#what-each-screen-searches}
+
+### Products {#products}
+
+On the Product Panel and the Products screen:
+
+- Name, SKU and barcode.
+- A variable product also shows when one of its options matches by SKU or barcode.
+
+The barcode is whichever field your store uses for barcodes; see [Barcode Field](../settings/wp-admin/general.mdx#barcode-field). A barcode **scan** is not a search: it looks for that exact code and adds the product to the cart. See [Barcode Scanning](../pos/product-panel/barcode-scanning.mdx).
+
+### Orders {#orders}
+
+On the Orders screen:
+
+- **Order:** the order number.
+- **Billing:** first name, last name, company, email, phone.
+- **Shipping:** first name, last name, company, phone.
+- **Items:** each line item's name and SKU.
+
+A line item matches by the **name it was sold under**, so an order is still found after the product is renamed. The shipping names are searched because a delivery or click-and-collect order is often looked up by the person collecting it, who is not always the person who paid.
+
+### Customers {#customers}
+
+On the Customers screen and in the cart's customer search:
+
+- **Customer:** first name, last name, email, username, tax IDs.
+- **Billing:** first name, last name, company, email, phone.
+- **Shipping:** first name, last name, company, phone.
+
+### Coupons {#coupons}
+
+On the Coupons screen and in the cart's coupon search:
+
+- Code and description.
+
+### Category, Tag and Brand {#category-tag-brand}
+
+In the Category, Tag and Brand filter lists:
+
+- Name.
+
+## On the device and in your store {#device-and-store}
+
+A search looks at what is already on the device first, so results show at once. For **products**, **customers** and **orders** it also asks your store, so a record this device has not downloaded yet still turns up. **Coupons** and the **Category**, **Tag** and **Brand** lists are searched on the device only. Offline, every search finds only what is on the device.
+
+Your store matches the same fields by the same rules, with a few differences.
+
+<details>
+<summary>Differences for order numbers, customer names, item SKUs and long searches</summary>
+
+- **Order number.** Your store finds the order with exactly that number, and also matches the number a sequential order number plugin gives an order. The device also finds numbers that contain it: `412` finds order 4120 on the device.
+- **Customer display name.** Your store also matches the name WordPress displays for the customer.
+- **Line item SKU.** Your store matches the product's current SKU; the device matches the SKU the line had when the order last came down to it.
+- **Long searches.** Your store matches up to ten words one by one. Keep a search to a few words.
+
+</details>
+
+## When a search finds nothing {#goes-wrong}
+
+- **Nothing comes back** — check each word for a typo: one word that matches nothing hides every result. Take a word out and try again.
+- **The phone number isn't found** — type the digits only, as they were stored. Leave out a country code if the number was saved without one, and the other way round.
+- **It's offline** — only records already on the device are found. See [Store health → Database](../support/store-health.mdx#coverage) for how much is on this device.
+- **On the [Logs](../support/logs.mdx) screen** — a word shorter than three letters is left out of the search.
+- **The product list stays short** — a filter is still on. See [Search & Filtering](../pos/product-panel/search-filtering.mdx#no-match).
+
+## For developers: change the searchable fields {#developers}
+
+<details>
+<summary>Why there is no setting, and how to add a field of your own</summary>
+
+### Why there is no setting for search fields {#why-there-is-no-setting}
+
+The fields above are fixed, in the POS and in WP Admin. A field on a record only matches when the word you typed is in it, so searching more fields does not bring back wrong results, and a fixed list keeps the device and your store searching the same fields. A field your store adds, such as a loyalty number, is added by a developer with one filter.
+
+### How your store matches {#store-matching}
+
+- **Order numbers** are matched against the WooCommerce order ID and the `_order_number` and `_order_number_formatted` meta that sequential order number plugins write.
+- **Capitals and accents** are left to the database collation. WordPress's default collation ignores both, so `creme` still finds `Crème`.
+
+### Add a field of your own {#adding-a-custom-field}
+
+`wcpos_search_fields` receives a collection's search declaration and the collection slug. Before WCPOS 2.0 this filter was named `woocommerce_pos_search_fields`; that name still works, but it is deprecated since 2.0 and is removed in 2.2 at the earliest (see [Hook naming](../extensions/index.mdx#hook-naming)). To make a customer findable by a loyalty number stored in user meta:
 
 ```php
 add_filter( 'wcpos_search_fields', function ( array $search, string $collection ) {
@@ -53,9 +148,20 @@ add_filter( 'wcpos_search_fields', function ( array $search, string $collection 
 
 For orders, append to `$search['posts']['meta']`; the key is searched in post meta on legacy storage and in the order meta table under HPOS.
 
-An added meta key is searched on **both sides**: the server matches it in its query, and the till folds it into its local search as well, because `wcpos/v2/site` publishes the keys a store added and the till stores them when it connects. Two limits follow from how WooCommerce exposes meta:
+A key added for **customers** or **orders** is searched in both places: your store matches it in its query, and the POS adds it to its search on the device as well, because `wcpos/v2/site` publishes the keys a store added. Three limits:
 
-- Only keys **without a leading underscore** reach the till. WooCommerce treats `_private` meta as protected and leaves it out of the REST `meta_data` the till syncs, so such a key is searched on the server only.
-- A key added after a till connected reaches that till the next time it connects, with the rest of the site payload.
+- Only keys **without a leading underscore** reach the device. A key such as `_private` is searched by your store only.
+- A key added later reaches the POS the next time it starts: a reload in the browser, or opening the app again.
+- Keys added for **products** or **variations** (`$search['posts']['meta']`) are searched by your store only.
 
-Store the value the way the cashier will type it, or in a form the digits rule covers: the filter adds the field to the match list, it does not change how a term is matched.
+Store the value the way the cashier will type it, or as digits for a number: the filter adds a field to the list, it does not change how a word is matched.
+
+</details>
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/pos/product-panel/search-filtering" title="Search & Filtering" description="Find a product and narrow the list" />
+  <LinkCard to="/customers" title="Customers" description="Find and edit your customers" />
+  <LinkCard to="/orders" title="Orders" description="Find an order and act on it" />
+</LinkCards>
