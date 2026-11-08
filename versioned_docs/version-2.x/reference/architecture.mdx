@@ -7,6 +7,8 @@ description: "How WCPOS is built: the plugin on your WordPress site, the POS app
 
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/architecture/en/manifest.json';
 
 WCPOS comes in two halves: a plugin on your WordPress site, and the POS app on each till. The till sells from its own copy of your store and keeps that copy in step with WooCommerce in the background. This page shows where your data lives and what reaches your server, for developers and for store owners who want to know.
 
@@ -33,22 +35,27 @@ flowchart TB
 
 ## What the till keeps on the device {#local-database}
 
-**Health** → **Database** shows the till's copy of your store, one row per kind of record, with how much of it is on this device. What each row's menu does is on [Store Health](../support/store-health.mdx#coverage).
+**Health** → **Database** shows the till's copy of your store: one row per kind of record, with how many are on this device (**On device**) and how many your store has (**On server**). What each row's menu does is on [Store Health](../support/store-health.mdx#coverage).
 
-The figure to watch is **changes waiting to send**: sales and edits made on this till that your store hasn't received yet. They stay on the device until it has. See [Sales waiting to send](../getting-started/offline.mdx#offline-writes).
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[186, 0], [186, 0], [186, 0], [186, 0], [186, 0], [186, 0], [186, 0], [186, 0]]} alt="Health, Database tab: the table of records on this till, from Products down to Tax rates, each with its count on the device, the count on the server, coverage and size">
+
+1. **Products** — a starting batch of 100 in the POS's default sort (name, A to Z), then the rest while the till is quiet. See [Download & Sync](../products/sync.mdx).
+2. **Variations** — download with their products.
+3. **Orders** — open and recent orders stay on the till. Older ones download when someone opens them.
+4. **Refunds** — refunds from the last 92 days, plus any refund on an order you've opened.
+5. **Customers** — download a little at a time while the till is quiet.
+6. **Categories** — with **Brands** and **Tags** below it.
+7. **Coupons** — on the till with or without Pro.
+8. **Tax rates** — your store's tax rates.
+
+</JourneyShot>
+
+A red **N stuck** badge on a row means records of that kind need you. See [Records that need attention](../support/store-health.mdx#stuck-records).
+
+Above the table, the figure to watch is **changes waiting to send**: sales and edits made on this till that your store hasn't received yet. They stay on the device until it has. See [Sales waiting to send](../getting-started/offline.mdx#offline-writes).
 
 <details>
-<summary>Stored products, orders, refunds, customers and other records</summary>
-
-- **changes waiting to send** — sales and edits made on this till that your store hasn't received yet.
-- **Products** — a starting batch of 100 in the POS's default sort (name, A to Z), then the rest while the till is quiet. See [Download & Sync](../products/sync.mdx).
-- **Variations** — download with their products.
-- **Orders** — open and recent orders stay on the till. Older ones download when someone opens them.
-- **Refunds** — refunds from the last 92 days, plus any refund on an order you've opened.
-- **Customers** — download a little at a time while the till is quiet.
-- **Categories** — with **Brands** and **Tags** below it.
-- **Coupons** — on the till with or without Pro.
-- **Tax rates** — your store's tax rates.
+<summary>Records kept outside this table</summary>
 
 A few things live outside this table. Payment methods, tax classes, shipping methods and order statuses are read from your store each time the app starts, and the last answer is kept for when the till is offline. Register sessions, closures and cash movements have their own records, and their own queue to your store.
 
@@ -77,7 +84,7 @@ The sync engine doesn't mirror your whole store on a timer. It works from what t
 - **Checking for changes.** The till asks your store what has changed, as often as its [sync preset](../support/store-health.mdx#sync-presets) says (**Eco**, **Balanced** or **Realtime**). Each till keeps its own preset: changing it on one till doesn't change the others.
 - **What the screen needs.** Each screen tells the engine what it is showing. The engine answers from the till's database when it already has the records, and asks your store only when it doesn't.
 - **In the background.** The first batch of products and the open and recent orders download first. The rest of the products and customers follow while the till is quiet.
-- **Sending changes.** Every sale or edit is saved on the till first, then sent to your store. A change your store refuses is never retried on its own: it waits under **Changes that never reached your server** with **Send again** and **Discard**. See [Store Health](../support/store-health.mdx#refused-changes).
+- **Sending changes.** Every sale or edit is saved on the till first, then sent to your store. A change your store refuses is never retried on its own: it waits under **N changes never reached your server**, with **Send again** and **Discard**. See [Store Health](../support/store-health.mdx#refused-changes).
 
 <details>
 <summary>Developer detail: change feed, request budgets and lanes</summary>
@@ -129,12 +136,12 @@ Every command carries the order's `revision`; a command without one is refused w
 
 To build a POS-only gateway, start from the [Gateway Template](./gateway-template.mdx).
 
-## The REST API {#api-extensions}
+## Why some website changes don't reach the till {#api-extensions}
 
 The till talks to your store only through the plugin's REST routes, which read from WooCommerce inside your site. So a plugin that changes WooCommerce's REST responses changes what the till sees, and one that changes only the web checkout or your theme doesn't. New to the REST API? Start with [Understanding the WooCommerce REST API](./wc-rest-api.mdx).
 
 <details>
-<summary>Developer detail: the wcpos/v2 and wcpos/v1 namespaces</summary>
+<summary>Developer detail: API versions</summary>
 
 The plugin registers two namespaces next to WooCommerce's own `wc/v3`.
 
@@ -143,12 +150,12 @@ The plugin registers two namespaces next to WooCommerce's own `wc/v3`.
 
 </details>
 
-### What integrators need to know {#wcpos-v2-namespace}
+### App updates and other sync tools {#wcpos-v2-namespace}
 
 The app and the plugin are updated together: a till on an older app than the plugin needs shows [SYNC341](../error-codes/SYNC341.mdx) until the app is updated. POS prices on line items are stored where other sync tools can read them; see [How POS price overrides are stored](./pos-discounts.mdx#how-pos-price-overrides-are-stored).
 
 <details>
-<summary>Developer detail: routes, headers, sign-in and order IDs</summary>
+<summary>Developer detail: requests, sign-in and order IDs</summary>
 
 - **Routes load for POS requests.** The plugin registers its routes only on requests aimed at them: a `wcpos/` route, an `X-WCPOS` header or `?wcpos=1`. The rest of your site's REST traffic doesn't load them.
 - **The app and the plugin move together.** Each app request carries `X-WCPOS-Protocol`. A plugin that needs a newer protocol answers `426` with `wcpos_update_required`, and the till shows [SYNC341](../error-codes/SYNC341.mdx) until the app is updated.
@@ -161,7 +168,7 @@ The app and the plugin are updated together: a till on an older app than the plu
 </details>
 
 :::info With WCPOS Pro
-Pro adds card readers (the `server` and `device` capture modes), editing stores, and pairing a customer display. With several stores, each store gets its own prices on the till. See [Setting up stores](../stores/setup.mdx).
+Pro adds card readers, editing stores, and pairing a customer display. With several stores, each store gets its own prices on the till. See [Setting up stores](../stores/setup.mdx).
 :::
 
 ## What the design gives and costs {#architecture-pros-and-cons}
