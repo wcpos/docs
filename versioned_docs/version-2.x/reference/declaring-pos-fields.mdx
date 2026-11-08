@@ -10,15 +10,23 @@ import RequirementItem from '@site/src/components/RequirementItem';
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
 
-This page is for developers of a WooCommerce payment gateway. Two filters tell the POS which fields your gateway needs. The POS then draws those fields with its own controls on the [tender pane](../pos/checkout/payment-methods.mdx), gives your gateway its own tile, and runs your gateway's own `validate_fields()` and `process_payment()` with what the cashier typed. Your payment code does not change.
+This page is for developers of a WooCommerce payment gateway. Two filters tell the POS which fields your gateway needs. The POS then draws those fields with its own controls on the [tender pane](../pos/checkout/payment-methods.mdx), gives your gateway its own tile, and runs your gateway's `validate_fields()` and `process_payment()` with what the cashier typed. You don't change your payment code.
 
-To build a gateway from scratch first, start from the [Gateway Template](./gateway-template.mdx). The gateway that uses these filters today is [Email Invoice](../payment/gateways/email-invoice.mdx).
+Building a gateway from scratch? Start from the [Gateway Template](./gateway-template.mdx). The gateway that uses these filters today is [Email Invoice](../payment/gateways/email-invoice.mdx).
 
 :::info Pro Feature
-Gateways other than Cash and Card need [WCPOS Pro](../getting-started/pro-license.mdx) to be offered at the till.
+Without [WCPOS Pro](../getting-started/pro-license.mdx), the till offers only Cash and Card, so your gateway needs Pro.
 :::
 
-Go straight to: [The two filters](#the-two-filters) · [Components](#components) · [The button](#the-verb) · [Validation](#validation) · [What the POS does with the result](#outcome) · [If something goes wrong](#troubleshooting)
+What you do, in order:
+
+1. Opt your gateway in: return `gateway` from the [`wcpos_payment_method_capture_mode`](#capture-mode) filter.
+2. Declare its fields with the [`wcpos_payment_method_fields`](#declare-the-fields) filter: pick from the four [components](#components) and set the wording on [the button](#the-verb).
+3. Keep your `validate_fields()` and `process_payment()`. The POS runs them with what the cashier typed. See [Validation](#validation), [What the POS does with the result](#outcome) and [Return `failure` or throw?](#failure-or-throw)
+4. Turn the gateway on for the POS in **WP Admin > POS > Settings > Checkout**. See [Offer a payment method at the till](../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+5. Try it at the till. [How your fields appear at checkout](#what-the-cashier-sees) says what you should see.
+
+No tile at the till? See [If something goes wrong](#troubleshooting).
 
 ## How your fields appear at checkout {#what-the-cashier-sees}
 
@@ -34,106 +42,107 @@ What happens next depends on what your gateway did to the order: it was **paid**
 
 ## The two filters {#the-two-filters}
 
-Both filters receive the gateway instance. Return the incoming value unchanged for any gateway that isn't yours.
+Both filters get the gateway object as their second argument. For any gateway that isn't yours, return the first argument as it came in.
 
-### Opt in: the `gateway` capture mode {#capture-mode}
+### Opt in: set the capture mode to `gateway` {#capture-mode}
 
 ```php
-add_filter(
-	'wcpos_payment_method_capture_mode',
-	function ( $mode, $gateway ) {
-		return 'my_gateway' === $gateway->id ? 'gateway' : $mode;
-	},
-	10,
-	2
-);
+add_filter( 'wcpos_payment_method_capture_mode', 'my_gateway_pos_mode', 10, 2 );
+
+function my_gateway_pos_mode( $mode, $gateway ) {
+	return 'my_gateway' === $gateway->id ? 'gateway' : $mode;
+}
 ```
 
 ### Declare the fields {#declare-the-fields}
 
-Return an array with `schema` (always `1`), a `verb` for [the button](#the-verb), and your `components` in the order the cashier should see them.
+Return an array with `schema` (always `1`), a `verb` for [the button](#the-verb), and your `components` in the order the cashier should see them. Here each component is built first, then listed in order.
 
 ```php
-add_filter(
-	'wcpos_payment_method_fields',
-	function ( $fields, $gateway ) {
-		if ( 'my_gateway' !== $gateway->id ) {
-			return $fields;
-		}
-		return array(
-			'schema'     => 1,
-			'verb'       => array(
-				'kind'  => 'send',
-				'label' => __( 'Send invoice', 'my-gateway' ),
-			),
-			'components' => array(
-				array(
-					'component' => 'note',
-					'text'      => __( 'The customer gets an email with a link to pay.', 'my-gateway' ),
-				),
-				array(
-					'component' => 'field',
-					'id'        => 'my_gateway_email',
-					'input'     => 'email',
-					'label'     => __( 'Email address', 'my-gateway' ),
-					'required'  => true,
-					'default'   => '',
-					'prefill'   => 'order.billing.email',
-				),
-				array(
-					'component' => 'checkbox',
-					'id'        => 'my_gateway_save_email',
-					'label'     => __( 'Save email to billing address', 'my-gateway' ),
-					'default'   => false,
-				),
-			),
-		);
-	},
-	10,
-	2
-);
+add_filter( 'wcpos_payment_method_fields', 'my_gateway_pos_fields', 10, 2 );
+
+function my_gateway_pos_fields( $fields, $gateway ) {
+	if ( 'my_gateway' !== $gateway->id ) {
+		return $fields;
+	}
+
+	$note = array(
+		'component' => 'note',
+		'text'      => __( 'The customer gets an email with a link to pay.', 'my-gateway' ),
+	);
+
+	$email = array(
+		'component' => 'field',
+		'id'        => 'my_gateway_email',
+		'input'     => 'email',
+		'label'     => __( 'Email address', 'my-gateway' ),
+		'required'  => true,
+		'default'   => '',
+		'prefill'   => 'order.billing.email',
+	);
+
+	$save_email = array(
+		'component' => 'checkbox',
+		'id'        => 'my_gateway_save_email',
+		'label'     => __( 'Save email to billing address', 'my-gateway' ),
+		'default'   => false,
+	);
+
+	return array(
+		'schema'     => 1,
+		'verb'       => array(
+			'kind'  => 'send',
+			'label' => __( 'Send invoice', 'my-gateway' ),
+		),
+		'components' => array( $note, $email, $save_email ),
+	);
+}
 ```
 
-The POS posts each value under its component's `id`, as the browser would post your own form, so `validate_fields()` and `process_payment()` keep reading `$_POST` as before. A ticked checkbox arrives as `'1'`; an unticked one isn't posted.
+The POS posts each value under its component's `id`, the same way a browser posts your checkout form. Your `validate_fields()` and `process_payment()` read `$_POST` as they do now. A ticked checkbox arrives as `'1'`. An unticked one isn't posted.
 
 ## Components {#components}
 
-The list is flat and drawn in the order you declare it. There is no layout, grouping or conditional visibility: each component is its own line.
+The POS draws one component per line, in the order you declare them. There are no columns, no groups, and no fields that show or hide on another field's value.
 
 ### `field` {#component-field}
 
 - **Keys:** `id`, `label`, `input` (`text`, `email`, `tel` or `number`), `required`, `default`, `prefill`
 - **The cashier sees:** a text box with the matching keyboard
-- **Posted:** the text typed
+- **Your gateway gets:** the text typed
 
 ### `checkbox` {#component-checkbox}
 
 - **Keys:** `id`, `label`, `default` (`true` or `false`)
 - **The cashier sees:** a checkbox with its label
-- **Posted:** `'1'` when ticked, nothing when not
+- **Your gateway gets:** `'1'` when ticked, nothing when not
 
 ### `select` {#component-select}
 
 - **Keys:** `id`, `label`, `required`, `default`, `options`: a list of `value` and `label` pairs
 - **The cashier sees:** a list to choose from
-- **Posted:** the chosen option's `value`
+- **Your gateway gets:** the chosen option's `value`
 
 ### `note` {#component-note}
 
 - **Keys:** `text`
 - **The cashier sees:** one muted line of text
-- **Posted:** nothing
+- **Your gateway gets:** nothing
 
 <details>
 <summary>The rules the store applies to your block</summary>
 
 - **`id`** is your gateway's `$_POST` key. Use the same keys as your `payment_fields()` form, so both paths read the same values.
-- **Text** — `label`, `text` and option labels are your own translatable copy, like your gateway title. They're cleaned as plain text: nothing in the block is markup.
-- **`prefill`** names where the POS takes the starting value of a `field`: `order.billing.email` or `order.billing.phone`, from the order's billing address. When that value is empty, `default` is used.
+- **Text** — `label`, `text` and option labels are your own words, translated like your gateway title. The store cleans them to plain text, so HTML tags don't show.
+- **`prefill`** names where a `field` gets its starting value: `order.billing.email` or `order.billing.phone`, from the order's billing address. When that value is empty, the field starts on its `default`.
 - **`required`** applies to a `field` and a `select`. A checkbox is never required.
 - **`input`** that isn't one of the four becomes `text`.
 - **A `select` default** that isn't one of its options is dropped, so the list starts empty.
-- **Skipped and logged** — a component whose `component` name isn't one of the four, a `field`, `checkbox` or `select` with an empty or repeated `id`, a `select` with no options or a malformed one, and a `note` with empty text. The store skips it and writes a line to its log under *WooCommerce > Status > Logs*, source `woocommerce-pos`. If your note is your gateway's description, leave the note out when the description is empty.
+- **Skipped and logged** — the store leaves out a component and writes a line to its log under *WooCommerce > Status > Logs*, source `woocommerce-pos`, when:
+  - its `component` name isn't one of the four
+  - a `field`, `checkbox` or `select` has an empty `id`, or one already used
+  - a `select` has no options, or an option whose `value` or `label` isn't text
+  - a `note` has empty text. If your note shows your gateway's description, leave the note out when the description is empty.
 - **`schema`** is `1`. The store always sends schema 1 to the POS, whatever you return.
 
 </details>
@@ -142,11 +151,11 @@ The list is flat and drawn in the order you declare it. There is no layout, grou
 
 `verb.label` is your wording for the button. The button reads your label, a dot and the amount, as in **Send invoice · $45.00**. Leave the label out and the POS uses your gateway's title.
 
-`verb.kind` is `take` or `send`, and `take` when left out. Set it to say what your gateway usually does; the button doesn't change with it today. It never decides the result: your `process_payment()` does.
+`verb.kind` is `take` or `send`. Leave it out and it is `take`. Set it to what your gateway usually does. The button doesn't change with it today, and it never decides the result: what your `process_payment()` does to the order decides that.
 
 ## Validation {#validation}
 
-The POS won't send until every required `field` and `select` has a value. Everything else is yours: check it in `validate_fields()` and add an error notice. Pass the field's `id` with the notice, so the POS shows the message under that field:
+Before it sends, the POS checks only that every required `field` and `select` has a value. Check everything else in `validate_fields()`, and add an error notice when a value is wrong. To show the message under one field, pass that field's `id` with the notice:
 
 <details>
 <summary>Example: validate_fields() with a field-level notice</summary>
@@ -176,9 +185,7 @@ The POS reads what happened from the order after `process_payment()` returns:
 - **Refused** — `process_payment()` returned `failure` or tried to send the cashier to another site. The POS logs [PAYMENT212](../error-codes/PAYMENT212.mdx) and shows a toast: your error notice for a failure, or a line naming the site for a redirect. The POS records no payment, and the order goes back to the payment method it had before.
 - **Threw an exception** — the POS shows PAYMENT212 the same way, but the store can't tell whether money moved. Before anyone tries again, check with the payment provider whether money was taken: the store leaves the attempt open and adds an order note asking staff to check, then cancel the attempt at the POS.
 
-A redirect to your own store counts as success, so returning `get_return_url( $order )` is fine.
-
-The exception is written to the store log, source `woocommerce-pos`. Return `failure` with an error notice only when you know no money moved, for example when the provider declined the card or you never sent the charge. If the charge went out and you can't tell what happened, let the exception through: `failure` tells the POS no payment was taken, so the cashier may charge again, while an exception keeps the attempt open for a check with the provider.
+A redirect to a page on your own store counts as success, so returning `get_return_url( $order )` is fine.
 
 <details>
 <summary>More on a sent order: the address, Send again, Cancel invoice</summary>
@@ -192,9 +199,16 @@ The exception is written to the store log, source `woocommerce-pos`. Return `fai
 
 Refunds go through your gateway's `process_refund()` when it declares `supports( 'refunds' )`. Without it, a refund is recorded and the money is handed back by hand.
 
+### Return `failure` or throw? {#failure-or-throw}
+
+Both show the cashier PAYMENT212, so the error code alone doesn't tell them whether money moved. Your choice decides what happens next:
+
+- **Return `failure`** with an error notice only when you know no money moved, for example when the provider declined the card or you never sent the charge. The POS treats the order as unpaid, and the cashier may charge again.
+- **Let the exception through** when the charge went out and you can't tell what happened. The attempt stays open for a check with the provider, as under **Threw an exception** above. The store writes the exception to its log, source `woocommerce-pos`. With no error notice, the toast shows the exception's message, so write one a cashier can read.
+
 ## Keep your payment form {#keep-the-form}
 
-Keep `payment_fields()` as it is. WCPOS 1.x and plugins before 2.0 never call the two filters, so they show your gateway with that form. In 2.x, the [Legacy tab](../pos/checkout/legacy-tab.mdx) shows it only when the app on the device can't draw your fields. One plugin serves both.
+Keep `payment_fields()` as it is. WCPOS 1.x never calls the two filters, so it shows your gateway with that form. In 2.x, the [Legacy tab](../pos/checkout/legacy-tab.mdx) shows the form only when the app on the device can't draw your fields. The same gateway plugin works with both.
 
 ## If something goes wrong {#troubleshooting}
 
@@ -203,7 +217,7 @@ Keep `payment_fields()` as it is. WCPOS 1.x and plugins before 2.0 never call th
 
 - Turn it on for the POS in **WP Admin > POS > Settings > Checkout**. See [Offer a payment method at the till](../settings/wp-admin/checkout.mdx#enabling-a-gateway).
 - Without WCPOS Pro, only **Cash** and **Card** can be turned on.
-- Request `GET /wp-json/wcpos/v2/payment-methods` on your store, signed in as a user who can use the POS (an application password works). Your method must show `"mode": "gateway"` under `capture`, and a `fields` block.
+- Check what the store sends: request `GET /wp-json/wcpos/v2/payment-methods`, signed in as a user who can use the POS (an application password works). Your method should show `"mode": "gateway"` under `capture`, and a `fields` block.
 
 </details>
 
@@ -221,7 +235,7 @@ Tap the line to see why under your gateway's name:
 <details>
 <summary>A field I declared doesn't appear</summary>
 
-Its `id` is empty or used twice, its `component` name isn't one of the four, a `select` has no options, or a `note` has no text. Each is logged on the store under *WooCommerce > Status > Logs*, source `woocommerce-pos`.
+Its `id` is empty or used twice, its `component` name isn't one of the four, a `select` has no options or an option whose `value` or `label` isn't text, or a `note` has no text. Each is logged on the store under *WooCommerce > Status > Logs*, source `woocommerce-pos`.
 
 </details>
 
@@ -235,7 +249,7 @@ That's your `validate_fields()` notice. Nothing was taken and no error code is l
 <details>
 <summary>The cashier sees PAYMENT212 after pressing the button</summary>
 
-Your `process_payment()` returned `failure`, threw an exception, or redirected to another site. The toast has your error notice, or a line naming the site for a redirect. Exceptions and off-site redirects are also in the store log, source `woocommerce-pos`. See [PAYMENT212](../error-codes/PAYMENT212.mdx).
+Your `process_payment()` returned `failure`, threw an exception, or redirected to another site. The toast shows your error notice, the exception's message when you added no notice, or a line naming the site for a redirect. Exceptions and off-site redirects are also in the store log, source `woocommerce-pos`. After an exception the attempt stays open until staff check with the provider and cancel it at the POS. See [PAYMENT212](../error-codes/PAYMENT212.mdx) and [Return `failure` or throw?](#failure-or-throw)
 
 </details>
 
