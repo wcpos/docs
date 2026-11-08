@@ -58,3 +58,32 @@ describe('Vercel headers and build configuration', () => {
     expect(config.redirects.length).toBeGreaterThan(0);
   });
 });
+
+describe('redirects for app help links', () => {
+  const locale = '/:locale(es|fr|de|nl|ja|pt-BR|ko|it|ar|hi-IN|zh-CN)';
+
+  it.each([
+    ['/pos-access', '/settings/wp-admin/access'],
+    [`${locale}/pos-access`, '/:locale/settings/wp-admin/access'],
+    ['/templates/receipt-data-reference', '/receipts/receipt-data'],
+    [`${locale}/templates/receipt-data-reference`, '/:locale/receipts/receipt-data'],
+    ['/error-codes/wcpos_update_required', '/error-codes/SYNC341'],
+    [`${locale}/error-codes/wcpos_update_required`, '/:locale/error-codes/SYNC341'],
+  ])('permanently redirects %s to %s', (source, destination) => {
+    const rule = config.redirects.find((entry) => entry.source === source);
+    expect(rule).toEqual({ source, destination, permanent: true });
+  });
+
+  it.each([
+    ['/customer-display', '/getting-started/free-vs-pro#customer-display'],
+    [`${locale}/customer-display`, '/:locale/getting-started/free-vs-pro#customer-display'],
+  ])('temporarily redirects %s to the customer-display section', (source, destination) => {
+    const rule = config.redirects.find((entry) => entry.source === source);
+    expect(rule).toEqual({ source, destination, permanent: false });
+  });
+
+  it('has no duplicate redirect sources', () => {
+    const sources = config.redirects.map(({ source }) => source);
+    expect(new Set(sources).size).toBe(sources.length);
+  });
+});
