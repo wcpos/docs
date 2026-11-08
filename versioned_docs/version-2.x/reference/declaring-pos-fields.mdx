@@ -46,59 +46,56 @@ Both filters get the gateway object as their second argument. For any gateway th
 ### Opt in: set the capture mode to `gateway` {#capture-mode}
 
 ```php
-add_filter(
-	'wcpos_payment_method_capture_mode',
-	function ( $mode, $gateway ) {
-		return 'my_gateway' === $gateway->id ? 'gateway' : $mode;
-	},
-	10,
-	2
-);
+add_filter( 'wcpos_payment_method_capture_mode', 'my_gateway_pos_mode', 10, 2 );
+
+function my_gateway_pos_mode( $mode, $gateway ) {
+	return 'my_gateway' === $gateway->id ? 'gateway' : $mode;
+}
 ```
 
 ### Declare the fields {#declare-the-fields}
 
-Return an array with `schema` (always `1`), a `verb` for [the button](#the-verb), and your `components` in the order the cashier should see them.
+Return an array with `schema` (always `1`), a `verb` for [the button](#the-verb), and your `components` in the order the cashier should see them. Here each component is built first, then listed in order.
 
 ```php
-add_filter(
-	'wcpos_payment_method_fields',
-	function ( $fields, $gateway ) {
-		if ( 'my_gateway' !== $gateway->id ) {
-			return $fields;
-		}
-		return array(
-			'schema'     => 1,
-			'verb'       => array(
-				'kind'  => 'send',
-				'label' => __( 'Send invoice', 'my-gateway' ),
-			),
-			'components' => array(
-				array(
-					'component' => 'note',
-					'text'      => __( 'The customer gets an email with a link to pay.', 'my-gateway' ),
-				),
-				array(
-					'component' => 'field',
-					'id'        => 'my_gateway_email',
-					'input'     => 'email',
-					'label'     => __( 'Email address', 'my-gateway' ),
-					'required'  => true,
-					'default'   => '',
-					'prefill'   => 'order.billing.email',
-				),
-				array(
-					'component' => 'checkbox',
-					'id'        => 'my_gateway_save_email',
-					'label'     => __( 'Save email to billing address', 'my-gateway' ),
-					'default'   => false,
-				),
-			),
-		);
-	},
-	10,
-	2
-);
+add_filter( 'wcpos_payment_method_fields', 'my_gateway_pos_fields', 10, 2 );
+
+function my_gateway_pos_fields( $fields, $gateway ) {
+	if ( 'my_gateway' !== $gateway->id ) {
+		return $fields;
+	}
+
+	$note = array(
+		'component' => 'note',
+		'text'      => __( 'The customer gets an email with a link to pay.', 'my-gateway' ),
+	);
+
+	$email = array(
+		'component' => 'field',
+		'id'        => 'my_gateway_email',
+		'input'     => 'email',
+		'label'     => __( 'Email address', 'my-gateway' ),
+		'required'  => true,
+		'default'   => '',
+		'prefill'   => 'order.billing.email',
+	);
+
+	$save_email = array(
+		'component' => 'checkbox',
+		'id'        => 'my_gateway_save_email',
+		'label'     => __( 'Save email to billing address', 'my-gateway' ),
+		'default'   => false,
+	);
+
+	return array(
+		'schema'     => 1,
+		'verb'       => array(
+			'kind'  => 'send',
+			'label' => __( 'Send invoice', 'my-gateway' ),
+		),
+		'components' => array( $note, $email, $save_email ),
+	);
+}
 ```
 
 The POS posts each value under its component's `id`, the same way a browser posts your checkout form. Your `validate_fields()` and `process_payment()` read `$_POST` as they do now. A ticked checkbox arrives as `'1'`. An unticked one isn't posted.
@@ -111,25 +108,25 @@ The POS draws one component per line, in the order you declare them. There are n
 
 - **Keys:** `id`, `label`, `input` (`text`, `email`, `tel` or `number`), `required`, `default`, `prefill`
 - **The cashier sees:** a text box with the matching keyboard
-- **Posted:** the text typed
+- **Your gateway gets:** the text typed
 
 ### `checkbox` {#component-checkbox}
 
 - **Keys:** `id`, `label`, `default` (`true` or `false`)
 - **The cashier sees:** a checkbox with its label
-- **Posted:** `'1'` when ticked, nothing when not
+- **Your gateway gets:** `'1'` when ticked, nothing when not
 
 ### `select` {#component-select}
 
 - **Keys:** `id`, `label`, `required`, `default`, `options`: a list of `value` and `label` pairs
 - **The cashier sees:** a list to choose from
-- **Posted:** the chosen option's `value`
+- **Your gateway gets:** the chosen option's `value`
 
 ### `note` {#component-note}
 
 - **Keys:** `text`
 - **The cashier sees:** one muted line of text
-- **Posted:** nothing
+- **Your gateway gets:** nothing
 
 <details>
 <summary>The rules the store applies to your block</summary>
