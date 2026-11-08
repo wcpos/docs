@@ -201,6 +201,21 @@ describe('no redirect takes a live page off the site', () => {
   });
 });
 
+describe('flip-only redirects for the app and renamed categories', () => {
+  it.each(locales)('leaves %s card-readers URLs on the live page', (locale) => {
+    expect(redirectFor(served('/hardware/card-readers', locale))).toBeNull();
+  });
+
+  it.each(locales)('redirects %s categories to their 2.x names', (locale) => {
+    expect(
+      redirectFor(served('/category/managing-your-store', locale)).destination
+    ).toBe(served('/category/manage-your-store', locale));
+    expect(
+      redirectFor(served('/category/developer-reference', locale)).destination
+    ).toBe(served('/category/developers', locale));
+  });
+});
+
 describe('the translation queue', () => {
   it('queues 2.x and still skips 0.4.x', () => {
     const exclude = new RegExp(AUDIT_EXCLUDE_DEFAULT);
