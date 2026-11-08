@@ -43,6 +43,32 @@ The **Cloud Print** screen asks **What kind of printer are you connecting?** Pic
 
 A Star or Epson cloud printer can't print an HTML template: the receipt has to become the printer's own commands. For HTML and full-page templates, use PrintNode. See [Thermal Templates](./thermal-templates.mdx).
 
+<details>
+<summary>How jobs reach your printer</summary>
+
+```mermaid
+flowchart TD
+  P["Print from the POS"] --> S["1 Your store"]
+  A["Auto-print rule"] --> S
+  S --> R["2 WCPOS Cloud Print"]
+  R --> SE["Star CloudPRNT or Epson printer"]
+  S --> PN["3 PrintNode"]
+  PN --> PR["USB or network printer"]
+  S --> SO["4 Star Online"]
+  SO --> SS["Star printer"]
+```
+
+<div className="pinned-legend">
+
+1. **Your store** — makes the receipt from the order and the template, and keeps the job in the [print queue](#print-queue). A print from the POS and an [auto-print rule](#auto-print) both start here.
+2. **WCPOS Cloud Print** — the [relay](#relay). A Star CloudPRNT or Epson printer normally fetches its jobs through it, so a job waits until the printer next checks in.
+3. **PrintNode** — your store hands the job to PrintNode, and the PrintNode app on a computer at the store prints it.
+4. **Star Online** — your store hands the job to Star Online, which delivers it to the printer.
+
+</div>
+
+</details>
+
 ## Add a printer {#setup}
 
 1. Go to **WP Admin → POS → Settings → Cloud Print**. Under **Your cloud printers**, press **+ Add a printer**.
@@ -55,6 +81,9 @@ A Star or Epson cloud printer can't print an HTML template: the receipt has to b
 
 These printers fetch their own jobs, so there is no account to link. Because the printer reaches out to your store, you don't open a port, set a static IP or change your firewall. A job prints the next time the printer checks in. The last step of **+ Add a printer** shows the printer's **Poll URL**, with a secret token inside it.
 
+<details>
+<summary>Connect a Star CloudPRNT or Epson printer</summary>
+
 1. Press **Copy** next to the **Poll URL**. The full address is shown **only once**. If you lose it, remove the printer and add it again to get a new one: **Setup & token** on the card shows it with the token hidden.
 2. Open the printer's own settings page and paste the address into its server URL: the **CloudPRNT** settings on a Star, the **Server Direct Print** settings on an Epson. Turn polling on, save, and restart the printer.
 3. Back on the card, the status changes from **Waiting for printer** to **Connected** once the printer fetches for the first time.
@@ -63,22 +92,40 @@ The address normally starts with `https://cloudprint.wcpos.com`. That is the [WC
 
 On an Epson, leave **Server Direct Print** on for as long as WCPOS prints to it this way. See [Server Direct Print](../hardware/printers/server-direct-print.mdx).
 
+</details>
+
 ### PrintNode {#setup-printnode}
+
+PrintNode needs its client running on a computer next to the printer, and an API key from your PrintNode account.
+
+<details>
+<summary>Connect a PrintNode printer</summary>
 
 1. On a computer next to the printer, install the PrintNode client and sign in. The computer must be on, and the client running, for anything to print.
 2. In your PrintNode account, create an API key.
 3. In **+ Add a printer**, choose **PrintNode**, paste the key into **PrintNode API key** and press **Fetch my printers**.
 4. Under **Choose a printer**, pick the one the client reports, and finish. The last step says **Linked to PrintNode**: there is no address or token to copy.
-5. On the printer's card, set **Print format**:
-   - **PDF (recommended)** prints any template, thermal or HTML, as a PDF. Leave it on this unless you have a reason to change it.
-   - **ESC/POS RAW — thermal templates only** sends a thermal template as receipt printer commands instead of a PDF. HTML templates still go as a PDF.
+
+</details>
+
+Once it's linked, set **Print format** on the printer's card:
+
+- **PDF (recommended)** prints any template, thermal or HTML, as a PDF. Leave it on this unless you have a reason to change it.
+- **ESC/POS RAW — thermal templates only** sends a thermal template as receipt printer commands instead of a PDF. HTML templates still go as a PDF.
 
 ### Star Online {#setup-star-online}
+
+Star Online needs the printer's group address and an API key, both from your stario.online account.
+
+<details>
+<summary>Connect a Star Online printer</summary>
 
 1. In stario.online, open **Device Groups** and copy the group's **CloudPRNT URL**. It looks like `https://device.stario.online/cloudprnt/...`, or `https://eu-device.stario.online/cloudprnt/...` in the EU.
 2. In stario.online, create an API key with the permissions **EnumDevices**, **ViewDevice**, **PrintToDevice** and **ViewDeviceGroups**. A key without them is accepted but can't list or print.
 3. In **+ Add a printer**, choose **Star Online**. Paste the **CloudPRNT URL** and the **Star Online API key**, then press **Fetch my devices**.
 4. Under **Choose a device**, pick the printer and finish. The card then shows its **Device**, **Group** and **AccessIdentifier**.
+
+</details>
 
 ## The printer card {#status}
 
@@ -88,22 +135,28 @@ Each cloud printer has a card under **Your cloud printers**:
 - **The status** — see the list below. It refreshes every 30 seconds.
 - **Last check-in** — when a Star CloudPRNT or Epson printer last fetched, or *never*.
 - **Printer ID** — fixed when you added the printer.
-- **Print format** — PrintNode only. See [PrintNode](#setup-printnode).
+- **Print format** — PrintNode only: **PDF (recommended)** or **ESC/POS RAW — thermal templates only**. See [PrintNode](#setup-printnode).
 - **Test print** — sends a short test page. A message says *Sent a test print to …*, or why it failed.
 - **Printer actions** (**⋮**) — **Setup & token** reopens the last setup step; **Remove printer** stops the printer receiving jobs. You can add it again later.
 
-**Star CloudPRNT and Epson Server Direct Print**
+<details id="status-polling">
+<summary>Star CloudPRNT and Epson Server Direct Print statuses</summary>
 
-- **Waiting for printer** — the printer hasn't fetched yet. Check the Poll URL in the printer: see [Stuck on Waiting for printer](#troubleshooting).
+- **Waiting for printer** — the printer hasn't fetched yet. Check the Poll URL in the printer: see [Stuck on Waiting for printer](#trouble-polling).
 - **Connected** — the printer fetched in the last two and a half minutes.
 - **Offline** — the printer fetched before, but not lately. Check it's on and online.
-- **Blocked** — the relay can't reach your store. The card says why: a security service such as Cloudflare or a firewall plugin is blocking it, or your site answered with a server error. See [If something goes wrong](#troubleshooting).
+- **Blocked** — the relay can't reach your store. The card says why: a security service such as Cloudflare or a firewall plugin is blocking it, or your site answered with a server error. See [Star CloudPRNT or Epson problems](#trouble-polling).
 
-**Star Online and PrintNode**
+</details>
+
+<details id="status-services">
+<summary>Star Online and PrintNode statuses</summary>
 
 - **Online** — the service says the printer is available.
 - **Offline** — the service says the printer, or the PrintNode computer, isn't available. For PrintNode, check the computer is awake and the client running.
 - **Unknown** — WCPOS couldn't get a status from the service. Check the API key in [PrintNode](#setup-printnode) or [Star Online](#setup-star-online).
+
+</details>
 
 ## Print orders automatically {#auto-print}
 
@@ -156,10 +209,7 @@ A job WCPOS hands to PrintNode or Star Online is tried three times, one and then
 
 A Star CloudPRNT or Epson printer's Poll URL points at **cloudprint.wcpos.com**, not at your own site. That's **WCPOS Cloud Print**, a free relay run by WCPOS between your printers and your store.
 
-It's there because many receipt printers can't connect to a store on modern hosting by themselves. There is nothing to switch on.
-
-- Jobs pass through the relay on their way to the printer. Connecting shares your site's address with wcpos.com, and receipts, which include order details, travel through the relay. See the [privacy policy](https://wcpos.com/privacy).
-- **Blocked** on a card means the relay reached your site and was refused. Allow the relay in your security service, as the card says.
+There is nothing to switch on. Jobs pass through the relay on their way to the printer, so connecting shares your site's address with wcpos.com, and receipts, which include order details, travel through it. See the [privacy policy](https://wcpos.com/privacy).
 
 <details>
 <summary>How the relay works</summary>
@@ -169,6 +219,7 @@ Receipt printers run small firmware that is rarely updated. Many can't make a se
 - Your site connects to the relay by itself the first time you open **Cloud Print**.
 - The relay needs your site on **HTTPS**. Without it, **Cloud Print** says so.
 - If your site can't connect to the relay, for example a local test site, the Poll URL points at your site directly.
+- **Blocked** on a card means the relay reached your site and was refused. Allow the relay in your security service, as the card says. See [Star CloudPRNT or Epson problems](#trouble-polling).
 
 </details>
 
@@ -194,19 +245,32 @@ WCPOS offers the printer StarPRNT commands first, then a PNG image of the receip
 
 ## If something goes wrong {#troubleshooting}
 
+**The POS printed to a cloud printer, but no receipt came out.** The POS only knows the store has the job. Open the [print queue](#print-queue) and find the order:
+
+- **Waiting** — the printer hasn't taken it yet. Check the printer's status on its card: [Star CloudPRNT and Epson Server Direct Print statuses](#status-polling) or [Star Online and PrintNode statuses](#status-services).
+- **Printing** — the job is on its way, and the printer hasn't said it printed yet.
+- **Failed** — **Detail** says why. Put it right, then press **Retry**. If **Detail** says *The printer never confirmed this job*, it may have printed: check the printer before you press **Retry**.
+- **Printed** — the printer, or PrintNode or Star Online, took the job. Check the paper, and that the **Printer** column names the printer you're standing at.
+
+**My template isn't offered.** Star CloudPRNT, Epson and Star Online printers only take [thermal templates](./thermal-templates.mdx). Choose one, or print through PrintNode.
+
+### Star CloudPRNT or Epson problems {#trouble-polling}
+
 **Stuck on Waiting for printer.** The printer has never reached your store. Check the Poll URL in the printer matches exactly: one wrong character turns every fetch away. If you're unsure, remove the printer and add it again for a new one. Make sure polling is on in the printer's **CloudPRNT** or **Server Direct Print** settings, then restart it. If you used the **Direct URL**, switch to the `cloudprint.wcpos.com` address: [that's what the relay is for](#relay).
 
 **Blocked.** A security service or firewall plugin is turning the relay away, or your site is returning server errors. Follow the message on the card; for a server error, check your site's health and error logs.
 
 **Set up before the relay existed.** Addresses already saved in a printer keep working. If that printer is stuck on **Waiting for printer**, remove it and add it again, then put the new `cloudprint.wcpos.com` address in the printer.
 
-**Fetch my devices fails (Star Online).** The message is *Couldn't list your Star Online devices. Check the CloudPRNT URL and API key.* Check the key was copied whole, hasn't been revoked, and belongs to the same stario.online account and region as the URL. Then check the key has the permissions in [Star Online](#setup-star-online). *No devices found in this Star Online group* means the group has no device, or the URL is for another group.
+### PrintNode problems {#trouble-printnode}
 
-**Fetch my printers fails (PrintNode).** Check the API key, and that the PrintNode client is running on the computer.
+**Fetch my printers fails.** Check the API key, and that the PrintNode client is running on the computer.
 
 **A PrintNode job never prints.** The client must be running and online: a computer that's asleep prints nothing. Check you picked the printer the client reports, and that the key hasn't been revoked.
 
-**My template isn't offered.** Star CloudPRNT, Epson and Star Online printers only take [thermal templates](./thermal-templates.mdx). Choose one, or print through PrintNode.
+### Star Online problems {#trouble-star-online}
+
+**Fetch my devices fails.** The message is *Couldn't list your Star Online devices. Check the CloudPRNT URL and API key.* Check the key was copied whole, hasn't been revoked, and belongs to the same stario.online account and region as the URL. Then check the key has the permissions in [Star Online](#setup-star-online). *No devices found in this Star Online group* means the group has no device, or the URL is for another group.
 
 ## Related Documentation {#related-documentation}
 
