@@ -13,8 +13,8 @@ Cloudflare sits in front of some stores and can ask visitors to pass a security 
 
 ## At the till {#at-the-till}
 
-- **Security check window on the desktop app:** tick the box in the window within two minutes. The app carries on, and Cloudflare lets it through for 30 minutes (unless the owner has changed that) before it asks again.
-- **HOST121 on the iPad, iPhone or Android app:** these apps cannot pass Cloudflare's check. The app stays blocked until the store owner makes the change below.
+- **Security check window on the desktop app:** tick the box within two minutes. The app carries on. Cloudflare asks again after 30 minutes, or after the time the store owner has set.
+- **HOST121 on the iPad, iPhone or Android app:** these apps cannot pass Cloudflare's check. They stay blocked until the store owner makes the change below.
 - **Either way,** send this page to the store owner. On the desktop app, passing the check lets the app connect for now, but the check comes back later.
 
 **Store owner:** start at [Find the Cloudflare feature that is blocking it](#which-feature).
@@ -27,48 +27,21 @@ Cloudflare sits in front of some stores and can ask visitors to pass a security 
 <details>
 <summary>Other signs the store owner may see</summary>
 
-- **"Your store is behind Cloudflare"** at the top of **WP Admin > POS > Settings > General**. The plugin shows this notice whenever your site runs through Cloudflare, as a warning before anything goes wrong.
+- **"Your store is behind Cloudflare"** at the top of **WP Admin > POS > Settings > General**. The plugin shows it on any site that runs through Cloudflare, before anything goes wrong.
 - Cloud printing stops, and the printer card under **WP Admin > POS > Settings > Cloud Print** says **"A security service (like Cloudflare or a firewall plugin) is blocking WCPOS Cloud Print"**. The [relay](../../receipts/cloud-printing.mdx#relay) reaches your store the same way the app does, so the fix below fixes printing too.
 - Older app versions reported **"Site does not seem to be a WordPress site"** or **"The site took too long to respond"** on a store that opens fine in a browser.
 
 </details>
 
-## Check it from a computer {#check}
-
-The rest of this page is for the store owner. If you can open the site's Cloudflare dashboard, you can go straight to [Find the Cloudflare feature that is blocking it](#which-feature). The check below is optional: it shows from your own computer whether Cloudflare is answering for your store, and later whether your fix worked.
-
-<details>
-<summary>Check with a terminal</summary>
-
-Open a terminal (Terminal on a Mac, PowerShell on Windows) and run this, with your store's address in place of `your-store.com`. On Windows, type `curl.exe` in place of `curl`.
-
-```bash
-curl -sI https://your-store.com/wp-json/
-```
-
-Read the first lines of the answer:
-
-- **`403` and `cf-mitigated: challenge`:** Cloudflare is blocking the app. Carry on below.
-- **`200` and `content-type: application/json`:** this computer got through. Try connecting or syncing in the app. If the app is still blocked, Cloudflare may be treating it differently from your computer: check the features below, then [Plugin Conflicts](./plugin-conflicts.mdx).
-- **`404`:** the REST API is not at this address. Sites without pretty permalinks use a different one. Run the check again on `'https://your-store.com/?rest_route=/'` (keep the quotes).
-
-If WordPress lives in a subfolder, include it: `https://example.com/shop/wp-json/`.
-
-</details>
-
-<details>
-<summary>How the desktop app gets past the check</summary>
-
-The app talks to your store's REST API, the part of WordPress that answers apps with data. A web browser passes Cloudflare's check without you noticing; an app usually cannot. When Cloudflare answers with a check instead of data, the desktop app opens a hidden browser window and tries to pass the check on its own. If Cloudflare wants a tick box, the window appears and waits two minutes. Cloudflare then lets the app through for the time set in **Challenge Passage** (30 minutes by default), and the check comes back after that. The iPad, iPhone and Android apps have no such window.
-
-</details>
-
 ## Find the Cloudflare feature that is blocking it {#which-feature}
 
-Open your site in the Cloudflare dashboard, then:
+The rest of this page is for the store owner. Open your site in the Cloudflare dashboard, then:
 
 1. Go to **Security > Analytics** and select the **Events** tab. Look for requests to `/wp-json/` from the time the app was blocked. Their **Service** field names the feature that stopped them, such as **Bot Fight Mode** or **Managed rules**.
-2. Open that feature below to see where it lives and how to fix it. On the Free plan the log keeps only a sample of requests, so the app's may be missing. If it is, check which of these four features is on.
+2. Open the matching feature below. It says where the setting lives and how to fix it.
+3. No matching event? On the Free plan the log keeps only a sample of requests, so the app's may be missing. Check which of the four features below is on instead.
+
+To confirm first that Cloudflare is the cause, use the optional [terminal check](#check).
 
 <details>
 <summary>Bot Fight Mode (Free plan): turn it off</summary>
@@ -138,16 +111,46 @@ Bot Fight Mode on the Free plan ignores this rule. If Bot Fight Mode is the feat
 
    Tick these only when they apply:
    - **All Super Bot Fight Mode rules**, if Super Bot Fight Mode is on.
-   - **All managed rules**, if the Events log shows **Managed rules** in the **Service** field for the app's requests.
+   - **All managed rules**, if the Events log shows **Managed rules** in the **Service** field for the app's requests. If you found no event, leave it unticked, and tick it later only if the app is still blocked.
 
    Leave the entries marked **(Previous version)** unticked.
 6. Choose **Deploy**. If other custom rules challenge or block visitors, drag this rule above them in the **Security rules** list. Managed rules always run after custom rules, so their order does not matter.
 
-Connect or sync in the app to confirm it gets through. If you used the [terminal check](#check), run it again: the answer should be `200` with `content-type: application/json`, and no `cf-mitigated` line.
+Connect or sync in the app to confirm it gets through. To confirm from a computer, run the [terminal check](#check): the answer should be `200` with `content-type: application/json`, and no `cf-mitigated` line.
 
 ### If Bot Fight Mode is on {#bot-fight-mode}
 
 Bot Fight Mode on the Free plan ignores Skip and Allow rules. Cloudflare's own documentation says custom rules and Page Rules cannot bypass it. If **Bot Fight Mode** is on and the app is still blocked after you add the Skip rule, turn Bot Fight Mode off under **Security > Settings**, filter **Bot traffic**. Then try the app, or run the [check](#check) once more. To keep bot protection, move to the Pro plan and use **Super Bot Fight Mode**: the Skip rule above does exempt it. If Bot Fight Mode is already off, see [Still blocked?](#still-blocked).
+
+## Check it from a computer {#check}
+
+This check is optional. It shows from your own computer whether Cloudflare is answering for your store, before or after the fix.
+
+<details>
+<summary>Check with a terminal</summary>
+
+Open a terminal (Terminal on a Mac, PowerShell on Windows) and run this, with your store's address in place of `your-store.com`. On Windows, type `curl.exe` in place of `curl`.
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+Read the first lines of the answer:
+
+- **`403` and `cf-mitigated: challenge`:** Cloudflare is blocking the app. [Find the feature](#which-feature) that does it.
+- **`200` and `content-type: application/json`:** this computer got through. Try connecting or syncing in the app. If the app is still blocked, Cloudflare may be treating it differently from your computer: check the features above, then [Plugin Conflicts](./plugin-conflicts.mdx).
+- **`404`:** the REST API is not at this address. Sites without pretty permalinks use a different one. Run the check again on `'https://your-store.com/?rest_route=/'` (keep the quotes).
+
+If WordPress lives in a subfolder, include it: `https://example.com/shop/wp-json/`.
+
+</details>
+
+<details>
+<summary>How the desktop app gets past the check</summary>
+
+The app talks to your store's REST API, the part of WordPress that answers apps with data. A web browser passes Cloudflare's check without you noticing; an app usually cannot. When Cloudflare answers with a check instead of data, the desktop app opens a hidden browser window and tries to pass the check on its own. If Cloudflare wants a tick box, the window appears and waits two minutes. Cloudflare then lets the app through for the time set in **Challenge Passage** (30 minutes by default), and the check comes back after that. The iPad, iPhone and Android apps have no such window.
+
+</details>
 
 ## Stop Cloudflare caching the API {#caching}
 
