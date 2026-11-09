@@ -1,6 +1,6 @@
 ---
 description: "Fill missing WCPOS docs translations and open or update the docs-translate PR"
-argument-hint: "[--dry-run] [--locale L]... [--translator codex|claude] [--model M] [--max-units N]"
+argument-hint: "[--dry-run] [--lane X --locale L...] [--locale L]... [--translator codex|claude] [--model M] [--max-units N]"
 ---
 
 Run the local docs translation pipeline.
@@ -31,3 +31,11 @@ translate docs yourself in this session. It works in its own worktree
    the PR URL and the `review:` part of the `FAILED:` line.
 
 Use `--dry-run` to see the work summary without calling a model.
+
+To run several locale groups at once, give each run its own `--lane <name>` with
+its `--locale` list (a lane requires `--locale`). Each lane gets its own worktree
+(`.claude/worktrees/docs-translate-<lane>`), lock and PR on branch
+`docs-translate/lane-<lane>-<stamp>`, so lanes never share a PR with each other or
+with the unlaned run. Four lanes of two or three locales ran in about 28 minutes
+with 1,500 units each (2026-11-09, PRs #869-#872). Every lane PR touches
+`i18n/translation-state.json`, so lane PRs merge one at a time, rebasing between.
