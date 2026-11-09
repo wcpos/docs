@@ -1,4 +1,4 @@
-const { setSlug, rewriteLinks, transformSidebar, buildLinkMap } = require('../url-structure/apply-url-map');
+const { setSlug, rewriteLinks, rewriteLegacyLinks, transformSidebar, buildLinkMap } = require('../url-structure/apply-url-map');
 
 const emptyMap = {
   docs: [], categories: [], removedCategories: [], sidebarMoves: [], docRefSwaps: [], resultingItems: {},
@@ -73,6 +73,39 @@ describe('rewriteLinks', () => {
   it('leaves slug lines and paths without a link delimiter unchanged', () => {
     const text = '---\nslug: /pos/register\n---\n/pos/register (https://docs.wcpos.com/pos/register)';
     expect(rewriteLinks(text, links)).toBe(text);
+  });
+});
+
+describe('rewriteLegacyLinks', () => {
+  const links = { '/coupons': '/1.x/coupons' };
+
+  it('rewrites a Markdown link and keeps its #fragment', () => {
+    expect(rewriteLegacyLinks('[Coupons](/coupons#x)', links)).toBe('[Coupons](/1.x/coupons#x)');
+  });
+
+  it('leaves to="…" unchanged', () => {
+    const text = '<LinkCard to="/coupons" />';
+    expect(rewriteLegacyLinks(text, links)).toBe(text);
+  });
+
+  it('leaves an already versioned link unchanged', () => {
+    const text = '[Coupons](/1.x/coupons)';
+    expect(rewriteLegacyLinks(text, links)).toBe(text);
+  });
+
+  it('leaves /pos unchanged when only /pos/cart is mapped', () => {
+    expect(rewriteLegacyLinks('[POS](/pos)', { '/pos/cart': '/1.x/pos/cart' })).toBe('[POS](/pos)');
+  });
+
+  it('preserves origins, queries and link titles', () => {
+    expect(rewriteLegacyLinks('[Coupons](https://docs.wcpos.com/coupons?view=all#x "Title")', links))
+      .toBe('[Coupons](https://docs.wcpos.com/1.x/coupons?view=all#x "Title")');
+  });
+
+  it('leaves href, inline code and relative links unchanged', () => {
+    const text = '<a href="/coupons">Coupons</a> `/coupons` `[Coupons](/coupons)` '
+      + '``[Coupons](/coupons) `code` `` [Coupons](../coupons)';
+    expect(rewriteLegacyLinks(text, links)).toBe(text);
   });
 });
 

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { readSlug } = require('../indexnow-ping');
 
 function setSlug(text, slug) {
   return text.replace(/^---(\r?\n)([\s\S]*?)\r?\n---(?=\r?\n|$)/, (frontmatter, newline, body) => {
@@ -31,6 +32,13 @@ function rewriteLinks(text, linkMap) {
     (match, before, origin, route) => {
       const key = route.replace(/^\/2\.x(?=\/|$)/, '');
       return Object.hasOwn(linkMap, key) ? before + (origin || '') + linkMap[key] : match;
+    });
+}
+
+function rewriteLegacyLinks(text, legacyMap) {
+  return text.replace(/(`+)[\s\S]*?\1(?!`)|\]\((https:\/\/docs\.wcpos\.com)?(\/[^#?)"'`\s]*)/g,
+    (match, code, origin, route) => {
+      return !code && Object.hasOwn(legacyMap, route) ? '](' + (origin || '') + legacyMap[route] : match;
     });
 }
 
@@ -135,6 +143,35 @@ function main() {
   }
   console.log(`Links: ${links} files changed`);
 
+  const legacyRoot = 'versioned_docs/version-1.x';
+  const legacyRoutes = new Set();
+  for (const file of docFiles(legacyRoot)) {
+    const relative = path.relative(legacyRoot, file);
+    if (relative.split(path.sep).some((part) => part.startsWith('_'))) continue;
+    const docPath = relative.split(path.sep).join('/').replace(/\.mdx?$/, '');
+    const docDir = path.posix.dirname(docPath) === '.' ? '' : path.posix.dirname(docPath);
+    const slug = readSlug(read(file));
+    let route;
+    if (slug) route = slug.startsWith('/') ? slug : path.posix.join('/', docDir, slug);
+    else if (path.posix.basename(docPath) === 'index') route = `/${docDir}`;
+    else route = `/${docPath}`;
+    legacyRoutes.add(route.replace(/\/+$/, '') || '/');
+  }
+  const legacyMap = Object.fromEntries(
+    [...map.docs, ...map.categories, ...map.removedCategories].map(({ oldRoute }) => [
+      oldRoute, legacyRoutes.has(oldRoute) ? `/1.x${oldRoute === '/' ? '' : oldRoute}` : linkMap[oldRoute],
+    ])
+  );
+  const legacyLocaleRoots = fs.readdirSync('i18n', { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join('i18n', entry.name, 'docusaurus-plugin-content-docs/version-1.x'))
+    .filter((directory) => fs.existsSync(directory));
+  let legacyLinks = 0;
+  for (const file of legacyLocaleRoots.flatMap(docFiles)) {
+    legacyLinks += update(file, rewriteLegacyLinks(read(file), legacyMap));
+  }
+  console.log(`Legacy links: ${legacyLinks} files changed`);
+
   const changed = [...updated].filter(([file, text]) => originals.get(file) !== text);
   for (const [file, text] of changed) {
     if (check) console.log(file);
@@ -143,7 +180,7 @@ function main() {
   if (check && changed.length) process.exitCode = 1;
 }
 
-module.exports = { setSlug, rewriteLinks, transformSidebar, buildLinkMap };
+module.exports = { setSlug, rewriteLinks, rewriteLegacyLinks, transformSidebar, buildLinkMap };
 
 if (require.main === module) {
   try {
