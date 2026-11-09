@@ -32,7 +32,7 @@ export default function DocVersionBannerWrapper(props) {
         description="Banner on every WCPOS 1.x docs page"
         values={{
           upgradeLink: (
-            <Link to="/getting-started/upgrading-to-2">
+            <Link to="/getting-started/upgrade-2-0">
               <Translate
                 id="wcpos.docs.versionBanner.1x.upgradeLink"
                 description="Link text in the 1.x docs banner, to the 2.0 upgrade guide"

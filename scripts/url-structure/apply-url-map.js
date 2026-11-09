@@ -17,6 +17,25 @@ function setSlug(text, slug) {
   });
 }
 
+function setFrontmatterKey(text, key, value) {
+  const scalar = /: | #|"|^[-?:,\[\]{}#&*!|>'"%@`]/.test(value)
+    ? '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"' : value;
+  return text.replace(/^---(\r?\n)(?:([\s\S]*?)\r?\n)?---(?=\r?\n|$)/, (frontmatter, newline, body = '') => {
+    const line = `${key}: ${scalar}`;
+    const existing = new RegExp(`^${key}:[^\\r\\n]*`, 'm');
+    let next;
+    if (existing.test(body)) {
+      next = body.replace(existing, () => line);
+    } else if (/^title:/m.test(body)) {
+      next = body.replace(/^title:[^\r\n]*/m, (title) => `${title}${newline}${line}`);
+    } else {
+      next = `${line}${newline}${body}`;
+    }
+    const start = 3 + newline.length;
+    return frontmatter.slice(0, start) + next + frontmatter.slice(start + body.length);
+  });
+}
+
 function buildLinkMap(map, redirects) {
   return Object.fromEntries([
     ...map.docs.map(({ oldRoute, newRoute }) => [oldRoute, newRoute]),
@@ -126,8 +145,23 @@ function main() {
   }
   console.log(`Slugs: ${slugs} files changed`);
 
+  if (typeof map.frontmatter === 'string') {
+    let frontmatter = 0;
+    for (const entry of JSON.parse(fs.readFileSync(map.frontmatter, 'utf8'))) {
+      const file = path.join(sourceRoot, entry.file);
+      let next = read(file);
+      for (const key of ['title', 'sidebar_label']) {
+        if (Object.hasOwn(entry, key)) next = setFrontmatterKey(next, key, entry[key]);
+      }
+      frontmatter += update(file, next);
+    }
+    console.log(`Frontmatter: ${frontmatter} files changed`);
+  }
+
   const sidebarFile = 'versioned_sidebars/version-2.x-sidebars.json';
-  const sidebar = transformSidebar(JSON.parse(read(sidebarFile)), map);
+  const sidebar = typeof map.sidebar === 'string'
+    ? JSON.parse(fs.readFileSync(map.sidebar, 'utf8'))
+    : transformSidebar(JSON.parse(read(sidebarFile)), map);
   const sidebars = update(sidebarFile, JSON.stringify(sidebar, null, 2) + '\n');
   console.log(`Sidebar: ${sidebars} files changed`);
 
@@ -180,7 +214,7 @@ function main() {
   if (check && changed.length) process.exitCode = 1;
 }
 
-module.exports = { setSlug, rewriteLinks, rewriteLegacyLinks, transformSidebar, buildLinkMap };
+module.exports = { setSlug, setFrontmatterKey, rewriteLinks, rewriteLegacyLinks, transformSidebar, buildLinkMap };
 
 if (require.main === module) {
   try {

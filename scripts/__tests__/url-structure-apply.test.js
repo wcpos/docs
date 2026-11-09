@@ -1,4 +1,4 @@
-const { setSlug, rewriteLinks, rewriteLegacyLinks, transformSidebar, buildLinkMap } = require('../url-structure/apply-url-map');
+const { setSlug, setFrontmatterKey, rewriteLinks, rewriteLegacyLinks, transformSidebar, buildLinkMap } = require('../url-structure/apply-url-map');
 
 const emptyMap = {
   docs: [], categories: [], removedCategories: [], sidebarMoves: [], docRefSwaps: [], resultingItems: {},
@@ -23,6 +23,40 @@ describe('setSlug', () => {
   it('is idempotent', () => {
     const once = setSlug('---\ntitle: Page\n---\nBody', '/new');
     expect(setSlug(once, '/new')).toBe(once);
+  });
+});
+
+describe('setFrontmatterKey', () => {
+  it('replaces an existing title:', () => {
+    expect(setFrontmatterKey('---\r\ntitle: Old\r\ndescription: "A: B"\r\n---\r\ntitle: Body\r\n', 'title', 'New'))
+      .toBe('---\r\ntitle: New\r\ndescription: "A: B"\r\n---\r\ntitle: Body\r\n');
+  });
+
+  it('inserts sidebar_label: after title:', () => {
+    expect(setFrontmatterKey('---\ntitle: Page\nslug: /page\n---\nBody\n', 'sidebar_label', 'Label'))
+      .toBe('---\ntitle: Page\nsidebar_label: Label\nslug: /page\n---\nBody\n');
+  });
+
+  it('quotes a value containing a colon and space or starting with an apostrophe', () => {
+    const text = '---\ntitle: Old\n---\nBody';
+    expect(setFrontmatterKey(text, 'title', 'Page: Details'))
+      .toBe('---\ntitle: "Page: Details"\n---\nBody');
+    expect(setFrontmatterKey(text, 'title', "'New'"))
+      .toBe('---\ntitle: "\'New\'"\n---\nBody');
+  });
+
+  it('leaves an apostrophe inside a value unquoted', () => {
+    expect(setFrontmatterKey('---\ntitle: Old\n---\n', 'title', "What's New"))
+      .toBe('---\ntitle: What\'s New\n---\n');
+  });
+
+  it('is idempotent', () => {
+    const once = setFrontmatterKey('---\r\nslug: /page\r\n---\r\nBody', 'title', 'Page');
+    expect(once).toBe('---\r\ntitle: Page\r\nslug: /page\r\n---\r\nBody');
+    expect(setFrontmatterKey(once, 'title', 'Page')).toBe(once);
+    const empty = setFrontmatterKey('---\n---\nBody', 'title', 'Page');
+    expect(empty).toBe('---\ntitle: Page\n---\nBody');
+    expect(setFrontmatterKey(empty, 'title', 'Page')).toBe(empty);
   });
 });
 
