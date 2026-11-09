@@ -16,6 +16,9 @@ const { AUDIT_EXCLUDE_DEFAULT } = completeness;
 const { redirects } = JSON.parse(
   fs.readFileSync(path.join(root, 'vercel.json'), 'utf8')
 );
+const applyMap = JSON.parse(
+  fs.readFileSync(path.join(root, 'scripts/url-structure/apply-map.json'), 'utf8')
+);
 const { defaultLocale, locales } = config.i18n;
 
 /** Doc routes ("/", "/pos/cart") of a version, the way Docusaurus derives them. */
@@ -129,7 +132,14 @@ function redirectFor(pathname) {
 
 const routes2 = routesOf('2.x');
 const routes1 = routesOf('1.x');
-const oneOnly = [...routes1].filter((route) => !routes2.has(route)).sort();
+const movedFrom = new Set(
+  [...applyMap.docs, ...applyMap.categories, ...applyMap.removedCategories].map(
+    ({ oldRoute }) => oldRoute
+  )
+);
+const oneOnly = [...routes1]
+  .filter((route) => !routes2.has(route) && !movedFrom.has(route))
+  .sort();
 
 describe('the launch flip config', () => {
   it('serves 2.x at the root and 1.x beside it, and no longer builds 0.4.x', () => {
@@ -160,6 +170,31 @@ describe('root URLs of 1.x-only pages redirect to /1.x', () => {
       expect(
         built1.has(hit.destination),
         `${hit.destination} is not built`
+      ).toBe(true);
+    }
+  });
+});
+
+describe('root URLs of moved 2.x pages redirect to their new path', () => {
+  it.each(locales)('in %s, each lands on its new 2.x path', (locale) => {
+    for (const { oldRoute, newRoute } of applyMap.docs) {
+      if (oldRoute === '/' || routes2.has(oldRoute)) continue;
+      const from = served(oldRoute, locale);
+      const hit = redirectFor(from);
+      expect(hit, `${from} has no redirect`).not.toBeNull();
+      expect(hit.destination, from).toBe(served(newRoute, locale));
+      expect(routes2.has(newRoute), `${newRoute} is not built`).toBe(true);
+    }
+    for (const { oldRoute, newRoute } of applyMap.categories) {
+      const from = served(oldRoute, locale);
+      expect(redirectFor(from).destination, from).toBe(served(newRoute, locale));
+    }
+    for (const { oldRoute, redirectsTo } of applyMap.removedCategories) {
+      const from = served(oldRoute, locale);
+      expect(redirectFor(from).destination, from).toBe(served(redirectsTo, locale));
+      expect(
+        routes2.has(redirectsTo.split('#')[0]),
+        `${redirectsTo} is not built`
       ).toBe(true);
     }
   });
@@ -209,10 +244,24 @@ describe('flip-only redirects for the app and renamed categories', () => {
   it.each(locales)('redirects %s categories to their 2.x names', (locale) => {
     expect(
       redirectFor(served('/category/managing-your-store', locale)).destination
-    ).toBe(served('/category/manage-your-store', locale));
+    ).toBe(
+      served(
+        applyMap.categories.find(
+          ({ oldRoute }) => oldRoute === '/category/manage-your-store'
+        ).newRoute,
+        locale
+      )
+    );
     expect(
       redirectFor(served('/category/developer-reference', locale)).destination
-    ).toBe(served('/category/developers', locale));
+    ).toBe(
+      served(
+        applyMap.categories.find(
+          ({ oldRoute }) => oldRoute === '/category/developers'
+        ).newRoute,
+        locale
+      )
+    );
   });
 });
 
