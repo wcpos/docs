@@ -63,8 +63,8 @@ describe('redirects for app help links', () => {
   const locale = '/:locale(es|fr|de|nl|ja|pt-BR|ko|it|ar|hi-IN|zh-CN)';
 
   it.each([
-    ['/pos-access', '/manage-your-store/staff-access'],
-    [`${locale}/pos-access`, '/:locale/manage-your-store/staff-access'],
+    ['/pos-access', '/manage-store/staff-permissions'],
+    [`${locale}/pos-access`, '/:locale/manage-store/staff-permissions'],
     ['/templates/receipt-data-reference', '/settings/receipt-templates/receipt-data'],
     [`${locale}/templates/receipt-data-reference`, '/:locale/settings/receipt-templates/receipt-data'],
     ['/error-codes/wcpos_update_required', '/error-codes/SYNC341'],

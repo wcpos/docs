@@ -19,6 +19,12 @@ const { redirects } = JSON.parse(
 const applyMap = JSON.parse(
   fs.readFileSync(path.join(root, 'scripts/url-structure/apply-map.json'), 'utf8')
 );
+const b3Map = JSON.parse(
+  fs.readFileSync(path.join(root, 'scripts/url-structure/history/b3-apply-map.json'), 'utf8')
+);
+// r3 moved some post-#873 routes again; `final` follows that one step.
+const r3Route = Object.fromEntries([...applyMap.docs, ...applyMap.categories].map(({ oldRoute, newRoute }) => [oldRoute, newRoute]));
+const final = (route) => { const [p, h] = route.split('#'); const f = r3Route[p] ?? p; return h ? `${f}#${h}` : f; };
 const { defaultLocale, locales } = config.i18n;
 
 /** Doc routes ("/", "/pos/cart") of a version, the way Docusaurus derives them. */
@@ -133,7 +139,8 @@ function redirectFor(pathname) {
 const routes2 = routesOf('2.x');
 const routes1 = routesOf('1.x');
 const movedFrom = new Set(
-  [...applyMap.docs, ...applyMap.categories, ...applyMap.removedCategories].map(
+  [...b3Map.docs, ...b3Map.categories, ...b3Map.removedCategories,
+    ...applyMap.docs, ...applyMap.categories, ...applyMap.removedCategories].map(
     ({ oldRoute }) => oldRoute
   )
 );
@@ -177,24 +184,24 @@ describe('root URLs of 1.x-only pages redirect to /1.x', () => {
 
 describe('root URLs of moved 2.x pages redirect to their new path', () => {
   it.each(locales)('in %s, each lands on its new 2.x path', (locale) => {
-    for (const { oldRoute, newRoute } of applyMap.docs) {
+    for (const { oldRoute, newRoute } of [...b3Map.docs, ...applyMap.docs]) {
       if (oldRoute === '/' || routes2.has(oldRoute)) continue;
       const from = served(oldRoute, locale);
       const hit = redirectFor(from);
       expect(hit, `${from} has no redirect`).not.toBeNull();
-      expect(hit.destination, from).toBe(served(newRoute, locale));
-      expect(routes2.has(newRoute), `${newRoute} is not built`).toBe(true);
+      expect(hit.destination, from).toBe(served(final(newRoute), locale));
+      expect(routes2.has(final(newRoute)), `${final(newRoute)} is not built`).toBe(true);
     }
-    for (const { oldRoute, newRoute } of applyMap.categories) {
+    for (const { oldRoute, newRoute } of [...b3Map.categories, ...applyMap.categories]) {
       const from = served(oldRoute, locale);
-      expect(redirectFor(from).destination, from).toBe(served(newRoute, locale));
+      expect(redirectFor(from).destination, from).toBe(served(final(newRoute), locale));
     }
-    for (const { oldRoute, redirectsTo } of applyMap.removedCategories) {
+    for (const { oldRoute, redirectsTo } of b3Map.removedCategories) {
       const from = served(oldRoute, locale);
-      expect(redirectFor(from).destination, from).toBe(served(redirectsTo, locale));
+      expect(redirectFor(from).destination, from).toBe(served(final(redirectsTo), locale));
       expect(
-        routes2.has(redirectsTo.split('#')[0]),
-        `${redirectsTo} is not built`
+        routes2.has(final(redirectsTo).split('#')[0]),
+        `${final(redirectsTo)} is not built`
       ).toBe(true);
     }
   });
@@ -246,9 +253,9 @@ describe('flip-only redirects for the app and renamed categories', () => {
       redirectFor(served('/category/managing-your-store', locale)).destination
     ).toBe(
       served(
-        applyMap.categories.find(
+        final(b3Map.categories.find(
           ({ oldRoute }) => oldRoute === '/category/manage-your-store'
-        ).newRoute,
+        ).newRoute),
         locale
       )
     );
@@ -256,9 +263,9 @@ describe('flip-only redirects for the app and renamed categories', () => {
       redirectFor(served('/category/developer-reference', locale)).destination
     ).toBe(
       served(
-        applyMap.categories.find(
+        final(b3Map.categories.find(
           ({ oldRoute }) => oldRoute === '/category/developers'
-        ).newRoute,
+        ).newRoute),
         locale
       )
     );
