@@ -309,6 +309,8 @@ module.exports = {
        /** @type {import('@docusaurus/preset-classic').Options} */
       {
         docs: {
+          // Resolve relative doc links across translated and English fallback pages.
+          beforeDefaultRemarkPlugins: [require('./src/remark/localized-doc-links')],
           breadcrumbs: true,
           routeBasePath: '/',
           // Feeds the sitemap lastmod.
