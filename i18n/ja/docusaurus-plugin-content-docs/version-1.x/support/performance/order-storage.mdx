@@ -1,0 +1,67 @@
+---
+title: "チェックアウトの遅延と注文ストレージ（HPOS）"
+sidebar_label: "注文ストレージ（HPOS）"
+description: "大規模な店舗でWCPOSのチェックアウトが遅い場合の対処方法：WooCommerceが使用している注文ストレージを確認し、WooCommerce独自のツールで従来のストレージからHPOSに切り替えます。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+**症状：** WCPOSのチェックアウトに数秒かかり、時間の経過とともに遅くなっています。
+
+よくある原因の1つは、WooCommerceの注文の保存方法です。このページでは、現在の設定を確認し、WooCommerce独自のツールを使ってより高速な方式に移行する方法を説明します。
+
+## 従来の注文ストレージでチェックアウトが遅くなる理由 {#why-legacy-order-storage-slows-checkout}
+
+従来のストレージでは、WooCommerceは注文をWordPressの投稿と一緒に保存します。そのため、WCPOSが割り当てたIDで注文をすばやく検索できません。WCPOSが注文を保存するたびに、店舗のレコードを1件ずつ検索する必要があり、店舗の規模が大きくなるほど検索に時間がかかります。
+
+WooCommerceの**高パフォーマンス注文ストレージ（HPOS）** では、注文を専用のテーブルに保存するため、同じ検索をほぼ瞬時に行えます。
+
+従来のストレージを使用するある店舗（商品数30,000件）で測定したところ、検索1回あたり約0.46秒かかり、チェックアウト1回につき約2回の検索が行われていました。HPOSでは同じ検索に約1ミリ秒しかかかりませんでした。店舗によって結果は異なりますが、規模が大きいほど効果が期待できます。
+
+## WCPOSの対応状況 {#what-wcpos-supports}
+
+- **HPOSに完全対応しており、HPOSの使用を推奨しています。**
+- **従来のストレージも引き続き動作します。** 機能が壊れることはありませんが、大規模な店舗ではチェックアウトが遅くなります。
+
+## 店舗で使用中のストレージを確認する {#check-which-storage-your-store-uses}
+
+1. WordPress管理画面で、**WooCommerce → 設定 → 高度な設定 → 機能**に移動します。
+2. **注文データストレージ**を確認します：
+   - **高パフォーマンス注文ストレージ（推奨）** が選択されている場合、すでにHPOSを使用しているため、原因は別にあります。[チェックアウトが遅くなるその他の原因](#other-causes-of-slow-checkout)を確認してください。
+   - **WordPress投稿ストレージ（従来方式）** が選択されている場合、HPOSに切り替えるとチェックアウトが速くなるはずです。次に進んでください。
+
+## HPOSに切り替える {#switch-to-hpos}
+
+注文の移行はWooCommerceが行います。まず注文を新しいテーブルにコピー（同期）し、その後で切り替えます。コピーが完了するまで、WooCommerceでは切り替えできません。
+
+:::warning 最初にバックアップを作成
+作業を始める前に、サイトとデータベース全体をバックアップし、復元できることを確認してください。[ステージングサイト](/support/troubleshooting/plugin-conflicts#before-you-start-use-a-staging-site)がある場合は、まずそちらで切り替えを試してください。
+:::
+
+1. **WooCommerce → 設定 → 高度な設定 → 機能**に移動します。
+2. **互換モードを有効化**にチェックを入れ、**変更を保存**をクリックします。WooCommerceがバックグラウンドで注文のコピーを開始します。大規模な店舗では完了まで時間がかかることがあります。進行状況はチェックボックスの下に表示されます。注文が同期されていないと表示され、処理が進まない場合は、**今すぐ注文を同期**をクリックしてください。
+3. コピーが完了したら、**高パフォーマンス注文ストレージ（推奨）** を選択し、**変更を保存**をクリックします。
+4. しばらくの間、互換モードを有効にしたままにしてください。注文の両方のコピーを同期し続けるため、問題が起きてもすぐに元に戻せます。この間に他のプラグインを確認し、WCPOSでテスト販売を数件行ってください。
+5. 問題がないことを確認したら、**互換モードを有効化**のチェックを外し、**変更を保存**をクリックします。
+
+:::info HPOSのオプションがグレー表示される場合
+HPOSと互換性がないと判定された有効なプラグインがある間、WooCommerceは切り替えを禁止します。「機能」ページの警告に該当プラグインが表示され、**表示して管理**リンクから確認できます。切り替える前にプラグインを更新するか、開発者にHPOS対応について問い合わせてください。
+:::
+
+詳細については、WooCommerceのガイド「[高パフォーマンス注文ストレージ](https://woocommerce.com/document/high-performance-order-storage/#how-to-enable-high-performance-order-storage)」を参照してください。
+
+## チェックアウトが遅くなるその他の原因 {#other-causes-of-slow-checkout}
+
+チェックアウトが遅くなる原因は注文ストレージだけではありません。すでにHPOSを使用している場合や、切り替え後もチェックアウトが遅い場合は、次を確認してください：
+
+- **ホスティング環境。** サーバーが混雑している、または性能が不足していると、すべての処理が遅くなります。[サーバーパフォーマンス](/support/performance/server)を確認してください。
+- **注文の保存時に実行される他のプラグイン**（会計、メールマーケティング、在庫管理など）。[プラグインの競合](/support/troubleshooting/plugin-conflicts)と[チェックアウトパフォーマンス](/support/performance/checkout#2-plugin-interference-during-order-creation)を確認してください。
+
+## 関連ドキュメント {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/support/performance/checkout" title="チェックアウトパフォーマンス" description="チェックアウトを高速化するその他の方法" />
+  <LinkCard to="/support/performance/server" title="サーバーパフォーマンス" description="ホスティング、キャッシュ、データベースの調整" />
+  <LinkCard to="/support/troubleshooting/plugin-conflicts" title="プラグインの競合" description="店舗を遅くしているプラグインを見つける" />
+</LinkCards>
