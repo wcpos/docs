@@ -502,7 +502,7 @@ it('runs a lane in its own worktree, lock and branch, and opens a lane PR', () =
 
 it('reuses only its own lane PR', () => {
   fs.cpSync(wt, wt + '-eu', { recursive: true });
-  const prs = [pr, { ...pr, number: 44, headRefName: 'docs-translate/lane-asia-x' }, { ...pr, number: 45, headRefName: 'docs-translate/lane-eu-x' }];
+  const prs = [pr, { ...pr, number: 44, headRefName: 'docs-translate/lane-asia-20261109-120000' }, { ...pr, number: 45, headRefName: 'docs-translate/lane-eu-20261109-120000' }];
   const lane = run({ lanes: ['eu'], prs }, ['--lane', 'eu', '--locale', 'fr']);
   assert.equal(lane.status, 0, lane.stderr);
   assert.deepEqual(lane.calls.filter(c => isCall(c, 'gh', 'pr', 'comment')).map(c => c.args[2]), ['45']);
@@ -515,6 +515,19 @@ it('reuses only its own lane PR', () => {
   assert.equal(fresh.status, 0, fresh.stderr);
   assert.ok(fresh.calls.some(c => isCall(c, 'gh', 'pr', 'create')));
   assert.ok(!fresh.calls.some(c => isCall(c, 'gh', 'pr', 'comment')));
+});
+
+it('a lane picks only its own PR, never a lane whose name extends it', () => {
+  fs.cpSync(wt, wt + '-a', { recursive: true });
+  const prs = [
+    { ...pr, number: 50, headRefName: 'docs-translate/lane-a-b-20261109-120000' },
+    { ...pr, number: 51, headRefName: 'docs-translate/lane-a-20261109-120000' },
+  ];
+  const result = run({ lanes: ['a'], prs, counts: [] }, ['--lane', 'a', '--locale', 'fr']);
+  assert.equal(result.status, 0, result.stderr);
+  const checkout = result.calls.find(c => isCall(c, 'git', 'checkout', '-B'));
+  assert.equal(checkout.args[checkout.args.indexOf('-B') + 1], prs[1].headRefName);
+  assert.ok(!result.calls.some(c => isCall(c, 'git', 'checkout', prs[0].headRefName)));
 });
 
 it('refuses to push to the base and supports skipping review', () => {
@@ -577,8 +590,20 @@ it('exits safely while another run holds the same lane lock', () => {
   assert.ok(fs.existsSync(path.join(root, '.claude/docs-translate-eu.lock')));
 });
 
+it("the setup lock is not any lane's lock", () => {
+  fs.cpSync(wt, wt + '-setup', { recursive: true });
+  const result = run({ lanes: ['setup'], counts: [] }, ['--lane', 'setup', '--locale', 'fr']);
+  assert.equal(result.status, 0, result.stderr);
+  const setupLock = path.join(root, '.claude/docs-translate.setup.lock');
+  assert.ok(fs.existsSync(setupLock));
+  const locked = spawnSync('/bin/bash', ['-c', 'exec 9>"$1"; /usr/bin/lockf -s -t 0 9 || exit; /bin/bash "$2" --lane setup --locale fr 9>&- & lane_pid=$!; sleep 1; exec 9>&-; wait "$lane_pid"', 'test', setupLock, copy], { env, encoding: 'utf8', timeout: 5000 });
+  assert.ifError(locked.error);
+  assert.equal(locked.status, 0, locked.stderr);
+  assert.doesNotMatch(locked.stdout + locked.stderr, /already running/);
+});
+
 it('takes the shared setup lock around install and the worklist', () => {
-  const open = source.indexOf('exec 8>"$REPO_ROOT/.claude/docs-translate-setup.lock"');
+  const open = source.indexOf('exec 8>"$REPO_ROOT/.claude/docs-translate.setup.lock"');
   const lock = source.indexOf('/usr/bin/lockf -s -t 1800 8');
   const install = source.indexOf('pnpm install');
   const worklist = source.indexOf('SUMMARY=$(node scripts/docs-translation/worklist.js');

@@ -96,7 +96,7 @@ git reset --hard --quiet
 git clean -fdq
 rm -rf .translate
 PR_FILTER='map(select(.isCrossRepository == false and (.headRefName | startswith("docs-translate/") and (startswith("docs-translate/lane-") | not)))) | .[0] // empty'
-if [ -n "$LANE" ]; then PR_FILTER="map(select(.isCrossRepository == false and (.headRefName | startswith(\"docs-translate/lane-$LANE-\")))) | .[0] // empty"; fi
+if [ -n "$LANE" ]; then PR_FILTER="map(select(.isCrossRepository == false and (.headRefName | test(\"^docs-translate/lane-$LANE-[0-9]{8}-[0-9]{6}$\")))) | .[0] // empty"; fi
 PR=$(gh pr list -R wcpos/docs --state open --base "$BASE" --label docs-translate --json number,headRefName,url,isCrossRepository --jq "$PR_FILTER")
 if [ -n "$PR" ]; then
   BRANCH=$(printf '%s' "$PR" | jq -r .headRefName)
@@ -111,7 +111,7 @@ else
   BRANCH="docs-translate/${LANE:+lane-$LANE-}$(date -u +%Y%m%d-%H%M%S)"
   git checkout -q -B "$BRANCH" "origin/$BASE"
 fi
-exec 8>"$REPO_ROOT/.claude/docs-translate-setup.lock"
+exec 8>"$REPO_ROOT/.claude/docs-translate.setup.lock"
 /usr/bin/lockf -s -t 1800 8 || fail "setup lock timed out"
 pnpm install --prefer-offline --silent
 pnpm write-translations --locale en >/dev/null
