@@ -29,6 +29,8 @@ EFFORT=${TRANSLATE_EFFORT:-$DEFAULT_EFFORT}
 BASE=main
 DRY_RUN=0
 REVIEW=1
+LANE=
+HAS_LOCALE=0
 WORKLIST_ARGS=(--out .translate/work --plan .translate/plan.json)
 ORIGINAL_ARGS=("$@")
 while [ "$#" -gt 0 ]; do
@@ -36,7 +38,11 @@ while [ "$#" -gt 0 ]; do
     --dry-run) DRY_RUN=1; shift ;;
     --no-review) REVIEW=0; shift ;;
     --base) BASE=$2; shift 2 ;;
-    --locale) WORKLIST_ARGS+=(--locale "$2"); shift 2 ;;
+    --lane)
+      LANE=${2:-}
+      [[ "$LANE" =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]] || fail "lane must be lowercase letters, digits and dashes"
+      shift 2 ;;
+    --locale) HAS_LOCALE=1; WORKLIST_ARGS+=(--locale "$2"); shift 2 ;;
     --first) WORKLIST_ARGS+=(--first "$2"); shift 2 ;;
     --retry-quarantined) WORKLIST_ARGS+=(--retry-quarantined); shift ;;
     --translator) TRANSLATOR=$2; shift 2 ;;
@@ -47,6 +53,7 @@ while [ "$#" -gt 0 ]; do
     *) log "FAILED: unknown argument: $1"; log "FAILED: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
+if [ -n "$LANE" ] && [ "$HAS_LOCALE" -eq 0 ]; then fail "a lane needs --locale"; fi
 case "$TRANSLATOR" in
   codex) MODEL=${MODEL:-$CODEX_MODEL}; REVIEW_MODEL=${REVIEW_MODEL:-$CODEX_REVIEW_MODEL} ;;
   claude) MODEL=${MODEL:-$CLAUDE_MODEL}; REVIEW_MODEL=${REVIEW_MODEL:-$CLAUDE_REVIEW_MODEL} ;;
@@ -75,11 +82,11 @@ if [ -z "${TRANSLATE_LOCAL_REEXEC+x}" ]; then
   TRANSLATE_LOCAL_REEXEC=1 TRANSLATE_REPO_ROOT="$REPO_ROOT" exec /bin/bash "$UPDATE" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
 fi
 mkdir -p "$REPO_ROOT/.claude"
-LOCK="$REPO_ROOT/.claude/docs-translate.lock"
+LOCK="$REPO_ROOT/.claude/docs-translate${LANE:+-$LANE}.lock"
 exec 9>"$LOCK"
 if ! /usr/bin/lockf -s -t 0 9; then log "already running"; exit 0; fi
 
-WT="$REPO_ROOT/.claude/worktrees/docs-translate"
+WT="$REPO_ROOT/.claude/worktrees/docs-translate${LANE:+-$LANE}"
 if ! git -C "$REPO_ROOT" worktree list --porcelain | grep -Fxq "worktree $WT"; then
   git -C "$REPO_ROOT" worktree add --detach "$WT" "origin/$BASE"
 fi
@@ -88,7 +95,9 @@ export GIT_AUTHOR_NAME=$GIT_APP_NAME GIT_AUTHOR_EMAIL=$GIT_APP_EMAIL GIT_COMMITT
 git reset --hard --quiet
 git clean -fdq
 rm -rf .translate
-PR=$(gh pr list -R wcpos/docs --state open --base "$BASE" --label docs-translate --json number,headRefName,url,isCrossRepository --jq 'map(select(.isCrossRepository == false and (.headRefName | startswith("docs-translate/")))) | .[0] // empty')
+PR_FILTER='map(select(.isCrossRepository == false and (.headRefName | startswith("docs-translate/") and (startswith("docs-translate/lane-") | not)))) | .[0] // empty'
+if [ -n "$LANE" ]; then PR_FILTER="map(select(.isCrossRepository == false and (.headRefName | startswith(\"docs-translate/lane-$LANE-\")))) | .[0] // empty"; fi
+PR=$(gh pr list -R wcpos/docs --state open --base "$BASE" --label docs-translate --json number,headRefName,url,isCrossRepository --jq "$PR_FILTER")
 if [ -n "$PR" ]; then
   BRANCH=$(printf '%s' "$PR" | jq -r .headRefName)
   PR_NUMBER=$(printf '%s' "$PR" | jq -r .number)
@@ -99,9 +108,11 @@ if [ -n "$PR" ]; then
     fail "merge failed for PR $PR_NUMBER ($PR_URL)"
   fi
 else
-  BRANCH="docs-translate/$(date -u +%Y%m%d-%H%M%S)"
+  BRANCH="docs-translate/${LANE:+lane-$LANE-}$(date -u +%Y%m%d-%H%M%S)"
   git checkout -q -B "$BRANCH" "origin/$BASE"
 fi
+exec 8>"$REPO_ROOT/.claude/docs-translate-setup.lock"
+/usr/bin/lockf -s -t 1800 8 || fail "setup lock timed out"
 pnpm install --prefer-offline --silent
 pnpm write-translations --locale en >/dev/null
 node scripts/sync-translations.js --clean >/dev/null
@@ -112,6 +123,7 @@ if [ -f scripts/docs-translation/first.txt ]; then
   done < scripts/docs-translation/first.txt
 fi
 SUMMARY=$(node scripts/docs-translation/worklist.js "${WORKLIST_ARGS[@]}" --max-units "$MAX_UNITS")
+exec 8>&-
 PLAN_SUM=$(shasum -a 256 .translate/plan.json | cut -d' ' -f1)
 git add -A i18n
 TOTAL=$(printf '%s' "$SUMMARY" | jq -r .total)
@@ -304,7 +316,7 @@ publish() {
     gh pr comment "$PR_NUMBER" --body-file .translate/pr-body.md > /dev/null || fail "comment on PR $PR_NUMBER failed"
   else
     gh label create docs-translate --color 1d76db --description "Automated local docs translation run" 2>/dev/null || true
-    PR_URL=$(gh pr create -R wcpos/docs --base "$BASE" --head "$BRANCH" --label docs-translate --title "docs(i18n): automated docs translations $(date -u +%Y-%m-%d)" --body-file .translate/pr-body.md) || fail "opening a PR for $BRANCH failed"
+    PR_URL=$(gh pr create -R wcpos/docs --base "$BASE" --head "$BRANCH" --label docs-translate --title "docs(i18n): automated docs translations $(date -u +%Y-%m-%d)${LANE:+ (lane $LANE)}" --body-file .translate/pr-body.md) || fail "opening a PR for $BRANCH failed"
   fi
 }
 if ! BASE_REF="origin/$BASE" node scripts/validate-frontmatter.js --check --changed ||

@@ -71,7 +71,7 @@ if (tool === 'git') {
     if (!config.reexec) process.exit(1);
     process.stdout.write(fs.readFileSync(path.join(root, 'translate-docs-local.sh'), 'utf8') + (config.reexec === 'updated' ? '\n# updated\n' : ''));
   }
-  if (args.includes('list') && !config.newWorktree) console.log('worktree ' + wt);
+  if (args.includes('list') && !config.newWorktree) console.log([wt, ...(config.lanes || []).map(lane => wt + '-' + lane)].map(dir => 'worktree ' + dir).join('\n'));
   if (args.includes('status') && fs.existsSync('.translate/accepted')) console.log(' M i18n/translation-state.json');
   if (args.includes('diff') && args.includes('--quiet')) process.exit(config.noAttempts ? 0 : 1);
   if (args.includes('diff')) console.log(JSON.parse(fs.readFileSync('.translate/accepted')).join('\n'));
@@ -473,6 +473,50 @@ it('reuses the first own translation PR after unrelated and fork PRs', () => {
   assert.ok(!result.calls.some(c => isCall(c, 'gh', 'pr', 'create')));
 });
 
+it('rejects a bad lane name and a lane without --locale before any git call', () => {
+  for (const lane of ['EU', '-eu', 'eu/asia', 'eu_asia', 'a'.repeat(32), '']) {
+    const result = run({}, ['--lane', lane, '--locale', 'fr']);
+    assertFailed(result, 'lane must be lowercase letters, digits and dashes', false);
+    assert.ok(!result.calls.some(c => c.tool === 'git'));
+  }
+  const result = run({}, ['--lane', 'eu']);
+  assertFailed(result, 'a lane needs --locale', false);
+  assert.ok(!result.calls.some(c => c.tool === 'git'));
+});
+
+it('runs a lane in its own worktree, lock and branch, and opens a lane PR', () => {
+  const laneWt = wt + '-eu';
+  fs.cpSync(wt, laneWt, { recursive: true });
+  const result = run({ lanes: ['eu'] }, ['--lane', 'eu', '--locale', 'fr', '--locale', 'de']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(models(result).length, 4);
+  assert.ok(models(result).every(c => c.cwd === laneWt && c.args.includes(laneWt)));
+  assert.ok(fs.existsSync(path.join(root, '.claude/docs-translate-eu.lock')));
+  const checkout = result.calls.find(c => isCall(c, 'git', 'checkout', '-q', '-B'));
+  assert.match(checkout.args[checkout.args.indexOf('-B') + 1], /^docs-translate\/lane-eu-/);
+  const create = result.calls.find(c => isCall(c, 'gh', 'pr', 'create'));
+  assert.match(create.args[create.args.indexOf('--title') + 1], / \(lane eu\)$/);
+  assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args,
+    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--locale', 'fr', '--locale', 'de', '--max-units', '1500']);
+});
+
+it('reuses only its own lane PR', () => {
+  fs.cpSync(wt, wt + '-eu', { recursive: true });
+  const prs = [pr, { ...pr, number: 44, headRefName: 'docs-translate/lane-asia-x' }, { ...pr, number: 45, headRefName: 'docs-translate/lane-eu-x' }];
+  const lane = run({ lanes: ['eu'], prs }, ['--lane', 'eu', '--locale', 'fr']);
+  assert.equal(lane.status, 0, lane.stderr);
+  assert.deepEqual(lane.calls.filter(c => isCall(c, 'gh', 'pr', 'comment')).map(c => c.args[2]), ['45']);
+  assert.ok(!lane.calls.some(c => isCall(c, 'gh', 'pr', 'create')));
+  const plain = run({ prs });
+  assert.equal(plain.status, 0, plain.stderr);
+  assert.deepEqual(plain.calls.filter(c => isCall(c, 'gh', 'pr', 'comment')).map(c => c.args[2]), ['42']);
+  assert.ok(!plain.calls.some(c => isCall(c, 'gh', 'pr', 'create')));
+  const fresh = run({ prs: prs.slice(1) });
+  assert.equal(fresh.status, 0, fresh.stderr);
+  assert.ok(fresh.calls.some(c => isCall(c, 'gh', 'pr', 'create')));
+  assert.ok(!fresh.calls.some(c => isCall(c, 'gh', 'pr', 'comment')));
+});
+
 it('refuses to push to the base and supports skipping review', () => {
   const result = run({ pr }, ['--base', pr.headRefName, '--no-review']);
   assertFailed(result, 'refusing to push to ' + pr.headRefName);
@@ -520,6 +564,27 @@ it('exits safely while another run holds the real lock', () => {
   assert.match(locked.stdout, /already running/);
   assert.ok(!readCalls().some(c => isCall(c, 'git', 'reset') || ['codex', 'claude'].includes(c.tool)));
   assert.ok(fs.existsSync(path.join(root, '.claude/docs-translate.lock')));
+});
+
+it('exits safely while another run holds the same lane lock', () => {
+  fs.writeFileSync(path.join(root, 'config.json'), JSON.stringify({ lanes: ['eu'] }));
+  fs.writeFileSync(callsFile, '');
+  const locked = spawnSync('/bin/bash', ['-c', 'exec 9>"$1"; /usr/bin/lockf -s -t 0 9; /bin/bash "$2" --lane eu --locale fr 9>&-', 'test', path.join(root, '.claude/docs-translate-eu.lock'), copy], { env, encoding: 'utf8', timeout: 20000 });
+  assert.ifError(locked.error);
+  assert.equal(locked.status, 0, locked.stderr);
+  assert.match(locked.stdout, /already running/);
+  assert.ok(!readCalls().some(c => isCall(c, 'git', 'reset') || ['codex', 'claude'].includes(c.tool)));
+  assert.ok(fs.existsSync(path.join(root, '.claude/docs-translate-eu.lock')));
+});
+
+it('takes the shared setup lock around install and the worklist', () => {
+  const open = source.indexOf('exec 8>"$REPO_ROOT/.claude/docs-translate-setup.lock"');
+  const lock = source.indexOf('/usr/bin/lockf -s -t 1800 8');
+  const install = source.indexOf('pnpm install');
+  const worklist = source.indexOf('SUMMARY=$(node scripts/docs-translation/worklist.js');
+  const release = source.indexOf('exec 8>&-');
+  const model = source.indexOf('run_with_timeout "');
+  assert.ok(open >= 0 && open < lock && lock < install && install < worklist && worklist < release && release < model);
 });
 
 it('keeps a caller-chosen gh ahead of the fallback directories', () => {
