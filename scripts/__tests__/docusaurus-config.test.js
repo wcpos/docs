@@ -12,7 +12,8 @@ describe('git-backed sitemap freshness', () => {
   it('provides last-update times for sitemap dates', () => {
     expect(preset.docs.showLastUpdateTime).toBe(true);
     expect(preset.sitemap.lastmod).toBe('date');
-    expect(preset.sitemap.ignorePatterns).toContain('/0.4.x/**');
+    // 1.x stays indexed at /1.x for merchants who cannot upgrade yet.
+    expect(preset.sitemap.ignorePatterns || []).not.toContain('/1.x/**');
   });
 });
 
@@ -96,12 +97,17 @@ describe('published versions are translated for every locale', () => {
   // A locale with no translation for a published version does not fail the
   // build: Docusaurus serves the English body inside the localized shell, under
   // hreflang-tagged URLs, and the per-file completeness gate cannot see a gap
-  // that has no translated files at all. This is the gate for the AT LAUNCH flip:
-  // adding '2.x' to onlyIncludeVersions fails here until it is translated.
+  // that has no translated files at all. This was the gate for the launch flip;
+  // Paul's ruling exempts 2.x until docs#589 (see UNTRANSLATED_AT_LAUNCH).
   // 0.5 catches a wholesale gap while tolerating an old version's partial
   // coverage (0.4.x nl is at 23 of 35 pages); per-file drops are
   // check-translation-completeness.js's job.
   const MIN_LOCALE_COVERAGE = 0.5;
+  // Versions published untranslated on purpose. Each entry needs a ruling.
+  // 2.x: Paul, 2026-11-07 ("yes A", wcpos/roadmap#543): the launch flip ships
+  // 2.x in English; locales fall back to English page by page and docs#589
+  // translates 2.x after GA. Delete this entry in the PR that merges docs#589.
+  const UNTRANSLATED_AT_LAUNCH = ['2.x'];
 
   const root = path.join(__dirname, '../..');
   const docsOptions = config.presets.find(
@@ -122,12 +128,19 @@ describe('published versions are translated for every locale', () => {
     });
   };
 
+  it('only exempts published versions', () => {
+    for (const version of UNTRANSLATED_AT_LAUNCH) {
+      expect(docsOptions.onlyIncludeVersions).toContain(version);
+    }
+    expect(UNTRANSLATED_AT_LAUNCH).not.toContain('1.x');
+  });
+
   for (const version of docsOptions.onlyIncludeVersions) {
     const sourcePages = new Set(
       listPages(path.join(root, 'versioned_docs', `version-${version}`))
     );
 
-    it.each(locales)(`${version} is translated for %s`, (locale) => {
+    (UNTRANSLATED_AT_LAUNCH.includes(version) ? it.skip : it).each(locales)(`${version} is translated for %s`, (locale) => {
       const translatedPages = listPages(
         path.join(root, 'i18n', locale, 'docusaurus-plugin-content-docs', `version-${version}`)
       ).filter((page) => sourcePages.has(page)).length;

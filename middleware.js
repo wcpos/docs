@@ -65,6 +65,12 @@ const LOCALE_HOME = new RegExp(
   `^/(${LOCALES.filter((l) => l !== DEFAULT_LOCALE).join('|')})$`
 );
 
+// Older doc versions served under a prefix (/1.x, /de/1.x). The plugin writes
+// .md files for the root version only, so these fall through to their HTML.
+const NO_MARKDOWN = new RegExp(
+  `^(/(${LOCALES.filter((l) => l !== DEFAULT_LOCALE).join('|')}))?/1\\.x(/|$)`
+);
+
 /**
  * Parse an Accept-Language header into tags ordered by descending quality.
  * Wildcards and malformed entries are dropped.
@@ -150,7 +156,7 @@ export default function middleware(request) {
     const url = new URL(request.url);
     const accept = request.headers.get('accept') || '';
 
-    if (accept.includes('text/markdown')) {
+    if (accept.includes('text/markdown') && !NO_MARKDOWN.test(url.pathname)) {
       const path = url.pathname.replace(/\/+$/, ''); // strip trailing slash
 
       let mdPath;
