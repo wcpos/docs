@@ -22,6 +22,9 @@ import Layout from '@theme-original/DocItem/Layout';
  *   - site/locale home ("/", "/es/") -> "/index.md", "/es/index.md"
  *   - every other route ("/pos/", "/getting-started/connect") -> "<route>.md"
  *
+ * Only the version at the root (`isLast`) has generated `.md` routes, so pages of
+ * older versions (/1.x/...) advertise none.
+ *
  * It also adds `<link rel="describedby">` to the locale's llms.txt, the
  * discovery link llmstxt.org (v2) specifies, so an agent that lands on any page
  * can find the site-wide index without guessing the path.
@@ -32,7 +35,7 @@ export default function LayoutWrapper(props) {
   const {metadata} = useDoc();
   const version = useDocsVersion();
   // English source served under a locale URL: keep it out of search and the
-  // locale sitemap. Versions that are noindex already (0.4.x) are left alone.
+  // locale sitemap. Versions that are noindex already are left alone.
   const noIndexFallback =
     !version.noIndex &&
     isUntranslatedFallback({
@@ -60,7 +63,7 @@ export default function LayoutWrapper(props) {
   return (
     <>
       <Head>
-        <link rel="alternate" type="text/markdown" href={mdHref} />
+        {version.isLast && <link rel="alternate" type="text/markdown" href={mdHref} />}
         <link rel="describedby" href={llmsHref} />
         {noIndexFallback && <meta name="robots" content="noindex" />}
       </Head>

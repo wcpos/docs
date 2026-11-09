@@ -1,87 +1,229 @@
 ---
-title: Understanding the WooCommerce REST API
-sidebar_label: WooCommerce REST API
+title: "The WooCommerce REST API"
+sidebar_label: "WooCommerce REST API"
 sidebar_position: 1
+description: "How WCPOS reads your store through the WooCommerce REST API, how to see the data the POS holds on the JSON tab, and why plugins that change prices or products on the fly don't reach the till."
 ---
 
-import LocalizedSVG from "@site/src/components/LocalizedSVG";
-import Image from "@theme/IdealImage";
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/wc-rest-api/en/manifest.json';
 
-The **WooCommerce REST API** is like a set of standardised “channels” that allows store owners to connect their WooCommerce store to other applications and services.
+Use this page when something at the till doesn't match your store. Start with what looks wrong:
 
-Here's a simple explanation of how it works:
+- **A product's price, stock count or custom field:** [Check a product](#check-a-product). Needs [WCPOS Pro](../getting-started/pro-license.mdx), as do the **Products**, **Orders**, **Customers** and **Coupons** screens.
+- **The order in the cart:** [Check the order in the cart](#check-the-order). Works without Pro.
+- **One line's custom fields, such as an engraving:** [Check one line](#check-a-line). Works without Pro.
+- **A plugin's change never shows in the POS:** [Why some plugins don't change the POS](#why-dont-some-plugins-work-in-the-pos).
 
-1. It acts as a bridge between your WooCommerce store and external applications, allowing them to communicate and share data.
+<details>
+<summary>How the POS talks to your store</summary>
 
-2. The API works by sending requests to specific **endpoints** - think of these as "channels" for different types of store data. For example, there are endpoints for products, orders, and customers.
-
-3. External applications can use these endpoints to:
-
-- Get information (like fetching a list of products)
-- Add new data (like creating a new order)
-- Update existing information (like changing a product's price)
-- Delete data (like removing an outdated product)
-
-Instead of relying on PHP hooks and filters (like many traditional WordPress plugins do), it works by sending and receiving data in a structured, predictable format, known as **JSON**.
+The POS gets everything through the **WooCommerce REST API**, the way other apps talk to your store. The POS on your till asks your store for products and customers, your store answers in **JSON** (plain text that lists every field by name), and the POS sends each sale back as a WooCommerce order.
 
 <LocalizedSVG svgName="wc-rest-api" />
 
-## Viewing the JSON Data in the POS {#viewing-the-json-data-in-the-pos}
+In the diagram, **Your Store** is your shop with its till, and **Datacenter** is the server your WooCommerce site runs on. Requests go from the till to your site, and the JSON answers come back.
 
-To help you understand what the POS is “seeing,” we’ve included a JSON view in many parts of the interface.
-For example, when you edit the order meta or a cart line item in the POS, you’ll see a JSON tab (like in the screenshot below).
+</details>
 
-<div class="image-container">
-  <Image
-    alt="Editing a line item in the POS"
-    img="/img/edit-line-item.png"
-    style={{ maxHeight: 400 }}
-  />
-  <p class="image-caption">Viewing the JSON data for a line item in the POS</p>
-</div>
+## What the POS gets from your store {#what-the-pos-gets}
 
-The browser also includes a Network Inspector, a tool that lets you monitor the data being sent and received between your browser and the server, including JSON data.
+- **The API must be there.** When you connect a store, the POS checks that your site offers the WooCommerce REST API. If it doesn't, connecting stops with [AUTH321: WooCommerce missing](../error-codes/AUTH321.mdx).
+- **A copy on the device.** The POS downloads products and variations, categories, tags and brands, customers, tax rates, coupons and orders, and keeps a copy on the device. Searching and selling read that copy, so the till stays fast and keeps working when the internet drops.
+- **Sales go back as orders.** A sale, a new customer or a product edit made at the till goes back to your store, and WooCommerce saves it. Each sale becomes a normal WooCommerce order you can open in **WooCommerce > Orders**.
+- **Changes come in the background.** The POS checks your store for changes while it runs, so an edit made in WP Admin reaches the till without a restart. [How the Sync Engine Works](./sync-engine.mdx) explains how.
 
-<div class="image-container">
-  <Image
-    alt="Network Inspector in the browser"
-    img="/img/network-inspector.png"
-  />
-  <p class="image-caption">Network Inspector in the browser</p>
-</div>
+<details>
+<summary>For developers: the routes the POS calls</summary>
 
-## Why Don’t Some Plugins Work in the POS? {#why-dont-some-plugins-work-in-the-pos}
+The REST API gives each kind of store data its own address under `/wp-json/`: products, orders, customers, coupons and so on. WooCommerce's own routes sit under `wc/v3`.
 
-WCPOS downloads the product, order, and customer data from your WooCommerce store through the REST API.
-It then keeps a local copy of that data so it can continue running even if your internet connection is spotty.
-This approach makes the POS faster and more reliable in a busy checkout environment.
+The WCPOS plugin adds its own `wcpos/v2` routes to your store. These routes pass reads and the till's changes on to WooCommerce's `wc/v3` API inside your site, so the POS gets the same fields as any WooCommerce app and WooCommerce saves each order. Pro's [per-store prices](../stores/setup.mdx#per-store-pricing), and some extensions, change the values the POS receives. Payments, closing a sale, registers and sessions use the plugin's own routes: see [The REST API](./architecture.mdx#api-extensions).
 
-However, this means our POS doesn’t “see” changes that happen dynamically on your site in real-time. For example:
+</details>
 
-<table>
-  <tr>
-    <th style={{ width: "200px" }}>Plugin Type</th>
-    <th>Why It Doesn't Work</th>
-  </tr>
-  <tr>
-    <td>Dynamic Pricing</td>
-    <td>
-      If another plugin on your store calculates a unique price for each
-      logged-in customer, the POS won't automatically get that personalised
-      price.
-    </td>
-  </tr>
-  <tr>
-    <td>Product Add-ons</td>
-    <td>
-      If another plugin on your store adds extra product data, the POS won't
-      automatically get that data. The POS only gets the data that's exposed
-      through the REST API.
-    </td>
-  </tr>
-</table>
+## See the data the POS holds {#viewing-the-json-data-in-the-pos}
 
-## Next Steps {#next-steps}
+Every panel that shows one record has a **JSON** tab beside **Form**: a product, a variation, a customer, a coupon, an order, **Order details** in the cart, and a cart line's **Edit** dialog. It shows the record as this device holds it, in WooCommerce's JSON format. You don't need it to make a sale.
 
-For a deeper technical dive, check out the official WooCommerce REST API documentation:
-https://woocommerce.github.io/woocommerce-rest-api-docs/
+Checking a product needs [WCPOS Pro](../getting-started/pro-license.mdx). The cart and its lines have a **JSON** tab on every till.
+
+### Check a product {#check-a-product}
+
+Open the product's **JSON** tab, then read [a price](#read-price), [a stock count](#read-stock) or [a custom field](#read-meta-data) and compare it with the product in WP Admin, your store's WordPress dashboard. If you can't sign in to WP Admin, note the value and ask whoever runs your store to compare it.
+
+1. Open **Products** from the menu and search for the product.
+2. Tap the open arrow (›) at the end of its row. The panel opens on the **Form** tab.
+3. Tap **JSON**.
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[0, 0], [0, 0], [0, -34], [0, -34]]} alt="The Products screen searched for Aim Analog Watch, with its panel open on the Form tab: Name, Regular Price, SKU, Barcode, Stock and the other fields, with Sync and Close at the foot">
+
+1. **Form** — the fields you can change at the till. The panel opens here.
+2. **JSON** — the product as the POS holds it.
+3. **Sync** — fetches this product from your store again. Only on the **Form** tab.
+4. **Close** — puts the panel away. **✕** at the top does the same.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[140, 0], [100, 0]]} maxWidth={360} alt="The top of the Aim Analog Watch JSON: 73 items, then id 67038, name and slug">
+
+1. **73 items** — how many fields your store sent for this product.
+2. **id** — the product's ID in WooCommerce.
+
+</JourneyShot>
+
+Fields that contain other fields, such as `categories` or `meta_data`, start folded: tap one to open it. Scroll to see the rest.
+
+#### A price {#read-price}
+
+Scroll down to `price`. Compare it, `regular_price` and `sale_price` with **Product data > General** on the product in WP Admin. If the product has its own price for this store ([per-store prices](../stores/setup.mdx#per-store-pricing)), compare with that store's price on the same tab.
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[93, 0], [165, 0], [121, 0]]} maxWidth={360} alt="The Aim Analog Watch JSON cropped to its price fields: price 45, regular_price 45 and an empty sale_price">
+
+1. **price** — the price the product sells for now: the sale price while a sale runs, otherwise the regular price.
+2. **regular_price** — the price without a sale.
+3. **sale_price** — empty when the product has no sale price.
+
+</JourneyShot>
+
+#### A stock count {#read-stock}
+
+Scroll down to `stock_quantity`. It holds a number only when `manage_stock` is `true`; otherwise it is `null` (empty). Compare it with **Product data > Inventory**.
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[195, 0], [160, 0]]} maxWidth={360} alt="The Aim Analog Watch JSON cropped to its stock fields: manage_stock true and stock_quantity 85">
+
+1. **manage_stock** — `true`: WooCommerce counts this product's stock.
+2. **stock_quantity** — the count the POS holds: `85`, as on the **Form** tab.
+
+</JourneyShot>
+
+#### A custom field or a plugin's data {#read-meta-data}
+
+Scroll down to `meta_data` and tap it, then tap an entry. This close-up is from a phone, where a long value wraps onto a second line.
+
+<JourneyShot manifest={manifest} device="phone" step={5} offsets={[[168, 0], [254, 0], [97, 18]]} maxWidth={360} alt="The Aim Analog Watch JSON on a phone with meta_data opened, 1 item, and its first entry opened to show its key, _woocommerce_pos_uuid, and its value, wrapped onto two lines">
+
+1. **meta_data** — the product's custom fields, one entry each.
+2. **key** — the field's name.
+3. **value** — what the field holds.
+
+</JourneyShot>
+
+#### If a value doesn't match WP Admin {#value-differs}
+
+Tap **Form**, then **Sync**, to fetch the product again.
+
+- **If you see Couldn't refresh:** the device kept its old copy. Check your connection and try again.
+- **If no error appears but the value still differs:** the POS now holds what your store's API sends. A plugin may be changing the value on your website only: see [Why some plugins don't change the POS](#why-dont-some-plugins-work-in-the-pos).
+
+### Check the order in the cart {#check-the-order}
+
+1. Tap **⋮** beside **Checkout**. **Order details** opens.
+2. Tap **JSON**.
+
+<JourneyShot manifest={manifest} device="tablet" step={6} offsets={[[190, 0], [-22, 0]]} alt="The POS with one Aim Analog Watch in the cart, the subtotal and taxes, and the ⋮ button beside Checkout $45.00">
+
+1. **A cart line** — each line's **Edit** dialog has its own **JSON** tab. See [Check one line](#check-a-line).
+2. **⋮** — opens **Order details** for the whole order.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={7} offsets={[[0, 0], [250, 0], [235, 0], [140, 0], [0, -34], [0, -34], [0, -34]]} maxWidth={520} alt="Order details for that cart on the JSON tab: status pos-open, created_via woocommerce-pos, line_items with 1 item, total 45 and the other order fields, with Void, Close, Print and Sync order at the foot">
+
+1. **JSON** — beside **Form**, as on every panel.
+2. **status** — `pos-open` while the order is open at the till. This status comes from the WCPOS plugin; WooCommerce shows it as **POS - Open**.
+3. **line_items** — the products in the cart. Tap it to open each line.
+4. **total** — the order total, tax included.
+5. **Sync order** — sends the order to your store now. A new order has no `id` in its JSON until your store has saved it. See [Sync the order](../pos/cart/order-actions.mdx#sync-order).
+6. **Print** — prints the order.
+7. **Void** — deletes the order and empties the cart. See [Void the order](../pos/cart/order-actions.mdx#void).
+
+</JourneyShot>
+
+The same fields, closer up, from another cart with one watch:
+
+<JourneyShot manifest={manifest} device="tablet" step={9} offsets={[[142, 0], [200, 0], [91, 0]]} maxWidth={360} alt="Close-up of the order JSON from another cart with one Aim Analog Watch: status pos-open, created_via woocommerce-pos, line_items with 1 item, and total 45">
+
+1. **status** — reads `pos-open`: the order is still open at the till.
+2. **line_items** — `1 item`: the one watch in the cart.
+3. **total** — `45`: one watch at $45.00, tax included.
+
+</JourneyShot>
+
+### Check one line {#check-a-line}
+
+A line's **JSON** tab shows the line as it will be saved on the WooCommerce order, not the product record from your store. Use it to check a line's custom fields, such as an engraving.
+
+1. Tap the line's total to show **Edit** and **Remove**. See [Edit or remove a line](../pos/cart/line-items.mdx#remove-item) for the other ways.
+2. Tap **Edit**, then **JSON**.
+3. Tap `meta_data` to open the line's custom fields, then tap an entry to see its `key` and `value`.
+
+<JourneyShot manifest={manifest} device="tablet" step={8} offsets={[[0, 0], [196, 0], [175, 0], [262, -2], [166, 8], [168, 0]]} maxWidth={520} alt="The Edit Aim Analog Watch dialog for a cart line on the JSON tab: 13 items, product_id 67038, name, quantity 1, sku, and meta_data opened to 2 entries, the first opened to key _woocommerce_pos_data and its value, then price, total and taxes">
+
+1. **JSON** — beside **Form** in the line's **Edit** dialog.
+2. **name** — the product name as saved on this line. With `quantity` and `price` below it, it describes this sale, not the product record.
+3. **meta_data** — the line's custom fields: 2 entries here.
+4. **key** — the field's name. `_woocommerce_pos_data` is where WCPOS keeps the line's price, regular price and tax status.
+5. **value** — what the field holds. Tap a folded value to open it.
+6. **price** — the price of one item before tax: `40.106952` here. Add the line's tax, `total_tax` `4.893048`, and you get the $45.00 in the cart.
+
+</JourneyShot>
+
+<details>
+<summary>Watch the requests in the browser</summary>
+
+In the web app you can watch the POS talk to your store with your browser's developer tools:
+
+1. Open the POS in Chrome, Edge or Firefox.
+2. Press **F12** (on a Mac, **Option + Command + I**) and choose the **Network** tab.
+3. Type `wcpos` in the filter box.
+4. Use the POS: search, add a product, check out. Each request your store answers appears in the list. Select one and choose **Response** to read the JSON.
+
+</details>
+
+## Why some plugins don't change the POS {#why-dont-some-plugins-work-in-the-pos}
+
+The POS works from its copy of your store's data. A plugin that only changes what a web page shows, or works something out while a shopper browses your website, never reaches that copy. The POS sees what the REST API sends, nothing more. Three kinds of plugin run into this most.
+
+### Dynamic pricing {#dynamic-pricing}
+
+Plugins that set a price per customer, per role or per quantity.
+
+- **At the till:** the POS shows the product's normal price. Most of these plugins calculate the price as a shopper browses your website, so the API never sends it.
+- **What to do:** use [discounts at the till](../pos/cart/discounts.mdx), or a coupon.
+
+### Product add-ons {#product-add-ons}
+
+Plugins that add options to a product, such as gift wrap or engraving.
+
+- **At the till:** the options don't appear. Most of these plugins build them on the product page, so they aren't part of the product the API sends.
+- **What to do:** add a [fee](../pos/cart/index.mdx#fees) for the extra cost, and a [custom field](../pos/cart/line-items.mdx#meta-data) on the line for the detail.
+
+### Plugins that change the API {#api-changing-plugins}
+
+Plugins that change what your store sends through the REST API.
+
+- **At the till:** the POS can break. wePOS changes how your store sends variable products, so WCPOS turns itself off while wePOS is active.
+- **What to do:** see [wePOS](../integrations/index.mdx#wepos).
+
+A plugin that saves its data on the product, the customer or the order (as custom fields) usually does reach the POS. Open the **JSON** tab and look in `meta_data` to check.
+
+## If something goes wrong {#goes-wrong}
+
+- **Connecting fails with AUTH321** — your site isn't offering the WooCommerce REST API. See [AUTH321: WooCommerce missing](../error-codes/AUTH321.mdx).
+- **A price or field at the till doesn't match WP Admin** — see [If a value doesn't match WP Admin](#value-differs).
+- **A plugin's change never shows in the POS** — see [Why some plugins don't change the POS](#why-dont-some-plugins-work-in-the-pos).
+- **Something stopped working after you installed a plugin** — see [Plugin Conflicts](../support/troubleshooting/plugin-conflicts.mdx).
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/reference/architecture" title="Architecture" description="The plugin, the app and how they fit together" />
+  <LinkCard to="/reference/sync-engine" title="How the Sync Engine Works" description="How the POS keeps its copy of your store up to date" />
+  <LinkCard to="/integrations" title="Integrations" description="Plugins that work with WCPOS, and two that don't" />
+</LinkCards>
+
+For developers, WooCommerce documents every endpoint and field in the [WooCommerce REST API docs](https://woocommerce.github.io/woocommerce-rest-api-docs/).
