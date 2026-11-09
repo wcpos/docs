@@ -60,10 +60,11 @@ const STALE_FAIL_THRESHOLD = 1;
 // those ~60 boilerplate pages still queue behind hand-written guides. New-scheme
 // registry pages (SYNC101, AUTH201, …) ride the normal queue because the app
 // deep-links to them (wcpos/monorepo#1152, ruling A1.3).
-// version-0.4.x is superseded and no longer built, so it should not queue for
-// translation. The pattern matches the docs path and the matching
-// version-<x>.json sidebar file.
-const AUDIT_EXCLUDE_DEFAULT = 'version-0\\.4\\.x';
+// version-0.4.x is superseded and no longer built; version-2.x is published
+// in English only until GA (Paul, 2026-11-07, wcpos/roadmap#543), so neither
+// queues for translation. docs#589 drops version-2\\.x after GA. Both match
+// the docs path and the matching version-<x>.json sidebar file.
+const AUDIT_EXCLUDE_DEFAULT = 'version-0\\.4\\.x|version-2\\.x';
 // Docs sidebar/category label source files, e.g.
 // i18n/en/docusaurus-plugin-content-docs/version-1.x.json. These carry the
 // collapsible category labels (Receipts, Hardware, …) and get key-level
