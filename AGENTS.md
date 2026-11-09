@@ -50,3 +50,24 @@ and CI-fix agents alike).
   Do not hand-roll a different quoting style — run the fixer.
 - Do **not** raise a review finding asking to drop these quotes; it would
   contradict this policy and the CI gate.
+
+## URLs and redirects
+
+2.x page paths mirror the sidebar. Each moved page carries a `slug:` in its
+frontmatter. The mapping lives in `scripts/url-structure/apply-map.json`, and
+the full redirect list in `scripts/url-structure/redirects.json`.
+`node scripts/url-structure/apply-url-map.js` applies both. It is idempotent,
+and `--check` reports drift.
+
+- A localized 2.x page keeps the English page's `slug:` (the translation QA
+  enforces it). After new `i18n/*/…/version-2.x/` files land, rerun the
+  codemod so they get their slugs and rewritten links.
+- Internal links point at the final path, never at a redirect source.
+  Redirects are permanent and one hop, with a `:locale` twin. The test
+  `scripts/__tests__/internal-links-redirects.test.js` enforces both, plus
+  `/error-codes/{CODE}`.
+- The per-page `/2.x/...` rules stay, with no removal date: dropping them
+  later would create chains.
+- At the 3.0 cut, browsers and search engines may have cached the `/2.x/*`
+  308s, which would burn the `/2.x` prefix. If so, give the versioned 2.x docs
+  a fresh prefix instead of `/2.x`.
