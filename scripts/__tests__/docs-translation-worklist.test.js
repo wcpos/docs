@@ -448,6 +448,18 @@ describe('ordering, limits, and packets', () => {
       .toEqual(['versioned_docs/version-1.x/z-new/page.mdx']);
   });
 
+  it('ranks --first groups by the first matching entry, then priority and path', () => {
+    const a = 'versioned_docs/version-1.x/a.mdx';
+    const b = 'versioned_docs/version-1.x/b/page.mdx';
+    const c = 'versioned_docs/version-1.x/c.mdx';
+    for (const file of [a, b, c]) addDoc(file, PARAGRAPH, null);
+    commitFixtures();
+    expect(schedule({ maxUnits: 1, first: [c, 'versioned_docs/version-1.x/b'] }).plan.targets.map(e => e.source)).toEqual([c]);
+    expect(schedule({ maxUnits: 1, first: ['versioned_docs/version-1.x/b', c] }).plan.targets.map(e => e.source)).toEqual([b]);
+    expect(schedule({ maxUnits: 2, first: [c, 'versioned_docs/version-1.x/b'] }).plan.targets.map(e => e.source)).toEqual([b, c]);
+    expect(schedule({ maxUnits: 1 }).plan.targets.map(e => e.source)).toEqual([a]);
+  });
+
   it('does not treat --first as a bare string prefix', () => {
     addDoc('versioned_docs/version-1.x/a-first.mdx', PARAGRAPH, null);
     addDoc('versioned_docs/version-1.x/z-new/page.mdx', PARAGRAPH, null);
