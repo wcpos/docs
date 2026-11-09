@@ -217,13 +217,13 @@ describe('flip-only redirects for the app and renamed categories', () => {
 });
 
 describe('the translation queue', () => {
-  it('skips 2.x until docs#589 and 0.4.x for good', () => {
+  it('queues 2.x since docs#589 and skips 0.4.x for good', () => {
     const exclude = new RegExp(AUDIT_EXCLUDE_DEFAULT);
-    expect(exclude.test('version-2.x')).toBe(true);
-    expect(exclude.test('versioned_docs/version-2.x/pos/cart.mdx')).toBe(true);
+    expect(exclude.test('version-2.x')).toBe(false);
+    expect(exclude.test('versioned_docs/version-2.x/pos/cart.mdx')).toBe(false);
     expect(
       exclude.test('i18n/en/docusaurus-plugin-content-docs/version-2.x.json')
-    ).toBe(true);
+    ).toBe(false);
     expect(exclude.test('versioned_docs/version-0.4.x/intro.md')).toBe(true);
   });
 });

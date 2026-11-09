@@ -26,7 +26,11 @@ const LOCALE_NAMES = {
 
 function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packetMaxChars = PACKET_MAX_CHARS, packetMaxFiles = PACKET_MAX_FILES, first = [], retryQuarantined = false }) {
   // --first: an exact English source path, or a directory prefix.
-  const isFirst = source => first.some(p => source === p || source.startsWith(p.endsWith('/') ? p : `${p}/`));
+  const firstRank = source => {
+    const index = first.findIndex(p => source === p || source.startsWith(p.endsWith('/') ? p : `${p}/`));
+    return index === -1 ? first.length : index;
+  };
+  const isFirst = source => firstRank(source) < first.length;
   const state = readState(rootDir);
   const gitCache = new Map();
   function git(args, allowFailure = false) {
@@ -164,7 +168,7 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
     if (group.targets.length) groups.push(group);
   }
 
-  groups.sort((a, b) => Number(!isFirst(a.source)) - Number(!isFirst(b.source))
+  groups.sort((a, b) => firstRank(a.source) - firstRank(b.source)
     || a.priority - b.priority || (a.source < b.source ? -1 : a.source > b.source ? 1 : 0));
   const taken = [];
   let deferred = false;

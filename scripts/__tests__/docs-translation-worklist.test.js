@@ -389,7 +389,7 @@ describe('JSON worklist', () => {
 });
 
 describe('ordering, limits, and packets', () => {
-  it('excludes retired versions, respects AUDIT_EXCLUDE, and ignores untracked MDX', () => {
+  it('excludes version-0.4.x, queues 2.x, respects AUDIT_EXCLUDE, and ignores untracked MDX', () => {
     for (const version of ['version-0.4.x', 'version-2.x', 'version-1.x']) {
       addDoc(`versioned_docs/${version}/guide.mdx`, PARAGRAPH, null);
       write(`i18n/en/docs/${version}.json`, { title: 'Guide' });
@@ -397,7 +397,7 @@ describe('ordering, limits, and packets', () => {
     commitFixtures();
     write('versioned_docs/version-1.x/untracked.md', PARAGRAPH);
     const paths = schedule().plan.targets.map(entry => entry.source).sort();
-    expect(paths).toEqual(['i18n/en/docs/version-1.x.json', DOC]);
+    expect(paths).toEqual(['i18n/en/docs/version-1.x.json', 'i18n/en/docs/version-2.x.json', DOC, 'versioned_docs/version-2.x/guide.mdx']);
     vi.stubEnv('AUDIT_EXCLUDE', 'version-1\\.x');
     expect(schedule().plan.targets).toHaveLength(4);
   });
@@ -446,6 +446,18 @@ describe('ordering, limits, and packets', () => {
       .toEqual(['versioned_docs/version-1.x/z-new/page.mdx']);
     expect(schedule({ maxUnits: 1, first: ['versioned_docs/version-1.x/z-new/page.mdx'] }).plan.targets.map(e => e.source))
       .toEqual(['versioned_docs/version-1.x/z-new/page.mdx']);
+  });
+
+  it('ranks --first groups by the first matching entry, then priority and path', () => {
+    const a = 'versioned_docs/version-1.x/a.mdx';
+    const b = 'versioned_docs/version-1.x/b/page.mdx';
+    const c = 'versioned_docs/version-1.x/c.mdx';
+    for (const file of [a, b, c]) addDoc(file, PARAGRAPH, null);
+    commitFixtures();
+    expect(schedule({ maxUnits: 1, first: [c, 'versioned_docs/version-1.x/b'] }).plan.targets.map(e => e.source)).toEqual([c]);
+    expect(schedule({ maxUnits: 1, first: ['versioned_docs/version-1.x/b', c] }).plan.targets.map(e => e.source)).toEqual([b]);
+    expect(schedule({ maxUnits: 2, first: [c, 'versioned_docs/version-1.x/b'] }).plan.targets.map(e => e.source)).toEqual([b, c]);
+    expect(schedule({ maxUnits: 1 }).plan.targets.map(e => e.source)).toEqual([a]);
   });
 
   it('does not treat --first as a bare string prefix', () => {
