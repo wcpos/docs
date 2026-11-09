@@ -12,7 +12,7 @@ import Accordion from '@site/src/components/Accordion';
 import AccordionItem from '@site/src/components/AccordionItem';
 import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.json';
 
-Open the POS menu, then [**Store health**](../support/store-health.mdx) at the foot of it, to see everything this page describes on your own till. Looking for what to do rather than how it works?
+Open the POS menu, then [**Store health**](../support/store-health.mdx) near the foot of it, to see everything this page describes on your own till. Looking for what to do rather than how it works?
 
 - **Check changes waiting to send.** Open **Store health → Database** and read **changes waiting to send**: what this till still has to send to your store. See [Database](../support/store-health.mdx#database), and ["changes waiting to send" won't go down](../support/store-health.mdx#waiting-to-send) if it stays above 0. How sending works: [How changes get back to your store](#write-path).
 - **Check what's downloaded.** Open **Store health → Database** and read the table: how much of your store is on this device. See [What's on this device](../support/store-health.mdx#coverage). How downloads are counted: [Is everything downloaded?](#coverage).
@@ -68,6 +68,8 @@ Seeds, trickles, totals and audits each declare how many requests one run may ma
 | Existence prime | 15 min | 5 |
 | Deletion audit | 17 min | 11 |
 
+Orders are not on the change check, so each run of the recent orders seed also re-checks every open cart on the device that your store has a copy of and that has nothing waiting to send. A cart your store has deleted or trashed is then removed from the device. Any targeted order fetch does the same: an order your store no longer has is dropped instead of failing the fetch, unless this device still has a change waiting to send on it.
+
 </AccordionItem>
 </Accordion>
 
@@ -106,17 +108,25 @@ Your store keeps a **change log**, and the POS asks whether anything moved since
 
 ## How screens get their data {#declared-demand}
 
-A screen always shows what is already on the device, straight away. When it needs records the device doesn't have yet, such as a search past the first products, the engine fetches them from your store while the till is online. Not everything is on the device from the start; what is depends on the kind of record:
+A screen always shows what is already on the device, straight away. When it needs records the device doesn't have yet, such as a search past the first products, the engine fetches them from your store while the till is online. Not everything is on the device from the start:
 
-1. **Tax rates** are fetched at start-up, first: the cart can't do its sums without them.
-2. **Products:** the first 100 in the default order are fetched at start-up. The rest arrive when a screen asks for them, and through an idle top-up in the cashier's sort order.
-3. **Customers** are not fetched at start-up. A screen asks for them, an idle top-up adds 10 at a time, and the change check brings new and edited ones.
-4. **Categories, tags, brands and coupons** are not fetched at start-up either. They load when first opened (a reopen within 15 seconds doesn't ask again), are filled in the background once your store reports it has some, are refreshed every 30 minutes and follow the change check.
+- **At start-up:** tax rates first, since the cart can't do its sums without them, then the first products.
+- **When a screen needs them:** more products, customers, categories, tags, brands and coupons.
+- **In the background:** the rest of the products and customers while the till is idle, and edits your store reports at each change check.
 
 When the till is online, opening the variation picker refreshes its prices and stock. Variations already on the device show at once while it does.
 
 <Accordion>
 <AccordionItem question="How a screen asks for data">
+
+What each kind of record gets, and when:
+
+| Kind of record | At start-up | Afterwards |
+| --- | --- | --- |
+| Tax rates | Fetched first | Change check |
+| Products | The first 100 in the default order | When a screen asks; an idle top-up in the cashier's sort order; change check |
+| Customers | Not fetched | When a screen asks; an idle top-up of 10 at a time; change check for new and edited ones |
+| Categories, tags, brands and coupons | Not fetched | When first opened (a reopen within 15 seconds doesn't ask again); filled in the background once your store reports it has some; refreshed every 30 minutes; change check |
 
 Screens don't sync. **A screen declares what it shows (search, filters, sort, page) and the engine decides whether that needs a request.** Each declaration ends one of three ways:
 
@@ -147,10 +157,12 @@ A figure like *1,240 of 5,000 products* needs your store's total for the second 
 
 ## How changes get back to your store {#write-path}
 
-Every change made on the device (a sale, a product edit, a new customer) is saved on the device first and sent to your store within a second or so. **A sale rung up offline waits on the device and goes when the connection comes back.** Most changes need nothing from you. Two kinds wait for a choice on **Store health → Database**:
+Every change made on the device (a sale, a product edit, a new customer) is saved on the device first and sent to your store within a second or so. **A sale rung up offline waits on the device and goes when the connection comes back.** Most changes need nothing from you. Two kinds wait for your choice on **Store health → Database**:
 
-- **An order that clashes is retried once.** If your store has a newer copy of the order, the engine reconciles and sends once more. If that fails too, or the record is not an order, the change is held for you to choose: **Send again** or **Use server version**. See [Changes held because your store had a newer version](../support/store-health.mdx#held-changes).
-- **A change your store refuses is never retried on its own.** It is kept with your store's reason and shown on **Store health → Database** as **changes never reached your server**. **Send again** rebuilds it from the record as it is on the device now; **Discard** drops it. See [Changes that never reached your server](../support/store-health.mdx#refused-changes).
+- **Your store has a newer version.** For an order, the POS first tries once more on its own. If that fails too, or the change isn't to an order, it waits for you: **Send again** sends this device's change on top of your store's version; **Use server version** drops it and keeps your store's. See [Changes held because your store had a newer version](../support/store-health.mdx#held-changes).
+- **Your store refused the change.** It is never sent again on its own, and it waits with your store's reason under **changes never reached your server**. **Send again** sends the record as it is on this device now, so fix what the reason names first; **Discard** drops this device's change. See [Changes that never reached your server](../support/store-health.mdx#refused-changes).
+
+One refusal needs nothing from you. **When your store has deleted an order, or moved it to the trash, while this till was still updating it**, an open cart is kept and sent again as a new order with a new number; any other order is removed from this device. One message, **Order deleted on the store**, names the order, and the log records [SYNC203](../error-codes/SYNC203.mdx).
 
 <Accordion>
 <AccordionItem question="How changes are sent">
@@ -158,6 +170,9 @@ Every change made on the device (a sale, a product edit, a new customer) is save
 - **A durable queue comes first.** Each change goes into a queue on the device before anything is sent. About 0.3 seconds later the write drain sends it; a 10-second poll catches anything a nudge missed.
 - **Cart changes go one at a time per order.** A fast run of scans applies in order. Adding a product that already has exactly one line in the cart raises that line's quantity instead of adding a second line.
 - **What your store sends back is kept.** When your store accepts a change, the device takes your store's copy, so later edits match it. For orders that keeps the line IDs WooCommerce assigned, so an update doesn't add duplicate lines. A local edit your store hasn't seen yet is never overwritten.
+- **An order that clashes is reconciled once.** When your store has a newer copy of an order, the engine reconciles the till's change with it and sends once more. A second clash holds the change for your choice.
+- **Send again rebuilds a refused change.** It is built afresh from the record as it is on the device now, not replayed as it was first sent.
+- **A deleted order is settled by the POS.** Your store answers an update to an order it no longer has with `404`. The POS discards the queued change; for an open cart it then queues the cart again as a new order, with any edit made in the meantime on it.
 
 </AccordionItem>
 </Accordion>
