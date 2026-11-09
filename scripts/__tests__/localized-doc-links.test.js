@@ -40,6 +40,40 @@ describe('localized doc links', () => {
     }
   });
 
+  it("resolves a bare link from the linking page's folder", () => {
+    files.add('/site/versioned_docs/version-2.x/pos/product-panel/variations.mdx');
+    files.add('/site/i18n/es/docusaurus-plugin-content-docs/version-2.x/pos/product-panel/variations.mdx');
+    expect(resolveLocalizedDocLink({
+      ...options, sourceFilePath: '/site/versioned_docs/version-2.x/pos/product-panel/index.mdx',
+      url: 'variations.mdx',
+    })).toBe('@site/i18n/es/docusaurus-plugin-content-docs/version-2.x/pos/product-panel/variations.mdx');
+  });
+
+  it('resolves a bare link from the version root when the folder has no such page', () => {
+    files.add('/site/versioned_docs/version-2.x/pos/cart/index.mdx');
+    expect(resolveLocalizedDocLink({
+      ...options, sourceFilePath: '/site/i18n/es/docusaurus-plugin-content-docs/version-2.x/settings/store/general.mdx',
+      url: 'pos/cart/index.mdx#x',
+    })).toBe('@site/versioned_docs/version-2.x/pos/cart/index.mdx#x');
+  });
+
+  it('prefers the folder over the version root for a bare link', () => {
+    files.add('/site/versioned_docs/version-2.x/support/troubleshooting/clear-local-data.mdx');
+    files.add('/site/versioned_docs/version-2.x/troubleshooting/clear-local-data.mdx');
+    expect(resolveLocalizedDocLink({
+      ...options, sourceFilePath: '/site/versioned_docs/version-2.x/support/index.mdx',
+      url: 'troubleshooting/clear-local-data.mdx',
+    })).toBe('@site/versioned_docs/version-2.x/support/troubleshooting/clear-local-data.mdx');
+  });
+
+  it('never falls back to the version root for a dotted link', () => {
+    files.add('/site/versioned_docs/version-2.x/variations.mdx');
+    expect(resolveLocalizedDocLink({
+      ...options, sourceFilePath: '/site/versioned_docs/version-2.x/settings/index.mdx',
+      url: './variations.mdx',
+    })).toBeNull();
+  });
+
   it('leaves non-relative and non-Markdown links alone', () => {
     files.add('/site/versioned_docs/version-2.x/error-codes/error-codes/AUTH101.mdx');
     files.add('/site/versioned_docs/version-2.x/error-codes/img/shot.png');
@@ -47,6 +81,7 @@ describe('localized doc links', () => {
     for (const url of [
       '/error-codes/AUTH101.mdx', 'https://example.com/a.md',
       '@site/versioned_docs/version-2.x/a.mdx', './img/shot.png', './page',
+      'mailto:a@b.md', '#top',
     ]) {
       expect(resolveLocalizedDocLink({ ...options, url })).toBeNull();
     }

@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 function resolveLocalizedDocLink({ siteDir, sourceFilePath, url, locale, defaultLocale = 'en', exists }) {
-  if (!locale || locale === defaultLocale || !/^\.\.?\//.test(url)) return null;
+  if (!locale || locale === defaultLocale || typeof url !== 'string'
+    || /^(?:\/|#|@site\/)/.test(url) || /^[a-z][a-z0-9+.-]*:/i.test(url)) return null;
 
   const suffixIndex = url.search(/[?#]/);
   const pathPart = suffixIndex === -1 ? url : url.slice(0, suffixIndex);
@@ -19,12 +20,14 @@ function resolveLocalizedDocLink({ siteDir, sourceFilePath, url, locale, default
   const targetRel = path.posix.normalize(
     path.posix.join(path.posix.dirname(rel), decodeURIComponent(pathPart)),
   );
-  if (targetRel === '..' || targetRel.startsWith('../')) return null;
-
-  const candidates = [
-    `i18n/${locale}/docusaurus-plugin-content-docs/version-${version}/${targetRel}`,
-    `versioned_docs/version-${version}/${targetRel}`,
-  ];
+  const targetRels = [targetRel];
+  if (!/^\.\.?\//.test(url)) targetRels.push(path.posix.normalize(decodeURIComponent(pathPart)));
+  const candidates = new Set();
+  for (const target of targetRels) {
+    if (target === '..' || target.startsWith('../')) continue;
+    candidates.add(`i18n/${locale}/docusaurus-plugin-content-docs/version-${version}/${target}`);
+    candidates.add(`versioned_docs/version-${version}/${target}`);
+  }
   for (const candidate of candidates) {
     if (exists(path.join(siteDir, candidate))) return '@site/' + candidate + suffix;
   }
