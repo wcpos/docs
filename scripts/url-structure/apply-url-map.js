@@ -27,7 +27,7 @@ function buildLinkMap(map, redirects) {
 }
 
 function rewriteLinks(text, linkMap) {
-  return text.replace(/(\]\(|["'`{=])(https:\/\/docs\.wcpos\.com)?(\/[^#?)"'`\s}]*)/g,
+  return text.replace(/(\]\(|["'{=])(https:\/\/docs\.wcpos\.com)?(\/[^#?)"'`\s}]*)/g,
     (match, before, origin, route) => {
       const key = route.replace(/^\/2\.x(?=\/|$)/, '');
       return Object.hasOwn(linkMap, key) ? before + (origin || '') + linkMap[key] : match;

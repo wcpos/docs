@@ -34,6 +34,11 @@ describe('rewriteLinks', () => {
       .toBe('[Register](/pos/open-the-register#open)');
   });
 
+  it('rewriteLinks leaves inline code alone', () => {
+    expect(rewriteLinks('`/pos` and [x](/pos)', { '/pos': '/new' }))
+      .toBe('`/pos` and [x](/new)');
+  });
+
   it('rewrites to="…" and href="…"', () => {
     expect(rewriteLinks('<LinkCard to="/pos/register" /><a href="/pos/register">Open</a>', links))
       .toBe('<LinkCard to="/pos/open-the-register" /><a href="/pos/open-the-register">Open</a>');
@@ -61,7 +66,7 @@ describe('rewriteLinks', () => {
   it('keeps queries and accepts each specified delimiter', () => {
     const text = "'/pos/register?view=all#open' `/pos/register` {/pos/register} =/pos/register ";
     expect(rewriteLinks(text, links)).toBe(
-      "'/pos/open-the-register?view=all#open' `/pos/open-the-register` {/pos/open-the-register} =/pos/open-the-register "
+      "'/pos/open-the-register?view=all#open' `/pos/register` {/pos/open-the-register} =/pos/open-the-register "
     );
   });
 

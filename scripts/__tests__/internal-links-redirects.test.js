@@ -57,7 +57,7 @@ const docs = [{ directory: sourceRoot, locale: '' }, ...localeRoots].flatMap(({ 
 it('no 2.x internal link points at a redirect source', () => {
   const hits = [];
   for (const { file, text } of docs) {
-    const links = text.matchAll(/(\]\(|["'`{=])(https:\/\/docs\.wcpos\.com)?(\/[^#?)"'`\s}]*)/g);
+    const links = text.matchAll(/(\]\(|["'{=])(https:\/\/docs\.wcpos\.com)?(\/[^#?)"'`\s}]*)/g);
     for (const [, , origin, route] of links) {
       if (path.extname(route) || /^\/(?:1\.x|img|assets|0\.4\.x)\//.test(route)) continue;
       for (const { source, regex } of rules) {
