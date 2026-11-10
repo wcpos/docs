@@ -6,11 +6,11 @@ description: "面向开发者的参考，介绍 WCPOS 如何存储 POS 行项目
 
 # POS 折扣技术参考 {#pos-discount-technical-reference}
 
-本页记录 WCPOS 如何处理收银员应用的行项目价格覆盖——它们如何存储、如何与 WooCommerce 优惠券交互，以及有哪些可用的过滤器。面向用户的文档请参阅[购物车折扣](/1.x/pos/cart/discounts)和[优惠券](/1.x/coupons)。
+本页介绍 WCPOS 如何处理收银员设置的行项目价格覆盖，包括存储方式、与 WooCommerce 优惠券的交互方式，以及可用的过滤器。面向用户的文档请参阅[购物车折扣](/1.x/pos/cart/discounts)和[优惠券](/1.x/coupons)。
 
-## POS 价格覆盖如何存储 {#how-pos-price-overrides-are-stored}
+## POS 价格覆盖的存储方式 {#how-pos-price-overrides-are-stored}
 
-当收银员在 POS 中设置或更改行项目的价格时，单价会以 JSON 形式存储在 `_woocommerce_pos_data` 行项目元数据中：
+当收银员在 POS 中设置或更改行项目的价格时，单价会以 JSON 形式存储在行项目的 `_woocommerce_pos_data` 元数据中：
 
 ```json
 {
@@ -20,24 +20,24 @@ description: "面向开发者的参考，介绍 WCPOS 如何存储 POS 行项目
 }
 ```
 
-对于杂项（自定义）产品，此元数据还可携带优惠券验证期间使用的 `virtual`、`downloadable` 和 `categories` 字段。
+对于杂项（自定义）产品，此元数据还可包含优惠券验证时使用的 `virtual`、`downloadable` 和 `categories` 字段。
 
-此元数据是该行单价的权威来源。WooCommerce 在行项目上存储的 `subtotal` 由 `price * qty` 派生（应用了税额提取和舍入）。应用优惠券折扣时，存储的 `total` 可能更低，因此为获得单价精度，您应始终读取 `_woocommerce_pos_data.price` 和 `regular_price`。
+此元数据是该行项目单价的权威来源。WooCommerce 在行项目中存储的 `subtotal` 根据 `price * qty` 计算得出，并进行税额提取和舍入。应用优惠券折扣时，存储的 `total` 可能更低，因此要获取精确的单价，应始终读取 `_woocommerce_pos_data.price` 和 `regular_price`。
 
-新的 POS 订单还会在私有 `_woocommerce_pos_version` 订单元数据中记录服务器插件版本。这提供了明确的版本标记，供未来兼容性检查使用。收据计算仍以已存储的订单项结构为准，因为离线订单可能会由比创建它的应用更新的服务器接受。
+新的 POS 订单还会在私有的 `_woocommerce_pos_version` 订单元数据中记录服务端插件版本，为未来的兼容性检查提供明确的版本标记。收据计算仍以已存储的行项目结构为准，因为接收离线订单的服务器版本可能比创建该订单的应用版本更新。
 
 ## 小计模型（v1.9.0+） {#subtotal-model-v190}
 
 自 v1.9.0 起，WCPOS 与 WooCommerce 的原生促销价语义保持一致：
 
-- `line_item.subtotal = price * qty`，其中 `price` 是 POS 价格（在任何覆盖之后）。
+- `line_item.subtotal = price * qty`，其中 `price` 是 POS 价格（应用价格覆盖之后的值）。
 - `line_item.total = subtotal - coupon_discount_for_line`。
-- `order.discount_total` **仅反映优惠券折扣**，不包含 POS 价格覆盖。
+- `order.discount_total` 反映的**仅是优惠券折扣**，不包含 POS 价格覆盖。
 
-这与 WooCommerce 处理促销产品的方式一致：`sale_price` 成为小计，而 `discount_total` 保留给优惠券。订单上没有单独的“POS 折扣”行。
+这与 WooCommerce 处理促销产品的方式一致：`sale_price` 用于计算小计，而 `discount_total` 专用于优惠券。订单上没有单独的“POS 折扣”行。
 
 :::note 从 1.9.0 之前的版本迁移
-早期版本发送的是 `subtotal = regular_price * qty`，这导致 WooCommerce 计算 `discount_total = subtotal - total` 并将 POS 价格覆盖作为折扣纳入。之所以更改，是因为它与优惠券计算冲突：`recalculate_coupons()` 使用 `subtotal` 作为基准价格，因此优惠券会针对原始价格计算并产生错误的总额。
+早期版本发送的是 `subtotal = regular_price * qty`，导致 WooCommerce 计算 `discount_total = subtotal - total`，并将 POS 价格覆盖计入折扣。更改这一行为是因为它与优惠券计算冲突：`recalculate_coupons()` 使用 `subtotal` 作为基准价格，因此优惠券会按原价计算，导致总额错误。
 
 此前的服务器端变通方案——在 `woocommerce_order_item_get_subtotal` 期间启用的 `recalculate_coupons()` 筛选器——已在 v1.9.0 中移除。完整历史记录请参阅 [ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md)。
 :::
@@ -46,20 +46,20 @@ description: "面向开发者的参考，介绍 WCPOS 如何存储 POS 行项目
 
 优惠券支持是 [WCPOS Pro](https://wcpos.com/pro) 功能。当优惠券应用于包含 POS 折扣商品的订单时：
 
-1. 优惠券针对 **POS 折扣后的价格**（`_woocommerce_pos_data.price` 中的值）计算，而非原始的 `regular_price`。
-2. 移除优惠券后，行项目恢复到其 POS 折扣后的价格。
+1. 优惠券按 **POS 折扣后的价格**（`_woocommerce_pos_data.price` 中的值）计算，而非原始的 `regular_price`。
+2. 移除优惠券后，行项目会恢复为 POS 折扣后的价格。
 
 ### `exclude_sale_items` 行为 {#exclude_sale_items-behaviour}
 
-当 `_woocommerce_pos_data.price < regular_price` 时，WooCommerce 将 POS 折扣商品视为“促销中”。因此启用了 `exclude_sale_items` 的优惠券会跳过它们，这与 WooCommerce 处理常规促销价的方式一致。
+当 `_woocommerce_pos_data.price < regular_price` 时，WooCommerce 会将 POS 折扣商品视为“促销中”。因此，启用了 `exclude_sale_items` 的优惠券会跳过这些商品，与 WooCommerce 处理常规促销价的方式一致。
 
-如果您需要不同的行为，请参阅下面的 `woocommerce_pos_item_is_on_sale` 过滤器。
+如果您需要不同的行为，请参阅下方的 `woocommerce_pos_item_is_on_sale` 过滤器。
 
 ## 可用过滤器 {#available-filters}
 
 ### `woocommerce_pos_item_is_on_sale` {#woocommerce_pos_item_is_on_sale}
 
-覆盖 POS 折扣商品在优惠券验证中是否被视为“促销中”。
+覆盖优惠券验证时对 POS 折扣商品是否属于“促销中”的判断。
 
 ```php
 add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
@@ -72,35 +72,35 @@ add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product,
 
 | 参数 | 类型 | 描述 |
 |---|---|---|
-| `$is_on_sale` | `bool` | 该商品是否被视为促销中（默认：`price < regular_price`） |
+| `$is_on_sale` | `bool` | 商品是否被视为促销中（默认：`price < regular_price`） |
 | `$product` | `WC_Product` | 产品对象 |
 | `$item` | `WC_Order_Item_Product` | 订单行项目 |
 | `$pos_data` | `array` | 解码后的 `_woocommerce_pos_data` JSON |
 
 ## REST API 端点 {#rest-api-endpoint}
 
-优惠券 REST 端点位于**免费插件**中，地址为 `/wp-json/wcpos/v1/coupons`，因此即使在未安装 WCPOS Pro 的站点上，POS 应用查询优惠券时也永远不会收到 404。然而，面向用户的优惠券功能本身需要 Pro。
+优惠券 REST 端点位于**免费插件**中，地址为 `/wp-json/wcpos/v1/coupons`。这样，即使网站未安装 WCPOS Pro，POS 应用查询优惠券时也不会收到 404。但面向用户的优惠券功能本身仍需要 Pro。
 
-该控制器扩展了 `WC_REST_Coupons_Controller`，并添加了 POS 特有的功能：
+该控制器扩展了 `WC_REST_Coupons_Controller`，添加了 POS 专用功能：
 
 - 用于离线优先同步的 UUID 处理
 - 用于权限检查的 `access_woocommerce_pos` 能力
-- 当请求 `posts_per_page=-1` 且 `fields=id`（或 `fields=id,date_modified_gmt`）时优化的批量 ID 查询路径
+- 当请求使用 `posts_per_page=-1` 和 `fields=id`（或 `fields=id,date_modified_gmt`）时，采用优化的批量 ID 查询路径
 
 ## 收据数据暴露 {#receipt-data-exposure}
 
-收据数据构建器(`Receipt_Data_Builder`)会提供：
+收据数据构建器(`Receipt_Data_Builder`)提供以下字段：
 
-- `lines[].discounts`、`lines[].discounts_incl`、`lines[].discounts_excl` —— 每行折扣金额，计算为 `subtotal - total`。从 v1.9.0 起，对于 POS 价格覆盖，这**仅反映优惠券折扣**，因为未应用优惠券时 `subtotal === total`。
-- `totals.discount_total`、`totals.discount_total_incl`、`totals.discount_total_excl` —— 来自 `WC_Order::get_discount_total()` 的订单级优惠券折扣总额。
-- `totals.sale_savings_total`、`totals.sale_savings_total_incl`、`totals.sale_savings_total_excl` — 所有商品行中已记录的常规价格与售价差额总计，包括目录促销价和收银台覆盖价格。
-- `totals.total_saved`、`totals.total_saved_incl`、`totals.total_saved_excl` — WooCommerce 折扣与常规价格优惠的合计。构建器会排除已计入 v1.9.0 之前订单 WooCommerce 折扣总额的商品行优惠。
-- `totals.total_saved_complete` — 如果任一商品行缺少足够的已记录价格数据，无法可靠汇总，则为 false；此时可为空的优惠总额字段为 `null`。
-- `discounts[]` —— 优惠券行项目数组，包含 `label`、`code` 和 `total`。
+- `lines[].discounts`、`lines[].discounts_incl`、`lines[].discounts_excl`——每行折扣金额，按 `subtotal - total` 计算。从 v1.9.0 起，对于 POS 价格覆盖，这些字段反映的**仅是优惠券折扣**，因为未应用优惠券时 `subtotal === total`。
+- `totals.discount_total`、`totals.discount_total_incl`、`totals.discount_total_excl`——来自 `WC_Order::get_discount_total()` 的订单级优惠券折扣总额。
+- `totals.sale_savings_total`、`totals.sale_savings_total_incl`、`totals.sale_savings_total_excl`——所有产品行中已记录的常规价格与售价差额总计，包括目录促销价和收银台价格覆盖带来的优惠。
+- `totals.total_saved`、`totals.total_saved_incl`、`totals.total_saved_excl`——WooCommerce 折扣与相对常规价格节省金额的合计。构建器会排除已计入 v1.9.0 之前订单的 WooCommerce 折扣总额中的行项目优惠。
+- `totals.total_saved_complete`——如果任一行项目缺少足够的已记录价格数据，无法可靠汇总，则为 false；此时允许为空的优惠总额字段为 `null`。
+- `discounts[]`——优惠券行项目数组，包含 `label`、`code` 和 `total`。
 
-`_woocommerce_pos_data` 会从 `lines[].meta` 中筛除商品行以下划线开头的元数据（包括 `Receipt_Data_Builder::get_item_meta_pairs()`）。Receipt Data v1.1 改为通过规范字段提供已记录的常规价格、优惠券前售价、商品行优惠和汇总优惠。模板示例请参阅[显示常规价格和优惠](/1.x/receipts/receipt-data#displaying-regular-price-and-savings)和[总计](/1.x/receipts/receipt-data#totals)。
+`Receipt_Data_Builder::get_item_meta_pairs()` 会从 `lines[].meta` 中筛除行项目以下划线开头的元数据（包括 `_woocommerce_pos_data`）。收据数据 v1.1 改为通过规范字段提供已记录的常规价格、应用优惠券前的售价、行项目优惠和优惠总额。模板示例请参阅[显示常规价格和优惠](/1.x/receipts/receipt-data#displaying-regular-price-and-savings)和[总计](/1.x/receipts/receipt-data#totals)。
 
-## 相关 {#related}
+## 相关内容 {#related}
 
-- [购物车折扣](/1.x/pos/cart/discounts) —— 面向用户的收银员折扣指南
-- [优惠券](/1.x/coupons) —— 面向用户的 POS 中 WooCommerce 优惠券指南（Pro）
+- [购物车折扣](/1.x/pos/cart/discounts)——面向用户的收银员折扣操作指南
+- [优惠券](/1.x/coupons)——面向用户的 POS 中 WooCommerce 优惠券使用指南（Pro）
