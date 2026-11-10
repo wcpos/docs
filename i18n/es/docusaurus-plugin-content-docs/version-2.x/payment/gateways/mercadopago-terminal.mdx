@@ -1,0 +1,323 @@
+---
+title: Mercado Pago
+slug: /hardware/card-readers/mercado-pago
+description: "Acepte pagos con tarjeta en un terminal Mercado Pago Point Smart desde la pantalla de pago del POS y configure la extensión Mercado Pago Terminal en WP Admin."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/mercadopago-terminal/en/manifest.json';
+
+# Pasarela de pago Mercado Pago Terminal {#mercado-pago-terminal-gateway}
+
+La caja envía el total del pedido a un terminal Mercado Pago **Point Smart**, el cliente paga en el terminal y la venta se completa automáticamente cuando Mercado Pago confirma el pago. Esta página tiene 2 partes: [cobrar un pago](#take-payment) en la caja y [configurar la pasarela](#setup) en WP Admin.
+
+:::warning Beta: realice primero un pago de prueba
+Esta extensión es nueva. Aún no se ha completado ningún pago con tarjeta ni reembolso con ella, por lo que debe cobrar un importe pequeño y reembolsarlo antes de utilizarla con confianza.
+
+<details>
+<summary>Qué se ha probado hasta ahora</summary>
+
+En una cuenta de producción y un Point Smart real, han funcionado la consulta de la lista de terminales, el cambio de un terminal al modo PDV y la creación y cancelación de un pago para ese terminal a través de Mercado Pago. Aún no se han probado la aparición posterior del pago en el terminal, el cobro efectivo con tarjeta, la notificación de Mercado Pago de un pedido pagado, los reembolsos ni el entorno de pruebas de Mercado Pago (modo **Prueba**).
+
+</details>
+:::
+
+{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves the payment panel, logs and support bundle into Pro, refuses unsigned webhooks and moves the webhook to /wp-json/wcpos/v2/payments/webhook?provider=mercadopago; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
+
+## Cobrar un pago {#take-payment}
+
+Necesita [WCPOS Pro](../../getting-started/pro-license.mdx) y una tienda conectada a internet, porque el pago se realiza en la página de pago de su propia tienda, dentro del POS. Antes, alguien con acceso a WP Admin debe [configurar la pasarela de pago](#setup).
+
+:::note Abra primero la caja
+Con **Abrir y cerrar la caja** activado, la caja no registrará ningún pago mientras esté cerrada, y habría que reembolsar cualquier cobro con tarjeta ya realizado. Consulte [Pago](../../pos/checkout/index.mdx).
+:::
+
+El terminal funciona desde la pestaña **Heredado** de la pantalla de pago. En la captura siguiente, Mercado Pago no está configurado, por lo que la lista muestra otras pasarelas, con **Tarjeta** seleccionada. En su tienda, **Mercado Pago Terminal** aparece en esa lista:
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[92, 0], [-34, 150], [-24, 0]]} alt="La pestaña Heredado de la pantalla de pago en una tienda sin Mercado Pago configurado: la propia pestaña, la página de pago de la tienda dentro del POS con el total del pedido y su lista de otras pasarelas, y el botón Procesar pago">
+
+1. Pestaña **Heredado**: abre la página de pago de su propia tienda dentro del POS.
+2. **Página de pago de su tienda**: el total del pedido y las pasarelas de la tienda. **Mercado Pago Terminal** aparece en esta lista una vez configurado. Selecciónelo y su panel se abrirá debajo, con **Terminal** e **Iniciar pago en el terminal**.
+3. **Procesar pago**: no es necesario para Mercado Pago; la venta se completa automáticamente cuando se confirma el pago.
+
+</JourneyShot>
+
+1. Prepare el carrito y pulse **Pagar**.
+2. Abra la pestaña **Heredado**. La página de pago de su tienda se abre dentro del POS. Consulte [La pestaña Heredado](../../pos/checkout/legacy-tab.mdx).
+3. Seleccione **Mercado Pago Terminal**. Es posible que su tienda le haya dado otro nombre.
+4. Compruebe el terminal en **Terminal**. El terminal predeterminado ya está seleccionado; cuando la selección del terminal está bloqueada, no puede cambiarlo.
+5. Pulse **Iniciar pago en el terminal**. El panel muestra **Enviando al terminal…** y luego **Esperando al terminal…**, y se envía el total completo del pedido a ese terminal.
+6. El cliente paga en el terminal. Mientras lo hace, el panel muestra **El cliente está pagando en el terminal…**. Si muestra **Confirme el pago en el terminal.**, complete el paso que solicita el terminal.
+7. Cuando Mercado Pago confirma el pago, el panel muestra **Pago completado — finalizando pedido…** y el POS pasa al recibo.
+
+No necesita **Procesar pago**, al pie de la pestaña Heredado: la venta se completa automáticamente cuando Mercado Pago confirma el pago. Si lo pulsa antes, solo indica que el pedido aún no se ha pagado.
+
+El terminal siempre cobra el pedido completo, por lo que no puede dividirse una venta entre este y otro método. Una vez que se ha cobrado un pago del pedido, no se puede usar la pestaña Heredado; primero [cancele ese pago](../../pos/checkout/cancelling-a-payment.mdx).
+
+### Cancelar o esperar {#payment-controls}
+
+- **Cancelar pago en el terminal** sustituye a **Iniciar pago en el terminal** mientras se procesa un pago. Solo funciona hasta que el terminal recibe el pago. Después, el panel muestra **El pago ya está en el terminal. Cancélelo en el terminal o espere a que caduque.**
+- **Un pago caduca** en Mercado Pago 5 minutos después de iniciarlo. El panel sigue comprobando su estado, por lo que un pago que el cliente finalice antes de ese momento completará la venta.
+- **Al recargar la página**, se recupera el pago que ya está en curso y se muestra **Cancelar pago en el terminal**.
+- **Si se cerró la caja** durante un pago, no vuelva a cobrar la tarjeta. Su tienda está diseñada para completar automáticamente un pedido pagado a partir de la notificación de Mercado Pago y de una comprobación que ejecuta cada 5 minutos, pero esto aún no se ha probado en producción. Abra el pedido y el pago en su cuenta de Mercado Pago, y compruebe si se pagó.
+
+## Después de la venta {#receipts}
+
+El terminal no imprime un recibo. Imprima o envíe por correo electrónico el recibo del POS como de costumbre; consulte [Recibos al pagar](../../receipts/at-checkout.mdx).
+
+El pedido registra el pago con el ID del pedido de Mercado Pago como ID de transacción.
+
+## Reembolsos {#refunds}
+
+En WP Admin, abra el pedido, haga clic en **Reembolso**, introduzca el importe y pulse **Reembolsar … mediante Mercado Pago Terminal**. Si devuelve el importe de todo el pedido, será un reembolso completo; cualquier importe menor será un reembolso parcial. Mercado Pago permite reembolsos hasta **90 días** después del pago.
+
+Algunas entidades adquirentes solo permiten reembolsos en el terminal. Si Mercado Pago rechaza el reembolso, realícelo en el terminal Point y luego regístrelo en WooCommerce con **Reembolsar manualmente**. Consulte [Reembolsos](../../pos/refunds.mdx).
+
+## Si algo sale mal {#goes-wrong}
+
+La línea de estado del panel indica lo ocurrido. Abra el apartado que empiece con las mismas palabras.
+
+### El pago no se inicia {#wont-start}
+
+<details>
+<summary>Seleccione primero un terminal.</summary>
+
+Seleccione un terminal en **Terminal** y vuelva a pulsar **Iniciar pago en el terminal**.
+
+</details>
+
+<details>
+<summary>El terminal … está en modo STANDALONE.</summary>
+
+El terminal aún no puede recibir pagos desde la caja. Pida a quien configuró la pasarela que [lo cambie a PDV](#terminals) y lo reinicie.
+
+</details>
+
+<details>
+<summary>No se encontraron terminales en esta cuenta de Mercado Pago. / No se pudieron cargar los terminales.</summary>
+
+La tienda no puede obtener la lista de sus terminales. Pida a quien configuró la pasarela que revise los [diagnósticos](#settings).
+
+</details>
+
+<details>
+<summary>Mercado Pago Terminal está desactivado.</summary>
+
+La pasarela está desactivada para el POS. Pida a quien gestione WP Admin que [la active](#turn-on).
+
+</details>
+
+<details>
+<summary>La solicitud de Mercado Pago Terminal falló.</summary>
+
+La caja no pudo conectarse con su tienda o con Mercado Pago. Si es posible que el cliente haya pagado, compruebe el pedido y su cuenta de Mercado Pago antes de iniciar otro pago. De lo contrario, compruebe la conexión e inténtelo de nuevo. Si sigue ocurriendo, envíe el [paquete de soporte](#logs-and-support-bundle).
+
+</details>
+
+### El pago se queda bloqueado o falla {#stalls}
+
+Antes de volver a empezar, mire el terminal. **Nunca cobre la tarjeta 2 veces**: si es posible que el cliente haya pagado, compruebe primero el pedido y su cuenta de Mercado Pago.
+
+<details>
+<summary>Se sigue esperando al terminal.</summary>
+
+Ha pasado un minuto sin respuesta. Si el terminal muestra el pago, deje que el cliente termine; si no, pulse **Cancelar pago en el terminal** y vuelva a empezar.
+
+</details>
+
+<details>
+<summary>El pago ya está en el terminal.</summary>
+
+Cancélelo en el terminal o espere los 5 minutos hasta que caduque. El panel sigue comprobando su estado, por lo que, si el cliente paga de todos modos, la venta se completará.
+
+</details>
+
+<details>
+<summary>El pago falló.</summary>
+
+Se ha rechazado la tarjeta o el pago. Pulse **Iniciar pago en el terminal** para volver a intentarlo o cobre con otro método.
+
+</details>
+
+<details>
+<summary>El pago caducó en el terminal.</summary>
+
+Han pasado 5 minutos. Vuelva a pulsar **Iniciar pago en el terminal**.
+
+</details>
+
+<details>
+<summary>Se agotó el tiempo de espera del terminal.</summary>
+
+Han pasado 6 minutos sin resultado y la caja solicita a Mercado Pago que cancele el pago. Compruebe el terminal antes de volver a empezar.
+
+</details>
+
+<details>
+<summary>Mercado Pago notificó un pago que no coincide con este pedido.</summary>
+
+El pago no coincidía con este pedido; por ejemplo, su total o moneda había cambiado. No vuelva a cobrar la tarjeta. Compruebe las notas del pedido y el pago en su cuenta de Mercado Pago, y avise al encargado.
+
+</details>
+
+<details>
+<summary>Mensajes durante la configuración</summary>
+
+**Mercado Pago rechazó el token de acceso (HTTP 401).** El token es incorrecto o ha caducado. Copie uno nuevo desde **Tus integraciones** → **Credenciales** en Mercado Pago y guárdelo en **Token de acceso**.
+
+**El token de acceso no tiene permiso para usar Point (HTTP 403).** La aplicación asociada al token no puede usar Point. Compruebe la aplicación en **Tus integraciones**.
+
+**No se pudo conectar con Mercado Pago.** La tienda no pudo conectarse. Compruebe el token y vuelva a cargar la página de ajustes.
+
+**Aún no hay terminales Point vinculados a esta cuenta de Mercado Pago.** Inicie sesión en el terminal con esta cuenta de Mercado Pago, cámbielo a PDV y reinícielo.
+
+**Terminal predeterminado es un cuadro de texto, no una lista.** No se pudo cargar la lista de terminales. Compruebe el token y los diagnósticos, y vuelva a cargar la página de ajustes.
+
+**Está seleccionado el modo Producción, pero el token de acceso es de prueba (TEST-…).** Los pagos se enviarían al entorno de pruebas de Mercado Pago. Pegue su token de producción o vuelva a cambiar **Modo** a **Prueba**.
+
+**Último webhook verificado: nunca.** Mercado Pago aún no ha enviado ninguna notificación firmada. Compruebe la URL del webhook y el **Secreto del webhook**. El panel de pago sigue completando los pagos mientras permanece abierto.
+
+**Mercado Pago rechazó el reembolso.** Algunas entidades adquirentes solo permiten reembolsos en el terminal: realícelo allí y después regístrelo con **Reembolsar manualmente**.
+
+**Se rechaza la activación.** El servidor necesita **PHP 7.4** o posterior.
+
+</details>
+
+## Configuración {#setup}
+
+Esta parte está dirigida a quien gestione WP Admin de la tienda. Consulte [qué necesita](#requirements) antes del paso 1.
+
+### Qué necesita {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Cuenta de Mercado Pago">Una cuenta de vendedor en Argentina, Brasil, México, Uruguay, Colombia, Chile o Perú, con una aplicación y su token de acceso</RequirementItem>
+  <RequirementItem label="Terminal">Un Mercado Pago Point Smart 1 o 2, en modo PDV</RequirementItem>
+  <RequirementItem label="Conexión">Solo con conexión a internet. La tienda envía cada pago al terminal por internet, por lo que cualquier caja puede usar cualquier terminal y selecciona uno al pagar</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
+  <RequirementItem label="Servidor">WordPress 5.2 o posterior, WooCommerce y PHP 7.4 o posterior</RequirementItem>
+  <RequirementItem label="Moneda">La misma moneda que su cuenta de Mercado Pago</RequirementItem>
+</RequirementsList>
+
+### 1. Instale la extensión {#install}
+
+Abra `WP Admin > POS > Ajustes > Extensiones`, busque **Mercado Pago Terminal for WooCommerce** y haga clic en **Instalar**. WCPOS la descarga, instala y activa en una sola operación. Consulte [Instalar una extensión](../../extensions/index.mdx#installing-an-extension).
+
+Si no utiliza el directorio, descargue el **zip del plugin** (no el zip del código fuente) desde la [página de versiones de GitHub](https://github.com/wcpos/mercadopago-terminal-for-woocommerce/releases), súbalo con **Subir plugin** en `Plugins > Add Plugin` y actívelo. WooCommerce debe estar activo.
+
+### 2. Prepare su cuenta de Mercado Pago {#mercado-pago-account}
+
+1. Cree una aplicación en **Tus integraciones** y active sus credenciales de producción. Mercado Pago le solicita su sector y sitio web, así como aceptar las condiciones y superar un reCAPTCHA.
+2. Cree una **Tienda** y una **Caja** en Mercado Pago. La extensión no las crea por usted.
+3. Vincule su terminal Point Smart: inicie sesión en el terminal con la misma cuenta de Mercado Pago.
+
+### 3. Complete los ajustes de la pasarela de pago {#gateway-settings}
+
+1. Vaya a `WP Admin > WooCommerce > Ajustes > Pagos` y abra **Mercado Pago Terminal**.
+2. Seleccione **Modo**: **Prueba** (el predeterminado) utiliza el terminal virtual del entorno de pruebas de Mercado Pago; **Producción** utiliza terminales reales.
+3. Pegue el **Token de acceso** (`APP_USR-…`) de su aplicación desde **Tus integraciones** → **Credenciales**. Use el token que corresponda al **Modo**.
+4. Si su moneda no tiene centavos, como el peso chileno, establezca **Número de decimales** en **0** en `WooCommerce > Ajustes > General`. Mercado Pago rechaza los importes con decimales en esas cuentas, y la extensión solo envía importes enteros cuando este ajuste es 0.
+5. Guarde los cambios.
+
+### 4. Añada el webhook (recomendado) {#webhook}
+
+El webhook permite a Mercado Pago avisar a su tienda cuando se completa un pago. Está pensado para completar un pedido pagado incluso si se cerró la caja, pero esto aún no se ha probado en producción: [compruebe el pedido](#payment-controls) antes de volver a cobrar. Sin el webhook, el panel de pago sigue completando los pagos mientras permanece abierto.
+
+1. En Mercado Pago, abra **Tus integraciones** → su aplicación → **Webhooks**.
+2. Añada la URL del webhook que aparece bajo **Secreto del webhook** en los ajustes de la pasarela. Termina en `admin-ajax.php?action=mptfwc_webhook`.
+3. Seleccione el evento **Pedido (Mercado Pago)** y guarde los cambios.
+4. Copie la **firma secreta** en **Secreto del webhook** y guarde los cambios. Con el secreto guardado, la tienda rechaza cualquier notificación que no esté firmada con él. Sin un secreto, la tienda sigue actuando según las notificaciones de Mercado Pago, pero no puede comprobar que procedan de Mercado Pago, y **Último webhook verificado** permanece en **nunca**.
+
+### 5. Configure sus terminales {#terminals}
+
+1. Vuelva a cargar la página de ajustes. La lista **Terminal predeterminado** y la tabla **Terminales** muestran ahora los terminales de su cuenta.
+2. Los terminales se entregan en modo **STANDALONE**. En cada uno, haga clic en **Cambiar a PDV** y luego **reinicie el terminal**. Mercado Pago necesita ese reinicio.
+3. Seleccione un **Terminal predeterminado**.
+4. Opcional: limite **Terminales habilitados** a los que puedan seleccionar los cajeros. Déjelo vacío para permitirlos todos; el predeterminado siempre está permitido.
+5. Opcional: marque **Bloquear selección de terminal** para que los cajeros siempre usen el terminal predeterminado.
+6. Guarde los cambios.
+
+### 6. Actívela para el POS {#turn-on}
+
+Vaya a `WP Admin > POS > Ajustes > Finalizar compra`, busque **Mercado Pago Terminal** y active **Habilitado**. Consulte [Habilitar una pasarela de pago](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+Deje **Activar/Desactivar** desmarcado en los ajustes de WooCommerce, salvo que también quiera ofrecerla en la tienda en línea. El POS utiliza la pasarela una vez habilitada aquí, tanto si esa casilla está marcada como si no.
+
+## Referencia de ajustes {#settings}
+
+En `WP Admin > WooCommerce > Ajustes > Pagos > Mercado Pago Terminal`. Los pasos anteriores cubren los ajustes necesarios; abra la lista para consultar todos los ajustes y sus valores predeterminados.
+
+<details>
+<summary>Los 11 ajustes y los diagnósticos</summary>
+
+| Ajuste | Función |
+|---|---|
+| **Activar/Desactivar** | Ofrece la pasarela también en la tienda en línea. Desactivado por defecto. El POS tiene su propio interruptor en `POS > Ajustes > Finalizar compra` |
+| **Título** | El nombre que seleccionan los cajeros en la página de pago. El valor predeterminado es `Mercado Pago Terminal` |
+| **Descripción** | La línea que aparece bajo el título. El valor predeterminado es `Pay in person on a Mercado Pago Point terminal.` |
+| **Modo** | **Prueba** (predeterminado) utiliza el terminal virtual del entorno de pruebas; **Producción** utiliza terminales reales |
+| **Token de acceso** | Se obtiene de su aplicación en Tus integraciones → Credenciales. Una vez guardado, solo se muestran sus últimos cuatro caracteres; déjelo en blanco para conservarlo |
+| **Secreto del webhook** | La firma secreta de los ajustes del webhook de Mercado Pago. Se guarda y se muestra como el token |
+| **Terminal predeterminado** | El terminal seleccionado al inicio. Una lista obtenida de su cuenta, o un cuadro de texto si no se puede cargar la lista |
+| **Terminales habilitados** | Los terminales que pueden seleccionar los cajeros. Vacío permite todos; el predeterminado siempre está permitido. Se oculta si no se puede cargar la lista |
+| **Bloquear selección de terminal** | Los cajeros no pueden cambiar el terminal: siempre se usa el predeterminado. Requiere un terminal predeterminado |
+| **Registros de depuración del pago** | Muestra **Mostrar registros**, **Copiar** y **Borrar** en el panel de pago. Desactivado por defecto; actívelo al recopilar registros para soporte. Los pagos se registran en ambos casos |
+| **Nivel de registro** | **Desactivado**, **Solo errores** o **Depuración** (predeterminado) |
+
+Bajo los ajustes, **Diagnósticos de Mercado Pago Terminal** muestra la comprobación de la API con el número de terminales y cuántos están en modo PDV, el último webhook verificado, el entorno activo, si el token y el secreto están configurados, el terminal predeterminado, la URL del webhook y un enlace a los registros. La tabla **Terminales** muestra el ID, la etiqueta y el modo de funcionamiento de cada terminal, con **Cambiar a PDV** cuando sea necesario.
+
+</details>
+
+## Registros y paquete de soporte {#logs-and-support-bundle}
+
+Los registros están en `WP Admin > WooCommerce > Status > Registros`, bajo el origen `mercadopago-terminal`. **Nivel de registro** está inicialmente en **Depuración**, que registra todas las solicitudes a Mercado Pago y sus respuestas, todos los webhooks y todos los cambios de estado de los pagos, sin tokens, firmas ni números de tarjeta.
+
+Cuando falle un pago, haga clic en **Descargar paquete de soporte** en la página de ajustes de la pasarela y envíe el archivo `.txt` a soporte junto con el **número de pedido**. Nada de lo que contiene puede utilizarse para cobrar pagos.
+
+<details>
+<summary>Qué contiene el paquete de soporte</summary>
+
+- La configuración de su tienda: las versiones de la extensión, WordPress, WooCommerce, PHP y WCPOS, y si HPOS está activado.
+- Los ajustes de la pasarela, con el token de acceso y el secreto del webhook ocultos.
+- Sus terminales y sus modos de funcionamiento.
+- Los intentos de pago de los 10 pedidos más recientes que usaron el terminal.
+- Las últimas 500 líneas del registro `mercadopago-terminal`.
+
+</details>
+
+## Qué no permite {#scope-and-limitations}
+
+- Pagos parciales: el terminal siempre cobra el pedido completo.
+- Propinas.
+- Una tienda con precios en una moneda distinta a la de la cuenta de Mercado Pago: el pedido no se completará.
+- Imprimir un recibo en el terminal.
+- La página de pago por bloques de la tienda en línea.
+- HPOS (las tablas de pedidos de WooCommerce): la extensión aún no declara compatibilidad.
+
+<details>
+<summary>Cómo funciona, para desarrolladores</summary>
+
+La pasarela utiliza la **API de pedidos** de Mercado Pago para Point (`POST /v1/orders` con `type: point`). Al iniciar un pago, se guardan una clave de idempotencia y una referencia externa en el pedido y, a continuación, se crea un pedido de Mercado Pago por el total del pedido en el terminal seleccionado, con una caducidad de 5 minutos (filtro `mptfwc_order_expiration_time`). Un reintento tras agotar el tiempo de espera reutiliza la clave, por lo que no puede cobrar 2 veces.
+
+El panel consulta el estado cada 2 segundos (filtro `mptfwc_poll_interval_ms`) y deja de intentarlo tras 6 minutos. El webhook (`x-signature`, HMAC-SHA256) y una comprobación programada cada 5 minutos también pueden completar el pedido; nunca se confía en el cuerpo del webhook y siempre se vuelve a obtener el pedido desde Mercado Pago.
+
+El pedido solo se completa cuando el pedido de Mercado Pago lo identifica, fue creado para él por esta tienda, es un pedido `point`, coincide con su total y moneda, y utilizó el terminal del intento. La finalización se ejecuta una sola vez, con un bloqueo por pedido. El ID de transacción es el ID del pedido de Mercado Pago.
+
+</details>
+
+## Documentación relacionada {#related-documentation}
+
+- [La pestaña Heredado](../../pos/checkout/legacy-tab.mdx)
+- [Pago](../../pos/checkout/index.mdx)
+- [Ajustes de caja](../../settings/wp-admin/checkout.mdx)
+- [Extensiones](../../extensions/index.mdx)
+- [Informe de un problema en GitHub](https://github.com/wcpos/mercadopago-terminal-for-woocommerce/issues). Para consultas sobre su cuenta, credenciales y terminales, contacte con Mercado Pago.
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="La pestaña Heredado" description="Pasarelas que cobran en la página de pago de la propia tienda" />
+  <LinkCard to="/settings/checkout" title="Ajustes de caja" description="Active pasarelas para el POS" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Todas las pasarelas" description="Los demás terminales de tarjeta con los que funciona WCPOS" />
+</LinkCards>
