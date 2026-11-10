@@ -1,0 +1,203 @@
+---
+title: Regole per i rimborsi
+slug: /manage-store/orders/refund-rules
+sidebar_label: Regole per i rimborsi
+sidebar_position: 2
+description: "Rimborsa un ordine da WCPOS, in tutto o in parte: il modulo di rimborso riga per riga, dove viene restituito il denaro, cosa succede se un rimborso non riesce e come vengono mostrati i rimborsi nell'ordine."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/orders/refunds/en/manifest.json';
+
+:::info Funzionalità Pro
+Per effettuare rimborsi da WCPOS serve [WCPOS Pro](../getting-started/pro-license.mdx). Senza Pro, la pagina **Ordini** offre solo un'anteprima: rimborsa l'ordine in WP Admin, in **WooCommerce → Ordini**.
+:::
+
+Questa pagina descrive i rimborsi in dettaglio: ogni parte del modulo, dove viene restituito il denaro, il significato di ciascun messaggio di errore e cosa mostra l'ordine in seguito. Per la procedura di rimborso, dall'apertura dell'ordine alla conferma, segui [Rimborsi alla cassa](../pos/refunds.mdx).
+
+## Avviare un rimborso {#starting-a-refund}
+
+Serve una connessione e l'ordine deve essere arrivato al negozio e avere lo stato **Completato**, **In lavorazione** o **In sospeso** ([Quando compare l'azione Rimborso](#when-the-refund-action-appears)). Attendi il messaggio "Rimborso di *(importo)* elaborato" prima di consegnare contanti. Se compare un altro messaggio, consulta [Se un rimborso non riesce](#if-a-refund-fails).
+
+Un ordine aperto:
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[347, 0], [42, -11], [28, -26], [28, -26], [28, -26], [28, -26], [28, -26]]} alt="Un ordine in contanti aperto: la riga con data, negozio e cassiere, gli articoli, i totali e il pagamento in contanti, e in fondo Elimina, Rimborso, Sincronizza, Chiudi, Ricevuta e Riapri">
+
+1. **Dettagli ordine** — quando è stato pagato, in quale negozio, da quale cassiere e dove è stato creato.
+2. **Pagamento** — come ha pagato il cliente. Questo determina dove può essere restituito il denaro; consulta [Quando usare i contanti o il metodo originale](#when-to-use-cash-vs-original-method).
+3. **Elimina** — elimina l'ordine. Non è un rimborso.
+4. **Rimborso** — apre il modulo di rimborso, **Rimborsa ordine #*(numero)***.
+5. **Sincronizza** — recupera nuovamente l'ordine dal negozio.
+6. **Ricevuta** — la ricevuta dell'ordine nel suo stato attuale.
+7. **Riapri** — rimette l'ordine nel carrello per modificarlo.
+
+</JourneyShot>
+
+### Quando compare l'azione Rimborso {#when-the-refund-action-appears}
+
+**Rimborso** compare solo su un ordine **Completato**, **In lavorazione** o **In sospeso** che è arrivato al negozio.
+
+<details>
+<summary>Il pulsante Rimborso non compare?</summary>
+
+Non compare sugli ordini **In attesa di pagamento**, **Annullato**, **Fallito** o interamente **Rimborsato**, sulle vendite ancora aperte nel POS (**POS aperto** o **POS parziale**) o sugli ordini ancora in attesa di sincronizzazione. Per rimborsarli, usa WP Admin in **WooCommerce → Ordini**. Se lo stato di un ordine è cambiato in WP Admin, premi **Sincronizza** e riaprilo. Se WCPOS segnala che il database locale non è disponibile, i rimborsi restano bloccati finché non ricarichi l'app.
+
+</details>
+
+## Il modulo di rimborso {#the-refund-form}
+
+Il modulo si apre con tutte le righe dell'ordine e nessuna selezionata per il rimborso. Qui sotto è compilato un secondo rimborso sullo stesso ordine: un orologio, con $45.00 già rimborsati in precedenza.
+
+<JourneyShot manifest={manifest} device="tablet" step={4} alt="Il modulo di rimborso aperto come pannello sopra la schermata Ordini, per un ordine già rimborsato una volta" />
+
+Ogni parte del modulo:
+
+<JourneyShot manifest={manifest} device="tablet" step={5} offsets={[[52, 0], [150, 0], [332, 43], [345, 97], [461, -124], [118, -39], [60, 48], [-12, -30]]} maxWidth={560} alt="Il modulo di rimborso per un ordine già rimborsato una volta: Totale e Già rimborsato, la tabella delle righe con l'ultimo orologio impostato per il rimborso, Importo personalizzato, il motivo Taglia sbagliata, Totale rimborso $45.00 ed Elabora rimborso">
+
+1. **Totale** — il totale dell'ordine.
+2. **Già rimborsato** — quanto è già stato restituito con i rimborsi precedenti. Compare solo dopo un primo rimborso.
+3. **QTÀ** — quante unità della riga sono ancora rimborsabili: la quantità acquistata meno quella già rimborsata. Se WCPOS non riesce a caricare la cronologia dei rimborsi del negozio (ad esempio offline), mostra l'intera quantità acquistata; l'importo resta comunque limitato a quanto rimane da rimborsare.
+4. **Qtà da rimborsare** — quante unità della riga rimborsare ora.
+5. **Importo rimborso** — l'importo rimborsato per la riga, imposte incluse.
+6. **Importo personalizzato** — un importo aggiuntivo non collegato a una riga. Viene sommato agli importi delle righe.
+7. **Motivo** — facoltativo. Viene salvato con il rimborso e mostrato nella relativa scheda in [Rimborsi](#refunds-section).
+8. **Elabora rimborso** — chiede conferma. È disattivato finché **Totale rimborso** non è maggiore di zero e non supera quanto resta da rimborsare.
+
+</JourneyShot>
+
+<details>
+<summary>Le colonne della tabella, in ordine</summary>
+
+| Colonna | Cosa mostra |
+|---|---|
+| **Prodotto** | Il nome della riga |
+| **Prezzo** | Il prezzo unitario, con o senza imposte in base a come il negozio mostra i prezzi nel carrello |
+| **QTÀ** | La quantità ancora rimborsabile |
+| **Qtà da rimborsare** | Quante unità rimborsare ora |
+| **Importo rimborso** | Qtà da rimborsare × il prezzo della riga, più la quota corrispondente delle imposte della riga |
+
+</details>
+
+**Totale rimborso** in fondo somma gli importi delle righe e **Importo personalizzato** e si aggiorna mentre digiti.
+
+### Rimborsare quantità intere o parziali {#refunding-whole-vs-partial-quantities}
+
+Non esiste un pulsante separato per il rimborso completo. Per rimborsare l'intero ordine, imposta **Qtà da rimborsare** di ogni riga all'intera **QTÀ** e inserisci eventuali spese di spedizione e commissioni in **Importo personalizzato**: la tabella elenca solo i prodotti dell'ordine, quindi spedizione e commissioni non hanno una riga. Per un rimborso parziale, imposta solo le righe e le quantità restituite.
+
+Un importo personalizzato viene rimborsato come somma unica, senza scorporare le imposte.
+
+I prodotti rimborsati vengono reintegrati nelle scorte se per il prodotto è attiva la gestione delle scorte.
+
+## Quando usare i contanti o il metodo originale {#when-to-use-cash-vs-original-method}
+
+- **Pagamento con carta** su un lettore o con un metodo di pagamento che consente rimborsi da WCPOS: scegli **Rimborsa su *(metodo di pagamento)***.
+- **Cliente che ha pagato con carta e riceve invece contanti**, se il negozio lo consente: scegli **Rimborsa in contanti** e consegna i contanti dal cassetto.
+- **Pagamento in contanti**: il rimborso avviene in contanti e il modulo non chiede di scegliere.
+
+:::warning
+Non scegliere **Rimborsa in contanti** per denaro che restituisci tramite un terminale per carte. Un rimborso in contanti riduce i contanti che la cassa si aspetta nel cassetto, ma se non ne sono usciti il conteggio alla chiusura risulterebbe in eccesso.
+:::
+
+<details>
+<summary>Il pagamento è avvenuto su un terminale per carte separato?</summary>
+
+Se il cliente ha pagato su un terminale per carte autonomo a cui WCPOS non si collega, rimborsa la carta sul terminale o nella dashboard del fornitore, poi registra il rimborso sull'ordine in WP Admin.
+
+</details>
+
+<details>
+<summary>Il metodo di pagamento originale non è disponibile?</summary>
+
+Quando il metodo di pagamento non consente rimborsi da WCPOS, **Rimborsa su *(metodo di pagamento)*** è disattivato e il modulo mostra "I rimborsi sul metodo di pagamento originale non sono disponibili per questo ordine."
+
+Se WCPOS non riesce a verificare il metodo di pagamento, il modulo mostra "Impossibile verificare i rimborsi sul metodo di pagamento originale. I rimborsi in contanti sono ancora disponibili." e seleziona **Rimborsa in contanti**. Scegli questa opzione solo se stai consegnando contanti.
+
+</details>
+
+## Se un rimborso non riesce {#if-a-refund-fails}
+
+Leggi il messaggio prima di riprovare. La maggior parte degli errori indica che non è stato rimborsato nulla. Uno indica che WCPOS non è in grado di stabilirlo.
+
+:::warning Controlla prima di riprovare
+**"WCPOS non ha potuto confermare se questo rimborso è andato a buon fine."** significa che il rimborso è stato inviato ma WCPOS non ha ricevuto una risposta chiara, quindi potrebbe essere andato a buon fine. Apri l'ordine e controlla in [Rimborsi](#refunds-section) prima di riprovare. Ogni tentativo è un nuovo rimborso, quindi premere di nuovo **Elabora rimborso** potrebbe rimborsare il cliente due volte. Se l'ordine non si è aggiornato, controllalo in WP Admin. Consulta [PAYMENT311](../error-codes/PAYMENT311.mdx).
+:::
+
+Ogni altro messaggio indica che non è stato rimborsato nulla, ad esempio quando sei offline:
+
+<JourneyShot manifest={manifest} device="tablet" step={7} alt="La schermata Ordini offline, con il modulo di rimborso aperto e un avviso in cima alla schermata. La QTÀ dell'orologio mostra di nuovo 2 perché non è possibile caricare la cronologia dei rimborsi" />
+
+<JourneyShot manifest={manifest} device="tablet" step={6} maxWidth={640} alt="L'avviso offline in primo piano: Sei offline, quindi non è stato effettuato alcun rimborso. Riconnettiti a Internet e riprova, con un pulsante Aiuto" />
+
+<details>
+<summary>Qualsiasi altro messaggio: non è stato rimborsato nulla</summary>
+
+Risolvi il problema indicato nel messaggio, poi premi di nuovo **Elabora rimborso**:
+
+- **"Sei offline, quindi non è stato effettuato alcun rimborso."** Riconnettiti a Internet e riprova.
+- **"WCPOS era in background, quindi non è stato effettuato alcun rimborso."** L'app è stata messa in background prima dell'invio del rimborso. Riprova ora.
+- **"Non è stato effettuato alcun rimborso: accedi e riprova."** La sessione di accesso è scaduta. Accedi e riprova.
+- **Un messaggio del negozio oppure "Elaborazione del rimborso non riuscita".** Il negozio o il metodo di pagamento ha rifiutato il rimborso, ad esempio perché il tuo account non è autorizzato a effettuare rimborsi o un valore non è consentito. Leggi il messaggio, risolvi il problema indicato oppure scegli **Rimborsa in contanti** se stai consegnando contanti.
+
+</details>
+
+## Dopo il rimborso {#after-the-refund}
+
+Una volta aggiornato dal negozio, l'ordine mostra il rimborso.
+
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[52, 409], [97, -102], [67, -50]]} alt="L'ordine dopo un rimborso parziale di $45.00: sotto Totali una riga Rimborso in rosso di -$45.00 e Pagamento netto $83.00, e sotto il pagamento in contanti di $128.00">
+
+1. **Rimborso** — quanto è stato rimborsato finora, sottratto dai totali.
+2. **Pagamento netto** — sostituisce **Totale**: quanto incassato per l'ordine, meno i rimborsi.
+3. **Pagamento** — il pagamento originale rimane invariato. Sotto, una riga **Rimborso** mostra l'importo restituito.
+
+</JourneyShot>
+
+In cima all'ordine, l'indicatore di stato mostra **Parzialmente rimborsato**. Lo stato dell'ordine in sé non cambia: l'elenco Ordini continua a mostrarlo, ad esempio, come **Completato**. Quando tutto è stato rimborsato, WooCommerce imposta l'ordine su **Rimborsato** e **Rimborso** non compare più.
+
+### La sezione Rimborsi {#refunds-section}
+
+Scorri l'ordine fino a **Rimborsi**. L'intestazione indica il numero dei rimborsi e la loro somma. Ogni rimborso ha una scheda.
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[-391, -137], [-51, -85], [16, -28], [-24, 0]]} alt="La riga Rimborso sotto Pagamento e la sezione Rimborsi con una scheda: Rimborso #229730, meno di un minuto fa, -$45.00, Da 2, il motivo Cinturino troppo piccolo e l'orologio rimborsato con quantità, imposte e totale">
+
+1. **Rimborso** — sotto **Pagamento**, l'importo restituito.
+2. **Numero e totale** — quanti rimborsi ha l'ordine e a quanto ammontano complessivamente.
+3. **Da** — chi ha effettuato il rimborso, indicato con il suo ID utente WordPress (qui 2), non con il nome.
+4. **Ricevuta** — apre la ricevuta di questo rimborso.
+
+</JourneyShot>
+
+Ogni scheda inizia con **Rimborso #*(id)***, il numero specifico del rimborso, e quando è stato effettuato. L'importo è sulla destra. Sotto compaiono il motivo tra virgolette e le righe interessate dal rimborso: prodotto e SKU, quantità, imposte e totale, mostrati come valori negativi.
+
+Se WCPOS non riesce a recuperare i dettagli del rimborso, la sezione mostra "Impossibile caricare i dettagli del rimborso." con **Riprova**. Sotto, **Riepilogo locale dei rimborsi:** elenca ciò che il dispositivo conserva già per ciascun rimborso: numero, motivo (oppure "Nessun motivo fornito") e importo. Quando il dispositivo non contiene dati, mostra "Nessun riepilogo locale dei rimborsi disponibile." Premi **Riprova** quando sei connesso.
+
+### Ricevute di rimborso {#refund-receipts}
+
+**Ricevuta** su una scheda di rimborso apre una **Ricevuta di rimborso** relativa solo a quel rimborso, da stampare o salvare come PDF. Non ha un pulsante per l'invio via email. Elenca le righe rimborsate e le relative imposte; la sezione dei pagamenti, intitolata **Rimborsato su**, indica dove è stato restituito il denaro. Scegli il template e la stampante, poi **Stampa ricevuta** o **Scarica PDF**.
+
+**Ricevuta** in fondo all'ordine apre la ricevuta dell'ordine nel suo stato attuale. Una ricevuta dettagliata mostra le righe **Rimborsato** e **Totale netto**. Consulta [Riaprire una ricevuta](../receipts/at-checkout.mdx#reprinting-receipts).
+
+### Rimborsi in contanti e cassetto {#cash-refunds-and-the-drawer}
+
+Un rimborso in contanti effettuato mentre la cassa è aperta riduce i contanti che la cassa si aspetta nel cassetto e viene elencato nel pannello della cassa sotto **Rimborsi in contanti**. Consulta [Rimborsi in contanti e cassetto](../pos/refunds.mdx#drawer).
+
+### Chi ha effettuato il rimborso {#who-made-the-refund}
+
+Ogni rimborso da WCPOS registra il cassiere, il negozio e la destinazione (contanti o metodo di pagamento). Quando la cassa ha una sessione aperta, il rimborso viene associato anche a quella cassa e a quella sessione, così viene conteggiato a carico di quel cassetto. Consulta [Riconciliazione](../reports/reconciliation.mdx).
+
+## Cose da sapere {#things-to-know}
+
+- **I resi sono rimborsi.** Per accettare un reso, rimborsa l'ordine pagato dal cliente, non una nuova vendita.
+- **I coupon rimangono invariati.** Un rimborso restituisce gli importi indicati nel modulo; non modifica i coupon dell'ordine.
+- **I rimborsi richiedono una connessione.** Il negozio e, per un rimborso sul metodo di pagamento, il fornitore di pagamento devono essere raggiungibili.
+- **Un ordine interamente rimborsato non ha più nulla da rimborsare.** Il suo stato è **Rimborsato** e **Rimborso** non compare più.
+
+## Documentazione correlata {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/refunds" title="Rimborsi alla cassa" description="Un rimborso alla cassa, passo dopo passo" />
+  <LinkCard to="/settings/checkout/payment-methods" title="Gateway di pagamento" description="Quali metodi di pagamento consentono di rimborsare il cliente da WCPOS" />
+  <LinkCard to="/sell/print-email-receipts#reprinting-receipts" title="Aprire una ricevuta di rimborso" description="Riaprire la ricevuta di un ordine o di un singolo rimborso" />
+</LinkCards>
