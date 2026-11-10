@@ -1,0 +1,262 @@
+---
+title: Accès aux points de terminaison selon le rôle
+slug: /developers/role-endpoint-access
+sidebar_label: Accès aux points de terminaison selon le rôle
+sidebar_position: 3
+description: "Référence pour les développeurs : points de terminaison REST de WCPOS accessibles aux rôles administrator, shop_manager et cashier, réponses aux requêtes refusées et distinction entre un problème de rôle et un problème de connexion."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+Si vous ne parvenez pas à vous connecter, si une action est bloquée ou si le PDV vous demande une mise à jour, repérez le code dans le message de l’application et [trouvez la solution ici](#diagnosing-failures) :
+
+- [AUTH101 : reconnectez-vous](#sign-in-again)
+- [AUTH201 : demandez à un administrateur de vérifier le rôle](#check-the-role)
+- [SYNC341 : mettez l’application à jour](#update-the-app)
+
+## Diagnostiquer les échecs {#diagnosing-failures}
+
+### Reconnectez-vous (AUTH101) {#sign-in-again}
+
+L’application affiche **« Requête toujours non autorisée après le renouvellement du jeton - veuillez vous reconnecter »**.
+
+1. WCPOS ouvre automatiquement la fenêtre de connexion WordPress. Connectez-vous avec le même compte de caissier.
+2. Si vous avez fermé la fenêtre, l’application affiche **« Veuillez vous connecter pour continuer »**. Appuyez sur **Connexion** dans ce message pour rouvrir la fenêtre.
+3. Une fois la connexion rétablie, les ventes en attente d’envoi sont transmises automatiquement.
+
+Si le message réapparaît immédiatement, demandez de l’aide à l’administrateur de votre site et transmettez-lui la page [AUTH101](../error-codes/AUTH101.mdx).
+
+<details>
+<summary>Détails de l’échec de connexion</summary>
+
+L’application a reçu un `401`, renouvelé le jeton, puis reçu à nouveau un `401` lors de la nouvelle tentative. Le problème concerne l’authentification, pas le rôle : un `403` ne déclenche jamais de renouvellement. Un élément entre l’application et WordPress supprime ou refuse le jeton, souvent une extension de sécurité ou d’authentification ([AUTH301](../error-codes/AUTH301.mdx)).
+
+</details>
+
+### Demandez à un administrateur de vérifier le rôle (AUTH201) {#check-the-role}
+
+Vous êtes connecté, mais votre rôle n’autorise pas cette action. Demandez à l’administrateur de votre site de vérifier vos accès dans [Accès du personnel](../settings/wp-admin/access.mdx). Il peut suivre les indications de la page [AUTH201](../error-codes/AUTH201.mdx) pour en trouver la cause.
+
+<details>
+<summary>Détails des autorisations du rôle</summary>
+
+Le serveur a répondu `403` à un utilisateur connecté. Soit l’utilisateur ne dispose pas de `access_woocommerce_pos`, soit la route exige `manage_woocommerce_pos` ou `install_plugins`. Recherchez le point de terminaison dans les listes ci-dessous. Si elles indiquent que le rôle de l’utilisateur devrait y avoir accès, les valeurs par défaut du rôle ont très probablement été modifiées : dans l’écran Accès, où s’affiche **Modifié par rapport aux valeurs par défaut de WCPOS**, par une extension de gestion des rôles ou par du code personnalisé. Un rôle supplémentaire attribué à l’utilisateur peut également lui refuser une capacité.
+
+Si le point de terminaison ne figure pas dans les listes, les tests sur lesquels elles reposent ne le couvrent pas : consultez le contrôle des autorisations propre à cette route. WCPOS Pro peut également refuser l’accès à un utilisateur pour une boutique à laquelle il n’est pas autorisé à accéder, par exemple `403` `wcpos_display_store_forbidden` (« Vous n’êtes pas autorisé à accéder à cette boutique. »).
+
+</details>
+
+### Mettez l’application à jour (SYNC341) {#update-the-app}
+
+L’application affiche **« Mettez à jour l’application PDV sur cet appareil. »** L’extension de votre site est plus récente que l’application. Mettez l’application à jour, puis rouvrez-la :
+
+- **Web :** rechargez l’onglet du navigateur. Si le message réapparaît : sur un ordinateur, maintenez la touche **Maj** enfoncée pendant le rechargement ; sur un téléphone ou une tablette, demandez de l’aide à l’administrateur de votre site et transmettez-lui la page [SYNC341](../error-codes/SYNC341.mdx).
+- **Ordinateur :** installez la mise à jour proposée par l’application, puis rouvrez-la. Si aucune mise à jour n’est proposée, [téléchargez la dernière version pour ordinateur](../getting-started/installation.mdx#app-requirements) pour Windows, Mac (Intel ou Apple silicon) ou Linux.
+- **iPhone et iPad :** mettez WCPOS à jour depuis sa [version bêta TestFlight](https://testflight.apple.com/join/JGBdVRrW).
+- **Android :** mettez WCPOS à jour depuis sa [version bêta Google Play](https://play.google.com/apps/testing/com.wcpos.main).
+
+La page [SYNC341](../error-codes/SYNC341.mdx) fournit les autres informations, notamment les mesures que l’administrateur du site peut prendre lorsqu’aucune version plus récente de l’application n’est encore disponible.
+
+<details>
+<summary>Détails de la version de l’application</summary>
+
+Le serveur a répondu `426` sur une route v2, car l’application est antérieure au protocole de synchronisation de l’extension.
+
+</details>
+
+### Échec d’autorisation ou échec du jeton {#permission-failure-vs-token-failure}
+
+AUTH201 signifie que l’utilisateur est connecté, mais n’a pas l’autorisation : interrogez un administrateur sur le rôle. AUTH101 signifie que la connexion elle-même a échoué : reconnectez-vous.
+
+<details>
+<summary>Comment les distinguer</summary>
+
+- **`403` (AUTH201)** : l’utilisateur est connecté, mais n’a pas l’autorisation d’effectuer cette action. Vérifiez les capacités du rôle et les exigences du point de terminaison dans les listes ci-dessous.
+- **`401` (AUTH101, « Requête toujours non autorisée après le renouvellement du jeton »)** : le serveur n’a pas pu authentifier la requête de l’application et personne n’est connecté. Reconnectez-vous ; si le problème persiste, vérifiez le jeton et tout élément entre l’application et WordPress qui le supprime ou le refuse.
+
+Consultez la réponse au refus dans le panneau réseau du navigateur ou dans un journal côté serveur. **WP Admin > PDV > Réglages > Outils > Journaux** enregistre également chaque `401` dont le jeton était mal formé ou refusé pour une raison autre qu’une simple expiration. Le statut et le code d’erreur figurent dans le corps de la réponse. L’utilisateur connecté n’y figure pas : identifiez-le sur le serveur, par exemple avec `get_current_user_id()` dans un journal de débogage pendant l’exécution de la requête.
+
+**Échec lié au rôle ou à une capacité :**
+
+- Statut : `403`
+- Code : `woocommerce_pos_rest_forbidden`, ou le code propre à la route, tel que `rest_forbidden`
+- Utilisateur connecté (côté serveur) : l’ID utilisateur WordPress du caissier
+
+**Échec du jeton ou de la connexion :**
+
+- Statut : `401`
+- Code : `woocommerce_pos_rest_unauthorized`
+- `data.reason` : l’erreur du jeton, telle que `woocommerce_pos_auth_token_expired`
+- Utilisateur connecté (côté serveur) : `0` (personne n’est connecté)
+
+Un ID utilisateur non nul indique un problème de capacités. Un ID utilisateur égal à `0` indique un problème de jeton ou d’un élément entre l’application et WordPress.
+
+</details>
+
+## Documentation associée {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Accès du personnel" to="/manage-store/staff-permissions" description="Accorder ou retirer les autorisations de chaque rôle." />
+  <LinkCard title="Sessions" to="/settings/sessions" description="Appareils connectés et fermeture d’une session." />
+  <LinkCard title="Codes d’erreur" to="/error-codes" description="Tous les codes que l’application peut afficher, avec leurs solutions." />
+</LinkCards>
+
+## Pour les administrateurs et les développeurs {#summary}
+
+Les caissiers peuvent arrêter leur lecture ici. La suite de cette page s’adresse aux administrateurs de site et aux développeurs qui doivent déterminer si le problème vient de la connexion, du rôle de l’utilisateur ou de la version de l’application. Elle répertorie les points de terminaison REST de WCPOS accessibles à chaque rôle par défaut et les réponses du serveur en cas de refus. Pour modifier les autorisations d’un rôle, utilisez [Accès du personnel](../settings/wp-admin/access.mdx).
+
+### Ce à quoi chaque rôle par défaut peut accéder {#what-each-role-can-reach}
+
+Un caissier peut effectuer toutes les opérations nécessaires à une vente, y compris les remboursements, et consulter les imprimantes Cloud Print pour envoyer des reçus. Tous les autres réglages, les journaux et la gestion des boutiques nécessitent un administrateur ou un gestionnaire de boutique.
+
+<details>
+<summary>Les accès de chaque rôle par défaut</summary>
+
+- **`administrator`** : tous les points de terminaison de cette page.
+- **`shop_manager`** : tous les points de terminaison sauf l’action d’installation et de mise à jour des extensions de Pro, qui exige la capacité WordPress `install_plugins`.
+- **`cashier`** : tout ce qu’utilise le processus de vente, y compris les remboursements. Aucun accès aux écrans de réglages, aux journaux, aux extensions ni à la gestion des boutiques. Les seuls réglages qu’il peut consulter sont les imprimantes Cloud Print, afin que le PDV puisse leur envoyer des reçus.
+
+</details>
+
+<details>
+<summary>Comment ces listes ont été vérifiées</summary>
+
+Les listes proviennent des tests d’intégration de l’extension. Chaque test se connecte avec un jeton d’accès WCPOS, comme le fait l’application, et appelle le point de terminaison avec chaque rôle. Dans les tests de la version gratuite, un point de terminaison autorisé doit répondre avec un statut inférieur à `400`. Les tests de Pro acceptent aussi `400` ou `404`, car leurs jeux de données de test sont minimaux : chacune de ces réponses prouve néanmoins que l’utilisateur a passé le contrôle des autorisations. Un point de terminaison refusé doit répondre `403`, l’utilisateur restant connecté.
+
+</details>
+
+### Comment le serveur contrôle une requête {#how-the-server-checks}
+
+Chaque requête vers le PDV passe jusqu’à quatre contrôles : la version de l’application, la connexion, l’accès au PDV, puis la règle propre à la route. Le premier contrôle qui échoue détermine la réponse.
+
+<details>
+<summary>Les quatre contrôles, dans l’ordre</summary>
+
+Une requête vers `/wcpos/v1/` ou `/wcpos/v2/` passe ces contrôles dans l’ordre. Les routes publiques de connexion et l’interrogation périodique des imprimantes ignorent les contrôles 2 et 3. Trois routes de maintenance de la synchronisation ignorent le contrôle 3 pour un utilisateur disposant de la capacité WooCommerce `manage_woocommerce` et exigent cette capacité à la place.
+
+1. **Protocole de l’application** (la plupart des routes v2). Échoue avec `426`, code `wcpos_update_required`. L’application affiche [SYNC341](../error-codes/SYNC341.mdx) : mettez l’application à jour.
+2. **Jeton d’accès.** Échoue avec `401`, code `woocommerce_pos_rest_unauthorized`, aucun utilisateur connecté. L’application renouvelle le jeton une fois et réessaie ; si la nouvelle tentative échoue aussi, elle affiche [AUTH101](../error-codes/AUTH101.mdx) : Session expirée.
+3. **Accès au PDV.** Un utilisateur connecté sans `access_woocommerce_pos` reçoit `403`, code `woocommerce_pos_rest_forbidden`. L’application affiche [AUTH201](../error-codes/AUTH201.mdx) : Rôle insuffisant.
+4. **Contrôle propre à la route.** Échoue avec `403`, par exemple `rest_forbidden`. L’application affiche également [AUTH201](../error-codes/AUTH201.mdx).
+
+</details>
+
+<details>
+<summary>Les trois capacités et les rôles qui en disposent</summary>
+
+L’extension accorde ses deux capacités propres aux rôles par défaut lors de son activation. Une mise à jour accorde uniquement les nouvelles capacités de cette version : une capacité retirée dans l’écran Accès reste donc retirée. `install_plugins` est une capacité propre à WordPress.
+
+- **`access_woocommerce_pos`** : administrateur, gestionnaire de boutique et caissier. Requise pour chaque point de terminaison du PDV, sauf les routes publiques de connexion, l’interrogation périodique des imprimantes et trois routes de maintenance de la synchronisation (`/wcpos/v2/uuid/backfill`, `/orders/index/backfill`, `/integrity/rebuild`), qui exigent à la place la capacité WooCommerce `manage_woocommerce` ; certains exigent également l’une des deux capacités ci-dessous.
+- **`manage_woocommerce_pos`** : administrateur et gestionnaire de boutique. Donne accès aux réglages, aux journaux, à la liste des extensions et à la gestion des boutiques de Pro.
+- **`install_plugins`** (WordPress) : administrateur uniquement. Donne accès à l’installation et à la mise à jour des extensions de Pro.
+
+</details>
+
+### Points de terminaison de synchronisation (v2) {#sync-endpoints}
+
+L’application 2.0 se synchronise via `/wcpos/v2/`. Chaque rôle par défaut peut accéder à toutes les routes de synchronisation utilisées par l’application.
+
+<details>
+<summary>Tous les rôles : les routes de synchronisation v2</summary>
+
+- **Statut** : `GET /wcpos/v2/status`
+- **Catalogue** : `GET /wcpos/v2/products`, `/variations`, `/products/categories`, `/products/tags`, `/products/brands`
+- **Clients, coupons, taxes** : `GET /wcpos/v2/customers`, `/coupons`, `/taxes`
+- **Commandes** : `GET /wcpos/v2/orders`, `/orders/pull`
+- **Flux de modifications** : `GET /wcpos/v2/changes/sequence-log`, `/changes/revision-hash`, `/changes/range-checksum`, `/changes/config-fingerprint`, `/changes/tick`
+- **Contrôles d’intégrité** : `GET /wcpos/v2/digests`, `/integrity/scan`, `/integrity/bucket`
+- **Recherche par code-barres** : `GET /wcpos/v2/resolve/barcode`
+- **Envoyer une nouvelle commande** : `POST /wcpos/v2/push/orders`
+
+</details>
+
+### Matrice d’accès aux points de terminaison de l’extension gratuite {#free-plugin-endpoint-access-matrix}
+
+Ces routes `/wcpos/v1/` servent à la connexion, au paiement, aux reçus et aux écrans de réglages. Chaque rôle peut accéder aux routes utilisées pour une vente. Les écrans de réglages, les journaux et la liste des extensions nécessitent un administrateur ou un gestionnaire de boutique.
+
+<details>
+<summary>Tous les rôles (administrateur, gestionnaire de boutique, caissier) : 27 points de terminaison</summary>
+
+- `GET /wcpos/v1/stores` : boutiques que l’application peut ouvrir
+- `GET /wcpos/v1/cashier/{id}` : le caissier connecté
+- `GET /wcpos/v1/cashier/{id}/stores` : boutiques que ce caissier peut utiliser
+- `GET /wcpos/v1/products`, `/products/variations` : catalogue
+- `GET /wcpos/v1/products/categories`, `/tags`, `/brands` : filtres du catalogue
+- `GET /wcpos/v1/coupons` : recherche de coupons
+- `GET /wcpos/v1/orders` : historique des commandes
+- `POST /wcpos/v1/orders` : vente
+- `PATCH /wcpos/v1/orders/{id}` : finalisation d’une commande
+- `GET` et `POST /wcpos/v1/orders/{id}/checkout` : encaissement
+- `GET /wcpos/v1/receipts/{order_id}` : rendu du reçu
+- `GET /wcpos/v1/data/order_statuses` : noms des statuts
+- `GET /wcpos/v1/customers` : recherche de clients
+- `POST /wcpos/v1/customers` : ajouter un client
+- `PATCH /wcpos/v1/customers/{id}` : modifier un client
+- `GET /wcpos/v1/taxes`, `/taxes/classes` : taux et classes de taxe
+- `GET /wcpos/v1/shipping_methods` : lignes d’expédition
+- `GET /wcpos/v1/payment-gateways` : options de paiement
+- `POST /wcpos/v1/payment-gateways/{id}/bootstrap` : configuration du paiement
+- `GET /wcpos/v1/templates`, `/templates/active`, `/templates/gallery` : modèles de reçus
+
+Chaque rôle peut également consulter `GET /wcpos/v1/settings/cloud-print`, les imprimantes Cloud Print, afin que le PDV puisse leur envoyer des reçus. Seule la capacité `access_woocommerce_pos` est nécessaire. Ce point de terminaison ne fait pas partie des 27 : son propre test vérifie un utilisateur qui dispose de cette capacité sans avoir accès aux réglages.
+
+</details>
+
+<details>
+<summary>Administrateur et gestionnaire de boutique uniquement : 6 points de terminaison</summary>
+
+Ils exigent `manage_woocommerce_pos` ; un caissier reçoit `403`.
+
+- `GET /wcpos/v1/settings/general` : écran des réglages généraux
+- `GET /wcpos/v1/settings/checkout` : écran des réglages Caisse
+- `GET /wcpos/v1/settings/tax_ids` : écran des réglages des identifiants fiscaux
+- `GET /wcpos/v1/settings/payment-gateways` : écran des réglages des passerelles de paiement
+- `GET /wcpos/v1/extensions` : liste des extensions
+- `GET /wcpos/v1/logs` : écran Journaux
+
+`/wcpos/v1/settings` ne possède pas lui-même d’index consultable : consultez plutôt une section telle que `/settings/general`.
+
+</details>
+
+### Matrice d’accès aux points de terminaison de l’extension Pro {#pro-plugin-endpoint-access-matrix}
+
+WCPOS Pro ajoute ces routes. Chaque rôle peut rembourser une commande. La gestion des boutiques et la clé de licence nécessitent un administrateur ou un gestionnaire de boutique, et l’installation d’une extension nécessite un administrateur.
+
+<details>
+<summary>Les routes Pro, par rôle</summary>
+
+**Tous les rôles :**
+
+- `POST /wcpos/v1/orders/{id}/refunds` : rembourser une commande
+
+**Administrateur et gestionnaire de boutique uniquement** (exige `manage_woocommerce_pos`) :
+
+- `GET /wcpos/v1/stores/{id}/edit` : ouvrir une boutique pour la modifier
+- `POST /wcpos/v1/stores` : ajouter une boutique
+- `PATCH /wcpos/v1/stores/{id}` : enregistrer une boutique
+- `POST /wcpos/v1/settings/license` : enregistrer la clé de licence
+
+**Administrateur uniquement** (exige la capacité WordPress `install_plugins`) :
+
+- `POST /wcpos/v1/extensions/action` : installer ou mettre à jour une extension
+
+</details>
+
+### Couverture de l’expiration des jetons {#token-expiry-coverage}
+
+Par défaut, la connexion à l’application dure 30 minutes et se renouvelle automatiquement pendant 30 jours au maximum à compter de la connexion du caissier. Ensuite, le caissier se reconnecte ([AUTH101](../error-codes/AUTH101.mdx)). Un jeton expiré entraîne toujours un `401`, jamais un `403` : il ne se présente donc jamais comme un problème de rôle.
+
+<details>
+<summary>Durée de vie des jetons et réponse dans chaque cas</summary>
+
+L’application se connecte avec un jeton d’accès valable 30 minutes et un jeton de renouvellement valable 30 jours. Le code peut modifier ces deux durées avec les filtres `wcpos_jwt_access_token_expire` et `wcpos_jwt_refresh_token_expire`. Les mêmes tests couvrent ce qui se passe à l’expiration de chacun, pour les trois rôles :
+
+- **Jeton d’accès valide** : le point de terminaison répond normalement.
+- **Jeton d’accès expiré, absent ou mal formé** : `401`, code `woocommerce_pos_rest_unauthorized`, aucun utilisateur connecté. L’application renouvelle le jeton une fois et réessaie.
+- **Jeton d’accès expiré, jeton de renouvellement valide** : le renouvellement renvoie un nouveau jeton d’accès et la nouvelle tentative réussit.
+- **Jeton de renouvellement expiré** : le renouvellement est refusé avec `woocommerce_pos_auth_token_expired` et le caissier se reconnecte ([AUTH101](../error-codes/AUTH101.mdx)).
+
+Un jeton d’accès expiré ne connecte jamais un utilisateur ; il n’atteint donc jamais le contrôle du rôle : il entraîne toujours un `401`, jamais un `403`. Les tests le confirment également sur les routes v2 pour le rôle caissier.
+
+</details>

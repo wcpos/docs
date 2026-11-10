@@ -1,0 +1,178 @@
+---
+title: Cloudflare
+slug: /troubleshooting/common-problems/cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Impeça que as verificações de segurança da Cloudflare bloqueiem a conexão do aplicativo WCPOS com sua loja."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+A Cloudflare atua como intermediária no acesso a algumas lojas e pode exigir que os visitantes passem por uma verificação de segurança. O aplicativo WCPOS nem sempre consegue passar por ela e, nesse caso, não consegue se conectar à sua loja nem sincronizar. A solução é uma alteração na Cloudflare, feita pelo proprietário da loja ou por quem administra a conta do site na Cloudflare. Esta página mostra qual configuração alterar e como fazer isso.
+
+- **Caixa:** consulte [No caixa](#at-the-till).
+- **Proprietário da loja:** vá para [Identifique o recurso da Cloudflare que está causando o bloqueio](#which-feature).
+
+## No caixa {#at-the-till}
+
+- **Janela de verificação de segurança no aplicativo para desktop:** marque a caixa de seleção em até dois minutos. O aplicativo continuará funcionando. A Cloudflare solicitará a verificação novamente após 30 minutos ou após o período definido pelo proprietário da loja.
+- **HOST121 no aplicativo para iPad, iPhone ou Android:** esses aplicativos não conseguem passar pela verificação da Cloudflare. Eles permanecem bloqueados até que o proprietário da loja faça a alteração abaixo.
+- **Em qualquer caso,** envie esta página ao proprietário da loja. No aplicativo para desktop, passar pela verificação permite que o aplicativo se conecte por enquanto, mas a verificação volta a aparecer mais tarde.
+
+**Proprietário da loja:** comece em [Identifique o recurso da Cloudflare que está causando o bloqueio](#which-feature).
+
+## Sinais de que a Cloudflare está bloqueando o aplicativo {#how-to-recognise-it}
+
+- **"A configuração de hospedagem desta loja está bloqueando o aplicativo"** na tela de conexão, com o código de erro [HOST121](../../error-codes/HOST121.mdx).
+- Uma pequena janela com o título **Verificação de segurança de your-store.com** é aberta no aplicativo para desktop durante a conexão ou a sincronização.
+
+<details>
+<summary>Outros sinais que o proprietário da loja pode encontrar</summary>
+
+- **"Sua loja está por trás da Cloudflare"** na parte superior de **WP Admin > POS > Configurações > Geral**. O plugin exibe essa mensagem em qualquer site que use a Cloudflare, antes mesmo de ocorrer algum problema.
+- A impressão na nuvem para de funcionar, e o cartão da impressora em **WP Admin > POS > Configurações > Impressão na nuvem** exibe **"Um serviço de segurança (como a Cloudflare ou um plugin de firewall) está bloqueando o WCPOS Cloud Print"**. O [relay](../../receipts/cloud-printing.mdx#relay) acessa sua loja da mesma forma que o aplicativo, portanto a solução abaixo também corrige a impressão.
+- Versões mais antigas do aplicativo exibiam **"O site não parece ser um site WordPress"** ou **"O site demorou muito para responder"** para uma loja que abre normalmente em um navegador.
+
+</details>
+
+## Identifique o recurso da Cloudflare que está causando o bloqueio {#which-feature}
+
+O restante desta página é destinado ao proprietário da loja. Abra seu site no painel da Cloudflare e siga estas etapas:
+
+1. Vá para **Segurança > Análise** e selecione a aba **Eventos**. Procure solicitações a `/wp-json/` feitas no horário em que o aplicativo foi bloqueado. O campo **Serviço** dessas solicitações indica o recurso que as impediu, como **Modo de combate a bots** ou **Regras gerenciadas**.
+2. Abra o recurso correspondente abaixo. A seção informa onde encontrar a configuração e como resolver o problema.
+3. Não encontrou um evento correspondente? No plano gratuito, o registro mantém apenas uma amostra das solicitações, então as do aplicativo podem não aparecer. Nesse caso, verifique qual dos quatro recursos abaixo está ativado.
+
+Para confirmar primeiro se a Cloudflare é a causa, use a [verificação pelo terminal](#check), que é opcional.
+
+<details>
+<summary>Modo de combate a bots (plano gratuito): desative-o</summary>
+
+- Onde: **Segurança > Configurações**, filtre por **Tráfego de bots**.
+- Solução: desative-o. Uma regra de Ignorar não consegue isentar o aplicativo desse recurso ([entenda o motivo](#bot-fight-mode)).
+
+</details>
+
+<details>
+<summary>Supermodo de combate a bots (plano Pro e superiores): adicione uma regra de Ignorar</summary>
+
+- Onde: **Segurança > Configurações**, filtre por **Tráfego de bots**.
+- Solução: [adicione uma regra de Ignorar](#add-a-skip-rule).
+
+</details>
+
+<details>
+<summary>Regras personalizadas ou gerenciadas que exigem verificações dos visitantes: adicione uma regra de Ignorar</summary>
+
+- Onde: **Regras de segurança**.
+- Solução: [adicione uma regra de Ignorar](#add-a-skip-rule).
+
+</details>
+
+<Anchor id="under-attack" />
+
+<details>
+<summary>Modo sob ataque: desative-o ou adicione uma Regra de configuração</summary>
+
+- Onde: **Ações rápidas** na visão geral do site ou a configuração **Nível de segurança** em **Segurança > Configurações**.
+- Solução: desative-o assim que o ataque terminar. Para mantê-lo ativado no restante do site, adicione uma **Regra de configuração** (**Regras > Visão geral > Criar regra > Regra de configuração**) com a [expressão da regra de Ignorar](#add-a-skip-rule) e desative **Estou sob ataque**.
+
+</details>
+
+O plugin da Cloudflare para WordPress não consegue adicionar as regras desta página. Faça essas alterações no painel da Cloudflare.
+
+## Adicione uma regra de Ignorar para a API REST {#add-a-skip-rule}
+
+Uma regra de Ignorar permite que as solicitações à API REST da sua loja passem sem as verificações da Cloudflare que você marcar abaixo, e somente essas. O WordPress continua verificando todos os logins e permissões.
+
+:::note
+O Modo de combate a bots do plano gratuito ignora essa regra. Se o Modo de combate a bots for o recurso que está bloqueando o aplicativo, [desative-o](#bot-fight-mode).
+:::
+
+1. No painel da Cloudflare, abra seu site, vá para **Regras de segurança** e escolha **Criar regra > Regras personalizadas**.
+2. Em **Nome da regra**, digite `WCPOS REST API`.
+3. Em **Quando as solicitações recebidas corresponderem**, escolha **Editar expressão** e cole:
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   Se o WordPress estiver em uma subpasta, como `https://example.com/shop`, use `/shop/wp-json/` e `/shop/` no lugar de `/wp-json/` e `/`.
+
+   <details>
+   <summary>A que a expressão corresponde</summary>
+
+   A primeira metade corresponde ao endereço normal da API, `/wp-json/`. A segunda metade corresponde ao endereço alternativo, `/?rest_route=/`, e somente no endereço inicial do site. Assim, uma página que por acaso contenha `rest_route=` em seu link mantém a proteção.
+
+   </details>
+
+4. Em **Então executar ação**, escolha **Ignorar**.
+5. Escolha o que a regra deve ignorar. Sempre marque estas opções:
+   - **Todas as regras personalizadas restantes**, para que suas outras regras personalizadas não exijam verificações do aplicativo nem o bloqueiem.
+   - **Nível de segurança**. Se o Modo sob ataque estiver ativado, adicione também a [Regra de configuração](#under-attack) correspondente.
+
+   Marque estas opções somente quando se aplicarem:
+   - **Todas as regras do Supermodo de combate a bots**, se o Supermodo de combate a bots estiver ativado.
+   - **Todas as regras gerenciadas**, se o registro de Eventos mostrar **Regras gerenciadas** no campo **Serviço** das solicitações do aplicativo. Se você não encontrou um evento correspondente, deixe a opção desmarcada e consulte [O bloqueio continua?](#still-blocked).
+
+   Deixe desmarcadas as opções identificadas como **(Versão anterior)**.
+6. Escolha **Implantar**. Se outras regras personalizadas exigirem verificações dos visitantes ou os bloquearem, arraste esta regra para cima delas na lista **Regras de segurança**. As regras gerenciadas sempre são executadas depois das regras personalizadas, portanto a ordem delas não importa.
+
+Conecte-se ou sincronize no aplicativo para confirmar que o acesso foi liberado. Para confirmar em um computador, execute a [verificação pelo terminal](#check): a resposta deve ser `200` com `content-type: application/json`, sem nenhuma linha `cf-mitigated`.
+
+### Se o Modo de combate a bots estiver ativado {#bot-fight-mode}
+
+O Modo de combate a bots do plano gratuito ignora as regras de Ignorar e Permitir. A própria documentação da Cloudflare informa que regras personalizadas e Regras de página não conseguem contorná-lo. Se o **Modo de combate a bots** estiver ativado e o aplicativo continuar bloqueado após você adicionar a regra de Ignorar, desative o Modo de combate a bots em **Segurança > Configurações**, usando o filtro **Tráfego de bots**. Depois, teste o aplicativo ou execute a [verificação](#check) mais uma vez. Para manter a proteção contra bots, mude para o plano Pro e use o **Supermodo de combate a bots**: a regra de Ignorar acima permite isentar o aplicativo desse recurso. Se o Modo de combate a bots já estiver desativado, consulte [O bloqueio continua?](#still-blocked).
+
+## Verifique em um computador {#check}
+
+Esta verificação é opcional. Ela mostra, a partir do seu próprio computador, se a Cloudflare está respondendo no lugar da sua loja, antes ou depois da correção.
+
+<details>
+<summary>Verifique pelo terminal</summary>
+
+Abra um terminal (Terminal no Mac, PowerShell no Windows) e execute o comando a seguir, usando o endereço da sua loja no lugar de `your-store.com`. No Windows, digite `curl.exe` no lugar de `curl`.
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+Leia as primeiras linhas da resposta:
+
+- **`403` e `cf-mitigated: challenge`:** a Cloudflare está bloqueando o aplicativo. [Identifique o recurso](#which-feature) que está causando o bloqueio.
+- **`200` e `content-type: application/json`:** este computador conseguiu acessar a loja. Tente se conectar ou sincronizar no aplicativo. Se o aplicativo continuar bloqueado, a Cloudflare pode estar tratando-o de forma diferente do seu computador: verifique os recursos acima e depois consulte [Conflitos de plugins](./plugin-conflicts.mdx).
+- **`404`:** a API REST não está neste endereço. Sites sem links permanentes amigáveis usam outro endereço. Execute a verificação novamente em `'https://your-store.com/?rest_route=/'` (mantenha as aspas).
+
+Se o WordPress estiver em uma subpasta, inclua-a: `https://example.com/shop/wp-json/`.
+
+</details>
+
+<details>
+<summary>Como o aplicativo para desktop passa pela verificação</summary>
+
+O aplicativo se comunica com a API REST da sua loja, a parte do WordPress que responde aos aplicativos com dados. Um navegador passa pela verificação da Cloudflare sem que você perceba; um aplicativo geralmente não consegue. Quando a Cloudflare responde com uma verificação em vez de dados, o aplicativo para desktop abre uma janela oculta do navegador e tenta passar pela verificação sozinho. Se a Cloudflare exigir que você marque uma caixa de seleção, a janela aparece e aguarda dois minutos. A Cloudflare então libera o acesso do aplicativo pelo período definido em **Validade da verificação** (30 minutos por padrão), e a verificação volta a aparecer após esse período. Os aplicativos para iPad, iPhone e Android não têm essa janela.
+
+</details>
+
+## Impeça a Cloudflare de armazenar a API em cache {#caching}
+
+A Cloudflare também pode guardar cópias das respostas da API REST. Nesse caso, o aplicativo mostra produtos, preços e pedidos desatualizados. A regra de Ignorar não muda isso: ela apenas desativa as verificações de segurança. Se você armazena páginas HTML em cache ou usa o Automatic Platform Optimization (APO), adicione uma **Regra de cache** com a mesma expressão e defina-a como **Ignorar cache**.
+
+## O bloqueio continua? {#still-blocked}
+
+- Abra a regra de Ignorar e verifique se ela foi implantada, e não salva como rascunho (**Salvar como rascunho**).
+- Verifique se nenhuma **Regra de acesso por IP** bloqueia a conexão de internet da loja ou exige verificações dela.
+- Não há nenhum evento do aplicativo no registro de **Eventos**? Antes de ignorar as regras gerenciadas, entre em contato com o suporte (abaixo) e envie o resultado da [verificação pelo terminal](#check).
+- Outros serviços que intermedeiam o acesso ao seu site podem bloquear o aplicativo da mesma forma. Consulte [Conflitos de plugins](./plugin-conflicts.mdx#server-level-conflicts) para saber sobre plugins de segurança e firewalls, e as [observações sobre hospedagem](../performance/server.mdx#hosting-specific-notes) para GoDaddy, WP Engine e outros provedores.
+
+## Documentação relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="HOST121" to="/error-codes/HOST121" description="O erro que o aplicativo exibe quando uma verificação de segurança responde no lugar da sua loja." />
+  <LinkCard title="Conflitos de plugins" to="/troubleshooting/common-problems/plugin-conflicts" description="Plugins de segurança e firewalls que bloqueiam o aplicativo." />
+  <LinkCard title="Servidor" to="/troubleshooting/performance/slow-server" description="Observações sobre hospedagem e os requisitos do seu servidor." />
+</LinkCards>
+
+<SupportContact />

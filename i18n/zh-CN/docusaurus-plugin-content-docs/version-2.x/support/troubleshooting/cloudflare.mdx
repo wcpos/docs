@@ -1,0 +1,178 @@
+---
+title: Cloudflare
+slug: /troubleshooting/common-problems/cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "防止 Cloudflare 的安全检查阻止 WCPOS 应用连接到您的店铺。"
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+部分店铺通过 Cloudflare 接收访问请求，Cloudflare 可能会要求访客通过安全检查。WCPOS 应用并非总能通过这项检查，因而无法连接到店铺或进行同步。解决方法是由店主或网站 Cloudflare 账户的管理人员修改 Cloudflare 设置。本页介绍需要修改哪些设置以及具体操作方法。
+
+- **收银员：** 请参阅[收银端操作](#at-the-till)。
+- **店主：** 请前往[找出阻止应用的 Cloudflare 功能](#which-feature)。
+
+## 收银端操作 {#at-the-till}
+
+- **桌面应用弹出安全检查窗口：** 请在两分钟内勾选复选框，应用即可继续运行。Cloudflare 会在 30 分钟后或店主设定的时间过后再次要求检查。
+- **iPad、iPhone 或 Android 应用显示 HOST121：** 这些应用无法通过 Cloudflare 的检查。在店主完成下述更改之前，它们会一直被阻止。
+- **无论哪种情况，** 都请将本页发送给店主。在桌面应用中，通过检查可暂时恢复连接，但之后检查还会再次出现。
+
+**店主：** 请从[找出阻止应用的 Cloudflare 功能](#which-feature)开始。
+
+## Cloudflare 阻止应用的迹象 {#how-to-recognise-it}
+
+- 连接界面显示 **“此店铺的托管设置正在阻止应用”**，并附有错误代码 [HOST121](../../error-codes/HOST121.mdx)。
+- 桌面应用在连接或同步时，会打开一个标题为 **your-store.com 的安全检查**的小窗口。
+
+<details>
+<summary>店主可能看到的其他迹象</summary>
+
+- **WP Admin > POS > 设置 > 常规**顶部显示 **“您的店铺位于 Cloudflare 后方”**。只要网站使用 Cloudflare，插件就会显示这条提示，即使尚未出现任何问题。
+- 云打印停止工作，**WP Admin > POS > 设置 > 云打印**下的打印机卡片显示 **“某项安全服务（如 Cloudflare 或防火墙插件）正在阻止 WCPOS 云打印”**。[中继服务](../../receipts/cloud-printing.mdx#relay)与应用以相同方式访问您的店铺，因此下述方法也能解决打印问题。
+- 在旧版应用中，即使店铺能在浏览器中正常打开，也可能显示 **“该网站似乎不是 WordPress 网站”** 或 **“网站响应时间过长”**。
+
+</details>
+
+## 找出阻止应用的 Cloudflare 功能 {#which-feature}
+
+本页以下内容供店主操作。在 Cloudflare 控制面板中打开您的网站，然后：
+
+1. 前往 **安全性 > 分析**，选择 **事件**选项卡。查找应用被阻止时发往 `/wp-json/` 的请求。这些请求的 **服务**字段会注明阻止请求的功能，例如 **机器人对抗模式**或 **托管规则**。
+2. 展开下方对应功能的说明，查看设置位置和解决方法。
+3. 没有找到对应事件？免费套餐的日志只保留部分请求记录，因此可能没有记录应用的请求。此时请检查下方四项功能中有哪些已开启。
+
+如果想先确认问题是否由 Cloudflare 引起，可以执行可选的[终端检查](#check)。
+
+<details>
+<summary>机器人对抗模式（免费套餐）：将其关闭</summary>
+
+- 位置：**安全性 > 设置**，按 **机器人流量**筛选。
+- 解决方法：将其关闭。跳过规则无法让应用绕过此功能（[原因](#bot-fight-mode)）。
+
+</details>
+
+<details>
+<summary>超级机器人对抗模式（Pro 及更高套餐）：添加跳过规则</summary>
+
+- 位置：**安全性 > 设置**，按 **机器人流量**筛选。
+- 解决方法：[添加跳过规则](#add-a-skip-rule)。
+
+</details>
+
+<details>
+<summary>要求访客完成质询的自定义规则或托管规则：添加跳过规则</summary>
+
+- 位置：**安全规则**。
+- 解决方法：[添加跳过规则](#add-a-skip-rule)。
+
+</details>
+
+<Anchor id="under-attack" />
+
+<details>
+<summary>受到攻击模式：将其关闭，或添加配置规则</summary>
+
+- 位置：网站概览中的 **快速操作**，或 **安全性 > 设置**下的 **安全级别**设置。
+- 解决方法：攻击结束后将其关闭。若要对网站其他部分保持开启，请使用[跳过规则的表达式](#add-a-skip-rule)添加一条 **配置规则**（**规则 > 概览 > 创建规则 > 配置规则**），并将 **我正受到攻击**设为关闭。
+
+</details>
+
+WordPress 的 Cloudflare 插件无法添加本页所述规则。请在 Cloudflare 控制面板中进行这些更改。
+
+## 为 REST API 添加跳过规则 {#add-a-skip-rule}
+
+跳过规则仅让发往店铺 REST API 的请求绕过您在下方勾选的 Cloudflare 检查，不会跳过其他检查。WordPress 仍会检查每次登录及其权限。
+
+:::note
+免费套餐中的机器人对抗模式会忽略此规则。如果阻止应用的是机器人对抗模式，请改为[将其关闭](#bot-fight-mode)。
+:::
+
+1. 在 Cloudflare 控制面板中打开您的网站，前往 **安全规则**，选择 **创建规则 > 自定义规则**。
+2. 在 **规则名称**下输入 `WCPOS REST API`。
+3. 在 **当传入请求匹配时**下选择 **编辑表达式**，然后粘贴以下内容：
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   如果 WordPress 位于子文件夹中，例如 `https://example.com/shop`，请将 `/wp-json/` 和 `/` 分别替换为 `/shop/wp-json/` 和 `/shop/`。
+
+   <details>
+   <summary>表达式匹配的内容</summary>
+
+   前半部分匹配 API 的常规地址 `/wp-json/`。后半部分匹配备用地址 `/?rest_route=/`，且仅限网站首页地址，因此链接中恰好包含 `rest_route=` 的其他页面仍会受到保护。
+
+   </details>
+
+4. 在 **然后采取操作**下选择 **跳过**。
+5. 选择规则要跳过的检查。以下选项应始终勾选：
+   - **所有剩余的自定义规则**，以免其他自定义规则要求应用完成质询或阻止应用。
+   - **安全级别**。如果已开启受到攻击模式，还需添加相应的[配置规则](#under-attack)。
+
+   以下选项仅在适用时勾选：
+   - **所有超级机器人对抗模式规则**，如果已开启超级机器人对抗模式。
+   - **所有托管规则**，如果事件日志中应用请求的 **服务**字段显示 **托管规则**。如果未找到对应事件，请保持不勾选，并参阅[仍被阻止？](#still-blocked)。
+
+   标有 **（旧版本）** 的条目请保持不勾选。
+6. 选择 **部署**。如果其他自定义规则会对访客发起质询或阻止访问，请在 **安全规则**列表中将此规则拖到它们上方。托管规则始终在自定义规则之后执行，因此无需考虑它们的顺序。
+
+在应用中连接或同步，确认请求可以通过。如需从电脑确认，请运行[终端检查](#check)：响应应为 `200`，包含 `content-type: application/json`，且没有 `cf-mitigated` 行。
+
+### 如果已开启机器人对抗模式 {#bot-fight-mode}
+
+免费套餐中的机器人对抗模式会忽略跳过和允许规则。Cloudflare 官方文档说明，自定义规则和页面规则无法绕过它。如果 **机器人对抗模式**已开启，且添加跳过规则后应用仍被阻止，请前往 **安全性 > 设置**，按 **机器人流量**筛选，然后关闭机器人对抗模式。接着尝试使用应用，或再次运行[检查](#check)。如需保留机器人防护，请升级到 Pro 套餐并使用 **超级机器人对抗模式**：上述跳过规则可以绕过它。如果机器人对抗模式已经关闭，请参阅[仍被阻止？](#still-blocked)。
+
+## 从电脑进行检查 {#check}
+
+此检查为可选操作。您可以在修复前后从自己的电脑进行检查，确认是否由 Cloudflare 代替店铺返回响应。
+
+<details>
+<summary>使用终端检查</summary>
+
+打开终端（Mac 上的终端，Windows 上的 PowerShell），将 `your-store.com` 替换为您的店铺地址后运行以下命令。在 Windows 上，请输入 `curl.exe` 来替代 `curl`。
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+查看响应的前几行：
+
+- **`403` 和 `cf-mitigated: challenge`：** Cloudflare 正在阻止应用。[找出导致此问题的功能](#which-feature)。
+- **`200` 和 `content-type: application/json`：** 此电脑的请求已通过。请尝试在应用中连接或同步。如果应用仍被阻止，Cloudflare 可能对应用和电脑采取了不同的处理方式：先检查上述功能，再参阅[插件冲突](./plugin-conflicts.mdx)。
+- **`404`：** REST API 不在此地址。未使用美化固定链接的网站使用不同的地址。请对 `'https://your-store.com/?rest_route=/'` 再次运行检查（保留引号）。
+
+如果 WordPress 位于子文件夹中，请在地址中包含该文件夹：`https://example.com/shop/wp-json/`。
+
+</details>
+
+<details>
+<summary>桌面应用如何通过检查</summary>
+
+应用通过店铺的 REST API 与店铺通信，这是 WordPress 中向应用返回数据的部分。浏览器可以在您毫无察觉的情况下通过 Cloudflare 检查，而应用通常做不到。当 Cloudflare 返回检查页面而非数据时，桌面应用会打开一个隐藏的浏览器窗口，尝试自行通过检查。如果 Cloudflare 要求勾选复选框，该窗口就会显示并等待两分钟。之后 Cloudflare 会在 **质询通过期**设置的时间内（默认为 30 分钟）允许应用访问，到期后会再次要求检查。iPad、iPhone 和 Android 应用没有这样的窗口。
+
+</details>
+
+## 防止 Cloudflare 缓存 API 响应 {#caching}
+
+Cloudflare 还可能缓存 REST API 的响应，导致应用显示过时的商品、价格和订单。跳过规则不会改变这一行为，它只会关闭安全检查。如果您缓存 HTML 页面或使用自动平台优化（APO），请添加一条使用相同表达式的 **缓存规则**，并将其设为 **绕过缓存**。
+
+## 仍被阻止？ {#still-blocked}
+
+- 打开跳过规则，确认它已部署，而不是保存为草稿（**保存为草稿**）。
+- 检查是否有 **IP 访问规则**阻止店铺的互联网连接或要求其完成质询。
+- **事件**日志中没有应用的记录？在跳过托管规则之前，请将[终端检查](#check)结果提供给下方的支持团队。
+- 网站前端的其他服务也可能以同样方式阻止应用。有关安全插件和防火墙，请参阅[插件冲突](./plugin-conflicts.mdx#server-level-conflicts)；有关 GoDaddy、WP Engine 等托管服务商，请参阅[托管说明](../performance/server.mdx#hosting-specific-notes)。
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="HOST121" to="/error-codes/HOST121" description="当安全检查代替店铺返回响应时，应用显示的错误。" />
+  <LinkCard title="插件冲突" to="/troubleshooting/common-problems/plugin-conflicts" description="会阻止应用的安全插件和防火墙。" />
+  <LinkCard title="服务器" to="/troubleshooting/performance/slow-server" description="托管说明及服务器要求。" />
+</LinkCards>
+
+<SupportContact />

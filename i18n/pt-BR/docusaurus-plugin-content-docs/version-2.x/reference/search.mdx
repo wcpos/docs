@@ -1,0 +1,166 @@
+---
+title: Correspondência de buscas
+slug: /developers/search-matching
+sidebar_label: Correspondência de buscas
+sidebar_position: 8
+description: "Quais campos cada caixa de busca do WCPOS consulta, como as palavras digitadas são comparadas, números de telefone e o filtro wcpos_search_fields para campos próprios da loja."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/search/en/manifest.json';
+
+Comece com algumas letras de cada palavra de que você se lembra, em qualquer ordem: a lista mantém apenas os resultados que contêm todas elas. Esta página mostra o que cada caixa de busca consulta, como a busca da loja difere da busca no dispositivo e, para desenvolvedores, como adicionar um campo próprio. Não consegue encontrar algo? Consulte [Quando uma busca não encontra nada](#goes-wrong).
+
+O que cada caixa de busca consulta: [Produtos](#products) · [Pedidos](#orders) · [Clientes](#customers) · [Cupons](#coupons) · [Categoria, tag e marca](#category-tag-brand) · [Números de telefone](#phone-numbers)
+
+## Como as palavras digitadas são comparadas {#how-a-search-is-matched}
+
+- **Todas as palavras precisam corresponder.** Os espaços separam sua busca em palavras. Cada palavra precisa aparecer em algum dos detalhes do produto, pedido ou cliente [listados abaixo](#what-each-screen-searches); as palavras podem estar em qualquer ordem. `shirt lovelace` encontra um pedido de Ada Lovelace que contém uma camisa.
+- **Qualquer parte de uma palavra.** `saippua` encontra `Kuorintasaippua`, e `jo` encontra `Bjorn`. Não há tamanho mínimo fora da tela de Logs.
+- **Sem distinção de maiúsculas ou acentos.** `creme` encontra `Crème`.
+- **A pontuação dentro de uma palavra é mantida.** `0.4`, `K-2`, `3/4` e um endereço de e-mail completo são, cada um, uma única palavra, nunca dividida no ponto ou no hífen.
+
+Por exemplo:
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[170, 0], [0, 0], [-60, 0]]} alt="O painel de produtos com wat aim digitado no campo de busca e um cartão, Aim Analog Watch, com a contagem de 1 produto abaixo dele">
+
+1. **Buscar produtos** — `wat aim` são duas palavras. Cada uma é parte de uma palavra do nome, e elas são digitadas na ordem inversa.
+2. **Aim Analog Watch** — o único produto que contém as duas palavras.
+3. **… produto** — quantos produtos correspondem à busca. Produtos sem estoque não são contados enquanto **Em estoque** estiver ativo; consulte [Busca e filtros](../pos/product-panel/search-filtering.mdx#no-match).
+
+</JourneyShot>
+
+A lista é atualizada logo após você parar de digitar. Limpe o campo para exibir tudo novamente. Os resultados vindos da loja também seguem essas regras, com [algumas diferenças](#device-and-store).
+
+<details>
+<summary>Exceções: buscas nos Logs e pontuação ao redor de uma palavra</summary>
+
+- **Logs.** Na tela de [Logs](../support/logs.mdx), palavras com menos de três letras são ignoradas na busca.
+- **Pontuação ao redor de uma palavra.** Omita-a: parênteses, aspas, um `#` antes do número de um pedido, uma vírgula ou um ponto final após uma palavra. O dispositivo ignora essa pontuação (`(shirt)` encontra `shirt`, `#4120` encontra o pedido 4120), mas a loja busca exatamente o que foi digitado; por isso, nela, `#4120` não encontra o pedido 4120.
+
+</details>
+
+## Números de telefone {#phone-numbers}
+
+Digite um número de telefone apenas com dígitos, sem espaços, parênteses ou hífens. Os dígitos são comparados com os do número armazenado, independentemente de como ele foi escrito:
+
+- `0412` encontra `(04) 1234 5678`.
+- `412345` encontra `+61 412-345-678`.
+- `0412` **não** encontra `+61 412 345 678`.
+
+O código do país e o `0` inicial não são convertidos: `0412` e `+61 412` têm dígitos diferentes.
+
+## O que cada caixa de busca consulta {#what-each-screen-searches}
+
+### Produtos {#products}
+
+No painel de produtos e na tela Produtos:
+
+- Nome, SKU e código de barras.
+- Um produto variável também aparece quando uma de suas opções corresponde pelo SKU ou código de barras.
+
+O código de barras vem do campo que sua loja usa para códigos de barras; consulte [Campo de código de barras](../settings/wp-admin/general.mdx#barcode-field). A **leitura** de um código de barras não é uma busca: ela procura aquele código exato e adiciona o produto ao carrinho. Consulte [Leitura de códigos de barras](../pos/product-panel/barcode-scanning.mdx).
+
+### Pedidos {#orders}
+
+Na tela Pedidos:
+
+- **Pedido:** o número do pedido.
+- **Faturamento:** nome, sobrenome, empresa, e-mail, telefone.
+- **Entrega:** nome, sobrenome, empresa, telefone.
+- **Itens:** nome e SKU de cada item do pedido.
+
+Um item do pedido é encontrado pelo **nome com que foi vendido**, portanto o pedido continua sendo encontrado após o produto ser renomeado. Os nomes de entrega são pesquisados porque pedidos para entrega ou retirada na loja costumam ser buscados pelo nome de quem os retira, que nem sempre é quem pagou.
+
+### Clientes {#customers}
+
+Na tela Clientes e na busca de clientes do carrinho:
+
+- **Cliente:** nome, sobrenome, e-mail, nome de usuário, identificações fiscais.
+- **Faturamento:** nome, sobrenome, empresa, e-mail, telefone.
+- **Entrega:** nome, sobrenome, empresa, telefone.
+
+### Cupons {#coupons}
+
+Na tela Cupons e na busca de cupons do carrinho:
+
+- Código e descrição.
+
+### Categoria, tag e marca {#category-tag-brand}
+
+Nas listas dos filtros Categoria, Tag e Marca:
+
+- Nome.
+
+## No dispositivo e na sua loja {#device-and-store}
+
+A busca consulta primeiro o que já está no dispositivo, para mostrar os resultados imediatamente. Para **produtos**, **clientes** e **pedidos**, ela também consulta a loja, de modo que um registro ainda não baixado neste dispositivo também apareça. **Cupons** e as listas de **Categoria**, **Tag** e **Marca** são pesquisados apenas no dispositivo. Sem conexão, toda busca encontra apenas o que está no dispositivo.
+
+Sua loja compara os mesmos campos com as mesmas regras, com algumas diferenças.
+
+<details>
+<summary>Diferenças para números de pedidos, nomes de clientes, SKUs de itens e buscas longas</summary>
+
+- **Número do pedido.** Sua loja encontra o pedido com aquele número exato e também reconhece o número atribuído por um plugin de numeração sequencial de pedidos. O dispositivo também encontra números que contêm o trecho digitado: `412` encontra o pedido 4120 no dispositivo.
+- **Nome de exibição do cliente.** Sua loja também busca pelo nome que o WordPress exibe para o cliente.
+- **SKU do item do pedido.** Sua loja compara o SKU atual do produto; o dispositivo compara o SKU que o item tinha quando o pedido foi baixado pela última vez.
+- **Buscas longas.** Sua loja compara até dez palavras individualmente. Limite a busca a poucas palavras.
+
+</details>
+
+## Quando uma busca não encontra nada {#goes-wrong}
+
+- **Nenhum resultado aparece** — verifique se há erros de digitação em cada palavra: uma palavra sem correspondência oculta todos os resultados. Remova uma palavra e tente novamente.
+- **O número de telefone não é encontrado** — digite apenas os dígitos, como foram armazenados. Omita o código do país se o número foi salvo sem ele, e vice-versa.
+- **O dispositivo está sem conexão** — apenas os registros que já estão nele são encontrados. Consulte [Saúde da loja → Banco de dados](../support/store-health.mdx#coverage) para ver quanto está armazenado neste dispositivo.
+- **Na tela de [Logs](../support/logs.mdx)** — palavras com menos de três letras são ignoradas na busca.
+- **A lista de produtos continua curta** — um filtro ainda está ativo. Consulte [Busca e filtros](../pos/product-panel/search-filtering.mdx#no-match).
+
+## Para desenvolvedores: altere os campos pesquisáveis {#developers}
+
+<details>
+<summary>Por que não há uma configuração e como adicionar um campo próprio</summary>
+
+### Por que não há uma configuração para os campos de busca {#why-there-is-no-setting}
+
+Os campos acima são fixos, tanto no POS quanto no WP Admin. Um campo de um registro só corresponde quando contém a palavra digitada, portanto pesquisar mais campos não traz resultados incorretos, e uma lista fixa mantém o dispositivo e a loja pesquisando os mesmos campos. Um campo próprio da loja, como um número de fidelidade, é adicionado por um desenvolvedor com um filtro.
+
+### Como sua loja faz a correspondência {#store-matching}
+
+- **Números de pedidos** são comparados com o ID do pedido do WooCommerce e com os metadados `_order_number` e `_order_number_formatted` gravados por plugins de numeração sequencial de pedidos.
+- **Maiúsculas e acentos** ficam a cargo das regras de comparação do banco de dados. As regras padrão do WordPress ignoram ambos, portanto `creme` continua encontrando `Crème`.
+
+### Adicione um campo próprio {#adding-a-custom-field}
+
+`wcpos_search_fields` recebe a declaração de busca de uma coleção e o slug da coleção. Antes do WCPOS 2.0, esse filtro se chamava `woocommerce_pos_search_fields`; esse nome ainda funciona, mas está obsoleto desde a versão 2.0 e será removido, no mínimo, na versão 2.2 (consulte [Nomenclatura de hooks](../extensions/index.mdx#hook-naming)). Para permitir que um cliente seja encontrado por um número de fidelidade armazenado nos metadados do usuário:
+
+```php
+add_filter( 'wcpos_search_fields', function ( array $search, string $collection ) {
+	if ( 'customers' === $collection ) {
+		$search['meta'][] = 'loyalty_number';
+	}
+	return $search;
+}, 10, 2 );
+```
+
+Para pedidos, acrescente a chave a `$search['posts']['meta']`; ela é pesquisada nos metadados de posts no armazenamento legado e na tabela de metadados de pedidos com HPOS.
+
+Uma chave adicionada para **clientes** ou **pedidos** é pesquisada nos dois lugares: a loja a inclui na consulta e o POS também a adiciona à busca no dispositivo, pois `wcpos/v2/site` publica as chaves adicionadas pela loja. Há três limites:
+
+- Apenas chaves **sem sublinhado inicial** chegam ao dispositivo. Uma chave como `_private` é pesquisada apenas pela loja.
+- Uma chave adicionada depois chega ao POS na próxima inicialização: ao recarregar a página no navegador ou abrir o aplicativo novamente.
+- Chaves adicionadas para **produtos** ou **variações** (`$search['posts']['meta']`) são pesquisadas apenas pela loja.
+
+Armazene o valor da forma como o caixa vai digitá-lo ou, para um número, apenas como dígitos: o filtro adiciona um campo à lista, mas não altera a forma como uma palavra é comparada.
+
+</details>
+
+## Documentação relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/find-products/search-products" title="Busca e filtros" description="Encontre um produto e refine a lista" />
+  <LinkCard to="/manage-store/customers" title="Clientes" description="Encontre e edite seus clientes" />
+  <LinkCard to="/manage-store/orders" title="Pedidos" description="Encontre um pedido e execute ações nele" />
+</LinkCards>

@@ -1,0 +1,262 @@
+---
+title: 権限グループ別のエンドポイントアクセス
+slug: /developers/role-endpoint-access
+sidebar_label: 権限グループ別のエンドポイントアクセス
+sidebar_position: 3
+description: "開発者向けリファレンス：administrator、shop_manager、cashier の各権限グループがアクセスできる WCPOS REST エンドポイント、リクエスト拒否時の応答、権限グループの問題とログインの問題の見分け方を説明します。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+ログインできない、操作がブロックされる、POS に更新を求められる場合は、アプリのメッセージに表示されたコードを確認し、[こちらの手順で解決してください](#diagnosing-failures)。
+
+- [AUTH101：再ログインする](#sign-in-again)
+- [AUTH201：管理者に権限グループの確認を依頼する](#check-the-role)
+- [SYNC341：アプリを更新する](#update-the-app)
+
+## エラーの診断 {#diagnosing-failures}
+
+### 再ログインする (AUTH101) {#sign-in-again}
+
+アプリに **「トークンを更新してもリクエストが認証されません。再度ログインしてください」** と表示されます。
+
+1. WCPOS が WordPress のログインウィンドウを自動で開きます。同じレジ係のアカウントでログインしてください。
+2. ウィンドウを閉じた場合は、アプリに **「続行するにはログインしてください」** と表示されます。そのメッセージの **ログイン** を押すと、ウィンドウが再び開きます。
+3. ログインし直すと、送信待ちの売上が自動的に送信されます。
+
+すぐに同じメッセージが表示される場合は、サイト管理者にサポートを依頼し、[AUTH101](../error-codes/AUTH101.mdx) のページを送ってください。
+
+<details>
+<summary>ログインエラーの詳細</summary>
+
+アプリが `401` を受信してトークンを更新しましたが、再試行でも `401` が返されました。これは権限グループではなく、ログイン層の問題です。`403` ではトークンの更新は行われません。アプリと WordPress の間の何かがトークンを削除または拒否しています。多くの場合、セキュリティプラグインや認証プラグインが原因です ([AUTH301](../error-codes/AUTH301.mdx))。
+
+</details>
+
+### 管理者に権限グループの確認を依頼する (AUTH201) {#check-the-role}
+
+ログインはできていますが、割り当てられた権限グループではこの操作が許可されていません。サイト管理者に、[スタッフのアクセス権](../settings/wp-admin/access.mdx)でアクセス権を確認するよう依頼してください。管理者は [AUTH201](../error-codes/AUTH201.mdx) の手順で原因を調べられます。
+
+<details>
+<summary>権限グループの権限に関する詳細</summary>
+
+サーバーがログイン済みユーザーに `403` を返しました。そのユーザーに `access_woocommerce_pos` がないか、そのルートで `manage_woocommerce_pos` または `install_plugins` が必要です。以下の一覧でエンドポイントを確認してください。一覧ではそのユーザーの権限グループからアクセスできるはずの場合、権限グループが初期設定から変更されている可能性が高いです。アクセス画面での変更（**WCPOS の初期設定から変更済み** と表示されます）、権限グループ編集プラグイン、またはカスタムコードが考えられます。ユーザーに追加された別の権限グループによって、権限が拒否される場合もあります。
+
+エンドポイントが一覧にない場合、一覧の根拠となるテストの対象外です。そのルート自体の権限チェックを確認してください。WCPOS Pro では、ユーザーに許可されていない店舗へのアクセスも拒否される場合があります。例：`403` `wcpos_display_store_forbidden`（「この店舗へのアクセス権限がありません。」）。
+
+</details>
+
+### アプリを更新する (SYNC341) {#update-the-app}
+
+アプリに **「この端末の POS アプリを更新してください。」** と表示されます。サイトのプラグインがアプリより新しいバージョンになっています。アプリを更新してから開き直してください。
+
+- **Web：** ブラウザーのタブを再読み込みしてください。再びメッセージが表示される場合、パソコンでは **Shift** を押しながら再読み込みします。スマートフォンやタブレットでは、サイト管理者にサポートを依頼し、[SYNC341](../error-codes/SYNC341.mdx) のページを送ってください。
+- **デスクトップ：** アプリに表示される更新をインストールしてから、アプリを開き直してください。更新が表示されない場合は、Windows、Mac（Intel または Apple silicon）、Linux 用の[最新デスクトップ版をダウンロード](../getting-started/installation.mdx#app-requirements)してください。
+- **iPhone と iPad：** [TestFlight ベータ版](https://testflight.apple.com/join/JGBdVRrW)から WCPOS を更新してください。
+- **Android：** [Google Play ベータ版](https://play.google.com/apps/testing/com.wcpos.main)から WCPOS を更新してください。
+
+新しいアプリがまだ提供されていない場合にサイト管理者ができることなど、詳しくは [SYNC341](../error-codes/SYNC341.mdx) を参照してください。
+
+<details>
+<summary>アプリのバージョンに関する詳細</summary>
+
+アプリがプラグインの同期プロトコルより古いため、サーバーが v2 ルートで `426` を返しました。
+
+</details>
+
+### 権限エラーとトークンエラーの違い {#permission-failure-vs-token-failure}
+
+AUTH201 は、ログイン済みでも操作が許可されていないことを意味します。管理者に権限グループについて問い合わせてください。AUTH101 はログイン自体の失敗を意味します。再ログインしてください。
+
+<details>
+<summary>見分け方</summary>
+
+- **`403` (AUTH201)**：ユーザーはログイン済みですが、この操作の権限がありません。権限グループに付与された権限と、以下の一覧でエンドポイントに必要な権限を確認してください。
+- **`401` (AUTH101, 「トークンを更新してもリクエストが認証されません」)**：サーバーがアプリのリクエストを認証できず、誰もログインしていません。再ログインしてください。繰り返し発生する場合は、トークンと、アプリと WordPress の間でトークンを削除または拒否するものがないかを確認してください。
+
+ブラウザーのネットワークパネル、またはサーバー側のログで、拒否された応答を確認してください。**WP Admin > POS > 設定 > ツール > ログ** にも、トークンの形式が不正だった場合や、単なる期限切れ以外の理由で拒否された場合の各 `401` が記録されます。ステータスとエラーコードは応答本文に含まれます。ログイン中のユーザーは含まれないため、サーバー上で確認してください。例えば、リクエストの実行中に `get_current_user_id()` を使ってデバッグログに記録します。
+
+**権限グループまたは権限のエラー：**
+
+- ステータス：`403`
+- コード：`woocommerce_pos_rest_forbidden`、または `rest_forbidden` などのルート固有のコード
+- ログイン中のユーザー（サーバー側）：レジ係の WordPress ユーザー ID
+
+**トークンまたはログインのエラー：**
+
+- ステータス：`401`
+- コード：`woocommerce_pos_rest_unauthorized`
+- `data.reason`：`woocommerce_pos_auth_token_expired` などのトークンエラー
+- ログイン中のユーザー（サーバー側）：`0`（誰もログインしていません）
+
+ユーザー ID がゼロ以外なら、権限に原因があると考えられます。`0` なら、トークン、またはアプリと WordPress の間にある何かが原因と考えられます。
+
+</details>
+
+## 関連ドキュメント {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="スタッフのアクセス権" to="/manage-store/staff-permissions" description="各権限グループでできることを付与または解除します。" />
+  <LinkCard title="セッション" to="/settings/sessions" description="ログイン中の端末とセッションの終了。" />
+  <LinkCard title="エラーコード" to="/error-codes" description="アプリに表示されるすべてのコードと解決方法。" />
+</LinkCards>
+
+## 管理者と開発者向け {#summary}
+
+レジ係の方は、ここまでお読みいただければ十分です。以降は、原因がログイン、ユーザーの権限グループ、アプリのバージョンのどれにあるかを調べるサイト管理者と開発者向けです。各標準権限グループがアクセスできる WCPOS REST エンドポイントと、サーバーがアクセスを拒否した際の応答を示します。権限グループで許可される操作を変更するには、[スタッフのアクセス権](../settings/wp-admin/access.mdx)を使用してください。
+
+### 各標準権限グループがアクセスできるもの {#what-each-role-can-reach}
+
+レジ係は払い戻しを含む販売に必要なすべての操作ができ、レシートの送信先となるクラウド印刷プリンターの情報を読み取れます。それ以外の設定、ログ、店舗管理には、管理者またはショップマネージャーが必要です。
+
+<details>
+<summary>各標準権限グループのアクセス範囲</summary>
+
+- **`administrator`**：このページのすべてのエンドポイント。
+- **`shop_manager`**：Pro の拡張機能のインストールと更新を除くすべてのエンドポイント。これらの操作には WordPress の `install_plugins` 権限が必要です。
+- **`cashier`**：払い戻しを含む販売ワークフローのすべての操作。設定画面、ログ、拡張機能、店舗管理にはアクセスできません。設定で読み取れるのはクラウド印刷プリンターの情報だけで、POS からレシートを送信するために使用します。
+
+</details>
+
+<details>
+<summary>一覧の検証方法</summary>
+
+一覧はプラグインの統合テストに基づいています。各テストではアプリと同じように WCPOS アクセストークンでログインし、各権限グループとしてエンドポイントを呼び出します。無料版のテストでは、許可されたエンドポイントが `400` 未満のステータスを返す必要があります。Pro のテストでは、テストデータが最小限であるため `400` または `404` も許容します。どちらの応答でも、ユーザーが権限チェックを通過したことは確認できます。拒否されたエンドポイントは、ユーザーがログインしたまま `403` を返す必要があります。
+
+</details>
+
+### サーバーによるリクエストの確認方法 {#how-the-server-checks}
+
+POS へのすべてのリクエストは、アプリのバージョン、ログイン、POS へのアクセス権、ルート固有のルールという最大四つのチェックを受けます。最初に失敗したチェックによって応答が決まります。
+
+<details>
+<summary>四つのチェックとその順序</summary>
+
+`/wcpos/v1/` または `/wcpos/v2/` へのリクエストには、これらのチェックが順番に行われます。公開ログインルートとプリンターのポーリングでは、チェック 2 と 3 を省略します。三つの同期メンテナンスルートでは、WooCommerce の `manage_woocommerce` を持つユーザーに対してチェック 3 を省略し、代わりにその権限を要求します。
+
+1. **アプリのプロトコル**（大半の v2 ルート）。失敗すると `426`、コード `wcpos_update_required` を返します。アプリは [SYNC341](../error-codes/SYNC341.mdx) を表示します。アプリを更新してください。
+2. **アクセストークン。** 失敗すると `401`、コード `woocommerce_pos_rest_unauthorized` を返し、誰もログインしていない状態になります。アプリはトークンを一度更新して再試行します。再試行も失敗すると、[AUTH101](../error-codes/AUTH101.mdx)（セッションの有効期限切れ）を表示します。
+3. **POS へのアクセス権。** ログイン済みでも `access_woocommerce_pos` がないユーザーには、`403`、コード `woocommerce_pos_rest_forbidden` を返します。アプリは [AUTH201](../error-codes/AUTH201.mdx)（権限グループの権限不足）を表示します。
+4. **ルート固有のチェック。** 失敗すると `403`（例：`rest_forbidden`）を返します。この場合もアプリは [AUTH201](../error-codes/AUTH201.mdx) を表示します。
+
+</details>
+
+<details>
+<summary>三つの権限と、それらを持つ権限グループ</summary>
+
+プラグインは有効化時に、独自の二つの権限を標準権限グループに付与します。更新時に付与するのは、そのリリースで新しく追加された権限だけなので、アクセス画面で解除した権限は解除されたままです。`install_plugins` は WordPress 固有の権限です。
+
+- **`access_woocommerce_pos`**：管理者、ショップマネージャー、レジ係。公開ログインルート、プリンターのポーリング、三つの同期メンテナンスルート（`/wcpos/v2/uuid/backfill`、`/orders/index/backfill`、`/integrity/rebuild`）を除く、すべての POS エンドポイントで必要です。同期メンテナンスルートでは代わりに WooCommerce の `manage_woocommerce` が必要です。一部のエンドポイントでは、以下の二つの権限のいずれかも必要です。
+- **`manage_woocommerce_pos`**：管理者とショップマネージャー。設定、ログ、拡張機能一覧、Pro の店舗管理にアクセスできます。
+- **`install_plugins`** (WordPress)：管理者のみ。Pro の拡張機能をインストール、更新できます。
+
+</details>
+
+### 同期エンドポイント (v2) {#sync-endpoints}
+
+2.0 アプリは `/wcpos/v2/` 経由で同期します。すべての標準権限グループが、アプリの使用するすべての同期ルートにアクセスできます。
+
+<details>
+<summary>すべての権限グループ：v2 同期ルート</summary>
+
+- **ステータス**：`GET /wcpos/v2/status`
+- **カタログ**：`GET /wcpos/v2/products`、`/variations`、`/products/categories`、`/products/tags`、`/products/brands`
+- **顧客、クーポン、税**：`GET /wcpos/v2/customers`、`/coupons`、`/taxes`
+- **注文**：`GET /wcpos/v2/orders`、`/orders/pull`
+- **変更フィード**：`GET /wcpos/v2/changes/sequence-log`、`/changes/revision-hash`、`/changes/range-checksum`、`/changes/config-fingerprint`、`/changes/tick`
+- **整合性チェック**：`GET /wcpos/v2/digests`、`/integrity/scan`、`/integrity/bucket`
+- **バーコード検索**：`GET /wcpos/v2/resolve/barcode`
+- **新規注文の送信**：`POST /wcpos/v2/push/orders`
+
+</details>
+
+### 無料版プラグインのエンドポイントアクセス一覧 {#free-plugin-endpoint-access-matrix}
+
+これらの `/wcpos/v1/` ルートは、ログイン、チェックアウト、レシート、設定画面に使用されます。すべての権限グループが販売に使うルートにアクセスできます。設定画面、ログ、拡張機能一覧には管理者またはショップマネージャーが必要です。
+
+<details>
+<summary>すべての権限グループ（管理者、ショップマネージャー、レジ係）：27 エンドポイント</summary>
+
+- `GET /wcpos/v1/stores`：アプリで開ける店舗
+- `GET /wcpos/v1/cashier/{id}`：ログイン中のレジ係
+- `GET /wcpos/v1/cashier/{id}/stores`：このレジ係が利用できる店舗
+- `GET /wcpos/v1/products`、`/products/variations`：カタログ
+- `GET /wcpos/v1/products/categories`、`/tags`、`/brands`：カタログのフィルター
+- `GET /wcpos/v1/coupons`：クーポン検索
+- `GET /wcpos/v1/orders`：注文履歴
+- `POST /wcpos/v1/orders`：販売
+- `PATCH /wcpos/v1/orders/{id}`：注文の完了
+- `GET` と `POST /wcpos/v1/orders/{id}/checkout`：支払いの受け付け
+- `GET /wcpos/v1/receipts/{order_id}`：レシートの描画
+- `GET /wcpos/v1/data/order_statuses`：ステータス名
+- `GET /wcpos/v1/customers`：顧客検索
+- `POST /wcpos/v1/customers`：顧客の追加
+- `PATCH /wcpos/v1/customers/{id}`：顧客の編集
+- `GET /wcpos/v1/taxes`、`/taxes/classes`：税率と税区分
+- `GET /wcpos/v1/shipping_methods`：配送料の明細
+- `GET /wcpos/v1/payment-gateways`：支払い方法
+- `POST /wcpos/v1/payment-gateways/{id}/bootstrap`：支払いのセットアップ
+- `GET /wcpos/v1/templates`、`/templates/active`、`/templates/gallery`：レシートテンプレート
+
+すべての権限グループが、クラウド印刷プリンターの情報を返す `GET /wcpos/v1/settings/cloud-print` も読み取れます。POS がこれらのプリンターにレシートを送信するためです。必要なのは `access_woocommerce_pos` だけです。このエンドポイントは 27 件には含まれません。この権限はあるものの設定へのアクセス権がないユーザーを、専用のテストで検証しています。
+
+</details>
+
+<details>
+<summary>管理者とショップマネージャーのみ：6 エンドポイント</summary>
+
+これらには `manage_woocommerce_pos` が必要です。レジ係には `403` が返されます。
+
+- `GET /wcpos/v1/settings/general`：一般設定画面
+- `GET /wcpos/v1/settings/checkout`：レジ設定画面
+- `GET /wcpos/v1/settings/tax_ids`：税 ID 設定画面
+- `GET /wcpos/v1/settings/payment-gateways`：決済ゲートウェイ設定画面
+- `GET /wcpos/v1/extensions`：拡張機能一覧
+- `GET /wcpos/v1/logs`：ログ画面
+
+`/wcpos/v1/settings` 自体には読み取り可能な一覧がありません。代わりに `/settings/general` などのセクションを読み取ってください。
+
+</details>
+
+### Pro プラグインのエンドポイントアクセス一覧 {#pro-plugin-endpoint-access-matrix}
+
+WCPOS Pro は以下のルートを追加します。すべての権限グループが注文を払い戻せます。店舗管理とライセンスキーには管理者またはショップマネージャーが必要で、拡張機能のインストールには管理者が必要です。
+
+<details>
+<summary>権限グループ別の Pro ルート</summary>
+
+**すべての権限グループ：**
+
+- `POST /wcpos/v1/orders/{id}/refunds`：注文の払い戻し
+
+**管理者とショップマネージャーのみ**（`manage_woocommerce_pos` が必要）：
+
+- `GET /wcpos/v1/stores/{id}/edit`：編集する店舗を開く
+- `POST /wcpos/v1/stores`：店舗の追加
+- `PATCH /wcpos/v1/stores/{id}`：店舗の保存
+- `POST /wcpos/v1/settings/license`：ライセンスキーの保存
+
+**管理者のみ**（WordPress の `install_plugins` 権限が必要）：
+
+- `POST /wcpos/v1/extensions/action`：拡張機能のインストールまたは更新
+
+</details>
+
+### トークンの有効期限切れに関するテスト範囲 {#token-expiry-coverage}
+
+初期設定では、アプリのログインは 30 分間有効で、レジ係がログインしてから最大 30 日間は自動更新されます。その後はレジ係が再ログインします ([AUTH101](../error-codes/AUTH101.mdx))。期限切れのトークンは常に `401` となり、`403` にはならないため、権限グループの問題と混同することはありません。
+
+<details>
+<summary>トークンの有効期間と各ケースの応答</summary>
+
+アプリは、有効期間が 30 分のアクセストークンと、有効期間が 30 日のリフレッシュトークンを使用してログインします。コードから `wcpos_jwt_access_token_expire` と `wcpos_jwt_refresh_token_expire` フィルターで両方を変更できます。同じテストで、三つの権限グループすべてについて、それぞれのトークンが期限切れになった場合の動作を検証しています。
+
+- **有効なアクセストークン**：エンドポイントは通常どおり応答します。
+- **期限切れ、欠落、形式不正のアクセストークン**：`401`、コード `woocommerce_pos_rest_unauthorized` を返し、誰もログインしていない状態になります。アプリはトークンを一度更新して再試行します。
+- **期限切れのアクセストークンと有効なリフレッシュトークン**：更新によって新しいアクセストークンが返され、再試行が成功します。
+- **期限切れのリフレッシュトークン**：更新が `woocommerce_pos_auth_token_expired` で拒否され、レジ係は再ログインします ([AUTH101](../error-codes/AUTH101.mdx))。
+
+期限切れのアクセストークンではログインできないため、権限グループのチェックには到達しません。常に `401` となり、`403` にはなりません。レジ係の権限グループに対する v2 ルートのテストでも、同じ動作を確認しています。
+
+</details>
