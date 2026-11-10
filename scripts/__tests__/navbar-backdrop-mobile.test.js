@@ -1,7 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const browserslist = require('browserslist');
-const { transform, browserslistToTargets } = require('lightningcss');
+const { createRequire } = require('module');
+// lightningcss and browserslist are not direct dependencies: resolve them from
+// @docusaurus/faster (a direct dependency), the copies its CSS minimizer uses.
+const fasterRequire = createRequire(require.resolve('@docusaurus/faster'));
+const browserslist = fasterRequire('browserslist');
+const { transform, browserslistToTargets } = fasterRequire('lightningcss');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const cssPath = path.join(repoRoot, 'src/css/custom.css');
