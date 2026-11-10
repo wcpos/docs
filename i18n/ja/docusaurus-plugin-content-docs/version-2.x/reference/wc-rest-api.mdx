@@ -1,0 +1,230 @@
+---
+title: WooCommerce REST API
+slug: /developers/woocommerce-rest-api
+sidebar_label: "WooCommerce REST API"
+sidebar_position: 1
+description: "WCPOS が WooCommerce REST API を通じてサイトのデータを取得する仕組み、POS が保持するデータを JSON タブで確認する方法、価格や商品を動的に変更するプラグインの変更がレジに反映されない理由を説明します。"
+---
+
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/wc-rest-api/en/manifest.json';
+
+レジの表示がサイトの内容と一致しない場合は、このページを参照してください。問題のある項目から確認します。
+
+- **商品の価格、在庫数、カスタムフィールド：** [商品を確認する](#check-a-product)を参照してください。**商品**、**注文**、**顧客**、**クーポン**画面と同様に、[WCPOS Pro](../getting-started/pro-license.mdx) が必要です。
+- **カート内の注文：** [カート内の注文を確認する](#check-the-order)を参照してください。Pro がなくても利用できます。
+- **刻印などの明細のカスタムフィールド：** [明細を確認する](#check-a-line)を参照してください。Pro がなくても利用できます。
+- **プラグインによる変更が POS に反映されない：** [一部のプラグインの変更が POS に反映されない理由](#why-dont-some-plugins-work-in-the-pos)を参照してください。
+
+<details>
+<summary>POS とサイトが通信する仕組み</summary>
+
+POS は、他のアプリと同じように **WooCommerce REST API** を通じてサイトからすべてのデータを取得します。レジの POS が商品や顧客のデータをサイトに要求すると、サイトは **JSON**（各フィールドを名前付きで列挙したプレーンテキスト）で応答します。POS は各売上を WooCommerce の注文としてサイトに送り返します。
+
+<LocalizedSVG svgName="wc-rest-api" />
+
+図の**店舗**はレジのあるお店を、**データセンター**は WooCommerce サイトが稼働するサーバーを表します。レジからサイトにリクエストが送られ、JSON の応答が返ってきます。
+
+</details>
+
+## POS がサイトから取得するデータ {#what-the-pos-gets}
+
+- **API が必要です。** サイトに接続する際、POS はそのサイトで WooCommerce REST API が利用できるかを確認します。利用できない場合は、[AUTH321: WooCommerce が見つかりません](../error-codes/AUTH321.mdx)が表示され、接続が中止されます。
+- **デバイスにコピーを保存します。** POS は商品とバリエーション、カテゴリー、タグとブランド、顧客、税率、クーポン、注文をダウンロードし、デバイスにコピーを保存します。検索や販売ではこのコピーを読み込むため、レジは高速に動作し、インターネット接続が切れても使い続けられます。
+- **売上を注文として送り返します。** レジでの販売、新規顧客の登録、商品の編集はサイトに送信され、WooCommerce に保存されます。各売上は通常の WooCommerce 注文となり、**WooCommerce > 注文**から開くことができます。
+- **変更はバックグラウンドで取得します。** POS は稼働中にサイトの変更を確認するため、WP Admin での編集内容が再起動なしでレジに反映されます。仕組みについては[同期エンジンの仕組み](./sync-engine.mdx)を参照してください。
+
+<details>
+<summary>開発者向け：POS が呼び出すルート</summary>
+
+REST API では、商品、注文、顧客、クーポンなど、サイトのデータの種類ごとに `/wp-json/` 配下のアドレスが割り当てられます。WooCommerce 自体のルートは `wc/v3` 配下にあります。
+
+WCPOS プラグインは、サイトに独自の `wcpos/v2` ルートを追加します。これらのルートは、読み取りやレジでの変更をサイト内部で WooCommerce の `wc/v3` API に渡します。そのため、POS は他の WooCommerce アプリと同じフィールドを取得し、各注文は WooCommerce に保存されます。Pro の[店舗別価格](../stores/setup.mdx#per-store-pricing)や一部の拡張機能は、POS が受け取る値を変更します。支払い、販売の完了、レジ、セッションにはプラグイン独自のルートを使用します。[REST API](./architecture.mdx#api-extensions) を参照してください。
+
+</details>
+
+## POS が保持するデータを確認する {#viewing-the-json-data-in-the-pos}
+
+単一のレコードを表示するパネルには、すべて**フォーム**の隣に **JSON** タブがあります。商品、バリエーション、顧客、クーポン、注文、カートの**注文詳細**、カート明細の**編集**ダイアログが該当します。このデバイスが保持しているレコードを WooCommerce の JSON 形式で表示します。販売時にこのタブを使う必要はありません。
+
+商品の確認には [WCPOS Pro](../getting-started/pro-license.mdx) が必要です。カートと明細の **JSON** タブは、どのレジでも利用できます。
+
+### 商品を確認する {#check-a-product}
+
+商品の **JSON** タブを開き、[価格](#read-price)、[在庫数](#read-stock)、[カスタムフィールド](#read-meta-data)を確認して、サイトの WordPress ダッシュボードである WP Admin の商品と比較します。WP Admin にログインできない場合は、値を控えてサイトの管理者に比較を依頼してください。
+
+1. メニューから**商品**を開き、商品を検索します。
+2. 行の末尾にある矢印（›）をタップします。パネルの**フォーム**タブが開きます。
+3. **JSON** をタップします。
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[0, 0], [0, 0], [0, -34], [0, -34]]} alt="商品画面で Aim Analog Watch を検索し、フォームタブでパネルを開いた状態。名前、通常価格、SKU、バーコード、在庫などのフィールドが並び、下部に同期と閉じるがあります">
+
+1. **フォーム** — レジで変更できるフィールドです。パネルを開くと、このタブが表示されます。
+2. **JSON** — POS が保持している商品データです。
+3. **同期** — サイトからこの商品を再取得します。**フォーム**タブにのみ表示されます。
+4. **閉じる** — パネルを閉じます。上部の **✕** でも同じ操作ができます。
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[140, 0], [100, 0]]} maxWidth={360} alt="Aim Analog Watch の JSON の先頭部分。73 項目に続き、id 67038、name、slug が表示されています">
+
+1. **73 項目** — この商品についてサイトから送信されたフィールドの数です。
+2. **id** — WooCommerce での商品 ID です。
+
+</JourneyShot>
+
+`categories` や `meta_data` など、他のフィールドを含むフィールドは最初は折りたたまれています。タップすると展開できます。残りはスクロールして確認します。
+
+#### 価格 {#read-price}
+
+`price` まで下にスクロールします。この値と `regular_price`、`sale_price` を、WP Admin の商品の**商品データ > 一般**と比較します。その商品にこの店舗専用の価格（[店舗別価格](../stores/setup.mdx#per-store-pricing)）が設定されている場合は、同じタブにある該当店舗の価格と比較します。
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[93, 0], [165, 0], [121, 0]]} maxWidth={360} alt="Aim Analog Watch の JSON の価格フィールド部分。price は 45、regular_price は 45、sale_price は空です">
+
+1. **price** — 現在の販売価格です。セール中はセール価格、それ以外は通常価格になります。
+2. **regular_price** — セールを適用していない価格です。
+3. **sale_price** — セール価格がない商品では空になります。
+
+</JourneyShot>
+
+#### 在庫数 {#read-stock}
+
+`stock_quantity` まで下にスクロールします。`manage_stock` が `true` の場合にのみ数値が入り、それ以外は `null`（空）になります。**商品データ > 在庫**と比較してください。
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[195, 0], [160, 0]]} maxWidth={360} alt="Aim Analog Watch の JSON の在庫フィールド部分。manage_stock は true、stock_quantity は 85 です">
+
+1. **manage_stock** — `true` の場合、WooCommerce がこの商品の在庫数を管理します。
+2. **stock_quantity** — POS が保持する在庫数です。**フォーム**タブと同じ `85` になっています。
+
+</JourneyShot>
+
+#### カスタムフィールドやプラグインのデータ {#read-meta-data}
+
+`meta_data` まで下にスクロールしてタップし、続いて項目をタップします。この拡大画像はスマートフォンの画面で、長い値は次の行に折り返されています。
+
+<JourneyShot manifest={manifest} device="phone" step={5} offsets={[[168, 0], [254, 0], [97, 18]]} maxWidth={360} alt="スマートフォンで表示した Aim Analog Watch の JSON。meta_data に 1 項目があり、先頭の項目を展開すると、key の _woocommerce_pos_uuid と、次の行に折り返された value が表示されています">
+
+1. **meta_data** — 商品のカスタムフィールドです。フィールドごとに項目があります。
+2. **key** — フィールド名です。
+3. **value** — フィールドが保持する値です。
+
+</JourneyShot>
+
+#### 値が WP Admin と一致しない場合 {#value-differs}
+
+**フォーム**、**同期**の順にタップして、商品を再取得します。
+
+- **「更新できませんでした」と表示される場合：** デバイスには古いコピーが保持されています。接続を確認して、もう一度お試しください。
+- **エラーが表示されないのに値が異なる場合：** POS はサイトの API が送信したデータを保持しています。プラグインがウェブサイト上の値だけを変更している可能性があります。[一部のプラグインの変更が POS に反映されない理由](#why-dont-some-plugins-work-in-the-pos)を参照してください。
+
+### カート内の注文を確認する {#check-the-order}
+
+1. **チェックアウト**の隣にある **⋮** をタップします。**注文詳細**が開きます。
+2. **JSON** をタップします。
+
+<JourneyShot manifest={manifest} device="tablet" step={6} offsets={[[190, 0], [-22, 0]]} alt="Aim Analog Watch がカートに入った POS 画面。小計と税額が表示され、チェックアウト $45.00 の隣に ⋮ ボタンがあります">
+
+1. **カート明細** — 各明細の**編集**ダイアログには、それぞれ **JSON** タブがあります。[明細を確認する](#check-a-line)を参照してください。
+2. **⋮** — 注文全体の**注文詳細**を開きます。
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={7} offsets={[[0, 0], [250, 0], [235, 0], [140, 0], [0, -34], [0, -34], [0, -34]]} maxWidth={520} alt="そのカートの注文詳細の JSON タブ。status は pos-open、created_via は woocommerce-pos、line_items は 1 項目、total は 45 で、他の注文フィールドも表示されています。下部には無効化、閉じる、印刷、注文を同期があります">
+
+1. **JSON** — 他のパネルと同じく、**フォーム**の隣にあります。
+2. **status** — レジで注文が未完了の間は `pos-open` です。このステータスは WCPOS プラグインが提供し、WooCommerce では **POS - 未完了**と表示されます。
+3. **line_items** — カート内の商品です。タップすると各明細を開けます。
+4. **total** — 税込みの注文合計です。
+5. **注文を同期** — 注文を今すぐサイトに送信します。新規注文は、サイトに保存されるまで JSON に `id` がありません。[注文を同期する](../pos/cart/order-actions.mdx#sync-order)を参照してください。
+6. **印刷** — 注文を印刷します。
+7. **無効化** — 注文を削除し、カートを空にします。[注文を無効化する](../pos/cart/order-actions.mdx#void)を参照してください。
+
+</JourneyShot>
+
+時計が入った別のカートで、同じフィールドを拡大したものです。
+
+<JourneyShot manifest={manifest} device="tablet" step={9} offsets={[[142, 0], [200, 0], [91, 0]]} maxWidth={360} alt="Aim Analog Watch が入った別のカートの注文 JSON の拡大表示。status は pos-open、created_via は woocommerce-pos、line_items は 1 項目、total は 45 です">
+
+1. **status** — `pos-open` と表示されており、レジで注文がまだ未完了であることを示します。
+2. **line_items** — `1 item` は、カート内の時計を示しています。
+3. **total** — `45` は、税込み $45.00 の時計の代金です。
+
+</JourneyShot>
+
+### 明細を確認する {#check-a-line}
+
+明細の **JSON** タブには、サイトの商品レコードではなく、WooCommerce の注文に保存される形式の明細が表示されます。刻印など、明細のカスタムフィールドの確認に使います。
+
+1. 明細の合計をタップすると、**編集**と**削除**が表示されます。他の操作方法については、[明細を編集または削除する](../pos/cart/line-items.mdx#remove-item)を参照してください。
+2. **編集**、**JSON** の順にタップします。
+3. `meta_data` をタップして明細のカスタムフィールドを開き、項目をタップして `key` と `value` を確認します。
+
+<JourneyShot manifest={manifest} device="tablet" step={8} offsets={[[0, 0], [196, 0], [175, 0], [262, -2], [166, 8], [168, 0]]} maxWidth={520} alt="カート明細の Aim Analog Watch を編集するダイアログの JSON タブ。13 項目があり、product_id は 67038、name、quantity は 1、sku が表示されています。meta_data の 2 項目のうち先頭を展開すると key の _woocommerce_pos_data とその value が表示され、その下に price、total、taxes があります">
+
+1. **JSON** — 明細の**編集**ダイアログで、**フォーム**の隣にあります。
+2. **name** — この明細に保存される商品名です。その下の `quantity` と `price` とともに、商品レコードではなく、この販売の内容を表します。
+3. **meta_data** — 明細のカスタムフィールドです。ここでは 2 項目あります。
+4. **key** — フィールド名です。WCPOS は `_woocommerce_pos_data` に明細の価格、通常価格、課税状況を保存します。
+5. **value** — フィールドが保持する値です。折りたたまれた値はタップして展開できます。
+6. **price** — 商品の税抜き単価です。ここでは `40.106952` です。明細の税額 `total_tax` の `4.893048` を加えると、カートの $45.00 になります。
+
+</JourneyShot>
+
+<details>
+<summary>ブラウザーでリクエストを確認する</summary>
+
+ウェブアプリでは、ブラウザーの開発者ツールを使って POS とサイトの通信を確認できます。
+
+1. Chrome、Edge、Firefox のいずれかで POS を開きます。
+2. **F12**（Mac では **Option + Command + I**）を押し、**ネットワーク**タブを選択します。
+3. フィルターボックスに `wcpos` と入力します。
+4. POS で検索、商品の追加、チェックアウトなどの操作をします。サイトが応答したリクエストが一覧に表示されます。リクエストを選択し、**レスポンス**を選ぶと JSON を確認できます。
+
+</details>
+
+## 一部のプラグインの変更が POS に反映されない理由 {#why-dont-some-plugins-work-in-the-pos}
+
+POS はサイトのデータのコピーを使って動作します。ウェブページの表示だけを変更するプラグインや、買い物客がウェブサイトを閲覧している間に計算を行うプラグインの処理は、そのコピーには反映されません。POS が取得するのは REST API が送信するデータだけです。特に次の三種類のプラグインで、この問題が起こります。
+
+### 動的価格設定 {#dynamic-pricing}
+
+顧客、権限グループ、数量に応じて価格を設定するプラグインです。
+
+- **レジでの動作：** POS には商品の通常価格が表示されます。これらのプラグインの多くは、買い物客がウェブサイトを閲覧する際に価格を計算するため、その価格は API から送信されません。
+- **対処方法：** [レジでの割引](../pos/cart/discounts.mdx)またはクーポンを使います。
+
+### 商品アドオン {#product-add-ons}
+
+ギフト包装や刻印などの商品オプションを追加するプラグインです。
+
+- **レジでの動作：** オプションは表示されません。これらのプラグインの多くは商品ページ上でオプションを生成するため、API が送信する商品データには含まれません。
+- **対処方法：** 追加費用を[手数料](../pos/cart/index.mdx#fees)として追加し、明細の[カスタムフィールド](../pos/cart/line-items.mdx#meta-data)に詳細を記入します。
+
+### API を変更するプラグイン {#api-changing-plugins}
+
+サイトが REST API を通じて送信するデータを変更するプラグインです。
+
+- **レジでの動作：** POS が正常に動作しなくなることがあります。wePOS はサイトがバリエーション商品のデータを送信する方法を変更するため、wePOS が有効な間、WCPOS は自動的に無効になります。
+- **対処方法：** [wePOS](../integrations/index.mdx#wepos) を参照してください。
+
+商品、顧客、注文のカスタムフィールドにデータを保存するプラグインであれば、通常は POS にも反映されます。**JSON** タブを開いて `meta_data` を確認してください。
+
+## 問題が発生した場合 {#goes-wrong}
+
+- **AUTH321 で接続に失敗する** — サイトで WooCommerce REST API が利用できません。[AUTH321: WooCommerce が見つかりません](../error-codes/AUTH321.mdx)を参照してください。
+- **レジの価格やフィールドが WP Admin と一致しない** — [値が WP Admin と一致しない場合](#value-differs)を参照してください。
+- **プラグインによる変更が POS に反映されない** — [一部のプラグインの変更が POS に反映されない理由](#why-dont-some-plugins-work-in-the-pos)を参照してください。
+- **プラグインのインストール後に機能が動作しなくなった** — [プラグインの競合](../support/troubleshooting/plugin-conflicts.mdx)を参照してください。
+
+## 関連ドキュメント {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/developers/architecture" title="アーキテクチャ" description="プラグインとアプリの構成と連携の仕組み" />
+  <LinkCard to="/developers/sync-engine" title="同期エンジンの仕組み" description="POS がサイトのデータのコピーを最新に保つ仕組み" />
+  <LinkCard to="/manage-store/compatible-plugins" title="連携" description="WCPOS と併用できるプラグインと、併用できない二つのプラグイン" />
+</LinkCards>
+
+開発者向けに、WooCommerce は [WooCommerce REST API ドキュメント](https://woocommerce.github.io/woocommerce-rest-api-docs/)ですべてのエンドポイントとフィールドを説明しています。

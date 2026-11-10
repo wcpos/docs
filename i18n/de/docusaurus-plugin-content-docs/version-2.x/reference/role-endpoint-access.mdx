@@ -1,0 +1,262 @@
+---
+title: Endpunktzugriff nach Rolle
+slug: /developers/role-endpoint-access
+sidebar_label: Endpunktzugriff nach Rolle
+sidebar_position: 3
+description: "Entwicklerreferenz: welche WCPOS-REST-Endpunkte die Rollen administrator, shop_manager und cashier erreichen können, wie abgelehnte Anfragen beantwortet werden und wie Sie Rollenprobleme von Anmeldeproblemen unterscheiden."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+Wenn Sie sich nicht anmelden können, eine Aktion blockiert wird oder der POS Sie zu einem Update auffordert, suchen Sie den Code in der App-Meldung und [beheben Sie das Problem hier](#diagnosing-failures):
+
+- [AUTH101: erneut anmelden](#sign-in-again)
+- [AUTH201: einen Administrator um Prüfung der Rolle bitten](#check-the-role)
+- [SYNC341: App aktualisieren](#update-the-app)
+
+## Fehler diagnostizieren {#diagnosing-failures}
+
+### Erneut anmelden (AUTH101) {#sign-in-again}
+
+Die App meldet **„Anfrage nach Token-Aktualisierung weiterhin nicht autorisiert – bitte melden Sie sich erneut an“**.
+
+1. WCPOS öffnet das WordPress-Anmeldefenster automatisch. Melden Sie sich dort als derselbe Kassierer an.
+2. Wenn Sie das Fenster geschlossen haben, meldet die App **„Bitte melden Sie sich an, um fortzufahren“**. Drücken Sie in dieser Meldung auf **Anmelden**, um das Fenster erneut zu öffnen.
+3. Sobald Sie wieder angemeldet sind, werden ausstehende Verkäufe automatisch gesendet.
+
+Wenn die Meldung sofort wieder erscheint, bitten Sie Ihren Website-Administrator um Hilfe und senden Sie ihm die Seite [AUTH101](../error-codes/AUTH101.mdx).
+
+<details>
+<summary>Details zu Anmeldefehlern</summary>
+
+Die App hat `401` erhalten, das Token aktualisiert und beim erneuten Versuch wieder `401` erhalten. Das betrifft die Anmeldung, nicht die Rolle: Ein `403` löst niemals eine Token-Aktualisierung aus. Etwas zwischen der App und WordPress entfernt das Token oder lehnt es ab, häufig ein Sicherheits- oder Authentifizierungs-Plugin ([AUTH301](../error-codes/AUTH301.mdx)).
+
+</details>
+
+### Einen Administrator um Prüfung der Rolle bitten (AUTH201) {#check-the-role}
+
+Sie sind angemeldet, aber Ihre Rolle erlaubt diese Aktion nicht. Bitten Sie Ihren Website-Administrator, Ihren Zugriff unter [Mitarbeiterzugriff](../settings/wp-admin/access.mdx) zu prüfen. Mithilfe von [AUTH201](../error-codes/AUTH201.mdx) kann er die Ursache ermitteln.
+
+<details>
+<summary>Details zu Rollenberechtigungen</summary>
+
+Der Server hat einem angemeldeten Benutzer mit `403` geantwortet. Entweder fehlt dem Benutzer `access_woocommerce_pos`, oder die Route erfordert `manage_woocommerce_pos` oder `install_plugins`. Suchen Sie den Endpunkt in den folgenden Listen. Wenn die Rolle des Benutzers laut diesen Listen darauf zugreifen sollte, wurde sie höchstwahrscheinlich gegenüber den Standardwerten verändert: auf der Seite Zugriff, wo **Abweichend von den WCPOS-Standardwerten** angezeigt wird, durch ein Plugin zur Rollenbearbeitung oder durch eigenen Code. Auch eine zusätzliche Rolle des Benutzers kann eine Berechtigung verweigern.
+
+Wenn der Endpunkt nicht in den Listen steht, wird er von den zugrunde liegenden Tests nicht abgedeckt: Lesen Sie die Berechtigungsprüfung dieser Route. WCPOS Pro kann einem Benutzer auch den Zugriff auf eine Filiale verweigern, für die er nicht berechtigt ist, beispielsweise mit `403` `wcpos_display_store_forbidden` („Sie sind für diese Filiale nicht berechtigt.“).
+
+</details>
+
+### App aktualisieren (SYNC341) {#update-the-app}
+
+Die App meldet **„Aktualisieren Sie die POS-App auf diesem Gerät.“** Das Plugin auf Ihrer Website ist neuer als die App. Aktualisieren Sie die App und öffnen Sie sie anschließend erneut:
+
+- **Web:** Laden Sie den Browser-Tab neu. Wenn die Meldung wieder erscheint: Halten Sie auf einem Computer beim Neuladen die **Umschalttaste** gedrückt; auf einem Smartphone oder Tablet bitten Sie Ihren Website-Administrator um Hilfe und senden Sie ihm die Seite [SYNC341](../error-codes/SYNC341.mdx).
+- **Desktop:** Installieren Sie das von der App angebotene Update und öffnen Sie die App anschließend erneut. Wenn keines angeboten wird, [laden Sie die neueste Desktop-Version herunter](../getting-started/installation.mdx#app-requirements) – für Windows, Mac (Intel oder Apple silicon) oder Linux.
+- **iPhone und iPad:** Aktualisieren Sie WCPOS über die [TestFlight-Beta](https://testflight.apple.com/join/JGBdVRrW).
+- **Android:** Aktualisieren Sie WCPOS über die [Google-Play-Beta](https://play.google.com/apps/testing/com.wcpos.main).
+
+Weitere Informationen finden Sie unter [SYNC341](../error-codes/SYNC341.mdx), einschließlich der Möglichkeiten für Website-Administratoren, wenn noch keine neuere App verfügbar ist.
+
+<details>
+<summary>Details zur App-Version</summary>
+
+Der Server hat auf einer v2-Route mit `426` geantwortet, weil die App älter ist als das Synchronisierungsprotokoll des Plugins.
+
+</details>
+
+### Berechtigungsfehler oder Token-Fehler {#permission-failure-vs-token-failure}
+
+AUTH201 bedeutet, dass der Benutzer angemeldet ist, aber keine Berechtigung hat: Wenden Sie sich wegen der Rolle an einen Administrator. AUTH101 bedeutet, dass die Anmeldung selbst fehlgeschlagen ist: Melden Sie sich erneut an.
+
+<details>
+<summary>So unterscheiden Sie die Fehler</summary>
+
+- **`403` (AUTH201)**: Der Benutzer ist angemeldet, hat aber keine Berechtigung für diese Aktion. Prüfen Sie die Berechtigungen der Rolle und die Anforderungen des Endpunkts in den folgenden Listen.
+- **`401` (AUTH101, „Anfrage nach Token-Aktualisierung weiterhin nicht autorisiert“)**: Der Server konnte die Anfrage der App nicht authentifizieren, und niemand ist angemeldet. Melden Sie sich erneut an. Wenn der Fehler weiterhin auftritt, prüfen Sie das Token und alles zwischen App und WordPress, was es entfernt oder ablehnt.
+
+Lesen Sie die Antwort auf die abgelehnte Anfrage im Netzwerkbereich des Browsers oder in einem serverseitigen Protokoll. Unter **WP Admin > POS > Einstellungen > Werkzeuge > Protokolle** wird außerdem jedes `401` erfasst, dessen Token fehlerhaft war oder aus einem anderen Grund als dem bloßen Ablauf abgelehnt wurde. Status und Fehlercode stehen im Antworttext. Der angemeldete Benutzer steht dort nicht: Ermitteln Sie ihn auf dem Server, beispielsweise mit `get_current_user_id()` in einem Debug-Protokoll während der Anfrage.
+
+**Rollen- oder Berechtigungsfehler:**
+
+- Status: `403`
+- Code: `woocommerce_pos_rest_forbidden` oder ein eigener Code der Route, beispielsweise `rest_forbidden`
+- Angemeldeter Benutzer (serverseitig): die WordPress-Benutzer-ID des Kassierers
+
+**Token- oder Anmeldefehler:**
+
+- Status: `401`
+- Code: `woocommerce_pos_rest_unauthorized`
+- `data.reason`: der Token-Fehler, beispielsweise `woocommerce_pos_auth_token_expired`
+- Angemeldeter Benutzer (serverseitig): `0` (niemand angemeldet)
+
+Eine Benutzer-ID ungleich null deutet auf die Berechtigungen hin. Eine Benutzer-ID von `0` deutet auf das Token oder auf etwas zwischen App und WordPress hin.
+
+</details>
+
+## Weiterführende Dokumentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Mitarbeiterzugriff" to="/manage-store/staff-permissions" description="Berechtigungen für die einzelnen Rollen erteilen oder entziehen." />
+  <LinkCard title="Sitzungen" to="/settings/sessions" description="Angemeldete Geräte und Beenden einer Sitzung." />
+  <LinkCard title="Fehlercodes" to="/error-codes" description="Alle Codes, die die App anzeigen kann, mit Lösungen." />
+</LinkCards>
+
+## Für Administratoren und Entwickler {#summary}
+
+Kassierer müssen ab hier nicht weiterlesen. Der Rest dieser Seite richtet sich an Website-Administratoren und Entwickler, die wissen müssen, ob die Anmeldung, die Benutzerrolle oder die App-Version die Ursache ist. Aufgeführt sind die WCPOS-REST-Endpunkte, auf die jede Standardrolle zugreifen kann, und die Antworten des Servers bei einer Ablehnung. Um die Berechtigungen einer Rolle zu ändern, verwenden Sie [Mitarbeiterzugriff](../settings/wp-admin/access.mdx).
+
+### Worauf die einzelnen Standardrollen zugreifen können {#what-each-role-can-reach}
+
+Ein Kassierer kann alles ausführen, was für einen Verkauf erforderlich ist, einschließlich Rückerstattungen, und die Cloud Print-Drucker abrufen, um Belege zu senden. Alle anderen Einstellungen, die Protokolle und die Filialverwaltung erfordern einen Administrator oder Shop-Manager.
+
+<details>
+<summary>Zugriffsmöglichkeiten der einzelnen Standardrollen</summary>
+
+- **`administrator`**: alle Endpunkte auf dieser Seite.
+- **`shop_manager`**: alle Endpunkte außer der Pro-Aktion zum Installieren und Aktualisieren von Erweiterungen, die die WordPress-Berechtigung `install_plugins` erfordert.
+- **`cashier`**: alles, was im Verkaufsablauf verwendet wird, einschließlich Rückerstattungen. Kein Zugriff auf Einstellungsseiten, Protokolle, Erweiterungen oder die Filialverwaltung. Die einzigen abrufbaren Einstellungen sind die Cloud Print-Drucker, damit der POS Belege an sie senden kann.
+
+</details>
+
+<details>
+<summary>Wie diese Listen überprüft wurden</summary>
+
+Die Listen stammen aus den Integrationstests des Plugins. Jeder Test meldet sich wie die App mit einem WCPOS-Zugriffstoken an und ruft den Endpunkt mit jeder Rolle auf. In den Tests der kostenlosen Version muss ein erlaubter Endpunkt mit einem Status unter `400` antworten. Die Pro-Tests akzeptieren auch `400` oder `404`, da ihre Testdaten minimal sind: Beide Antworten belegen dennoch, dass der Benutzer die Berechtigungsprüfung bestanden hat. Ein abgelehnter Endpunkt muss mit `403` antworten, während der Benutzer weiterhin angemeldet ist.
+
+</details>
+
+### Wie der Server eine Anfrage prüft {#how-the-server-checks}
+
+Jede Anfrage an den POS durchläuft bis zu vier Prüfungen: App-Version, Anmeldung, POS-Zugriff und schließlich die eigene Regel der Route. Die erste fehlgeschlagene Prüfung bestimmt die Antwort.
+
+<details>
+<summary>Die vier Prüfungen in ihrer Reihenfolge</summary>
+
+Eine Anfrage an `/wcpos/v1/` oder `/wcpos/v2/` durchläuft diese Prüfungen der Reihe nach. Die öffentlichen Anmelderouten und das Drucker-Polling überspringen die Prüfungen 2 und 3. Drei Routen zur Synchronisierungswartung überspringen Prüfung 3 für Benutzer mit der WooCommerce-Berechtigung `manage_woocommerce` und benötigen stattdessen diese Berechtigung.
+
+1. **App-Protokoll** (die meisten v2-Routen). Schlägt mit `426` und dem Code `wcpos_update_required` fehl. Die App zeigt [SYNC341](../error-codes/SYNC341.mdx): App aktualisieren.
+2. **Zugriffstoken.** Schlägt mit `401` und dem Code `woocommerce_pos_rest_unauthorized` fehl; kein Benutzer ist angemeldet. Die App aktualisiert das Token einmal und versucht es erneut. Schlägt auch dieser Versuch fehl, zeigt sie [AUTH101](../error-codes/AUTH101.mdx): Sitzung abgelaufen.
+3. **POS-Zugriff.** Ein angemeldeter Benutzer ohne `access_woocommerce_pos` erhält `403` mit dem Code `woocommerce_pos_rest_forbidden`. Die App zeigt [AUTH201](../error-codes/AUTH201.mdx): Unzureichende Rolle.
+4. **Eigene Prüfung der Route.** Schlägt mit `403` fehl, beispielsweise `rest_forbidden`. Auch hier zeigt die App [AUTH201](../error-codes/AUTH201.mdx).
+
+</details>
+
+<details>
+<summary>Die drei Berechtigungen und die Rollen, die sie besitzen</summary>
+
+Bei der Aktivierung erteilt das Plugin den Standardrollen seine beiden eigenen Berechtigungen. Ein Update erteilt nur Berechtigungen, die in dieser Version neu sind. Eine auf der Seite Zugriff entfernte Berechtigung bleibt daher entfernt. `install_plugins` ist eine WordPress-eigene Berechtigung.
+
+- **`access_woocommerce_pos`**: Administrator, Shop-Manager und Kassierer. Erforderlich für alle POS-Endpunkte außer den öffentlichen Anmelderouten, dem Drucker-Polling und drei Routen zur Synchronisierungswartung (`/wcpos/v2/uuid/backfill`, `/orders/index/backfill`, `/integrity/rebuild`), die stattdessen die WooCommerce-Berechtigung `manage_woocommerce` benötigen; einige erfordern zusätzlich eine der beiden folgenden Berechtigungen.
+- **`manage_woocommerce_pos`**: Administrator und Shop-Manager. Ermöglicht den Zugriff auf Einstellungen, Protokolle, die Erweiterungsliste und die Filialverwaltung von Pro.
+- **`install_plugins`** (WordPress): nur Administratoren. Ermöglicht das Installieren und Aktualisieren von Erweiterungen in Pro.
+
+</details>
+
+### Synchronisierungsendpunkte (v2) {#sync-endpoints}
+
+Die App in Version 2.0 synchronisiert über `/wcpos/v2/`. Jede Standardrolle kann auf alle von der App verwendeten Synchronisierungsrouten zugreifen.
+
+<details>
+<summary>Alle Rollen: die v2-Synchronisierungsrouten</summary>
+
+- **Status**: `GET /wcpos/v2/status`
+- **Katalog**: `GET /wcpos/v2/products`, `/variations`, `/products/categories`, `/products/tags`, `/products/brands`
+- **Kunden, Gutscheine, Steuern**: `GET /wcpos/v2/customers`, `/coupons`, `/taxes`
+- **Bestellungen**: `GET /wcpos/v2/orders`, `/orders/pull`
+- **Änderungsfeed**: `GET /wcpos/v2/changes/sequence-log`, `/changes/revision-hash`, `/changes/range-checksum`, `/changes/config-fingerprint`, `/changes/tick`
+- **Integritätsprüfungen**: `GET /wcpos/v2/digests`, `/integrity/scan`, `/integrity/bucket`
+- **Barcode-Abfrage**: `GET /wcpos/v2/resolve/barcode`
+- **Neue Bestellung senden**: `POST /wcpos/v2/push/orders`
+
+</details>
+
+### Endpunkt-Zugriffsmatrix des kostenlosen Plugins {#free-plugin-endpoint-access-matrix}
+
+Diese `/wcpos/v1/`-Routen dienen der Anmeldung, dem Checkout, den Belegen und den Einstellungsseiten. Jede Rolle kann auf die für einen Verkauf verwendeten Routen zugreifen. Die Einstellungsseiten, Protokolle und die Erweiterungsliste erfordern einen Administrator oder Shop-Manager.
+
+<details>
+<summary>Alle Rollen (Administrator, Shop-Manager, Kassierer): 27 Endpunkte</summary>
+
+- `GET /wcpos/v1/stores`: Filialen, die die App öffnen kann
+- `GET /wcpos/v1/cashier/{id}`: der angemeldete Kassierer
+- `GET /wcpos/v1/cashier/{id}/stores`: Filialen, die dieser Kassierer verwenden darf
+- `GET /wcpos/v1/products`, `/products/variations`: Katalog
+- `GET /wcpos/v1/products/categories`, `/tags`, `/brands`: Katalogfilter
+- `GET /wcpos/v1/coupons`: Gutscheinabfrage
+- `GET /wcpos/v1/orders`: Bestellverlauf
+- `POST /wcpos/v1/orders`: Verkauf
+- `PATCH /wcpos/v1/orders/{id}`: Bestellung abschließen
+- `GET` und `POST /wcpos/v1/orders/{id}/checkout`: Zahlung entgegennehmen
+- `GET /wcpos/v1/receipts/{order_id}`: Belegdarstellung
+- `GET /wcpos/v1/data/order_statuses`: Statusbezeichnungen
+- `GET /wcpos/v1/customers`: Kundensuche
+- `POST /wcpos/v1/customers`: Kunden hinzufügen
+- `PATCH /wcpos/v1/customers/{id}`: Kunden bearbeiten
+- `GET /wcpos/v1/taxes`, `/taxes/classes`: Steuersätze und Steuerklassen
+- `GET /wcpos/v1/shipping_methods`: Versandpositionen
+- `GET /wcpos/v1/payment-gateways`: Zahlungsoptionen
+- `POST /wcpos/v1/payment-gateways/{id}/bootstrap`: Zahlungseinrichtung
+- `GET /wcpos/v1/templates`, `/templates/active`, `/templates/gallery`: Belegvorlagen
+
+Jede Rolle kann außerdem über `GET /wcpos/v1/settings/cloud-print` die Cloud Print-Drucker abrufen, damit der POS Belege an sie senden kann. Dafür ist nur `access_woocommerce_pos` erforderlich. Dieser Endpunkt gehört nicht zu den 27: Ein eigener Test prüft einen Benutzer, der diese Berechtigung, aber keinen Zugriff auf Einstellungen hat.
+
+</details>
+
+<details>
+<summary>Nur Administratoren und Shop-Manager: 6 Endpunkte</summary>
+
+Diese erfordern `manage_woocommerce_pos`; ein Kassierer erhält `403`.
+
+- `GET /wcpos/v1/settings/general`: Seite Allgemeine Einstellungen
+- `GET /wcpos/v1/settings/checkout`: Seite Checkout-Einstellungen
+- `GET /wcpos/v1/settings/tax_ids`: Seite Steuer-ID-Einstellungen
+- `GET /wcpos/v1/settings/payment-gateways`: Seite Zahlungsgateway-Einstellungen
+- `GET /wcpos/v1/extensions`: Erweiterungsliste
+- `GET /wcpos/v1/logs`: Seite Protokolle
+
+`/wcpos/v1/settings` selbst hat keinen abrufbaren Index: Rufen Sie stattdessen einen Abschnitt wie `/settings/general` ab.
+
+</details>
+
+### Endpunkt-Zugriffsmatrix des Pro-Plugins {#pro-plugin-endpoint-access-matrix}
+
+WCPOS Pro fügt diese Routen hinzu. Jede Rolle kann eine Bestellung rückerstatten. Die Filialverwaltung und der Lizenzschlüssel erfordern einen Administrator oder Shop-Manager; das Installieren einer Erweiterung erfordert einen Administrator.
+
+<details>
+<summary>Die Pro-Routen nach Rolle</summary>
+
+**Alle Rollen:**
+
+- `POST /wcpos/v1/orders/{id}/refunds`: Bestellung rückerstatten
+
+**Nur Administratoren und Shop-Manager** (erfordert `manage_woocommerce_pos`):
+
+- `GET /wcpos/v1/stores/{id}/edit`: Filiale zur Bearbeitung öffnen
+- `POST /wcpos/v1/stores`: Filiale hinzufügen
+- `PATCH /wcpos/v1/stores/{id}`: Filiale speichern
+- `POST /wcpos/v1/settings/license`: Lizenzschlüssel speichern
+
+**Nur Administratoren** (erfordert die WordPress-Berechtigung `install_plugins`):
+
+- `POST /wcpos/v1/extensions/action`: Erweiterung installieren oder aktualisieren
+
+</details>
+
+### Testabdeckung für ablaufende Tokens {#token-expiry-coverage}
+
+Standardmäßig gilt die Anmeldung in der App 30 Minuten und erneuert sich automatisch bis zu 30 Tage ab der Anmeldung des Kassierers. Danach meldet sich der Kassierer erneut an ([AUTH101](../error-codes/AUTH101.mdx)). Ein abgelaufenes Token führt immer zu `401`, niemals zu `403`, und erscheint daher nie als Rollenproblem.
+
+<details>
+<summary>Token-Gültigkeitsdauer und Antworten in den einzelnen Fällen</summary>
+
+Die App meldet sich mit einem Zugriffstoken an, das 30 Minuten gilt, und einem Refresh-Token, das 30 Tage gilt. Beide Werte lassen sich per Code über die Filter `wcpos_jwt_access_token_expire` und `wcpos_jwt_refresh_token_expire` ändern. Dieselben Tests decken für alle drei Rollen ab, was passiert, wenn eines der Tokens abläuft:
+
+- **Gültiges Zugriffstoken**: Der Endpunkt antwortet normal.
+- **Abgelaufenes, fehlendes oder fehlerhaftes Zugriffstoken**: `401`, Code `woocommerce_pos_rest_unauthorized`, kein Benutzer angemeldet. Die App aktualisiert das Token einmal und versucht es erneut.
+- **Abgelaufenes Zugriffstoken, gültiges Refresh-Token**: Die Aktualisierung liefert ein neues Zugriffstoken, und der erneute Versuch ist erfolgreich.
+- **Abgelaufenes Refresh-Token**: Die Aktualisierung wird mit `woocommerce_pos_auth_token_expired` abgelehnt, und der Kassierer meldet sich erneut an ([AUTH101](../error-codes/AUTH101.mdx)).
+
+Ein abgelaufenes Zugriffstoken meldet niemals einen Benutzer an und gelangt daher nie zur Rollenprüfung: Das Ergebnis ist immer `401`, niemals `403`. Die Tests belegen dasselbe für die Kassiererrolle auf den v2-Routen.
+
+</details>

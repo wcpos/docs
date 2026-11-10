@@ -1,0 +1,262 @@
+---
+title: Accesso agli endpoint per ruolo
+slug: /developers/role-endpoint-access
+sidebar_label: Accesso agli endpoint per ruolo
+sidebar_position: 3
+description: "Riferimento per sviluppatori: quali endpoint REST di WCPOS sono accessibili ai ruoli administrator, shop_manager e cashier, come viene gestita una richiesta rifiutata e come distinguere un problema di ruolo da un problema di accesso."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+Se non riesci ad accedere, un'azione è bloccata o il POS ti chiede di aggiornare, cerca il codice nel messaggio dell'app e [trova qui la soluzione](#diagnosing-failures):
+
+- [AUTH101: accedi di nuovo](#sign-in-again)
+- [AUTH201: chiedi a un amministratore di controllare il ruolo](#check-the-role)
+- [SYNC341: aggiorna l'app](#update-the-app)
+
+## Diagnosi degli errori {#diagnosing-failures}
+
+### Accedi di nuovo (AUTH101) {#sign-in-again}
+
+L'app mostra **«Richiesta ancora non autorizzata dopo il rinnovo del token - accedi di nuovo»**.
+
+1. WCPOS apre automaticamente la finestra di accesso a WordPress. Accedi con lo stesso account cassiere.
+2. Se hai chiuso la finestra, l'app mostra **«Accedi per continuare»**. Premi **Accedi** nel messaggio per riaprire la finestra.
+3. Una volta effettuato di nuovo l'accesso, le vendite in attesa di invio vengono inviate automaticamente.
+
+Se il messaggio ricompare subito, chiedi aiuto all'amministratore del sito e inviagli la pagina [AUTH101](../error-codes/AUTH101.mdx).
+
+<details>
+<summary>Dettagli dell'errore di accesso</summary>
+
+L'app ha ricevuto un `401`, ha rinnovato il token e anche il nuovo tentativo ha restituito un `401`. Il problema riguarda l'autenticazione, non il ruolo: un `403` non attiva mai un rinnovo. Qualcosa tra l'app e WordPress rimuove o rifiuta il token, spesso un plugin di sicurezza o autenticazione ([AUTH301](../error-codes/AUTH301.mdx)).
+
+</details>
+
+### Chiedi a un amministratore di controllare il ruolo (AUTH201) {#check-the-role}
+
+Hai effettuato l'accesso, ma il tuo ruolo non consente questa azione. Chiedi all'amministratore del sito di verificare i tuoi permessi in [Accesso del personale](../settings/wp-admin/access.mdx). Può seguire le indicazioni di [AUTH201](../error-codes/AUTH201.mdx) per individuare la causa.
+
+<details>
+<summary>Dettagli dei permessi del ruolo</summary>
+
+Il server ha risposto `403` a un utente autenticato. All'utente manca `access_woocommerce_pos`, oppure la rotta richiede `manage_woocommerce_pos` o `install_plugins`. Cerca l'endpoint negli elenchi qui sotto. Se indicano che il ruolo dell'utente dovrebbe potervi accedere, molto probabilmente il ruolo è stato modificato rispetto ai valori predefiniti: nella schermata Accesso, dove compare **Modificato rispetto ai valori predefiniti di WCPOS**, tramite un plugin di modifica dei ruoli o con codice personalizzato. Anche un ruolo aggiuntivo assegnato all'utente può negare una capacità.
+
+Se l'endpoint non è negli elenchi, i test su cui si basano non lo coprono: leggi il controllo dei permessi specifico di quella rotta. WCPOS Pro può anche rifiutare l'accesso a un utente per un negozio per il quale non è autorizzato, ad esempio con `403` `wcpos_display_store_forbidden` («Non sei autorizzato ad accedere a questo negozio.»).
+
+</details>
+
+### Aggiorna l'app (SYNC341) {#update-the-app}
+
+L'app mostra **«Aggiorna l'app POS su questo dispositivo.»** Il plugin sul sito è più recente dell'app. Aggiorna l'app, poi riaprila:
+
+- **Web:** ricarica la scheda del browser. Se il messaggio ricompare: su un computer, tieni premuto **Maiusc** mentre ricarichi; su un telefono o tablet, chiedi aiuto all'amministratore del sito e inviagli la pagina [SYNC341](../error-codes/SYNC341.mdx).
+- **Desktop:** installa l'aggiornamento proposto dall'app, poi riaprila. Se non viene proposto alcun aggiornamento, [scarica l'ultima versione desktop](../getting-started/installation.mdx#app-requirements) per Windows, Mac (Intel o Apple silicon) o Linux.
+- **iPhone e iPad:** aggiorna WCPOS dalla sua [beta su TestFlight](https://testflight.apple.com/join/JGBdVRrW).
+- **Android:** aggiorna WCPOS dalla sua [beta su Google Play](https://play.google.com/apps/testing/com.wcpos.main).
+
+[SYNC341](../error-codes/SYNC341.mdx) contiene le altre informazioni, comprese le azioni a disposizione dell'amministratore del sito quando non esiste ancora una versione più recente dell'app.
+
+<details>
+<summary>Dettagli sulla versione dell'app</summary>
+
+Il server ha risposto `426` su una rotta v2, perché l'app è meno recente del protocollo di sincronizzazione del plugin.
+
+</details>
+
+### Errore di permessi o errore del token {#permission-failure-vs-token-failure}
+
+AUTH201 indica che l'utente è autenticato ma non autorizzato: chiedi a un amministratore di verificare il ruolo. AUTH101 indica che è l'autenticazione stessa a essere fallita: accedi di nuovo.
+
+<details>
+<summary>Come distinguerli</summary>
+
+- **`403` (AUTH201)**: l'utente è autenticato ma non ha il permesso di eseguire questa azione. Controlla le capacità del ruolo e i requisiti dell'endpoint negli elenchi qui sotto.
+- **`401` (AUTH101, «Richiesta ancora non autorizzata dopo il rinnovo del token»)**: il server non è riuscito ad autenticare la richiesta dell'app e nessun utente è autenticato. Accedi di nuovo; se il problema continua a ripresentarsi, controlla il token e qualsiasi elemento tra l'app e WordPress che lo rimuova o lo rifiuti.
+
+Leggi la risposta di rifiuto nel pannello di rete del browser o in un log lato server. Anche **WP Admin > POS > Impostazioni > Strumenti > Log** registra ogni `401` il cui token era malformato o rifiutato per un motivo diverso dalla semplice scadenza. Lo stato e il codice di errore si trovano nel corpo della risposta. L'utente autenticato no: verificalo sul server, ad esempio con `get_current_user_id()` in un log di debug durante l'esecuzione della richiesta.
+
+**Errore di ruolo o capacità:**
+
+- Stato: `403`
+- Codice: `woocommerce_pos_rest_forbidden`, oppure quello specifico della rotta, come `rest_forbidden`
+- Utente autenticato (lato server): l'ID utente WordPress del cassiere
+
+**Errore del token o di accesso:**
+
+- Stato: `401`
+- Codice: `woocommerce_pos_rest_unauthorized`
+- `data.reason`: l'errore del token, come `woocommerce_pos_auth_token_expired`
+- Utente autenticato (lato server): `0` (nessun utente autenticato)
+
+Un ID utente diverso da zero indica un problema di capacità. Un utente con ID `0` indica un problema del token o di qualcosa tra l'app e WordPress.
+
+</details>
+
+## Documentazione correlata {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Accesso del personale" to="/manage-store/staff-permissions" description="Concedi o revoca le azioni consentite a ciascun ruolo." />
+  <LinkCard title="Sessioni" to="/settings/sessions" description="Dispositivi con accesso effettuato e chiusura di una sessione." />
+  <LinkCard title="Codici di errore" to="/error-codes" description="Tutti i codici che l'app può mostrare, con le relative soluzioni." />
+</LinkCards>
+
+## Per amministratori e sviluppatori {#summary}
+
+I cassieri possono fermarsi qui. Il resto della pagina è destinato agli amministratori del sito e agli sviluppatori che devono capire se la causa è l'autenticazione, il ruolo dell'utente o la versione dell'app. Elenca gli endpoint REST di WCPOS accessibili a ciascun ruolo predefinito e le risposte del server quando nega l'accesso. Per modificare le azioni consentite a un ruolo, usa [Accesso del personale](../settings/wp-admin/access.mdx).
+
+### A cosa può accedere ciascun ruolo predefinito {#what-each-role-can-reach}
+
+Un cassiere può eseguire tutte le operazioni necessarie a una vendita, inclusi i rimborsi, e può leggere le stampanti Cloud Print per inviare le ricevute. Tutte le altre impostazioni, i log e la gestione dei negozi richiedono un amministratore o un gestore del negozio.
+
+<details>
+<summary>Accesso consentito a ciascun ruolo predefinito</summary>
+
+- **`administrator`**: tutti gli endpoint di questa pagina.
+- **`shop_manager`**: tutti gli endpoint tranne l'azione di installazione e aggiornamento delle estensioni di Pro, che richiede la capacità `install_plugins` di WordPress.
+- **`cashier`**: tutto ciò che viene usato nel flusso di vendita, inclusi i rimborsi. Nessun accesso alle schermate delle impostazioni, ai log, alle estensioni o alla gestione dei negozi. Le uniche impostazioni che può leggere sono le stampanti Cloud Print, così il POS può inviare loro le ricevute.
+
+</details>
+
+<details>
+<summary>Come sono stati verificati questi elenchi</summary>
+
+Gli elenchi derivano dai test di integrazione del plugin. Ogni test effettua l'accesso con un token di accesso WCPOS, come fa l'app, e chiama l'endpoint con ciascun ruolo. Nei test della versione gratuita, un endpoint consentito deve rispondere con uno stato inferiore a `400`. I test Pro accettano anche `400` o `404`, perché i dati di test sono minimi: entrambe le risposte dimostrano comunque che l'utente ha superato il controllo dei permessi. Un endpoint non consentito deve rispondere `403` con l'utente ancora autenticato.
+
+</details>
+
+### Come il server controlla una richiesta {#how-the-server-checks}
+
+Ogni richiesta al POS passa attraverso un massimo di quattro controlli: la versione dell'app, l'autenticazione, l'accesso al POS e infine la regola specifica della rotta. Il primo controllo che fallisce determina la risposta.
+
+<details>
+<summary>I quattro controlli, in ordine</summary>
+
+Una richiesta a `/wcpos/v1/` o `/wcpos/v2/` passa attraverso questi controlli in ordine. Le rotte pubbliche di autenticazione e il polling delle stampanti saltano i controlli 2 e 3. Tre rotte di manutenzione della sincronizzazione saltano il controllo 3 per un utente con `manage_woocommerce` di WooCommerce e richiedono invece quella capacità.
+
+1. **Protocollo dell'app** (la maggior parte delle rotte v2). In caso di errore restituisce `426`, codice `wcpos_update_required`. L'app mostra [SYNC341](../error-codes/SYNC341.mdx): aggiorna l'app.
+2. **Token di accesso.** In caso di errore restituisce `401`, codice `woocommerce_pos_rest_unauthorized`, senza alcun utente autenticato. L'app rinnova il token una volta e riprova; se fallisce anche il nuovo tentativo, mostra [AUTH101](../error-codes/AUTH101.mdx): Sessione scaduta.
+3. **Accesso al POS.** Un utente autenticato senza `access_woocommerce_pos` riceve `403`, codice `woocommerce_pos_rest_forbidden`. L'app mostra [AUTH201](../error-codes/AUTH201.mdx): Ruolo insufficiente.
+4. **Controllo specifico della rotta.** In caso di errore restituisce `403`, ad esempio `rest_forbidden`. Anche in questo caso l'app mostra [AUTH201](../error-codes/AUTH201.mdx).
+
+</details>
+
+<details>
+<summary>Le tre capacità e i ruoli che le possiedono</summary>
+
+All'attivazione, il plugin concede le proprie due capacità ai ruoli predefiniti. Un aggiornamento concede solo le capacità introdotte in quella versione, quindi una capacità rimossa nella schermata Accesso rimane rimossa. `install_plugins` è una capacità di WordPress.
+
+- **`access_woocommerce_pos`**: amministratore, gestore del negozio e cassiere. È richiesta per ogni endpoint POS tranne le rotte pubbliche di autenticazione, il polling delle stampanti e tre rotte di manutenzione della sincronizzazione (`/wcpos/v2/uuid/backfill`, `/orders/index/backfill`, `/integrity/rebuild`), che richiedono invece `manage_woocommerce` di WooCommerce; alcuni endpoint richiedono anche una delle due capacità seguenti.
+- **`manage_woocommerce_pos`**: amministratore e gestore del negozio. Consente l'accesso a impostazioni, log, elenco delle estensioni e gestione dei negozi di Pro.
+- **`install_plugins`** (WordPress): solo amministratore. Consente l'installazione e l'aggiornamento delle estensioni di Pro.
+
+</details>
+
+### Endpoint di sincronizzazione (v2) {#sync-endpoints}
+
+L'app 2.0 si sincronizza tramite `/wcpos/v2/`. Ogni ruolo predefinito può accedere a tutte le rotte di sincronizzazione usate dall'app.
+
+<details>
+<summary>Tutti i ruoli: le rotte di sincronizzazione v2</summary>
+
+- **Stato**: `GET /wcpos/v2/status`
+- **Catalogo**: `GET /wcpos/v2/products`, `/variations`, `/products/categories`, `/products/tags`, `/products/brands`
+- **Clienti, coupon, imposte**: `GET /wcpos/v2/customers`, `/coupons`, `/taxes`
+- **Ordini**: `GET /wcpos/v2/orders`, `/orders/pull`
+- **Flusso delle modifiche**: `GET /wcpos/v2/changes/sequence-log`, `/changes/revision-hash`, `/changes/range-checksum`, `/changes/config-fingerprint`, `/changes/tick`
+- **Controlli di integrità**: `GET /wcpos/v2/digests`, `/integrity/scan`, `/integrity/bucket`
+- **Ricerca del codice a barre**: `GET /wcpos/v2/resolve/barcode`
+- **Invio di un nuovo ordine**: `POST /wcpos/v2/push/orders`
+
+</details>
+
+### Matrice di accesso agli endpoint del plugin gratuito {#free-plugin-endpoint-access-matrix}
+
+Queste rotte `/wcpos/v1/` servono per l'autenticazione, il pagamento, le ricevute e le schermate delle impostazioni. Ogni ruolo può accedere alle rotte usate per una vendita. Le schermate delle impostazioni, i log e l'elenco delle estensioni richiedono un amministratore o un gestore del negozio.
+
+<details>
+<summary>Tutti i ruoli (amministratore, gestore del negozio, cassiere): 27 endpoint</summary>
+
+- `GET /wcpos/v1/stores`: negozi che l'app può aprire
+- `GET /wcpos/v1/cashier/{id}`: il cassiere autenticato
+- `GET /wcpos/v1/cashier/{id}/stores`: negozi che questo cassiere può usare
+- `GET /wcpos/v1/products`, `/products/variations`: catalogo
+- `GET /wcpos/v1/products/categories`, `/tags`, `/brands`: filtri del catalogo
+- `GET /wcpos/v1/coupons`: ricerca dei coupon
+- `GET /wcpos/v1/orders`: cronologia degli ordini
+- `POST /wcpos/v1/orders`: vendita
+- `PATCH /wcpos/v1/orders/{id}`: completamento di un ordine
+- `GET` e `POST /wcpos/v1/orders/{id}/checkout`: riscossione del pagamento
+- `GET /wcpos/v1/receipts/{order_id}`: rendering della ricevuta
+- `GET /wcpos/v1/data/order_statuses`: nomi degli stati
+- `GET /wcpos/v1/customers`: ricerca dei clienti
+- `POST /wcpos/v1/customers`: aggiunta di un cliente
+- `PATCH /wcpos/v1/customers/{id}`: modifica di un cliente
+- `GET /wcpos/v1/taxes`, `/taxes/classes`: aliquote e classi fiscali
+- `GET /wcpos/v1/shipping_methods`: righe di spedizione
+- `GET /wcpos/v1/payment-gateways`: opzioni di pagamento
+- `POST /wcpos/v1/payment-gateways/{id}/bootstrap`: configurazione del pagamento
+- `GET /wcpos/v1/templates`, `/templates/active`, `/templates/gallery`: template delle ricevute
+
+Ogni ruolo può anche leggere `GET /wcpos/v1/settings/cloud-print`, ovvero le stampanti Cloud Print, così il POS può inviare loro le ricevute. È richiesta solo `access_woocommerce_pos`. Non è uno dei 27: un test dedicato verifica un utente che possiede quella capacità ma non ha accesso alle impostazioni.
+
+</details>
+
+<details>
+<summary>Solo amministratore e gestore del negozio: 6 endpoint</summary>
+
+Questi richiedono `manage_woocommerce_pos`; un cassiere riceve `403`.
+
+- `GET /wcpos/v1/settings/general`: schermata delle impostazioni generali
+- `GET /wcpos/v1/settings/checkout`: schermata delle impostazioni Cassa
+- `GET /wcpos/v1/settings/tax_ids`: schermata delle impostazioni degli identificativi fiscali
+- `GET /wcpos/v1/settings/payment-gateways`: schermata delle impostazioni dei gateway di pagamento
+- `GET /wcpos/v1/extensions`: elenco delle estensioni
+- `GET /wcpos/v1/logs`: schermata Log
+
+`/wcpos/v1/settings` non ha un indice leggibile: leggi invece una sezione come `/settings/general`.
+
+</details>
+
+### Matrice di accesso agli endpoint del plugin Pro {#pro-plugin-endpoint-access-matrix}
+
+WCPOS Pro aggiunge queste rotte. Ogni ruolo può rimborsare un ordine. La gestione dei negozi e la chiave di licenza richiedono un amministratore o un gestore del negozio, mentre l'installazione di un'estensione richiede un amministratore.
+
+<details>
+<summary>Le rotte Pro, per ruolo</summary>
+
+**Tutti i ruoli:**
+
+- `POST /wcpos/v1/orders/{id}/refunds`: rimborso di un ordine
+
+**Solo amministratore e gestore del negozio** (richiede `manage_woocommerce_pos`):
+
+- `GET /wcpos/v1/stores/{id}/edit`: apertura di un negozio per la modifica
+- `POST /wcpos/v1/stores`: aggiunta di un negozio
+- `PATCH /wcpos/v1/stores/{id}`: salvataggio di un negozio
+- `POST /wcpos/v1/settings/license`: salvataggio della chiave di licenza
+
+**Solo amministratore** (richiede la capacità `install_plugins` di WordPress):
+
+- `POST /wcpos/v1/extensions/action`: installazione o aggiornamento di un'estensione
+
+</details>
+
+### Copertura dei casi di scadenza dei token {#token-expiry-coverage}
+
+Per impostazione predefinita, l'accesso all'app dura 30 minuti e si rinnova automaticamente per un massimo di 30 giorni dal momento in cui il cassiere ha effettuato l'accesso. Dopo questo periodo, il cassiere accede di nuovo ([AUTH101](../error-codes/AUTH101.mdx)). Un token scaduto restituisce sempre un `401`, mai un `403`, quindi non viene mai confuso con un problema di ruolo.
+
+<details>
+<summary>Durata dei token e risposta restituita in ciascun caso</summary>
+
+L'app si autentica con un token di accesso della durata di 30 minuti e un token di rinnovo della durata di 30 giorni. Entrambe le durate possono essere modificate via codice con i filtri `wcpos_jwt_access_token_expire` e `wcpos_jwt_refresh_token_expire`. Gli stessi test coprono ciò che accade alla scadenza di ciascun token, per tutti e tre i ruoli:
+
+- **Token di accesso valido**: l'endpoint risponde normalmente.
+- **Token di accesso scaduto, mancante o malformato**: `401`, codice `woocommerce_pos_rest_unauthorized`, nessun utente autenticato. L'app rinnova il token una volta e riprova.
+- **Token di accesso scaduto, token di rinnovo valido**: il rinnovo restituisce un nuovo token di accesso e il nuovo tentativo riesce.
+- **Token di rinnovo scaduto**: il rinnovo viene rifiutato con `woocommerce_pos_auth_token_expired` e il cassiere accede di nuovo ([AUTH101](../error-codes/AUTH101.mdx)).
+
+Un token di accesso scaduto non autentica mai un utente, quindi non arriva mai a un controllo del ruolo: restituisce sempre un `401`, mai un `403`. I test dimostrano lo stesso comportamento sulle rotte v2 per il ruolo cassiere.
+
+</details>

@@ -1,0 +1,230 @@
+---
+title: WooCommerce REST API
+slug: /developers/woocommerce-rest-api
+sidebar_label: "WooCommerce REST API"
+sidebar_position: 1
+description: "了解 WCPOS 如何通过 WooCommerce REST API 读取店铺数据，如何在 JSON 选项卡中查看 POS 保存的数据，以及为何动态修改价格或商品的插件不会影响收银端。"
+---
+
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/wc-rest-api/en/manifest.json';
+
+当收银端的信息与店铺不一致时，请参考本页。先找到具体的问题：
+
+- **商品价格、库存数量或自定义字段：** [检查商品](#check-a-product)。此功能需要 [WCPOS Pro](../getting-started/pro-license.mdx)，**商品**、**订单**、**客户**和 **优惠券** 页面也一样。
+- **购物车中的订单：** [检查购物车中的订单](#check-the-order)。无需 Pro 即可使用。
+- **某一行商品的自定义字段，例如刻字内容：** [检查单行商品](#check-a-line)。无需 Pro 即可使用。
+- **插件的更改始终未显示在 POS 中：** [为什么有些插件不会影响 POS](#why-dont-some-plugins-work-in-the-pos)。
+
+<details>
+<summary>POS 如何与店铺通信</summary>
+
+POS 通过 **WooCommerce REST API** 获取所有数据，其他应用也是通过这种方式与店铺通信的。收银设备上的 POS 向店铺请求商品和客户数据，店铺以 **JSON**（按名称列出每个字段的纯文本格式）返回数据，POS 则将每笔销售作为 WooCommerce 订单发回店铺。
+
+<LocalizedSVG svgName="wc-rest-api" />
+
+图中的**您的店铺**表示店铺及其收银设备，**数据中心**表示运行 WooCommerce 网站的服务器。收银设备向网站发送请求，网站以 JSON 返回响应。
+
+</details>
+
+## POS 从店铺获取哪些数据 {#what-the-pos-gets}
+
+- **必须提供 API。** 连接店铺时，POS 会检查网站是否提供 WooCommerce REST API。如果没有，连接将停止，并显示 [AUTH321：缺少 WooCommerce](../error-codes/AUTH321.mdx)。
+- **设备上保存一份副本。** POS 会下载商品及其变体、分类、标签和品牌、客户、税率、优惠券和订单，并在设备上保存一份副本。搜索和销售时读取的都是这份副本，因此收银端响应迅速，断网后也能继续工作。
+- **销售以订单形式发回店铺。** 在收银端完成的销售、新建的客户或商品编辑都会发回店铺，由 WooCommerce 保存。每笔销售都会成为普通的 WooCommerce 订单，可在 **WooCommerce > 订单**中打开。
+- **在后台获取更改。** POS 在运行期间会检查店铺中的更改，因此在 WP Admin 中进行的编辑无需重启即可同步到收银端。[同步引擎的工作原理](./sync-engine.mdx)介绍了具体机制。
+
+<details>
+<summary>开发者参考：POS 调用的路由</summary>
+
+REST API 为每类店铺数据在 `/wp-json/` 下分配了独立地址，包括商品、订单、客户、优惠券等。WooCommerce 自身的路由位于 `wc/v3` 下。
+
+WCPOS 插件为店铺添加了自己的 `wcpos/v2` 路由。这些路由会在网站内部将读取请求和收银端的更改传递给 WooCommerce 的 `wc/v3` API，因此 POS 获取的字段与其他 WooCommerce 应用相同，每笔订单也都由 WooCommerce 保存。Pro 的[各店铺独立定价](../stores/setup.mdx#per-store-pricing)以及部分扩展会更改 POS 收到的值。支付、完成销售、收银机和会话使用插件自身的路由，详见 [REST API](./architecture.mdx#api-extensions)。
+
+</details>
+
+## 查看 POS 保存的数据 {#viewing-the-json-data-in-the-pos}
+
+每个显示单条记录的面板都在 **表单** 旁设有 **JSON** 选项卡，包括商品、变体、客户、优惠券、订单、购物车中的 **订单详情** 以及购物车单行商品的 **编辑** 对话框。它以 WooCommerce 的 JSON 格式显示当前设备保存的记录。正常销售时无需使用此选项卡。
+
+检查商品需要 [WCPOS Pro](../getting-started/pro-license.mdx)。所有收银端的购物车及其中的商品行都有 **JSON** 选项卡。
+
+### 检查商品 {#check-a-product}
+
+打开商品的 **JSON** 选项卡，查看[价格](#read-price)、[库存数量](#read-stock)或[自定义字段](#read-meta-data)，并与 WP Admin（店铺的 WordPress 后台）中的商品进行比较。如果无法登录 WP Admin，请记下相应的值，并请店铺管理员进行比较。
+
+1. 从菜单中打开**商品**，然后搜索该商品。
+2. 点击该行末尾的展开箭头（›）。面板将打开并显示**表单**选项卡。
+3. 点击 **JSON**。
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[0, 0], [0, 0], [0, -34], [0, -34]]} alt="商品页面中搜索了 Aim Analog Watch，其面板已打开并显示表单选项卡：包含名称、原价、SKU、条形码、库存等字段，底部有同步和关闭按钮">
+
+1. **表单** — 可在收银端修改的字段。面板默认打开此选项卡。
+2. **JSON** — POS 保存的商品数据。
+3. **同步** — 从店铺重新获取该商品。仅在**表单**选项卡中提供。
+4. **关闭** — 关闭面板。顶部的 **✕** 作用相同。
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[140, 0], [100, 0]]} maxWidth={360} alt="Aim Analog Watch 的 JSON 顶部：73 项，随后是 id 67038、name 和 slug">
+
+1. **73 项** — 店铺为该商品发送的字段数量。
+2. **id** — 商品在 WooCommerce 中的 ID。
+
+</JourneyShot>
+
+包含其他字段的字段（如 `categories` 或 `meta_data`）默认折叠，点击即可展开。滚动可查看其余内容。
+
+#### 价格 {#read-price}
+
+向下滚动到 `price`。将它以及 `regular_price` 和 `sale_price` 与 WP Admin 中该商品的**商品数据 > 常规**进行比较。如果商品在此店铺中有独立价格（[各店铺独立定价](../stores/setup.mdx#per-store-pricing)），请与同一选项卡中该店铺的价格比较。
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[93, 0], [165, 0], [121, 0]]} maxWidth={360} alt="Aim Analog Watch 的 JSON 价格字段局部：price 为 45，regular_price 为 45，sale_price 为空">
+
+1. **price** — 商品当前的售价：促销期间为促销价，其余时间为原价。
+2. **regular_price** — 非促销时的价格。
+3. **sale_price** — 商品未设置促销价时为空。
+
+</JourneyShot>
+
+#### 库存数量 {#read-stock}
+
+向下滚动到 `stock_quantity`。仅当 `manage_stock` 为 `true` 时，它才包含数值；否则为 `null`（空）。将其与**商品数据 > 库存**进行比较。
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[195, 0], [160, 0]]} maxWidth={360} alt="Aim Analog Watch 的 JSON 库存字段局部：manage_stock 为 true，stock_quantity 为 85">
+
+1. **manage_stock** — `true`：WooCommerce 会跟踪该商品的库存数量。
+2. **stock_quantity** — POS 保存的库存数量：`85`，与**表单**选项卡中相同。
+
+</JourneyShot>
+
+#### 自定义字段或插件数据 {#read-meta-data}
+
+向下滚动到 `meta_data` 并点击，然后点击其中一个条目。此局部图来自手机，较长的值会换行到第二行。
+
+<JourneyShot manifest={manifest} device="phone" step={5} offsets={[[168, 0], [254, 0], [97, 18]]} maxWidth={360} alt="手机上的 Aim Analog Watch JSON，meta_data 已展开，包含 1 个条目；第一个条目也已展开，显示其 key（_woocommerce_pos_uuid）和换行显示为两行的 value">
+
+1. **meta_data** — 商品的自定义字段，每个字段对应一个条目。
+2. **key** — 字段名称。
+3. **value** — 字段保存的内容。
+
+</JourneyShot>
+
+#### 值与 WP Admin 不一致时 {#value-differs}
+
+点击**表单**，再点击**同步**，重新获取商品。
+
+- **如果显示“无法刷新”：** 设备保留了旧副本。请检查网络连接后重试。
+- **如果没有报错，但值仍不一致：** POS 当前保存的就是店铺 API 发送的数据。某个插件可能仅在网站上修改了这个值，详见[为什么有些插件不会影响 POS](#why-dont-some-plugins-work-in-the-pos)。
+
+### 检查购物车中的订单 {#check-the-order}
+
+1. 点击 **结账** 旁的 **⋮**，打开 **订单详情**。
+2. 点击 **JSON**。
+
+<JourneyShot manifest={manifest} device="tablet" step={6} offsets={[[190, 0], [-22, 0]]} alt="POS 的购物车中有一件 Aim Analog Watch，显示小计和税费，“结账 $45.00”旁有 ⋮ 按钮">
+
+1. **购物车商品行** — 每行的**编辑**对话框都有自己的 **JSON** 选项卡。参见[检查单行商品](#check-a-line)。
+2. **⋮** — 打开整个订单的**订单详情**。
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={7} offsets={[[0, 0], [250, 0], [235, 0], [140, 0], [0, -34], [0, -34], [0, -34]]} maxWidth={520} alt="该购物车的订单详情中的 JSON 选项卡：status 为 pos-open，created_via 为 woocommerce-pos，line_items 包含 1 项，total 为 45，以及其他订单字段；底部有作废、关闭、打印和同步订单按钮">
+
+1. **JSON** — 位于**表单**旁，与所有面板相同。
+2. **status** — 订单在收银端尚未完成时为 `pos-open`。此状态由 WCPOS 插件提供，WooCommerce 将其显示为 **收银台 - 未完成**。
+3. **line_items** — 购物车中的商品。点击可展开各行。
+4. **total** — 订单总额，含税。
+5. **同步订单** — 立即将订单发送到店铺。新订单在店铺保存之前，其 JSON 中没有 `id`。参见[同步订单](../pos/cart/order-actions.mdx#sync-order)。
+6. **打印** — 打印订单。
+7. **作废** — 删除订单并清空购物车。参见[作废订单](../pos/cart/order-actions.mdx#void)。
+
+</JourneyShot>
+
+以下是另一个包含一块手表的购物车中相同字段的局部图：
+
+<JourneyShot manifest={manifest} device="tablet" step={9} offsets={[[142, 0], [200, 0], [91, 0]]} maxWidth={360} alt="另一个包含一件 Aim Analog Watch 的购物车的订单 JSON 局部：status 为 pos-open，created_via 为 woocommerce-pos，line_items 包含 1 项，total 为 45">
+
+1. **status** — 显示为 `pos-open`：订单在收银端仍未完成。
+2. **line_items** — `1 item`：购物车中的那块手表。
+3. **total** — `45`：一块手表，含税价格为 $45.00。
+
+</JourneyShot>
+
+### 检查单行商品 {#check-a-line}
+
+商品行的 **JSON** 选项卡显示的是将保存到 WooCommerce 订单中的行数据，而非店铺中的商品记录。可用它检查该行的自定义字段，例如刻字内容。
+
+1. 点击该行的总计以显示**编辑**和**移除**。其他方式请参见[编辑或移除商品行](../pos/cart/line-items.mdx#remove-item)。
+2. 点击**编辑**，再点击 **JSON**。
+3. 点击 `meta_data` 展开该行的自定义字段，再点击某个条目查看其 `key` 和 `value`。
+
+<JourneyShot manifest={manifest} device="tablet" step={8} offsets={[[0, 0], [196, 0], [175, 0], [262, -2], [166, 8], [168, 0]]} maxWidth={520} alt="购物车商品行的“编辑 Aim Analog Watch”对话框中的 JSON 选项卡：13 项，product_id 为 67038，name，quantity 为 1，sku，以及已展开的 meta_data（含 2 个条目）；第一个条目已展开，显示 key _woocommerce_pos_data 及其 value，随后是 price、total 和 taxes">
+
+1. **JSON** — 位于商品行**编辑**对话框中的**表单**旁。
+2. **name** — 此行保存的商品名称。它与下方的 `quantity` 和 `price` 一起描述的是本次销售，而非商品记录。
+3. **meta_data** — 该行的自定义字段：此处有 2 个条目。
+4. **key** — 字段名称。WCPOS 在 `_woocommerce_pos_data` 中保存该行的价格、原价和税务状态。
+5. **value** — 字段保存的内容。点击折叠的值即可展开。
+6. **price** — 单件商品的税前价格：此处为 `40.106952`。加上该行的税额 `total_tax` `4.893048`，就是购物车中的 $45.00。
+
+</JourneyShot>
+
+<details>
+<summary>在浏览器中查看请求</summary>
+
+使用网页版应用时，可通过浏览器开发者工具查看 POS 与店铺的通信：
+
+1. 在 Chrome、Edge 或 Firefox 中打开 POS。
+2. 按 **F12**（Mac 上为 **Option + Command + I**），然后选择**网络**选项卡。
+3. 在筛选框中输入 `wcpos`。
+4. 操作 POS：搜索、添加商品、结账。店铺响应的每个请求都会显示在列表中。选择其中一个，再选择**响应**即可读取 JSON。
+
+</details>
+
+## 为什么有些插件不会影响 POS {#why-dont-some-plugins-work-in-the-pos}
+
+POS 使用保存在本地的店铺数据副本。如果插件只修改网页显示的内容，或仅在顾客浏览网站时进行计算，这些变化就不会传入该副本。POS 只能看到 REST API 发送的数据。以下三类插件最常遇到这种情况。
+
+### 动态定价 {#dynamic-pricing}
+
+根据客户、角色或数量设置价格的插件。
+
+- **在收银端：** POS 显示商品的正常价格。这类插件大多在顾客浏览网站时计算价格，因此 API 不会发送该价格。
+- **处理方法：** 使用[收银端折扣](../pos/cart/discounts.mdx)或优惠券。
+
+### 商品附加选项 {#product-add-ons}
+
+为商品添加选项的插件，例如礼品包装或刻字。
+
+- **在收银端：** 这些选项不会显示。这类插件大多在商品页面上生成选项，因此 API 发送的商品数据中不包含它们。
+- **处理方法：** 添加一项[费用](../pos/cart/index.mdx#fees)来收取额外费用，并在该行添加[自定义字段](../pos/cart/line-items.mdx#meta-data)来记录详情。
+
+### 修改 API 的插件 {#api-changing-plugins}
+
+修改店铺通过 REST API 发送的数据的插件。
+
+- **在收银端：** POS 可能无法正常工作。wePOS 会改变店铺发送可变商品的方式，因此启用 wePOS 时，WCPOS 会自行停用。
+- **处理方法：** 参见 [wePOS](../integrations/index.mdx#wepos)。
+
+如果插件将数据以自定义字段的形式保存在商品、客户或订单中，通常就能传入 POS。打开 **JSON** 选项卡，查看 `meta_data` 即可确认。
+
+## 出现问题时 {#goes-wrong}
+
+- **连接失败并显示 AUTH321** — 网站未提供 WooCommerce REST API。参见 [AUTH321：缺少 WooCommerce](../error-codes/AUTH321.mdx)。
+- **收银端的价格或字段与 WP Admin 不一致** — 参见[值与 WP Admin 不一致时](#value-differs)。
+- **插件的更改始终未显示在 POS 中** — 参见[为什么有些插件不会影响 POS](#why-dont-some-plugins-work-in-the-pos)。
+- **安装插件后某些功能无法使用** — 参见[插件冲突](../support/troubleshooting/plugin-conflicts.mdx)。
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/developers/architecture" title="架构" description="插件、应用及其协作方式" />
+  <LinkCard to="/developers/sync-engine" title="同步引擎的工作原理" description="POS 如何让本地的店铺数据副本保持最新" />
+  <LinkCard to="/manage-store/compatible-plugins" title="集成" description="可与 WCPOS 配合使用的插件，以及两款不兼容的插件" />
+</LinkCards>
+
+面向开发者，WooCommerce 在 [WooCommerce REST API 文档](https://woocommerce.github.io/woocommerce-rest-api-docs/)中介绍了每个端点和字段。

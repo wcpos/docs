@@ -1,0 +1,230 @@
+---
+title: API REST do WooCommerce
+slug: /developers/woocommerce-rest-api
+sidebar_label: "API REST do WooCommerce"
+sidebar_position: 1
+description: "Como o WCPOS lê os dados da sua loja pela API REST do WooCommerce, como consultar os dados armazenados no POS pela aba JSON e por que plugins que alteram preços ou produtos dinamicamente não afetam o caixa."
+---
+
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/wc-rest-api/en/manifest.json';
+
+Consulte esta página quando algo no caixa não corresponder à sua loja. Comece pelo que parece errado:
+
+- **O preço, a quantidade em estoque ou um campo personalizado de um produto:** [Verifique um produto](#check-a-product). Requer o [WCPOS Pro](../getting-started/pro-license.mdx), assim como as telas **Produtos**, **Pedidos**, **Clientes** e **Cupons**.
+- **O pedido no carrinho:** [Verifique o pedido no carrinho](#check-the-order). Funciona sem o Pro.
+- **Os campos personalizados de um item, como uma gravação:** [Verifique um item](#check-a-line). Funciona sem o Pro.
+- **A alteração feita por um plugin nunca aparece no POS:** [Por que alguns plugins não alteram o POS](#why-dont-some-plugins-work-in-the-pos).
+
+<details>
+<summary>Como o POS se comunica com sua loja</summary>
+
+O POS recebe tudo pela **API REST do WooCommerce**, o meio pelo qual outros aplicativos se comunicam com sua loja. O POS no caixa solicita produtos e clientes à loja, a loja responde em **JSON** (texto simples que lista cada campo pelo nome) e o POS envia cada venda de volta como um pedido do WooCommerce.
+
+<LocalizedSVG svgName="wc-rest-api" />
+
+No diagrama, **Sua loja** representa sua loja com o caixa, e **Datacenter** é o servidor em que seu site WooCommerce funciona. As requisições vão do caixa para o site, e as respostas em JSON voltam para o caixa.
+
+</details>
+
+## O que o POS recebe da sua loja {#what-the-pos-gets}
+
+- **A API precisa estar disponível.** Quando você conecta uma loja, o POS verifica se o site oferece a API REST do WooCommerce. Caso não ofereça, a conexão é interrompida com [AUTH321: WooCommerce ausente](../error-codes/AUTH321.mdx).
+- **Uma cópia no dispositivo.** O POS baixa produtos e variações, categorias, tags e marcas, clientes, alíquotas de impostos, cupons e pedidos, e mantém uma cópia no dispositivo. As buscas e vendas consultam essa cópia, para que o caixa continue rápido e funcionando quando a internet cair.
+- **As vendas retornam como pedidos.** Uma venda, um novo cliente ou uma edição de produto feita no caixa é enviada de volta à loja, e o WooCommerce a salva. Cada venda se torna um pedido normal do WooCommerce, que você pode abrir em **WooCommerce > Pedidos**.
+- **As alterações chegam em segundo plano.** O POS verifica se há alterações na loja enquanto está em execução. Assim, uma edição feita no WP Admin chega ao caixa sem precisar reiniciar. [Como funciona o mecanismo de sincronização](./sync-engine.mdx) explica esse processo.
+
+<details>
+<summary>Para desenvolvedores: as rotas que o POS chama</summary>
+
+A API REST fornece a cada tipo de dado da loja um endereço próprio em `/wp-json/`: produtos, pedidos, clientes, cupons e assim por diante. As rotas do próprio WooCommerce ficam em `wc/v3`.
+
+O plugin WCPOS adiciona suas próprias rotas `wcpos/v2` à loja. Essas rotas repassam as consultas e as alterações do caixa à API `wc/v3` do WooCommerce dentro do site. Assim, o POS recebe os mesmos campos que qualquer aplicativo WooCommerce, e o WooCommerce salva cada pedido. Os [preços por loja](../stores/setup.mdx#per-store-pricing) do Pro e algumas extensões alteram os valores que o POS recebe. Pagamentos, conclusão de vendas, caixas e sessões usam as rotas próprias do plugin: consulte [A API REST](./architecture.mdx#api-extensions).
+
+</details>
+
+## Consulte os dados armazenados no POS {#viewing-the-json-data-in-the-pos}
+
+Todo painel que exibe um registro tem uma aba **JSON** ao lado de **Formulário**: produto, variação, cliente, cupom, pedido, **Detalhes do pedido** no carrinho e a janela **Editar** de um item do carrinho. Ela mostra o registro como está armazenado neste dispositivo, no formato JSON do WooCommerce. Você não precisa dela para fazer uma venda.
+
+Para verificar um produto, é necessário o [WCPOS Pro](../getting-started/pro-license.mdx). O carrinho e seus itens têm uma aba **JSON** em todos os caixas.
+
+### Verifique um produto {#check-a-product}
+
+Abra a aba **JSON** do produto, consulte [um preço](#read-price), [uma quantidade em estoque](#read-stock) ou [um campo personalizado](#read-meta-data) e compare com o produto no WP Admin, o painel do WordPress da sua loja. Se não conseguir entrar no WP Admin, anote o valor e peça à pessoa responsável pela loja que faça a comparação.
+
+1. Abra **Produtos** no menu e busque o produto.
+2. Toque na seta de abertura (›) no final da linha. O painel abre na aba **Formulário**.
+3. Toque em **JSON**.
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[0, 0], [0, 0], [0, -34], [0, -34]]} alt="A tela Produtos com uma busca por Aim Analog Watch e o painel aberto na aba Formulário: Nome, Preço normal, SKU, Código de barras, Estoque e os demais campos, com Sincronizar e Fechar na parte inferior">
+
+1. **Formulário** — os campos que você pode alterar no caixa. O painel abre aqui.
+2. **JSON** — o produto como está armazenado no POS.
+3. **Sincronizar** — busca este produto novamente na loja. Disponível apenas na aba **Formulário**.
+4. **Fechar** — fecha o painel. O **✕** na parte superior faz o mesmo.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[140, 0], [100, 0]]} maxWidth={360} alt="A parte superior do JSON de Aim Analog Watch: 73 itens, seguidos de id 67038, name e slug">
+
+1. **73 itens** — quantos campos a loja enviou para este produto.
+2. **id** — o ID do produto no WooCommerce.
+
+</JourneyShot>
+
+Campos que contêm outros campos, como `categories` ou `meta_data`, começam recolhidos: toque em um deles para expandir. Role a tela para ver o restante.
+
+#### Um preço {#read-price}
+
+Role até `price`. Compare esse campo, `regular_price` e `sale_price` com **Dados do produto > Geral** no produto no WP Admin. Se o produto tiver um preço específico para esta loja ([preços por loja](../stores/setup.mdx#per-store-pricing)), compare com o preço dessa loja na mesma aba.
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[93, 0], [165, 0], [121, 0]]} maxWidth={360} alt="O JSON de Aim Analog Watch recortado para mostrar os campos de preço: price 45, regular_price 45 e sale_price vazio">
+
+1. **price** — o preço pelo qual o produto é vendido agora: o preço promocional enquanto houver uma promoção; caso contrário, o preço normal.
+2. **regular_price** — o preço sem promoção.
+3. **sale_price** — vazio quando o produto não tem preço promocional.
+
+</JourneyShot>
+
+#### Uma quantidade em estoque {#read-stock}
+
+Role até `stock_quantity`. Esse campo contém um número apenas quando `manage_stock` é `true`; caso contrário, é `null` (vazio). Compare com **Dados do produto > Inventário**.
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[195, 0], [160, 0]]} maxWidth={360} alt="O JSON de Aim Analog Watch recortado para mostrar os campos de estoque: manage_stock true e stock_quantity 85">
+
+1. **manage_stock** — `true`: o WooCommerce controla o estoque deste produto.
+2. **stock_quantity** — a quantidade armazenada no POS: `85`, como na aba **Formulário**.
+
+</JourneyShot>
+
+#### Um campo personalizado ou os dados de um plugin {#read-meta-data}
+
+Role até `meta_data` e toque nele; depois, toque em uma entrada. Esta imagem ampliada é de um celular, em que um valor longo ocupa uma segunda linha.
+
+<JourneyShot manifest={manifest} device="phone" step={5} offsets={[[168, 0], [254, 0], [97, 18]]} maxWidth={360} alt="O JSON de Aim Analog Watch em um celular com meta_data expandido, 1 item e a primeira entrada expandida para mostrar sua chave, _woocommerce_pos_uuid, e seu valor, distribuído em duas linhas">
+
+1. **meta_data** — os campos personalizados do produto, uma entrada para cada um.
+2. **key** — o nome do campo.
+3. **value** — o conteúdo do campo.
+
+</JourneyShot>
+
+#### Se um valor não corresponder ao WP Admin {#value-differs}
+
+Toque em **Formulário** e depois em **Sincronizar** para buscar o produto novamente.
+
+- **Se aparecer Não foi possível atualizar:** o dispositivo manteve a cópia antiga. Verifique sua conexão e tente novamente.
+- **Se nenhum erro aparecer, mas o valor ainda for diferente:** o POS agora armazena o que a API da loja envia. Um plugin pode estar alterando o valor apenas no site: consulte [Por que alguns plugins não alteram o POS](#why-dont-some-plugins-work-in-the-pos).
+
+### Verifique o pedido no carrinho {#check-the-order}
+
+1. Toque em **⋮** ao lado de **Finalizar Compra**. O painel **Detalhes do pedido** será aberto.
+2. Toque em **JSON**.
+
+<JourneyShot manifest={manifest} device="tablet" step={6} offsets={[[190, 0], [-22, 0]]} alt="O POS com um Aim Analog Watch no carrinho, o subtotal e os impostos, e o botão ⋮ ao lado de Finalizar Compra $45.00">
+
+1. **Um item do carrinho** — a janela **Editar** de cada item tem sua própria aba **JSON**. Consulte [Verifique um item](#check-a-line).
+2. **⋮** — abre **Detalhes do pedido** para o pedido inteiro.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={7} offsets={[[0, 0], [250, 0], [235, 0], [140, 0], [0, -34], [0, -34], [0, -34]]} maxWidth={520} alt="Detalhes do pedido desse carrinho na aba JSON: status pos-open, created_via woocommerce-pos, line_items com 1 item, total 45 e os demais campos do pedido, com Anular, Fechar, Imprimir e Sincronizar pedido na parte inferior">
+
+1. **JSON** — ao lado de **Formulário**, como em todos os painéis.
+2. **status** — `pos-open` enquanto o pedido estiver aberto no caixa. Esse status vem do plugin WCPOS; o WooCommerce o exibe como **POS - Aberto**.
+3. **line_items** — os produtos no carrinho. Toque para expandir cada item.
+4. **total** — o total do pedido, incluindo impostos.
+5. **Sincronizar pedido** — envia o pedido para a loja agora. Um pedido novo não tem `id` no JSON até que a loja o salve. Consulte [Sincronize o pedido](../pos/cart/order-actions.mdx#sync-order).
+6. **Imprimir** — imprime o pedido.
+7. **Anular** — exclui o pedido e esvazia o carrinho. Consulte [Anule o pedido](../pos/cart/order-actions.mdx#void).
+
+</JourneyShot>
+
+Os mesmos campos, ampliados, de outro carrinho com um relógio:
+
+<JourneyShot manifest={manifest} device="tablet" step={9} offsets={[[142, 0], [200, 0], [91, 0]]} maxWidth={360} alt="Detalhe do JSON do pedido de outro carrinho com um Aim Analog Watch: status pos-open, created_via woocommerce-pos, line_items com 1 item e total 45">
+
+1. **status** — mostra `pos-open`: o pedido ainda está aberto no caixa.
+2. **line_items** — `1 item`: o único relógio no carrinho.
+3. **total** — `45`: um relógio de $45.00, incluindo impostos.
+
+</JourneyShot>
+
+### Verifique um item {#check-a-line}
+
+A aba **JSON** de um item mostra como ele será salvo no pedido do WooCommerce, e não o registro do produto na loja. Use-a para verificar os campos personalizados de um item, como uma gravação.
+
+1. Toque no total do item para exibir **Editar** e **Remover**. Consulte [Edite ou remova um item](../pos/cart/line-items.mdx#remove-item) para ver as outras formas.
+2. Toque em **Editar** e depois em **JSON**.
+3. Toque em `meta_data` para expandir os campos personalizados do item; depois, toque em uma entrada para ver sua `key` e seu `value`.
+
+<JourneyShot manifest={manifest} device="tablet" step={8} offsets={[[0, 0], [196, 0], [175, 0], [262, -2], [166, 8], [168, 0]]} maxWidth={520} alt="A janela Editar Aim Analog Watch de um item do carrinho na aba JSON: 13 itens, product_id 67038, name, quantity 1, sku e meta_data expandido com 2 entradas, a primeira expandida para mostrar key _woocommerce_pos_data e seu valor, seguidos de price, total e impostos">
+
+1. **JSON** — ao lado de **Formulário** na janela **Editar** do item.
+2. **name** — o nome do produto como foi salvo neste item. Junto com `quantity` e `price` abaixo dele, descreve esta venda, não o registro do produto.
+3. **meta_data** — os campos personalizados do item: 2 entradas aqui.
+4. **key** — o nome do campo. `_woocommerce_pos_data` é onde o WCPOS armazena o preço, o preço normal e o status de imposto do item.
+5. **value** — o conteúdo do campo. Toque em um valor recolhido para expandi-lo.
+6. **price** — o preço de uma unidade antes dos impostos: `40.106952` aqui. Some o imposto do item, `total_tax` `4.893048`, para chegar aos $45.00 no carrinho.
+
+</JourneyShot>
+
+<details>
+<summary>Acompanhe as requisições no navegador</summary>
+
+No aplicativo web, você pode acompanhar a comunicação entre o POS e a loja com as ferramentas de desenvolvedor do navegador:
+
+1. Abra o POS no Chrome, Edge ou Firefox.
+2. Pressione **F12** (em um Mac, **Option + Command + I**) e selecione a aba **Rede**.
+3. Digite `wcpos` na caixa de filtro.
+4. Use o POS: faça uma busca, adicione um produto, finalize uma compra. Cada requisição respondida pela loja aparece na lista. Selecione uma e escolha **Resposta** para ler o JSON.
+
+</details>
+
+## Por que alguns plugins não alteram o POS {#why-dont-some-plugins-work-in-the-pos}
+
+O POS trabalha com sua cópia dos dados da loja. Um plugin que só altera o que uma página web mostra ou faz cálculos enquanto um cliente navega pelo site nunca chega a essa cópia. O POS vê apenas o que a API REST envia. Isso acontece principalmente com três tipos de plugin.
+
+### Preços dinâmicos {#dynamic-pricing}
+
+Plugins que definem um preço por cliente, por função ou por quantidade.
+
+- **No caixa:** o POS mostra o preço normal do produto. A maioria desses plugins calcula o preço enquanto o cliente navega pelo site, por isso a API nunca o envia.
+- **O que fazer:** use [descontos no caixa](../pos/cart/discounts.mdx) ou um cupom.
+
+### Adicionais de produtos {#product-add-ons}
+
+Plugins que adicionam opções a um produto, como embalagem para presente ou gravação.
+
+- **No caixa:** as opções não aparecem. A maioria desses plugins as cria na página do produto, por isso elas não fazem parte do produto que a API envia.
+- **O que fazer:** adicione uma [taxa](../pos/cart/index.mdx#fees) para o custo extra e um [campo personalizado](../pos/cart/line-items.mdx#meta-data) no item para registrar o detalhe.
+
+### Plugins que alteram a API {#api-changing-plugins}
+
+Plugins que alteram o que a loja envia pela API REST.
+
+- **No caixa:** o POS pode parar de funcionar. O wePOS altera a forma como a loja envia produtos variáveis, por isso o WCPOS se desativa enquanto o wePOS está ativo.
+- **O que fazer:** consulte [wePOS](../integrations/index.mdx#wepos).
+
+Os dados de um plugin que os salva no produto, no cliente ou no pedido (como campos personalizados) geralmente chegam ao POS. Abra a aba **JSON** e procure em `meta_data` para verificar.
+
+## Se algo der errado {#goes-wrong}
+
+- **A conexão falha com AUTH321** — seu site não está oferecendo a API REST do WooCommerce. Consulte [AUTH321: WooCommerce ausente](../error-codes/AUTH321.mdx).
+- **Um preço ou campo no caixa não corresponde ao WP Admin** — consulte [Se um valor não corresponder ao WP Admin](#value-differs).
+- **A alteração feita por um plugin nunca aparece no POS** — consulte [Por que alguns plugins não alteram o POS](#why-dont-some-plugins-work-in-the-pos).
+- **Algo parou de funcionar depois que você instalou um plugin** — consulte [Conflitos entre plugins](../support/troubleshooting/plugin-conflicts.mdx).
+
+## Documentação relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/developers/architecture" title="Arquitetura" description="O plugin, o aplicativo e como eles se integram" />
+  <LinkCard to="/developers/sync-engine" title="Como funciona o mecanismo de sincronização" description="Como o POS mantém sua cópia dos dados da loja atualizada" />
+  <LinkCard to="/manage-store/compatible-plugins" title="Integrações" description="Plugins que funcionam com o WCPOS e dois que não funcionam" />
+</LinkCards>
+
+Para desenvolvedores, o WooCommerce documenta cada endpoint e campo na [documentação da API REST do WooCommerce](https://woocommerce.github.io/woocommerce-rest-api-docs/).

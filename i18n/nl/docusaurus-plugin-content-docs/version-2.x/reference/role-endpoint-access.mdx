@@ -1,0 +1,262 @@
+---
+title: Toegang tot endpoints per rol
+slug: /developers/role-endpoint-access
+sidebar_label: Toegang tot endpoints per rol
+sidebar_position: 3
+description: "Referentie voor ontwikkelaars: welke WCPOS REST-endpoints de rollen administrator, shop_manager en cashier kunnen bereiken, welk antwoord een geweigerd verzoek krijgt en hoe je een probleem met een rol onderscheidt van een aanmeldprobleem."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+Kun je je niet aanmelden, wordt een actie geblokkeerd of vraagt de POS om een update? Zoek de code in de melding van de app en [los het probleem hier op](#diagnosing-failures):
+
+- [AUTH101: meld je opnieuw aan](#sign-in-again)
+- [AUTH201: vraag een beheerder om de rol te controleren](#check-the-role)
+- [SYNC341: werk de app bij](#update-the-app)
+
+## Problemen vaststellen {#diagnosing-failures}
+
+### Meld je opnieuw aan (AUTH101) {#sign-in-again}
+
+De app meldt **"Verzoek nog steeds niet geautoriseerd na tokenvernieuwing - meld je opnieuw aan"**.
+
+1. WCPOS opent vanzelf het aanmeldvenster van WordPress. Meld je daar aan als dezelfde kassamedewerker.
+2. Als je het venster hebt gesloten, meldt de app **"Meld je aan om door te gaan"**. Druk in die melding op **Inloggen** om het venster opnieuw te openen.
+3. Zodra je weer bent aangemeld, worden de verkopen die nog op verzending wachten automatisch verstuurd.
+
+Verschijnt de melding meteen weer? Vraag je sitebeheerder om hulp en stuur de pagina [AUTH101](../error-codes/AUTH101.mdx) mee.
+
+<details>
+<summary>Details over aanmeldproblemen</summary>
+
+De app kreeg een `401`, vernieuwde het token en kreeg bij de nieuwe poging opnieuw een `401`. Dit betreft de aanmelding, niet de rol: een `403` leidt nooit tot tokenvernieuwing. Iets tussen de app en WordPress verwijdert of weigert het token, vaak een beveiligings- of authenticatieplugin ([AUTH301](../error-codes/AUTH301.mdx)).
+
+</details>
+
+### Vraag een beheerder om de rol te controleren (AUTH201) {#check-the-role}
+
+Je bent aangemeld, maar je rol staat deze actie niet toe. Vraag je sitebeheerder om je toegang te controleren bij [Personeelstoegang](../settings/wp-admin/access.mdx). De beheerder kan [AUTH201](../error-codes/AUTH201.mdx) volgen om de oorzaak te vinden.
+
+<details>
+<summary>Details over rolrechten</summary>
+
+De server antwoordde met `403` aan een aangemelde gebruiker. De gebruiker heeft geen `access_woocommerce_pos`, of de route vereist `manage_woocommerce_pos` of `install_plugins`. Zoek het endpoint in de onderstaande lijsten. Als de rol van de gebruiker volgens die lijsten toegang hoort te hebben, wijkt de rol waarschijnlijk af van de standaardinstellingen: door een wijziging op het scherm Toegang, waar **Gewijzigd ten opzichte van de WCPOS-standaardinstellingen** staat, door een plugin voor rolbeheer of door aangepaste code. Een extra rol van de gebruiker kan een recht ook weigeren.
+
+Staat het endpoint niet in de lijsten, dan wordt het niet gedekt door de achterliggende tests: lees de rechtencontrole van die route zelf. WCPOS Pro kan een gebruiker ook weigeren voor een winkel waarvoor die geen toestemming heeft, bijvoorbeeld met `403` `wcpos_display_store_forbidden` ("Je hebt geen toestemming voor deze winkel.").
+
+</details>
+
+### Werk de app bij (SYNC341) {#update-the-app}
+
+De app meldt **"Werk de POS-app op dit apparaat bij."** De plugin op je site is nieuwer dan de app. Werk de app bij en open deze vervolgens opnieuw:
+
+- **Web:** laad het browsertabblad opnieuw. Verschijnt de melding weer? Houd op een computer **Shift** ingedrukt tijdens het herladen; vraag op een telefoon of tablet je sitebeheerder om hulp en stuur de pagina [SYNC341](../error-codes/SYNC341.mdx) mee.
+- **Desktop:** installeer de update die de app aanbiedt en open de app opnieuw. Wordt er geen update aangeboden? [Download de nieuwste desktopversie](../getting-started/installation.mdx#app-requirements) voor Windows, Mac (Intel of Apple silicon) of Linux.
+- **iPhone en iPad:** werk WCPOS bij via de [TestFlight-bèta](https://testflight.apple.com/join/JGBdVRrW).
+- **Android:** werk WCPOS bij via de [Google Play-bèta](https://play.google.com/apps/testing/com.wcpos.main).
+
+Op [SYNC341](../error-codes/SYNC341.mdx) vind je de overige informatie, waaronder wat een sitebeheerder kan doen als er nog geen nieuwere app beschikbaar is.
+
+<details>
+<summary>Details over de appversie</summary>
+
+De server antwoordde met `426` op een v2-route, omdat de app ouder is dan het synchronisatieprotocol van de plugin.
+
+</details>
+
+### Rechtenfout tegenover tokenfout {#permission-failure-vs-token-failure}
+
+AUTH201 betekent dat de gebruiker is aangemeld maar geen toestemming heeft: vraag een beheerder naar de rol. AUTH101 betekent dat de aanmelding zelf is mislukt: meld je opnieuw aan.
+
+<details>
+<summary>Zo onderscheid je ze</summary>
+
+- **`403` (AUTH201)**: de gebruiker is aangemeld maar heeft geen toestemming voor deze actie. Controleer de rechten van de rol en kijk in de onderstaande lijsten wat het endpoint vereist.
+- **`401` (AUTH101, "Verzoek nog steeds niet geautoriseerd na tokenvernieuwing")**: de server kon het verzoek van de app niet authenticeren en er is niemand aangemeld. Meld je opnieuw aan; blijft de melding terugkomen, controleer dan het token en alles tussen de app en WordPress dat het verwijdert of weigert.
+
+Bekijk het antwoord op het geweigerde verzoek in het netwerkpaneel van de browser of in een logboek op de server. **WP Admin > POS > Instellingen > Gereedschap > Logboeken** registreert ook elke `401` waarbij het token onjuist was gevormd of om een andere reden dan alleen verlopen is geweigerd. De status en foutcode staan in de antwoordtekst. De aangemelde gebruiker staat daar niet in: lees die op de server uit, bijvoorbeeld met `get_current_user_id()` in een debuglogboek terwijl het verzoek wordt uitgevoerd.
+
+**Fout door rol of recht:**
+
+- Status: `403`
+- Code: `woocommerce_pos_rest_forbidden`, of de eigen code van de route, zoals `rest_forbidden`
+- Aangemelde gebruiker (op de server): de WordPress-gebruikers-ID van de kassamedewerker
+
+**Token- of aanmeldfout:**
+
+- Status: `401`
+- Code: `woocommerce_pos_rest_unauthorized`
+- `data.reason`: de tokenfout, zoals `woocommerce_pos_auth_token_expired`
+- Aangemelde gebruiker (op de server): `0` (niemand aangemeld)
+
+Een gebruikers-ID anders dan nul wijst op rechten. Een gebruikers-ID van `0` wijst op het token of op iets tussen de app en WordPress.
+
+</details>
+
+## Gerelateerde documentatie {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Personeelstoegang" to="/manage-store/staff-permissions" description="Bepaal welke acties elke rol mag uitvoeren." />
+  <LinkCard title="Sessies" to="/settings/sessions" description="Aangemelde apparaten en een sessie beëindigen." />
+  <LinkCard title="Foutcodes" to="/error-codes" description="Alle codes die de app kan tonen, met oplossingen." />
+</LinkCards>
+
+## Voor beheerders en ontwikkelaars {#summary}
+
+Kassamedewerkers hoeven niet verder te lezen. De rest van deze pagina is bedoeld voor sitebeheerders en ontwikkelaars die moeten weten of de aanmelding, de rol van de gebruiker of de appversie de oorzaak is. Je vindt hier welke WCPOS REST-endpoints elke standaardrol kan bereiken en welk antwoord de server geeft als deze toegang weigert. Gebruik [Personeelstoegang](../settings/wp-admin/access.mdx) om te wijzigen wat een rol mag doen.
+
+### Wat elke standaardrol kan bereiken {#what-each-role-can-reach}
+
+Een kassamedewerker kan alles doen wat voor een verkoop nodig is, inclusief terugbetalingen, en kan de Cloud Print-printers uitlezen om bonnen te versturen. Alle andere instellingen, de logboeken en het winkelbeheer vereisen een beheerder of winkelmanager.
+
+<details>
+<summary>Waartoe elke standaardrol toegang heeft</summary>
+
+- **`administrator`**: elk endpoint op deze pagina.
+- **`shop_manager`**: elk endpoint behalve de actie van Pro voor het installeren en bijwerken van extensies, waarvoor het WordPress-recht `install_plugins` nodig is.
+- **`cashier`**: alles wat bij het verkoopproces hoort, inclusief terugbetalingen. Geen instellingenschermen, logboeken, extensies of winkelbeheer. De enige instellingen die deze rol kan uitlezen, zijn de Cloud Print-printers, zodat de POS er bonnen naartoe kan sturen.
+
+</details>
+
+<details>
+<summary>Hoe deze lijsten zijn gecontroleerd</summary>
+
+De lijsten komen uit de integratietests van de plugin. Elke test meldt zich aan met een WCPOS-toegangstoken, net als de app, en roept het endpoint aan met elke rol. In de tests voor de gratis plugin moet een toegestaan endpoint antwoorden met een status lager dan `400`. De Pro-tests accepteren ook `400` of `404`, omdat de testgegevens minimaal zijn: beide antwoorden bewijzen nog steeds dat de gebruiker door de rechtencontrole is gekomen. Een geweigerd endpoint moet antwoorden met `403`, terwijl de gebruiker aangemeld blijft.
+
+</details>
+
+### Hoe de server een verzoek controleert {#how-the-server-checks}
+
+Elk verzoek aan de POS doorloopt maximaal vier controles: de appversie, de aanmelding, POS-toegang en vervolgens de eigen regel van de route. De eerste controle die mislukt, bepaalt het antwoord.
+
+<details>
+<summary>De vier controles, in volgorde</summary>
+
+Een verzoek aan `/wcpos/v1/` of `/wcpos/v2/` doorloopt deze controles in volgorde. De openbare aanmeldroutes en het periodiek opvragen door printers slaan controles 2 en 3 over. Drie onderhoudsroutes voor synchronisatie slaan controle 3 over voor een gebruiker met het WooCommerce-recht `manage_woocommerce` en vereisen in plaats daarvan dat recht.
+
+1. **Appprotocol** (de meeste v2-routes). Mislukt met `426`, code `wcpos_update_required`. De app toont [SYNC341](../error-codes/SYNC341.mdx): werk de app bij.
+2. **Toegangstoken.** Mislukt met `401`, code `woocommerce_pos_rest_unauthorized`, zonder aangemelde gebruiker. De app vernieuwt het token één keer en probeert het opnieuw; als die poging ook mislukt, toont de app [AUTH101](../error-codes/AUTH101.mdx): Sessie verlopen.
+3. **POS-toegang.** Een aangemelde gebruiker zonder `access_woocommerce_pos` krijgt `403`, code `woocommerce_pos_rest_forbidden`. De app toont [AUTH201](../error-codes/AUTH201.mdx): Onvoldoende rolrechten.
+4. **De eigen controle van de route.** Mislukt met `403`, bijvoorbeeld `rest_forbidden`. De app toont dan ook [AUTH201](../error-codes/AUTH201.mdx).
+
+</details>
+
+<details>
+<summary>De drie rechten en welke rollen ze hebben</summary>
+
+De plugin kent bij activering zijn twee eigen rechten toe aan de standaardrollen. Een update kent alleen rechten toe die nieuw zijn in die versie, zodat een recht dat op het scherm Toegang is verwijderd, verwijderd blijft. `install_plugins` is een recht van WordPress zelf.
+
+- **`access_woocommerce_pos`**: beheerder, winkelmanager en kassamedewerker. Vereist voor elk POS-endpoint behalve de openbare aanmeldroutes, het periodiek opvragen door printers en drie onderhoudsroutes voor synchronisatie (`/wcpos/v2/uuid/backfill`, `/orders/index/backfill`, `/integrity/rebuild`), die in plaats daarvan het WooCommerce-recht `manage_woocommerce` vereisen; sommige endpoints vereisen ook een van de twee onderstaande rechten.
+- **`manage_woocommerce_pos`**: beheerder en winkelmanager. Geeft toegang tot instellingen, logboeken, de extensielijst en het winkelbeheer van Pro.
+- **`install_plugins`** (WordPress): alleen beheerder. Geeft toegang tot het installeren en bijwerken van extensies in Pro.
+
+</details>
+
+### Synchronisatie-endpoints (v2) {#sync-endpoints}
+
+De 2.0-app synchroniseert via `/wcpos/v2/`. Elke standaardrol kan elke synchronisatieroute bereiken die de app gebruikt.
+
+<details>
+<summary>Elke rol: de v2-synchronisatieroutes</summary>
+
+- **Status**: `GET /wcpos/v2/status`
+- **Catalogus**: `GET /wcpos/v2/products`, `/variations`, `/products/categories`, `/products/tags`, `/products/brands`
+- **Klanten, coupons, belastingen**: `GET /wcpos/v2/customers`, `/coupons`, `/taxes`
+- **Bestellingen**: `GET /wcpos/v2/orders`, `/orders/pull`
+- **Wijzigingenfeed**: `GET /wcpos/v2/changes/sequence-log`, `/changes/revision-hash`, `/changes/range-checksum`, `/changes/config-fingerprint`, `/changes/tick`
+- **Integriteitscontroles**: `GET /wcpos/v2/digests`, `/integrity/scan`, `/integrity/bucket`
+- **Barcode opzoeken**: `GET /wcpos/v2/resolve/barcode`
+- **Een nieuwe bestelling versturen**: `POST /wcpos/v2/push/orders`
+
+</details>
+
+### Toegangsmatrix voor endpoints van de gratis plugin {#free-plugin-endpoint-access-matrix}
+
+Deze `/wcpos/v1/`-routes dienen voor aanmelden, afrekenen, bonnen en de instellingenschermen. Elke rol heeft toegang tot de routes die een verkoop gebruikt. De instellingenschermen, logboeken en extensielijst vereisen een beheerder of winkelmanager.
+
+<details>
+<summary>Elke rol (beheerder, winkelmanager, kassamedewerker): 27 endpoints</summary>
+
+- `GET /wcpos/v1/stores`: winkels die de app kan openen
+- `GET /wcpos/v1/cashier/{id}`: de aangemelde kassamedewerker
+- `GET /wcpos/v1/cashier/{id}/stores`: winkels die deze kassamedewerker mag gebruiken
+- `GET /wcpos/v1/products`, `/products/variations`: catalogus
+- `GET /wcpos/v1/products/categories`, `/tags`, `/brands`: catalogusfilters
+- `GET /wcpos/v1/coupons`: coupon opzoeken
+- `GET /wcpos/v1/orders`: bestelgeschiedenis
+- `POST /wcpos/v1/orders`: verkopen
+- `PATCH /wcpos/v1/orders/{id}`: een bestelling voltooien
+- `GET` en `POST /wcpos/v1/orders/{id}/checkout`: betaling aannemen
+- `GET /wcpos/v1/receipts/{order_id}`: bon weergeven
+- `GET /wcpos/v1/data/order_statuses`: statusnamen
+- `GET /wcpos/v1/customers`: klant zoeken
+- `POST /wcpos/v1/customers`: een klant toevoegen
+- `PATCH /wcpos/v1/customers/{id}`: een klant bewerken
+- `GET /wcpos/v1/taxes`, `/taxes/classes`: belastingtarieven en -klassen
+- `GET /wcpos/v1/shipping_methods`: verzendregels
+- `GET /wcpos/v1/payment-gateways`: betaalopties
+- `POST /wcpos/v1/payment-gateways/{id}/bootstrap`: betaling instellen
+- `GET /wcpos/v1/templates`, `/templates/active`, `/templates/gallery`: bonsjablonen
+
+Elke rol kan ook `GET /wcpos/v1/settings/cloud-print` uitlezen, de Cloud Print-printers, zodat de POS er bonnen naartoe kan sturen. Daarvoor is alleen `access_woocommerce_pos` nodig. Dit is niet een van de 27: een aparte test controleert een gebruiker die dat recht heeft maar geen toegang tot instellingen.
+
+</details>
+
+<details>
+<summary>Alleen beheerder en winkelmanager: 6 endpoints</summary>
+
+Deze vereisen `manage_woocommerce_pos`; een kassamedewerker krijgt `403`.
+
+- `GET /wcpos/v1/settings/general`: instellingenscherm Algemeen
+- `GET /wcpos/v1/settings/checkout`: instellingenscherm Kassa
+- `GET /wcpos/v1/settings/tax_ids`: instellingenscherm Belasting-ID's
+- `GET /wcpos/v1/settings/payment-gateways`: instellingenscherm Betaalgateways
+- `GET /wcpos/v1/extensions`: lijst met extensies
+- `GET /wcpos/v1/logs`: scherm Logboeken
+
+`/wcpos/v1/settings` zelf heeft geen uitleesbare index: lees in plaats daarvan een sectie zoals `/settings/general` uit.
+
+</details>
+
+### Toegangsmatrix voor endpoints van de Pro-plugin {#pro-plugin-endpoint-access-matrix}
+
+WCPOS Pro voegt deze routes toe. Elke rol kan een bestelling terugbetalen. Winkelbeheer en de licentiesleutel vereisen een beheerder of winkelmanager, en het installeren van een extensie vereist een beheerder.
+
+<details>
+<summary>De Pro-routes, per rol</summary>
+
+**Elke rol:**
+
+- `POST /wcpos/v1/orders/{id}/refunds`: een bestelling terugbetalen
+
+**Alleen beheerder en winkelmanager** (vereist `manage_woocommerce_pos`):
+
+- `GET /wcpos/v1/stores/{id}/edit`: een winkel openen om te bewerken
+- `POST /wcpos/v1/stores`: een winkel toevoegen
+- `PATCH /wcpos/v1/stores/{id}`: een winkel opslaan
+- `POST /wcpos/v1/settings/license`: de licentiesleutel opslaan
+
+**Alleen beheerder** (vereist het WordPress-recht `install_plugins`):
+
+- `POST /wcpos/v1/extensions/action`: een extensie installeren of bijwerken
+
+</details>
+
+### Testdekking voor het verlopen van tokens {#token-expiry-coverage}
+
+De aanmelding in de app is standaard 30 minuten geldig en wordt automatisch vernieuwd tot 30 dagen na het moment waarop de kassamedewerker zich aanmeldde. Daarna meldt de kassamedewerker zich opnieuw aan ([AUTH101](../error-codes/AUTH101.mdx)). Een verlopen token levert altijd een `401` op, nooit een `403`, en lijkt daardoor nooit op een probleem met een rol.
+
+<details>
+<summary>Geldigheidsduur van tokens en het antwoord per geval</summary>
+
+De app meldt zich aan met een toegangstoken dat 30 minuten geldig is en een vernieuwingstoken dat 30 dagen geldig is. Beide termijnen kunnen met code worden gewijzigd via de filters `wcpos_jwt_access_token_expire` en `wcpos_jwt_refresh_token_expire`. Dezelfde tests controleren voor alle drie de rollen wat er gebeurt wanneer elk token verloopt:
+
+- **Geldig toegangstoken**: het endpoint antwoordt normaal.
+- **Verlopen, ontbrekend of onjuist gevormd toegangstoken**: `401`, code `woocommerce_pos_rest_unauthorized`, geen aangemelde gebruiker. De app vernieuwt het token één keer en probeert het opnieuw.
+- **Verlopen toegangstoken, geldig vernieuwingstoken**: de vernieuwing levert een nieuw toegangstoken op en de nieuwe poging slaagt.
+- **Verlopen vernieuwingstoken**: de vernieuwing wordt geweigerd met `woocommerce_pos_auth_token_expired` en de kassamedewerker meldt zich opnieuw aan ([AUTH101](../error-codes/AUTH101.mdx)).
+
+Een verlopen toegangstoken meldt een gebruiker nooit aan en komt dus nooit tot een rolcontrole: het levert altijd een `401` op, nooit een `403`. De tests bewijzen hetzelfde voor de v2-routes met de kassamedewerkersrol.
+
+</details>

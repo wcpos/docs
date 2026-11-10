@@ -1,0 +1,226 @@
+---
+title: 结账缓慢
+slug: /troubleshooting/performance/slow-checkout
+sidebar_label: "结账缓慢"
+sidebar_position: 1
+description: "了解结账缓慢的原因：收银机在哪些环节等待店铺响应、如何测量耗时，以及网站和旧版选项卡的付款页面需要做哪些调整。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/support/performance/checkout/en/manifest.json';
+
+店铺响应收银机缓慢时，结账就会变慢。一笔销售需要等待店铺响应两次：点击 **结账** 时，订单会保存到店铺；点击 **收款** 时，店铺会先记录付款，再显示收据。本页介绍收银机等待的环节、测量店铺响应的方法，以及可以进行的调整。
+
+:::note 收银员：先测量，再交给网站负责人
+修复需要在网站上进行，大部分在 WP Admin 中完成。如果你不负责网站，请[为测试销售计时](#time-a-sale)，将耗时和本页链接一并发送给网站负责人。
+:::
+
+## 为测试销售计时 {#time-a-sale}
+
+每次调整前后都为一笔测试销售计时，看看调整带来了多少改善。每次计时记录的都是收银机等待店铺响应的时间：
+
+1. 从点击 **结账** 开始计时，直到 **收款** 按钮不再显示 **正在保存订单…**。
+2. 进行付款，并根据付款方式测量等待时间：
+   - **现金、银行卡或其他在收银机上记录的付款** — 从点击 **收款** 到显示收据。
+   - **读卡器** — 从点击读卡器卡片到进入 **终端处理中** 阶段，再从 **已批准** 到显示收据，分别计时。不计入客户在读卡器上操作的时间。
+   - **旧版选项卡** — 从打开选项卡到可以点击 **处理付款**。
+3. 记下[店铺健康状况 → 性能](#store-health)中的 **典型响应时间**。
+
+为每种收款方式重复步骤 2，每两次测试之间只调整一项内容。[收银机等待的环节](#where-it-waits)解释了每次计时测量的内容。请使用实际销售时的设备和网络连接计时，换用其他设备或网络可能得到不同的结果。
+
+## 收银机在哪些环节等待店铺响应 {#where-it-waits}
+
+**结账** — 将订单保存到店铺。结账界面会立即打开，但在店铺响应之前，数字键盘没有反应，**收款** 按钮显示 **正在保存订单…**。4 秒后会提示店铺未响应，参见[处理方法](#store-not-answering)。
+
+使用现金、银行卡或其他在收银机上记录的付款方式时，点击 **收款** — 店铺会记录付款，然后显示收据。如果店铺未响应，收银机会分别在 1、3 和 9 秒后再次请求。仍未收到响应时，请参见[处理方法](#payment-not-answered)。
+
+**读卡器卡片** — 店铺先创建付款。随后卡片进入 **终端处理中** 阶段，并显示 **正在等待客户在终端上操作**；如果读卡器直接连接到这台收银机，则显示 **请在读卡器上刷卡**。等待期间，如果收银机一直无法连接店铺，卡片会保留该提示，并在 **详情** 日志中添加 **连接不稳定，仍在尝试**。读卡器批准付款后，店铺确认付款期间，卡片显示 **已批准**，随后显示收据。参见[收款](../../pos/checkout/taking-a-payment.mdx#card-reader)。
+
+**旧版选项卡** — 店铺发送其付款页面。加载期间会显示占位内容，**处理付款** 按钮保持灰色，直到页面加载完成。如果无法加载，请参见[处理方法](#payment-form-didnt-load)。另见[旧版选项卡](../../pos/checkout/legacy-tab.mdx)。
+
+每次等待都对应一次向店铺发出的请求，因此店铺响应缓慢会拖慢每笔销售。离线时，在收银机上记录的付款无需等待：销售记录会保存在此设备上，待店铺恢复连接后再发送。参见[离线模式](../../getting-started/offline.mdx)。
+
+## 测量店铺响应情况 {#measure}
+
+测试销售测量的是单笔销售的耗时。**店铺健康状况** 则展示店铺全天对这台收银机的响应情况。
+
+### 店铺健康状况 → 性能 {#store-health}
+
+**店铺健康状况 → 性能** 显示过去 24 小时内店铺对这台收银机的响应速度。
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[50, 0], [100, 0], [375, 0], [571, -75], [181, -22], [141, -20], [456, 0]]} alt="店铺健康状况的性能选项卡：显示典型响应时间的状态行、按小时显示的运行状态条、节能、均衡和实时卡片，以及两个滑块">
+
+1. **店铺健康状况** — 菜单底部附近的脉搏图标。
+2. **性能** — 当前选项卡。
+3. **状态行** — 显示这台收银机过去 24 小时发出的请求，以及 **典型响应时间**，即店铺响应所有这些请求的平均耗时。将其与[测试销售](#time-a-sale)的耗时进行比较。
+4. **引擎运行状态** — 每个格子代表一小时。琥珀色表示该小时内至少有一次向店铺发出的请求失败。
+5. **均衡** — 控制收银机检查店铺变更的频率。使用共享主机或低价主机时，**节能** 模式会降低请求频率，让店铺有更多资源处理销售。参见[同步预设](../store-health.mdx#sync-presets)。
+6. **检查变更** — 通过滑块调整同一设置，范围为 5 秒到 5 分钟。
+7. **当前** — 按这些设置，每小时大约发出多少次请求。
+
+</JourneyShot>
+
+再往下，**服务器随时间的变化** 会并排展示服务器负载和 POS 请求图表。收银机刚启动时，两张图表都会显示 *数据尚不足*，并随着收银机运行逐步填充。
+
+<details>
+<summary>阅读服务器图表</summary>
+
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[456, 0], [571, -222], [560, 0], [101, -84], [110, -84]]} alt="性能选项卡的下半部分：请求节奏状态行，以及服务器负载和 POS 请求图表；收银机刚启动时图表仍为空">
+
+1. **当前** — 按这些设置每小时发出的请求数。
+2. **服务器随时间的变化** — 此部分的标题。
+3. **节奏** — 显示 **正常节奏**；服务器响应缓慢、超时或返回错误时，显示 **正在放缓**。参见[服务器随时间的变化](../store-health.mdx#server-load)。
+4. **服务器负载** — 包括服务器上运行的所有任务，不仅是 POS，右侧显示最新数值。数值高本身并不意味着收银机会变慢：请结合 **典型响应时间** 查看，并将两项数据一并提供给主机服务商。
+5. **POS 请求** — 这台收银机每小时发出的请求数。
+
+</JourneyShot>
+
+</details>
+
+## 加快保存和付款速度 {#saving}
+
+逐一检查以下可能的原因，每次调整后都[再为一笔测试销售计时](#time-a-sale)。
+
+### 订单存储 {#order-storage}
+
+如果 WooCommerce 仍将订单保存在 WordPress 文章中（旧版存储方式），随着店铺规模扩大，结账时的每次保存都会变慢。请检查当前使用的存储方式，并切换到 HPOS，参见[订单存储（HPOS）](./order-storage.mdx)。
+
+### 保存订单时运行的插件 {#2-plugin-interference-during-order-creation}
+
+有些插件会在每次保存订单或付款时执行自己的任务，收银机必须等待它们完成。例如，将订单发送到 Xero 的记账插件，会让每笔销售一直等待到 Xero 响应。你可以在网站副本上逐一停用插件，找出导致延迟的插件。
+
+<details>
+<summary>逐步排查插件</summary>
+
+以下插件通常会处理每一笔订单：
+
+- 会计和记账插件（Xero、QuickBooks）
+- 收到新订单时执行操作的邮件营销工具
+- 库存管理系统
+- 运费计算工具
+- 分析和跟踪工具
+
+排查方法：
+
+1. 在[预发布站点](../troubleshooting/plugin-conflicts.mdx#before-you-start-use-a-staging-site)上，停用除 WooCommerce 和 WCPOS 之外的所有插件。
+2. [为测试销售计时](#time-a-sale)。
+3. 如果速度明显加快，请逐一重新启用插件，每启用一个就为一笔销售计时，直到速度再次变慢。
+4. 询问该插件的开发者，能否改为在后台执行其任务。
+
+完整方法见[插件冲突](../troubleshooting/plugin-conflicts.mdx#step-2-the-plugin-elimination-method)。
+
+</details>
+
+### 主机服务 {#hosting}
+
+如果结账耗时较长，**典型响应时间** 也很慢，可能是服务器资源不足。请将[测试销售](#time-a-sale)的耗时和 **服务器负载** 数值提供给主机服务商，方便他们排查。推荐配置见[服务器性能](./server.mdx)。
+
+<details>
+<summary>向主机服务商咨询哪些事项</summary>
+
+- 销售期间的 CPU 和内存使用情况
+- PHP 内存限制和 PHP 工作进程数量
+- 慢速数据库查询，以及可以清理的旧数据
+- 对象缓存（正式使用前，先在 POS 中测试）
+- 升级主机套餐，或将共享主机改为 VPS
+
+</details>
+
+## 加快旧版选项卡付款页面的速度 {#legacy-page}
+
+只有 **旧版** 选项卡中的支付网关会在结账时加载网页。该网页是客户在线支付订单时所用 WooCommerce 页面的精简版，每次都由网站发送。主题的页眉、页脚和布局已被移除，但主题及插件添加到每个页面的样式和脚本仍会加载，可能使页面变慢或出现故障。调整页面加载的内容需要由店铺管理员操作。如果收银机上无法加载该页面，请参见[处理方法](#payment-form-didnt-load)。
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[28, 34], [28, 34], [337, -273], [-30, 0], [-30, 0]]} alt="结账时的旧版选项卡：店铺发送的付款页面，右上角有结账设置按钮，下方有处理付款按钮">
+
+1. **付款** — 应用中的现金、银行卡、读卡器及其他卡片。这些方式不会加载网页。
+2. **旧版** — 在店铺自身付款页面上运行的支付网关。
+3. **结账设置** — 打开设置表单，选择此页面加载哪些样式和脚本。表单周围的页面由网站发送。
+4. **处理付款** — 页面加载完成前呈灰色。
+5. **✕** — 返回购物车，并保留订单。
+
+</JourneyShot>
+
+要从此页面移除样式和脚本：
+
+1. 以店铺管理员或管理员身份登录 POS。收银员可以打开表单，但无法保存。
+2. 点击 **结账**，打开 **旧版** 选项卡，再点击付款页面上的 **结账设置**。
+3. 取消勾选某个样式或脚本即可将其移除。先从主题样式开始，例如经典主题中的 `classic-theme-styles`，然后再处理支付网关不需要的脚本，例如 `selectWoo`。
+4. 点击 **提交**，然后使用每个正在使用的旧版支付网关分别进行测试付款。
+
+<details>
+<summary>结账设置表单的内容</summary>
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[28, 34], [-28, 0]]} alt="旧版选项卡付款页面上打开的结账设置表单：顶部是禁用 wp_head 和禁用 wp_footer，下方并排列出样式和脚本，其中始终会被移除的条目呈灰色">
+
+1. **旧版** — 此表单所属的选项卡。
+2. **结账设置** — 覆盖在付款页面上的表单。页面上的每个样式和脚本都有一个复选框，勾选表示会加载。
+
+</JourneyShot>
+
+表单从上到下分为三个部分：
+
+- **禁用所有样式和脚本** — **禁用 wp_head** 和 **禁用 wp_footer** 会移除页面头部或底部原本加载的所有内容，包括付款表单所需的内容。仅应使用这两个选项测试问题是否由样式和脚本引起。
+- 左侧的 **禁用所选样式** — 每个样式对应一个条目。主题样式的名称通常包含主题名，例如 `twentytwentyfive-style`。
+- 右侧的 **禁用所选脚本** — 每个脚本对应一个条目。
+
+末尾标有 *在 POS 付款页面上始终移除* 的灰色条目已被移除，无法勾选。
+
+</details>
+
+:::warning 保留支付网关所需的内容
+如果移除某个脚本后，一种付款方式无法使用，请重新勾选该脚本并点击 **提交**。
+:::
+
+<details>
+<summary>WCPOS 自动移除的内容及开发者选项</summary>
+
+付款页面始终会移除管理工具栏、WordPress 添加到页面头部的额外链接，以及以下 WooCommerce 样式和脚本：
+
+- 样式：`admin-bar`、`woocommerce-general`、`woocommerce-inline`、`woocommerce-layout`、`woocommerce-smallscreen`、`woocommerce-blocktheme`、`wp-block-library`
+- 脚本：`admin-bar`、`wc-add-to-cart`
+- 如果 WooCommerce Stripe 版本低于 11.1.1，还会移除其 `wc-stripe-upe-classic` 脚本和样式，以及 `stripelink_styles`。
+
+供开发者参考：
+
+- 保存表单需要 `manage_woocommerce` 权限。
+- 可使用过滤器 `wcpos_payment_template_dequeue_style_handles` 和 `wcpos_payment_template_dequeue_script_handles`，将句柄添加到移除列表。
+- 将模板复制到 `yourtheme/woocommerce-pos/payment.php` 即可覆盖原模板。原文件位于插件中的 [templates/payment.php](https://github.com/wcpos/woocommerce-pos/blob/main/templates/payment.php)。
+- 只能移除通过 `wp_enqueue_style` 和 `wp_enqueue_script` 添加的样式和脚本。主题或插件直接输出到页面中的代码无法通过此方式移除；请让其开发者改用入队方式加载，或使用该插件或主题自身的钩子移除（主题的相关改动应在子主题中进行）。
+
+</details>
+
+## 出现问题时 {#goes-wrong}
+
+### 店铺未响应 {#store-not-answering}
+
+*“店铺未响应。请继续等待，或返回购物车。”* 店铺保存订单已超过 4 秒。你可以继续等待，或点击 **✕** 返回购物车，订单会保留。如果经常看到此提示，请[为测试销售计时](#time-a-sale)，并检查[加快保存和付款速度](#saving)中的各项原因。
+
+### 店铺尚未响应上一笔付款 {#payment-not-answered}
+
+*“店铺尚未响应上一笔付款。请重试以确认，不会重复扣款。”* 点击 **再试一次**。
+
+### 付款表单未能加载 {#payment-form-didnt-load}
+
+*“付款表单未能加载，请检查与店铺的连接，然后重试。”* 旧版选项卡等待付款页面 90 秒后重新加载，又等待 90 秒后停止尝试。请检查连接并点击 **重试**。如果页面每次都很慢，请参见[加快旧版选项卡付款页面的速度](#legacy-page)。
+
+### 你没有权限修改结账设置 {#no-permission}
+
+*“你没有权限修改结账设置。”* 你以收银员身份在 **结账设置** 中点击了 **提交**。请以店铺管理员或管理员身份登录。
+
+### 仍然缓慢 {#still-slow}
+
+如果完成以上操作后，结账仍持续超过 10 秒，或你怀疑是插件导致但无法确定具体插件，请在 [Discord](https://wcpos.com/discord) 上寻求帮助。在 **店铺健康状况 → 日志** 中点击 **复制调试信息** 并粘贴，同时附上[测试销售](#time-a-sale)的耗时及已尝试的方法。参见[帮助与故障排除](../index.mdx)。
+
+:::info 使用 WCPOS Pro
+现金和银行卡以外的支付网关需要 [WCPOS Pro](../../getting-started/pro-license.mdx)。
+:::
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/troubleshooting/performance/order-storage-hpos" title="订单存储（HPOS）" description="检查 WooCommerce 如何存储订单，并切换到 HPOS" />
+  <LinkCard to="/troubleshooting/performance/slow-server" title="服务器性能" description="主机服务、缓存和数据库调优" />
+  <LinkCard to="/troubleshooting/store-health" title="店铺健康状况" description="实测响应时间、同步预设和活动日志" />
+</LinkCards>

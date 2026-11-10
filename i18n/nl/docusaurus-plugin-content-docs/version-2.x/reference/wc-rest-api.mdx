@@ -1,0 +1,230 @@
+---
+title: WooCommerce REST API
+slug: /developers/woocommerce-rest-api
+sidebar_label: "WooCommerce REST API"
+sidebar_position: 1
+description: "Hoe WCPOS je winkel uitleest via de WooCommerce REST API, hoe je op het tabblad JSON de gegevens bekijkt die de POS bewaart en waarom plugins die prijzen of producten tijdens het gebruik aanpassen de kassa niet bereiken."
+---
+
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/wc-rest-api/en/manifest.json';
+
+Gebruik deze pagina als iets aan de kassa niet overeenkomt met je winkel. Begin bij wat er niet klopt:
+
+- **De prijs, voorraad of een aangepast veld van een product:** [Een product controleren](#check-a-product). Hiervoor heb je [WCPOS Pro](../getting-started/pro-license.mdx) nodig, net als voor de schermen **Producten**, **Bestellingen**, **Klanten** en **Coupons**.
+- **De bestelling in de winkelwagen:** [De bestelling in de winkelwagen controleren](#check-the-order). Werkt zonder Pro.
+- **De aangepaste velden van één regel, zoals een gravure:** [Eén regel controleren](#check-a-line). Werkt zonder Pro.
+- **Een wijziging van een plugin verschijnt nooit in de POS:** [Waarom sommige plugins de POS niet veranderen](#why-dont-some-plugins-work-in-the-pos).
+
+<details>
+<summary>Hoe de POS met je winkel communiceert</summary>
+
+De POS ontvangt alles via de **WooCommerce REST API**, waarmee ook andere apps met je winkel communiceren. De POS op je kassa vraagt je winkel om producten en klanten, je winkel antwoordt in **JSON** (platte tekst waarin elk veld bij naam wordt genoemd) en de POS stuurt elke verkoop terug als een WooCommerce-bestelling.
+
+<LocalizedSVG svgName="wc-rest-api" />
+
+In het diagram is **Je winkel** je winkel met de kassa en is **Datacenter** de server waarop je WooCommerce-site draait. Verzoeken gaan van de kassa naar je site en de JSON-antwoorden komen terug.
+
+</details>
+
+## Wat de POS uit je winkel ophaalt {#what-the-pos-gets}
+
+- **De API moet beschikbaar zijn.** Wanneer je een winkel verbindt, controleert de POS of je site de WooCommerce REST API aanbiedt. Zo niet, dan stopt het verbinden met [AUTH321: WooCommerce ontbreekt](../error-codes/AUTH321.mdx).
+- **Een kopie op het apparaat.** De POS downloadt producten en variaties, categorieën, tags en merken, klanten, belastingtarieven, coupons en bestellingen en bewaart een kopie op het apparaat. Zoeken en verkopen gebruiken die kopie, zodat de kassa snel blijft en blijft werken als de internetverbinding wegvalt.
+- **Verkopen gaan terug als bestellingen.** Een verkoop, een nieuwe klant of een productwijziging die je aan de kassa invoert, gaat terug naar je winkel en wordt door WooCommerce opgeslagen. Elke verkoop wordt een normale WooCommerce-bestelling die je kunt openen via **WooCommerce > Bestellingen**.
+- **Wijzigingen komen op de achtergrond binnen.** De POS controleert je winkel tijdens het gebruik op wijzigingen, zodat een aanpassing in WP Admin de kassa bereikt zonder opnieuw op te starten. [Hoe de synchronisatie-engine werkt](./sync-engine.mdx) legt uit hoe dat gaat.
+
+<details>
+<summary>Voor ontwikkelaars: de routes die de POS aanroept</summary>
+
+De REST API geeft elk soort winkelgegevens een eigen adres onder `/wp-json/`: producten, bestellingen, klanten, coupons enzovoort. De eigen routes van WooCommerce staan onder `wc/v3`.
+
+De WCPOS-plugin voegt eigen `wcpos/v2`-routes toe aan je winkel. Deze routes geven leesverzoeken en wijzigingen van de kassa binnen je site door aan de `wc/v3`-API van WooCommerce. Zo krijgt de POS dezelfde velden als elke WooCommerce-app en slaat WooCommerce elke bestelling op. De [prijzen per winkel](../stores/setup.mdx#per-store-pricing) van Pro en sommige extensies veranderen de waarden die de POS ontvangt. Betalingen, het afronden van een verkoop, kassa’s en sessies gebruiken de eigen routes van de plugin: zie [De REST API](./architecture.mdx#api-extensions).
+
+</details>
+
+## De gegevens bekijken die de POS bewaart {#viewing-the-json-data-in-the-pos}
+
+Elk paneel dat één record toont, heeft een tabblad **JSON** naast **Formulier**: een product, een variatie, een klant, een coupon, een bestelling, **Bestelgegevens** in de winkelwagen en het dialoogvenster **Bewerken** van een winkelwagenregel. Het toont het record zoals dit apparaat het bewaart, in het JSON-formaat van WooCommerce. Je hebt het niet nodig om een verkoop te doen.
+
+Om een product te controleren heb je [WCPOS Pro](../getting-started/pro-license.mdx) nodig. De winkelwagen en de regels ervan hebben op elke kassa een tabblad **JSON**.
+
+### Een product controleren {#check-a-product}
+
+Open het tabblad **JSON** van het product, bekijk [een prijs](#read-price), [een voorraadaantal](#read-stock) of [een aangepast veld](#read-meta-data) en vergelijk dit met het product in WP Admin, het WordPress-dashboard van je winkel. Kun je niet inloggen bij WP Admin, noteer dan de waarde en vraag de beheerder van je winkel om deze te vergelijken.
+
+1. Open **Producten** via het menu en zoek het product.
+2. Tik op het pijltje (›) aan het einde van de regel om het paneel te openen. Het paneel opent op het tabblad **Formulier**.
+3. Tik op **JSON**.
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[0, 0], [0, 0], [0, -34], [0, -34]]} alt="Het scherm Producten met zoekresultaten voor Aim Analog Watch en het bijbehorende paneel geopend op het tabblad Formulier: Naam, Reguliere prijs, SKU, Barcode, Voorraad en de overige velden, met Synchroniseren en Sluiten onderaan">
+
+1. **Formulier** — de velden die je aan de kassa kunt wijzigen. Het paneel opent hier.
+2. **JSON** — het product zoals de POS het bewaart.
+3. **Synchroniseren** — haalt dit product opnieuw uit je winkel op. Alleen op het tabblad **Formulier**.
+4. **Sluiten** — sluit het paneel. **✕** bovenaan doet hetzelfde.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[140, 0], [100, 0]]} maxWidth={360} alt="Het bovenste deel van de JSON van Aim Analog Watch: 73 items, daarna id 67038, name en slug">
+
+1. **73 items** — het aantal velden dat je winkel voor dit product heeft verstuurd.
+2. **id** — de ID van het product in WooCommerce.
+
+</JourneyShot>
+
+Velden die andere velden bevatten, zoals `categories` of `meta_data`, zijn eerst ingeklapt: tik op een veld om het te openen. Scrol om de rest te zien.
+
+#### Een prijs {#read-price}
+
+Scrol omlaag naar `price`. Vergelijk dit veld, `regular_price` en `sale_price` met **Productgegevens > Algemeen** bij het product in WP Admin. Heeft het product een eigen prijs voor deze winkel ([prijzen per winkel](../stores/setup.mdx#per-store-pricing)), vergelijk dan met de prijs van die winkel op hetzelfde tabblad.
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[93, 0], [165, 0], [121, 0]]} maxWidth={360} alt="De JSON van Aim Analog Watch, bijgesneden tot de prijsvelden: price 45, regular_price 45 en een lege sale_price">
+
+1. **price** — de prijs waarvoor het product nu wordt verkocht: de actieprijs tijdens een actie, anders de reguliere prijs.
+2. **regular_price** — de prijs zonder actie.
+3. **sale_price** — leeg als het product geen actieprijs heeft.
+
+</JourneyShot>
+
+#### Een voorraadaantal {#read-stock}
+
+Scrol omlaag naar `stock_quantity`. Hier staat alleen een getal als `manage_stock` op `true` staat; anders is de waarde `null` (leeg). Vergelijk dit met **Productgegevens > Voorraad**.
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[195, 0], [160, 0]]} maxWidth={360} alt="De JSON van Aim Analog Watch, bijgesneden tot de voorraadvelden: manage_stock true en stock_quantity 85">
+
+1. **manage_stock** — `true`: WooCommerce houdt de voorraad van dit product bij.
+2. **stock_quantity** — het aantal dat de POS bewaart: `85`, net als op het tabblad **Formulier**.
+
+</JourneyShot>
+
+#### Een aangepast veld of gegevens van een plugin {#read-meta-data}
+
+Scrol omlaag naar `meta_data`, tik erop en tik vervolgens op een item. Deze detailweergave komt van een telefoon, waar een lange waarde over twee regels wordt verdeeld.
+
+<JourneyShot manifest={manifest} device="phone" step={5} offsets={[[168, 0], [254, 0], [97, 18]]} maxWidth={360} alt="De JSON van Aim Analog Watch op een telefoon met meta_data geopend, 1 item en het eerste item geopend met de key, _woocommerce_pos_uuid, en de bijbehorende waarde, verdeeld over twee regels">
+
+1. **meta_data** — de aangepaste velden van het product, met één item per veld.
+2. **key** — de naam van het veld.
+3. **value** — de inhoud van het veld.
+
+</JourneyShot>
+
+#### Als een waarde niet overeenkomt met WP Admin {#value-differs}
+
+Tik op **Formulier** en daarna op **Synchroniseren** om het product opnieuw op te halen.
+
+- **Als je Vernieuwen mislukt ziet:** het apparaat heeft de oude kopie behouden. Controleer je verbinding en probeer het opnieuw.
+- **Als er geen fout verschijnt maar de waarde nog steeds afwijkt:** de POS bewaart nu wat de API van je winkel verstuurt. Mogelijk verandert een plugin de waarde alleen op je website: zie [Waarom sommige plugins de POS niet veranderen](#why-dont-some-plugins-work-in-the-pos).
+
+### De bestelling in de winkelwagen controleren {#check-the-order}
+
+1. Tik op **⋮** naast **Afrekenen**. **Bestelgegevens** wordt geopend.
+2. Tik op **JSON**.
+
+<JourneyShot manifest={manifest} device="tablet" step={6} offsets={[[190, 0], [-22, 0]]} alt="De POS met één Aim Analog Watch in de winkelwagen, het subtotaal en de belastingen, en de knop ⋮ naast Afrekenen $45.00">
+
+1. **Een winkelwagenregel** — het dialoogvenster **Bewerken** van elke regel heeft een eigen tabblad **JSON**. Zie [Eén regel controleren](#check-a-line).
+2. **⋮** — opent **Bestelgegevens** voor de volledige bestelling.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={7} offsets={[[0, 0], [250, 0], [235, 0], [140, 0], [0, -34], [0, -34], [0, -34]]} maxWidth={520} alt="Bestelgegevens voor die winkelwagen op het tabblad JSON: status pos-open, created_via woocommerce-pos, line_items met 1 item, total 45 en de overige bestelvelden, met Ongeldig maken, Sluiten, Afdrukken en Bestelling synchroniseren onderaan">
+
+1. **JSON** — naast **Formulier**, zoals op elk paneel.
+2. **status** — `pos-open` zolang de bestelling aan de kassa openstaat. Deze status komt van de WCPOS-plugin; WooCommerce toont deze als **POS - Open**.
+3. **line_items** — de producten in de winkelwagen. Tik erop om elke regel te openen.
+4. **total** — het besteltotaal, inclusief belasting.
+5. **Bestelling synchroniseren** — verstuurt de bestelling nu naar je winkel. Een nieuwe bestelling heeft geen `id` in de JSON totdat je winkel deze heeft opgeslagen. Zie [De bestelling synchroniseren](../pos/cart/order-actions.mdx#sync-order).
+6. **Afdrukken** — drukt de bestelling af.
+7. **Ongeldig maken** — verwijdert de bestelling en maakt de winkelwagen leeg. Zie [De bestelling ongeldig maken](../pos/cart/order-actions.mdx#void).
+
+</JourneyShot>
+
+Dezelfde velden, van dichterbij, uit een andere winkelwagen met één horloge:
+
+<JourneyShot manifest={manifest} device="tablet" step={9} offsets={[[142, 0], [200, 0], [91, 0]]} maxWidth={360} alt="Detailweergave van de JSON van de bestelling uit een andere winkelwagen met één Aim Analog Watch: status pos-open, created_via woocommerce-pos, line_items met 1 item en total 45">
+
+1. **status** — bevat `pos-open`: de bestelling staat nog open aan de kassa.
+2. **line_items** — `1 item`: het ene horloge in de winkelwagen.
+3. **total** — `45`: één horloge van $45.00, inclusief belasting.
+
+</JourneyShot>
+
+### Eén regel controleren {#check-a-line}
+
+Het tabblad **JSON** van een regel toont de regel zoals deze in de WooCommerce-bestelling wordt opgeslagen, niet het productrecord uit je winkel. Gebruik het om de aangepaste velden van een regel te controleren, zoals een gravure.
+
+1. Tik op het totaal van de regel om **Bewerken** en **Verwijderen** te tonen. Zie [Een regel bewerken of verwijderen](../pos/cart/line-items.mdx#remove-item) voor de andere manieren.
+2. Tik op **Bewerken** en daarna op **JSON**.
+3. Tik op `meta_data` om de aangepaste velden van de regel te openen en tik vervolgens op een item om de `key` en `value` te zien.
+
+<JourneyShot manifest={manifest} device="tablet" step={8} offsets={[[0, 0], [196, 0], [175, 0], [262, -2], [166, 8], [168, 0]]} maxWidth={520} alt="Het dialoogvenster Aim Analog Watch bewerken voor een winkelwagenregel op het tabblad JSON: 13 items, product_id 67038, name, quantity 1, sku en meta_data geopend met 2 items, waarvan het eerste is geopend met key _woocommerce_pos_data en de bijbehorende waarde, gevolgd door price, total en taxes">
+
+1. **JSON** — naast **Formulier** in het dialoogvenster **Bewerken** van de regel.
+2. **name** — de productnaam zoals die op deze regel is opgeslagen. Samen met `quantity` en `price` eronder beschrijft dit deze verkoop, niet het productrecord.
+3. **meta_data** — de aangepaste velden van de regel: hier 2 items.
+4. **key** — de naam van het veld. In `_woocommerce_pos_data` bewaart WCPOS de prijs, reguliere prijs en belastingstatus van de regel.
+5. **value** — de inhoud van het veld. Tik op een ingeklapte waarde om deze te openen.
+6. **price** — de prijs van één artikel exclusief belasting: hier `40.106952`. Tel de belasting van de regel, `total_tax` `4.893048`, erbij op en je krijgt de $45.00 in de winkelwagen.
+
+</JourneyShot>
+
+<details>
+<summary>De verzoeken in de browser bekijken</summary>
+
+In de webapp kun je met de ontwikkelaarstools van je browser bekijken hoe de POS met je winkel communiceert:
+
+1. Open de POS in Chrome, Edge of Firefox.
+2. Druk op **F12** (op een Mac op **Option + Command + I**) en kies het tabblad **Netwerk**.
+3. Typ `wcpos` in het filtervak.
+4. Gebruik de POS: zoek, voeg een product toe, reken af. Elk verzoek dat je winkel beantwoordt, verschijnt in de lijst. Selecteer een verzoek en kies **Antwoord** om de JSON te lezen.
+
+</details>
+
+## Waarom sommige plugins de POS niet veranderen {#why-dont-some-plugins-work-in-the-pos}
+
+De POS werkt met een eigen kopie van je winkelgegevens. Een plugin die alleen verandert wat een webpagina toont of iets berekent terwijl een klant je website bekijkt, bereikt die kopie nooit. De POS ziet alleen wat de REST API verstuurt. Dit komt het vaakst voor bij drie soorten plugins.
+
+### Dynamische prijzen {#dynamic-pricing}
+
+Plugins die een prijs instellen per klant, per rol of per hoeveelheid.
+
+- **Aan de kassa:** de POS toont de normale prijs van het product. De meeste van deze plugins berekenen de prijs terwijl een klant je website bekijkt, waardoor de API deze nooit verstuurt.
+- **Wat je kunt doen:** gebruik [kortingen aan de kassa](../pos/cart/discounts.mdx) of een coupon.
+
+### Productopties {#product-add-ons}
+
+Plugins die opties aan een product toevoegen, zoals cadeauverpakking of een gravure.
+
+- **Aan de kassa:** de opties verschijnen niet. De meeste van deze plugins bouwen ze op de productpagina op, waardoor ze geen deel uitmaken van het product dat de API verstuurt.
+- **Wat je kunt doen:** voeg een [toeslag](../pos/cart/index.mdx#fees) toe voor de extra kosten en een [aangepast veld](../pos/cart/line-items.mdx#meta-data) op de regel voor de details.
+
+### Plugins die de API wijzigen {#api-changing-plugins}
+
+Plugins die veranderen wat je winkel via de REST API verstuurt.
+
+- **Aan de kassa:** de POS kan niet meer goed werken. wePOS verandert hoe je winkel variabele producten verstuurt, dus WCPOS schakelt zichzelf uit zolang wePOS actief is.
+- **Wat je kunt doen:** zie [wePOS](../integrations/index.mdx#wepos).
+
+Een plugin die gegevens bij het product, de klant of de bestelling opslaat (als aangepaste velden), bereikt de POS meestal wel. Open het tabblad **JSON** en kijk in `meta_data` om dit te controleren.
+
+## Als er iets misgaat {#goes-wrong}
+
+- **Verbinden mislukt met AUTH321** — je site biedt de WooCommerce REST API niet aan. Zie [AUTH321: WooCommerce ontbreekt](../error-codes/AUTH321.mdx).
+- **Een prijs of veld aan de kassa komt niet overeen met WP Admin** — zie [Als een waarde niet overeenkomt met WP Admin](#value-differs).
+- **Een wijziging van een plugin verschijnt nooit in de POS** — zie [Waarom sommige plugins de POS niet veranderen](#why-dont-some-plugins-work-in-the-pos).
+- **Iets werkt niet meer nadat je een plugin hebt geïnstalleerd** — zie [Pluginconflicten](../support/troubleshooting/plugin-conflicts.mdx).
+
+## Gerelateerde documentatie {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/developers/architecture" title="Architectuur" description="De plugin, de app en hoe ze samenwerken" />
+  <LinkCard to="/developers/sync-engine" title="Hoe de synchronisatie-engine werkt" description="Hoe de POS zijn kopie van je winkel actueel houdt" />
+  <LinkCard to="/manage-store/compatible-plugins" title="Integraties" description="Plugins die met WCPOS werken en twee die dat niet doen" />
+</LinkCards>
+
+Voor ontwikkelaars beschrijft WooCommerce elk endpoint en veld in de [documentatie van de WooCommerce REST API](https://woocommerce.github.io/woocommerce-rest-api-docs/).
