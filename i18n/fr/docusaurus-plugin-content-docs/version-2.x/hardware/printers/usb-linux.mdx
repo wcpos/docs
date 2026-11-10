@@ -1,0 +1,205 @@
+---
+title: Imprimantes USB sous Linux
+slug: /hardware/receipt-printers/usb-printers-linux
+sidebar_label: Imprimantes USB sous Linux
+sidebar_position: 6
+description: "Sous Linux, l’application de bureau a besoin de votre autorisation pour utiliser une imprimante de reçus USB. Une règle udev suffit à la lui accorder pour permettre l’impression."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
+
+Sous Linux, l’application de bureau ne peut pas utiliser une imprimante de reçus USB tant que vous ne l’y avez pas autorisée. Il suffit d’ajouter une ligne à un fichier de règles, une seule fois.
+
+Cette page vous concerne si, sous Linux, **Imprimer une page de test** dans l’application de bureau aboutit à **Rien n’a été imprimé** avec le message **L’application n’a pas été autorisée à accéder à l’imprimante. Autorisez-la dans les paramètres de votre système, puis réessayez.** Linux n’a pas d’écran de paramètres pour cela : la règle ci-dessous fait office de réglage.
+
+<details id="other-signs">
+<summary>Autres signes de ce problème</summary>
+
+- **Détails pour l’assistance**, sous ce message, affiche `LIBUSB_ERROR_ACCESS`.
+- Dans la recherche, la fiche de votre imprimante porte le nom **Imprimante USB** suivi d’une série de chiffres, au lieu du nom de l’imprimante. Cela signifie généralement que l’application n’a pas pu accéder à l’imprimante pour lire son nom.
+
+</details>
+
+:::note Avant de commencer
+Effectuez cette opération sur la caisse elle-même, en y ouvrant cette page pour pouvoir copier les lignes ci-dessous dans son terminal. Ouvrez l’application **Terminal** (sous Ubuntu et Linux Mint, appuyez sur **Ctrl+Alt+T**). Vous aurez aussi besoin du mot de passe administrateur de la caisse. Si vous ne l’avez pas, envoyez cette page à la personne qui a configuré la caisse.
+:::
+
+## Autoriser l’application à utiliser l’imprimante {#do-this}
+
+Chaque commande ci-dessous figure dans un encadré gris. Pour en exécuter une, pointez sur l’encadré et appuyez sur le bouton de copie dans son coin supérieur droit. Cliquez ensuite dans le terminal, collez avec **Ctrl+Shift+V**, puis appuyez sur **Entrée**.
+
+Lorsqu’une commande demande le mot de passe, saisissez-le et appuyez sur Entrée. Pendant la saisie, l’écran n’affiche rien ou seulement des astérisques : c’est normal.
+
+### Trouver les identifiants de votre imprimante {#find-ids}
+
+1. Branchez l’imprimante et allumez-la.
+2. Trouvez les deux identifiants de l’imprimante. Dans le terminal, exécutez :
+
+   ```bash
+   lsusb
+   ```
+
+   Si le message `command not found` s’affiche, [installez d’abord lsusb](#command-not-found). Chaque ligne correspond à un périphérique USB. Repérez celle de votre imprimante, par exemple `Bus 001 Device 007: ID 04b8:0e28 Seiko Epson Corp.`
+
+   Dans cette ligne :
+
+   - Identifiant du fabricant : `04b8`, le code juste après `ID`.
+   - Identifiant du modèle : `0e28`, le code après les deux-points.
+   - Nom du fabricant : `Seiko Epson Corp.`, à la fin. Il vous aide à repérer la ligne.
+
+   Si vous ne savez pas quelle ligne correspond à l’imprimante, débranchez-la, exécutez à nouveau `lsusb` et repérez la ligne qui a disparu.
+
+### Créer et charger la règle {#create-rule}
+
+3. Ouvrez un nouveau fichier de règles dans l’éditeur de texte nano :
+
+   ```bash
+   sudo nano /etc/udev/rules.d/99-receipt-printer.rules
+   ```
+
+   nano s’ouvre dans le terminal, avec une page vide et une liste de touches en bas. Si le message `command not found` s’affiche, [installez d’abord nano](#command-not-found).
+
+4. Insérez la règle dans le fichier. Elle permet à chaque compte de cette caisse d’utiliser toute imprimante ayant ces deux identifiants. Copiez cette ligne avec le bouton de copie de l’encadré, comme précédemment. Elle dépasse la largeur de l’encadré : pour la lire en entier, pointez sur l’encadré (sur un téléphone, touchez-le) et appuyez sur le bouton de retour à la ligne à gauche du bouton de copie.
+
+   ```text
+   SUBSYSTEM=="usb", ATTRS{idVendor}=="04b8", ATTRS{idProduct}=="0e28", MODE="0666"
+   ```
+
+   Ensuite, dans nano :
+   1. **Collez la règle** avec **Ctrl+Shift+V**.
+   2. **Remplacez les deux identifiants.** Avec les touches fléchées, déplacez-vous jusqu’à `04b8` et `0e28`. Remplacez uniquement ces deux codes par les deux identifiants de votre imprimante, saisis exactement comme les affiche `lsusb`. Conservez les guillemets qui les entourent.
+   3. **Vérifiez la ligne** avant d’enregistrer : une seule ligne, commençant par `SUBSYSTEM=="usb",` et se terminant par `MODE="0666"`, avec vos deux identifiants entre guillemets à la place de `04b8` et `0e28`.
+   4. **Enregistrez** avec **Ctrl+O**, puis **Entrée**.
+   5. **Quittez nano** avec **Ctrl+X**. Vous revenez à l’invite du terminal.
+
+   <details id="rule-parts">
+   <summary>Signification de chaque partie de la règle</summary>
+
+   La règle comporte quatre parties, chacune se terminant par une virgule, sauf la dernière :
+
+   - `SUBSYSTEM=="usb",` : la règle concerne un périphérique USB.
+   - `ATTRS{idVendor}=="04b8",` : l’identifiant du fabricant.
+   - `ATTRS{idProduct}=="0e28",` : l’identifiant du modèle.
+   - `MODE="0666"` : chaque compte de cet ordinateur peut utiliser l’imprimante, ce qui est nécessaire pour une caisse.
+
+   </details>
+
+5. Chargez la règle :
+
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+
+   Si le mot de passe vous est demandé, saisissez-le à nouveau. Si l’opération réussit, rien ne s’affiche et l’invite réapparaît. Si une erreur s’affiche, arrêtez-vous ici et consultez [Toujours bloqué ?](#still-stuck)
+
+6. Débranchez l’imprimante, puis rebranchez-la.
+
+### Ajouter l’imprimante et la tester {#add-and-test}
+
+7. Si vous avez déjà enregistré cette imprimante avec **Enregistrer sans tester**, supprimez-la d’abord : dans **Paramètres → Impression**, ouvrez le menu **⋮** sur sa ligne et choisissez **Supprimer**.
+8. Dans l’application de bureau, accédez à **Paramètres → Impression** et appuyez sur **Ajouter une imprimante**. La recherche d’imprimantes USB démarre automatiquement. Sélectionnez la fiche de votre imprimante, marquée **USB**. Maintenant que l’application peut accéder à l’imprimante, la fiche affiche le nom communiqué par celle-ci.
+9. Appuyez sur **Imprimer une page de test**. Le panneau demande **La page de test s’est-elle imprimée ?** Répondez :
+   - **Oui, et elle est correcte** : l’imprimante est enregistrée et le panneau affiche son nom suivi de **est configurée**. Appuyez sur **Terminé**. L’imprimante est prête.
+   - **Imprimée, mais la règle est incorrecte** : sélectionnez le papier utilisé dans votre imprimante pour relancer l’impression de la page de test. Consultez [Imprimée, mais la règle est incorrecte](./setup-wizard.mdx#test-page-ruler).
+   - **Rien n’est sorti** : le panneau affiche **Rien n’a été imprimé**. S’il indique toujours que l’application n’a pas été autorisée à accéder à l’imprimante, consultez [Accès toujours refusé après l’ajout de la règle](#still-not-allowed). Pour tout autre message, consultez [Rien n’est sorti](./setup-wizard.mdx#test-page-nothing).
+
+:::tip Lancez l’application avec votre compte
+Ouvrez l’application de bureau comme d’habitude, jamais avec `sudo`. C’est la règle qui permet à l’application d’utiliser l’imprimante avec votre compte.
+:::
+
+## En cas de problème {#goes-wrong}
+
+Repérez le symptôme que vous rencontrez :
+
+- [Accès toujours refusé après l’ajout de la règle](#still-not-allowed)
+- [`lsusb` ou `nano` : commande introuvable](#command-not-found)
+- [La fiche porte le nom `ttyUSB0`, `ttyACM0` ou `rfcomm0`](#serial-port)
+- [Aucune imprimante trouvée](#no-printer-found)
+- [La page de test s’imprime, mais pas les reçus suivants](#prints-then-stops)
+
+### Accès toujours refusé après l’ajout de la règle {#still-not-allowed}
+
+Vérifiez, dans cet ordre :
+
+- Les deux identifiants de la règle correspondent exactement à ceux de `lsusb`, y compris les minuscules.
+- Le fichier de règles contient votre ligne. Affichez-le avec `cat /etc/udev/rules.d/99-receipt-printer.rules`.
+- Vous avez débranché puis rebranché l’imprimante après l’étape 5.
+
+Si ces trois points sont corrects, consultez [Toujours bloqué ?](#still-stuck). Pour vérifier vous-même si Linux a appliqué la règle, ouvrez d’abord la vérification ci-dessous.
+
+<details id="device-file">
+<summary>Vérifier si Linux a appliqué la règle</summary>
+
+1. Exécutez à nouveau `lsusb`, car le numéro `Device` change chaque fois que l’imprimante est branchée. Notez les numéros `Bus` et `Device` sur la ligne de l’imprimante, par exemple `Bus 001` et `Device 007`.
+2. Insérez-les dans cette commande, le bus en premier, puis exécutez-la :
+
+   ```bash
+   ls -l /dev/bus/usb/001/007
+   ```
+
+3. Lisez le début de la ligne affichée :
+   - `crw-rw-rw-` : la règle a pris effet. Appuyez à nouveau sur **Imprimer une page de test**. Si le panneau indique toujours que l’application n’a pas été autorisée à accéder à l’imprimante, consultez [Toujours bloqué ?](#still-stuck)
+   - `crw-rw-r--` ou `crw-------` : la règle n’a pas pris effet. Revérifiez les points ci-dessus, exécutez à nouveau la commande de chargement de l’étape 5 de la configuration, puis débranchez l’imprimante, rebranchez-la et répétez les étapes 1 à 3 de cette vérification. Si la ligne commence toujours ainsi, consultez [Toujours bloqué ?](#still-stuck)
+
+</details>
+
+<details id="command-not-found">
+<summary>`lsusb` ou `nano` : commande introuvable</summary>
+
+Installez le programme manquant, puis reprenez l’étape :
+
+- `lsusb` : `sudo apt install usbutils` sous Ubuntu ou Debian, `sudo dnf install usbutils` sous Fedora.
+- `nano` : `sudo apt install nano` sous Ubuntu ou Debian, `sudo dnf install nano` sous Fedora.
+
+</details>
+
+<details id="serial-port">
+<summary>La fiche porte le nom `ttyUSB0`, `ttyACM0` ou `rfcomm0`</summary>
+
+Cette imprimante se connecte par un port série, et non en tant qu’imprimante USB. Linux réserve les ports série au groupe `dialout`. Ajoutez votre compte à ce groupe, puis déconnectez-vous et reconnectez-vous :
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+Sous Arch Linux, le groupe est `uucp`.
+
+</details>
+
+<details id="no-printer-found">
+<summary>Aucune imprimante trouvée</summary>
+
+L’application ne répertorie que les périphériques USB qui se présentent comme des imprimantes. Vérifiez le câble et assurez-vous que l’imprimante est allumée, puis appuyez sur **Relancer la recherche**. Consultez [Aucune imprimante trouvée](./setup-wizard.mdx#not-found).
+
+</details>
+
+<details id="prints-then-stops">
+<summary>La page de test s’imprime, mais pas les reçus suivants</summary>
+
+Ce n’est pas un problème d’autorisation. Commencez par [Toujours aucune impression ?](./setup-wizard.mdx#troubleshoot)
+
+</details>
+
+## Toujours bloqué ? {#still-stuck}
+
+Appuyez sur **Copier le rapport de configuration** dans le panneau **Rien n’a été imprimé**, ou dans le menu **⋮** sur la ligne de l’imprimante dans **Paramètres → Impression**. Collez-le dans votre message, avec la ligne `lsusb` de votre imprimante et, si vous avez effectué [la vérification](#device-file), la ligne `ls -l` obtenue.
+
+<SupportContact />
+
+## Pourquoi l’application en a besoin {#why-it-happens}
+
+La plupart des programmes impriment via le système d’impression de Linux. Une imprimante de reçus doit recevoir directement des commandes (couper le papier, ouvrir le tiroir) : l’application de bureau accède donc elle-même à l’imprimante.
+
+Linux réserve les périphériques USB à son compte administrateur (`root`), sauf si une règle en dispose autrement. L’application s’exécute avec votre compte, et non avec `root` ; sans règle, elle n’est donc pas autorisée à accéder à l’imprimante. La règle que vous avez ajoutée crée une exception pour ce seul modèle d’imprimante.
+
+Linux possède aussi son propre pilote pour les imprimantes USB, qui prend le contrôle de l’imprimante lorsque vous la branchez. Avant chaque impression, l’application libère elle-même l’imprimante de ce pilote : vous n’avez donc pas besoin de le supprimer ni de le bloquer. Mais cette libération exige la même autorisation que l’impression, ce qui explique qu’une seule règle résolve les deux problèmes.
+
+## Documentation connexe {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/receipt-printers/printer-setup-wizard" title="Assistant de configuration d’imprimante" description="Ajouter une imprimante, imprimer la page de test et répondre aux questions de l’assistant" />
+  <LinkCard to="/hardware/receipt-printers" title="Imprimantes de reçus" description="Les connexions possibles pour chaque application et tous les guides d’imprimantes" />
+  <LinkCard to="/hardware/receipt-printers/supported-printers" title="Imprimantes de reçus compatibles" description="Quelles imprimantes fonctionnent et dans quelle mesure" />
+</LinkCards>

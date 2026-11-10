@@ -1,0 +1,266 @@
+---
+title: Windcave
+slug: /hardware/card-readers/windcave
+description: "POS 결제 화면에서 Windcave 단말기로 카드 결제를 받고, WP Admin에서 Windcave Terminal 확장 기능(HIT)을 설정하세요."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/windcave-terminal/en/manifest.json';
+
+# Windcave Terminal 결제 게이트웨이 {#windcave-terminal-gateway}
+
+계산대가 주문 총액을 Windcave 단말기로 전송하면 고객이 단말기에서 결제하고, Windcave가 승인하면 판매가 자동으로 완료됩니다. 확장 기능을 설치할 때와 계산대에서 사용할 때 모두 [WCPOS Pro](../../getting-started/pro-license.mdx)가 필요합니다. 이 페이지는 계산대에서 [결제 받기](#take-payment)와 WP Admin에서 [설정하기](#setup), 두 부분으로 구성됩니다.
+
+:::warning 아직 Windcave 인증을 받지 않았습니다
+**테스트 결제 전용입니다.** 아직 실제 고객의 결제를 받지 마세요. Windcave의 **UAT**(테스트) 인증 정보로만 사용하세요.
+
+<details>
+<summary>그 이유와 아직 테스트하지 않은 항목</summary>
+
+Windcave는 모든 POS 연동이 실제 결제를 받기 전에 QA 인증을 통과하도록 요구합니다. 이 연동은 아직 인증을 통과하지 않았습니다. 또한 Windcave 계정이나 실제 단말기로 실행한 적도 없습니다. 아래 절차는 Windcave의 HIT 문서와 확장 기능의 코드를 바탕으로 작성되었습니다.
+
+</details>
+:::
+
+{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves Station selection and logs into Pro and adds refunds; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
+
+## 결제 받기 {#take-payment}
+
+시작하기 전에: 결제는 POS 안에 표시되는 매장의 자체 결제 페이지에서 진행되므로 매장이 온라인 상태여야 합니다. WP Admin 접근 권한이 있는 담당자가 [결제 게이트웨이를 설정](#setup)해야 합니다. **계산대 열기 및 닫기**가 활성화되어 있다면 먼저 [계산대를 여세요](../../pos/register/index.mdx#open).
+
+:::info Windcave는 전체 금액을 결제합니다
+단말기에는 항상 주문 전체 금액이 청구되므로 한 판매 건을 다른 결제 수단과 나누어 결제할 수 없습니다.
+:::
+
+1. 장바구니에 상품을 담고 **결제**를 누르세요.
+2. **레거시** 탭을 여세요. POS 안에 매장의 결제 페이지가 열립니다. [레거시 탭](../../pos/checkout/legacy-tab.mdx)을 확인하세요.
+
+   <details>
+   <summary>탭에 전체 금액 결제만 가능이라고 표시되는 경우</summary>
+
+   주문에 대해 이미 결제를 받았으므로 탭에서 결제 페이지가 열리지 않습니다. Windcave를 사용하려면 먼저 [해당 결제를 취소하세요](../../pos/checkout/cancelling-a-payment.mdx).
+
+   </details>
+
+3. **Windcave Terminal**을 선택하세요. 매장에서 다른 이름으로 변경했을 수도 있습니다.
+4. **단말기**에서 사용할 단말기를 선택하세요. 단말기가 하나이거나 기본 단말기가 고정되어 있다면 이미 선택되어 있습니다. 단말기가 두 개 이상이고 기본값이 없으면 하나를 선택해야 합니다.
+5. **단말기 결제 시작**을 누르세요. 패널에 **단말기로 전송 중…** 이 표시되고 주문 총액이 해당 단말기로 전송됩니다.
+6. 고객이 단말기에 카드를 대거나 삽입하거나 긁어 결제합니다. 단말기에 표시되는 내용과 버튼이 패널에도 표시됩니다. 단말기에서 서명 확인을 요청하면 패널에서 **예** 또는 **아니요**로 응답하세요.
+7. Windcave가 승인하면 패널에 **결제 완료 — 주문 마무리 중…** 이 표시되고 POS가 영수증 화면으로 이동합니다.
+
+단말기에서 승인하면 판매가 자동으로 완료되므로 레거시 탭 하단의 **결제 처리**를 누를 필요가 없습니다.
+
+### 결제 중지 또는 보류 {#payment-controls}
+
+:::warning 보류한 결제도 승인될 수 있습니다
+다른 수단으로 결제를 받기 전에 단말기를 확인하세요. 결제가 승인되었다고 표시되면 고객에게 다시 청구하지 마세요. 확인하기 어렵다면 관리자에게 문의하세요.
+:::
+
+- 결제가 진행 중일 때는 **단말기 결제 시작** 대신 **단말기 결제 취소**가 표시됩니다. 단말기에서 **취소**를 제공하면 이 버튼으로 단말기의 취소 버튼을 누를 수 있습니다. 취소를 제공하지 않으면 패널에 안내가 표시됩니다. 단말기에서 직접 취소하거나 결제를 보류하세요.
+- 결제를 시작한 후 5분 동안 응답이 없거나 단말기에서 취소할 수 없을 때 **결제 보류**가 나타납니다. 이 기능은 Windcave의 결제를 취소하는 것이 **아닙니다**. 다른 수단으로 결제를 받기 전에 단말기에 결제 거절 또는 취소가 표시되는지 확인하세요. 여전히 대기 중이거나 화면이 비어 있거나 상태가 불분명하다면 관리자에게 먼저 Windcave 포털을 확인해 달라고 요청하세요.
+- **페이지를 새로고침**하면 이미 진행 중인 결제가 이어지고 **단말기 결제 취소**가 표시됩니다.
+
+<details>
+<summary>결제를 보류한 후의 처리</summary>
+
+계산대를 닫은 후에도 매장의 확인 작업은 10분마다 Windcave에 결제 상태를 계속 조회합니다. 다른 수단으로 주문을 결제한 후 Windcave가 승인하면 주문에 해당 내용이 메모로 추가됩니다. Windcave 포털에서 해당 결제를 환불하세요.
+
+</details>
+
+## 문제 해결 {#goes-wrong}
+
+다음 메시지가 표시되면 고객이 이미 결제했을 수 있습니다. 결제를 다시 받기 전에 내용을 읽어보세요.
+
+### 단말기 응답 대기 시간 초과 {#timed-out}
+
+오 분 동안 결과가 없어 패널이 상태 확인을 중지했습니다. 다른 작업을 하기 전에 단말기를 확인하세요.
+
+- **결제 승인으로 표시됩니다.** 다시 청구하지 마세요. 페이지를 새로고침하면 패널이 결제를 이어서 처리하고 판매를 완료합니다. 그래도 판매가 완료되지 않으면 관리자에게 주문 메모와 Windcave 포털을 확인해 달라고 요청하세요.
+- **결제 거절 또는 취소로 표시됩니다.** **단말기 결제 취소** 또는 **결제 보류**를 누른 다음 결제를 다시 받으세요.
+- **화면이 비어 있거나 여전히 대기 중이거나 상태를 알 수 없습니다.** 아직 다른 결제를 받지 마세요. 관리자에게 먼저 Windcave 포털을 확인해 달라고 요청하세요. [경고](#payment-controls)를 확인하세요.
+
+### 이 주문은 이미 다른 결제로 결제되었습니다 {#already-paid}
+
+단말기에서 승인되었지만 이미 다른 수단으로 주문을 결제한 상태이므로 고객이 두 번 결제했습니다. 다시 시도하지 마세요. 주문 메모에 명시된 단말기 결제를 Windcave 포털에서 환불하세요.
+
+### 단말기 결제를 확인할 수 없습니다 {#not-verified}
+
+주문 총액 변경 등의 이유로 이 주문에 적용할 수 없는 결제를 Windcave가 승인했습니다. 카드에 다시 청구하지 마세요. 문제가 해결될 때까지 시작 버튼에는 같은 메시지가 표시됩니다. 먼저 주문 메모와 Windcave 포털을 확인하고 관리자에게 연락하세요.
+
+<details>
+<summary>결제 거절, 단말기 사용 중, 단말기 미선택 및 기타 메시지</summary>
+
+**먼저 단말기를 선택하세요.** **단말기**에서 단말기를 선택한 다음 **단말기 결제 시작**을 다시 누르세요.
+
+**결제가 거절되었습니다**, 단말기 자체의 거절 메시지 또는 **Windcave가 결제를 거절했습니다(코드 …)** 가 표시됩니다. **단말기 결제 시작**을 눌러 다시 시도하거나 다른 수단으로 결제를 받으세요.
+
+**단말기가 아직 이전 거래를 마무리하고 있습니다.** 단말기에서 해당 거래를 완료하거나 취소한 다음 다시 시작하세요.
+
+**Windcave에 이 거래 기록이 없습니다. 결제를 다시 시작하세요.** 결제 요청이 Windcave에 도달하지 않았습니다. **단말기 결제 시작**을 다시 누르세요.
+
+**Windcave가 코드 …을 반환했습니다. 스테이션 ID와 HIT 설정을 확인하세요.** Windcave가 요청을 거절했습니다. 스테이션 ID가 잘못된 경우에 자주 발생합니다. 결제 게이트웨이를 설정한 담당자에게 [설정](#settings)을 확인해 달라고 요청하거나 결제를 보류하세요.
+
+**이 결제는 UAT에서 시작되었습니다**(또는 **운영 환경**). 결제가 진행되는 동안 누군가 **환경**을 변경했습니다. 원래 환경으로 되돌려 결제를 완료하거나 Windcave 포털에서 확인하세요.
+
+</details>
+
+<details>
+<summary>설정 중 표시되는 메시지</summary>
+
+**Windcave HIT 인증 정보가 설정되지 않았습니다.** **HIT 사용자 이름** 또는 **HIT 키**가 비어 있습니다. 둘 다 입력하고 저장한 다음 **환경**이 해당 인증 정보와 일치하는지 확인하세요.
+
+**단말기** 목록에 **설정된 스테이션 ID가 없습니다**라고 표시됩니다. Windcave에서 받은 스테이션 ID를 한 줄에 하나씩 추가하고 저장하세요.
+
+**활성화가 거부됩니다.** 서버에 **PHP 7.4** 이상과 PHP DOM 확장 모듈(**php-xml**)이 필요합니다. 호스팅 업체에 활성화를 요청하세요.
+
+</details>
+
+## 판매 후 {#receipts}
+
+Windcave가 단말기의 영수증 텍스트를 보내면 주문에 **비공개 메모**로 저장됩니다. POS에는 평소처럼 자체 영수증이 표시됩니다.
+
+## 환불 {#refunds}
+
+이 버전에서는 WooCommerce에서의 환불을 지원하지 않습니다. Windcave 포털(Payline) 또는 단말기에서 환불한 다음 WooCommerce 주문에 환불 내역을 직접 기록하세요. [환불](../../pos/refunds.mdx)을 확인하세요.
+
+## 설정하기 {#setup}
+
+이 부분은 매장의 WP Admin을 관리하는 담당자를 위한 안내입니다. 다음 네 가지 작업을 순서대로 진행하세요.
+
+1. 확장 기능 디렉터리에서 [확장 기능을 설치하세요](#install).
+2. Windcave에서 [HIT 인증 정보를 받으세요](#credentials).
+3. [결제 게이트웨이 설정을 입력하세요](#gateway-settings).
+4. [POS용으로 활성화하세요](#enable).
+
+### 확장 기능 설치 {#install}
+
+`WP Admin > POS > 설정 > 확장`을 열고 **Windcave Terminal for WooCommerce**를 찾아 **설치**를 클릭하세요. WCPOS가 다운로드, 설치, 활성화를 한 번에 처리합니다. [확장 기능 설치](../../extensions/index.mdx#installing-an-extension)를 확인하세요.
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[700, 0], [-42, 0], [-40, 0]]} alt="WP Admin의 POS 설정, 확장 기능에서 windcave를 검색한 화면: 버전 0.1.1의 Windcave Terminal for WooCommerce 카드와 설치 버튼">
+
+1. **확장 기능 검색** — `windcave`를 입력하여 카드를 찾으세요.
+2. **Windcave Terminal for WooCommerce** — 확장 기능과 디렉터리에서 설치하는 버전이 표시됩니다.
+3. **설치** — 다운로드, 설치, 활성화를 진행합니다. WCPOS Pro가 필요합니다.
+
+</JourneyShot>
+
+디렉터리를 사용하지 않는 경우 [GitHub 릴리스 페이지](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases)에서 **플러그인 zip**을 다운로드하세요(소스 코드 zip이 아닙니다). `플러그인 > Add Plugin`의 **플러그인 업로드**로 업로드한 다음 활성화하세요. WooCommerce가 활성화되어 있어야 합니다.
+
+### Windcave에서 HIT 인증 정보 받기 {#credentials}
+
+Windcave에 **HIT 사용자 이름**, **HIT 키**, 단말기마다 하나씩 사용할 **스테이션 ID**를 요청하세요. 개발용 계정은 Windcave의 [연동 요구 사항 양식](https://www.windcave.com/merchant-attended-developer-hit)을 이용하세요.
+
+UAT와 운영 환경의 인증 정보는 별개입니다. Windcave가 이 연동을 인증할 때까지 UAT 인증 정보를 사용하세요.
+
+### 결제 게이트웨이 설정 입력 {#gateway-settings}
+
+1. `WP Admin > WooCommerce > 설정 > 결제`로 이동하여 **Windcave Terminal**을 여세요.
+2. **환경**은 기본값인 **UAT(테스트)** 로 유지하세요. **운영 환경**은 인증을 받은 후 운영 환경 인증 정보와 함께 사용합니다.
+3. **HIT 사용자 이름**과 **HIT 키**를 입력하세요.
+4. **스테이션 ID**를 한 줄에 하나씩 입력하세요.
+5. 선택 사항: **기본 스테이션 ID**를 설정하고 **단말기 선택 잠금**을 선택하면 캐셔가 항상 해당 단말기를 사용하게 됩니다.
+6. **공급업체 ID**는 비워 두세요. 인증 과정에서 Windcave가 발급합니다.
+7. 선택 사항: **결과 알림(FPRN)** 을 선택하면 계산대의 자체 상태 확인을 보완하도록 결과가 준비될 때 Windcave도 매장에 알려줍니다.
+8. 저장하세요.
+
+연결 테스트 버튼은 없습니다. 인증 정보와 스테이션 ID는 첫 결제 시 확인되므로 UAT 단말기에서 테스트 결제를 진행하세요.
+
+### POS용으로 활성화 {#enable}
+
+`WP Admin > POS > 설정 > 결제`로 이동하여 **Windcave Terminal**을 찾고 **활성화**를 켜세요. [결제 게이트웨이 활성화](../../settings/wp-admin/checkout.mdx#enabling-a-gateway)를 확인하세요.
+
+WooCommerce 설정의 **활성화/비활성화**는 꺼 두세요. 해당 체크박스의 선택 여부와 관계없이 여기서 **활성화**를 켜면 POS에서 이 결제 게이트웨이를 사용합니다.
+
+## 설정 참고 {#settings}
+
+`WP Admin > WooCommerce > 설정 > 결제 > Windcave Terminal`에 있습니다. 위 단계에서는 필요한 설정을 다룹니다. 모든 설정과 기본값을 보려면 목록을 여세요.
+
+<details>
+<summary>전체 15개 설정</summary>
+
+| 설정 | 기능 |
+|---|---|
+| **활성화/비활성화** | 온라인 매장에도 결제 게이트웨이를 표시합니다. 꺼 두세요. 온라인에서는 일반 결제 화면이 아닌 기존 주문의 결제 페이지에서만 결제를 받을 수 있습니다. 기본값은 꺼짐입니다. POS에는 `POS > 설정 > 결제`에 별도의 스위치가 있습니다 |
+| **제목** | 캐셔가 결제 페이지에서 선택하는 이름입니다. 기본값은 `Windcave Terminal`입니다 |
+| **설명** | 제목 아래에 표시되는 문구입니다. 기본값은 `Pay in person on the Windcave terminal.`입니다 |
+| **환경** | **UAT(테스트)**(기본값) 또는 **운영 환경**입니다. 각각 별도의 HIT 인증 정보를 사용합니다. 운영 환경에는 Windcave 인증이 필요합니다 |
+| **HIT 사용자 이름** | 선택한 환경에 맞게 Windcave에서 발급합니다 |
+| **HIT 키** | 선택한 환경에 맞게 Windcave에서 발급합니다 |
+| **스테이션 ID** | 단말기마다 하나의 스테이션 ID를 한 줄에 하나씩 입력합니다. Windcave에서 발급하며 자동으로 검색되지 않습니다 |
+| **기본 스테이션 ID** | 처음에 선택되는 단말기이며, 아무 단말기도 선택하지 않았을 때 사용하는 단말기입니다 |
+| **단말기 선택 잠금** | 캐셔가 단말기를 변경할 수 없으며 항상 기본 단말기를 사용합니다. 기본 단말기가 설정된 경우에만 작동합니다 |
+| **공급업체 ID** | 인증 과정에서 Windcave가 발급합니다. 그때까지 비워 두세요 |
+| **POS 이름** | Windcave에서 POS를 식별하는 이름입니다. 기본값은 `WCPOS`입니다 |
+| **결과 알림(FPRN)** | 계산대의 상태 확인을 보완하도록 결과가 준비되면 Windcave도 매장에 알려줍니다. 기본값은 꺼짐입니다 |
+| **결제 로그** | 결제 패널에 **로그 표시**, **복사**, **지우기**를 표시합니다. 기본값은 꺼짐입니다 |
+| **로그 수준** | **꺼짐**, **오류만** 또는 **디버그**(기본값)입니다 |
+| **지원** | **지원 번들 다운로드**와 로그 링크입니다 |
+
+</details>
+
+## 로그 및 지원 번들 {#logs-and-support-bundle}
+
+로그는 `WP Admin > WooCommerce > Status > 로그`의 `windcave-terminal` 소스에 있습니다. **로그 수준**의 초기값은 **디버그**이며, Windcave에 보내는 모든 요청과 응답을 기록하되 HIT 키와 카드 번호는 가립니다.
+
+결제가 실패하면 결제 게이트웨이 설정 페이지에서 **지원 번들 다운로드**를 클릭하고 **주문 번호**와 함께 `.json` 파일을 지원팀에 보내세요.
+
+<details>
+<summary>지원 번들에 포함되는 내용</summary>
+
+- 매장 구성: WordPress, WooCommerce, PHP 및 확장 기능 버전, 환경, 단말기 수.
+- HIT 키를 가리고 HIT 사용자 이름은 앞 세 글자만 남긴 결제 게이트웨이 설정.
+- 최근 주문 최대 20건의 결제 시도 내역. 영수증은 제외됩니다.
+- 가장 최근의 `windcave-terminal` 로그 파일 두 개에서 마지막 1,000줄. 카드 번호가 가려진 단말기 영수증 텍스트가 포함될 수 있습니다.
+
+WooCommerce가 로그를 데이터베이스에 보관한다면 번들에 로그 내용이 포함되지 않습니다. `WooCommerce > Status > 로그`에서 내보내어 함께 보내세요.
+
+</details>
+
+## 요구 사항 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Windcave 계정">HIT 사용자 이름, HIT 키, 단말기마다 하나의 스테이션 ID. 실제 결제에는 Windcave 인증이 필요합니다</RequirementItem>
+  <RequirementItem label="단말기">HIT 결제를 지원하는 Windcave 단말기</RequirementItem>
+  <RequirementItem label="연결">온라인에서만 사용 가능합니다. 매장이 인터넷으로 각 결제를 단말기에 전송하므로 어느 계산대에서든 모든 단말기를 사용할 수 있으며 결제 시 단말기를 선택합니다</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
+  <RequirementItem label="서버">WordPress 5.2 이상, WooCommerce, DOM 확장 모듈(php-xml)이 포함된 PHP 7.4 이상</RequirementItem>
+  <RequirementItem label="통화">소수점 이하 두 자리를 사용하는 통화</RequirementItem>
+</RequirementsList>
+
+## 지원하지 않는 기능 {#scope-and-limitations}
+
+- WooCommerce에서 환불.
+- 팁, 추가 요금, 카드 결제를 통한 현금 인출.
+- 소수점 이하 두 자리를 사용하지 않는 통화.
+- 부분 결제: 단말기에는 항상 주문 전체 금액이 청구됩니다.
+- 단말기 자동 검색: 각 스테이션 ID를 직접 입력해야 합니다.
+- 온라인 매장의 일반 결제 화면. 온라인에서는 기존 주문의 결제 페이지에서만 결제를 받을 수 있습니다.
+
+<details>
+<summary>개발자용 작동 방식</summary>
+
+이 결제 게이트웨이는 HTTPS를 통해 Windcave **HIT(호스트 시작 거래)** 를 사용합니다. **환경**에서 UAT 또는 운영 환경 엔드포인트를 선택하며 각 단말기는 **스테이션 ID**로 지정됩니다.
+
+결제를 시작하면 주문에 거래 참조가 기록되고 주문 총액과 통화로 구매 요청이 전송됩니다. 패널은 1.5초마다 Windcave에 상태를 요청하고 단말기의 표시 문구와 활성화된 버튼을 그대로 보여줍니다. **결과 알림(FPRN)** 이 켜져 있으면 결과가 준비될 때 Windcave도 매장에 호출을 보냅니다.
+
+결과가 승인되고 주문에 기록된 결제 시도의 참조, 금액, 환경, 주문 총액과 통화가 모두 일치해야만 주문이 완료됩니다. 새 거래를 등록할 수 있도록 Windcave에 30초를 허용한 뒤에도 “기록 없음” 상태이면 거절로 처리합니다. 응답이 끊기거나 보류된 결제는 10분마다 실행되는 예약 확인 작업이 추적합니다.
+
+</details>
+
+## 관련 문서 {#related-documentation}
+
+- [레거시 탭](../../pos/checkout/legacy-tab.mdx)
+- [결제](../../pos/checkout/index.mdx)
+- [결제 설정](../../settings/wp-admin/checkout.mdx)
+- [확장 기능](../../extensions/index.mdx)
+- [GitHub에 문제 신고](https://github.com/wcpos/windcave-terminal-for-woocommerce/issues). 계정, 인증 정보, 단말기에 관한 사항은 Windcave에 문의하세요.
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="레거시 탭" description="매장의 자체 결제 페이지에서 결제를 받는 결제 게이트웨이" />
+  <LinkCard to="/settings/checkout" title="결제 설정" description="POS용 결제 게이트웨이 활성화" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="모든 결제 게이트웨이" description="WCPOS에서 사용할 수 있는 다른 카드 단말기" />
+</LinkCards>

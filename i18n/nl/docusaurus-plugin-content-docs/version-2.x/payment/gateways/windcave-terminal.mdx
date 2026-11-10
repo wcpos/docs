@@ -1,0 +1,266 @@
+---
+title: Windcave
+slug: /hardware/card-readers/windcave
+description: "Ontvang kaartbetalingen op een Windcave-terminal vanuit het POS-afrekenscherm en stel de Windcave Terminal-extensie (HIT) in via WP Admin."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/windcave-terminal/en/manifest.json';
+
+# Windcave Terminal-betaalgateway {#windcave-terminal-gateway}
+
+De kassa stuurt het besteltotaal naar een Windcave-terminal, de klant betaalt op de terminal en de verkoop wordt automatisch afgerond zodra Windcave de betaling goedkeurt. De extensie vereist [WCPOS Pro](../../getting-started/pro-license.mdx), zowel voor de installatie als voor het gebruik aan de kassa. Deze pagina bestaat uit twee delen: [een betaling ontvangen](#take-payment) aan de kassa en [instellen](#setup) in WP Admin.
+
+:::warning Nog niet gecertificeerd door Windcave
+**Alleen voor testbetalingen.** Ontvang hiermee nog geen echte betalingen van klanten: gebruik uitsluitend de **UAT**-toegangsgegevens (test) van Windcave.
+
+<details>
+<summary>Waarom, en wat nog niet is getest</summary>
+
+Windcave vereist dat elke kassa-integratie de QA-certificering doorloopt voordat deze echte betalingen ontvangt. Deze integratie heeft die certificering nog niet behaald. Ook is deze nog niet gebruikt met een Windcave-account of op een fysieke terminal: de onderstaande stappen zijn gebaseerd op de HIT-documentatie van Windcave en de code van de extensie.
+
+</details>
+:::
+
+{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves Station selection and logs into Pro and adds refunds; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
+
+## Een betaling ontvangen {#take-payment}
+
+Voordat je begint: je winkel moet online zijn, omdat de betaling op de eigen betaalpagina van je winkel binnen de POS plaatsvindt. Iemand met toegang tot WP Admin moet de [betaalgateway instellen](#setup). Als **De kassa openen en sluiten** is ingeschakeld, [open dan eerst de kassa](../../pos/register/index.mdx#open).
+
+:::info Windcave ontvangt de volledige betaling
+Via de terminal wordt altijd de hele bestelling in rekening gebracht. Je kunt de betaling voor een verkoop dus niet verdelen over de terminal en een andere methode.
+:::
+
+1. Vul de winkelwagen en druk op **Afrekenen**.
+2. Open het tabblad **Verouderd**. De betaalpagina van je winkel wordt binnen de POS geopend. Zie [Het tabblad Verouderd](../../pos/checkout/legacy-tab.mdx).
+
+   <details>
+   <summary>Het tabblad vermeldt Alleen volledige rekening</summary>
+
+   Er is al een betaling voor de bestelling ontvangen, waardoor het tabblad de betaalpagina niet opent. [Annuleer die betaling](../../pos/checkout/cancelling-a-payment.mdx) eerst om Windcave te gebruiken.
+
+   </details>
+
+3. Kies **Windcave Terminal**. Je winkel kan deze een andere naam hebben gegeven.
+4. Kies de terminal onder **Terminal**. Bij één terminal of een vastgezette standaardterminal is deze al geselecteerd. Bij twee of meer terminals zonder standaard moet je er een kiezen.
+5. Druk op **Terminalbetaling starten**. Het paneel toont **Verzenden naar terminal…** en het volledige besteltotaal wordt naar die terminal gestuurd.
+6. De klant houdt de kaart tegen de terminal, steekt deze erin of haalt deze erdoor. Wat de terminal toont, verschijnt ook in het paneel, inclusief de knoppen. Als de terminal je vraagt een handtekening te controleren, antwoord dan met **JA** of **NEE** in het paneel.
+7. Wanneer Windcave de betaling goedkeurt, toont het paneel **Betaling voltooid — bestelling afronden…** en gaat de POS verder naar de bon.
+
+Je hoeft **Betaling verwerken** onderaan het tabblad Verouderd niet te gebruiken: de verkoop wordt automatisch afgerond zodra de terminal de betaling goedkeurt.
+
+### Een betaling stoppen of opzijzetten {#payment-controls}
+
+:::warning Een opzijgezette betaling kan nog steeds doorgaan
+Kijk op de terminal voordat je op een andere manier een betaling ontvangt. Als deze aangeeft dat de betaling is goedgekeurd, laat de klant dan niet opnieuw betalen. Vraag je leidinggevende om hulp als het onduidelijk is.
+:::
+
+- **Terminalbetaling annuleren** vervangt **Terminalbetaling starten** zolang een betaling loopt. Hiermee wordt op **ANNULEREN** op de terminal gedrukt, als de terminal die mogelijkheid biedt. Zo niet, dan geeft het paneel dat aan: annuleer op de terminal zelf of zet de betaling opzij.
+- **Betaling opzijzetten** verschijnt wanneer een betaling al 5 minuten loopt zonder antwoord, of wanneer de terminal niet wil annuleren. Dit annuleert de betaling bij Windcave **niet**. Controleer of de terminal aangeeft dat de betaling is geweigerd of geannuleerd voordat je op een andere manier een betaling ontvangt. Als de terminal nog wacht, niets toont of onduidelijk is, vraag dan je leidinggevende om eerst het Windcave-portaal te controleren.
+- **De pagina opnieuw laden** hervat de lopende betaling, waarbij **Terminalbetaling annuleren** wordt getoond.
+
+<details>
+<summary>Wat er gebeurt nadat je een betaling opzijzet</summary>
+
+Je winkel blijft elke 10 minuten de status van de betaling bij Windcave controleren, ook nadat de kassa is gesloten. Als Windcave de betaling goedkeurt nadat de bestelling op een andere manier is betaald, krijgt de bestelling daarover een notitie: betaal die betaling terug via het Windcave-portaal.
+
+</details>
+
+## Als er iets misgaat {#goes-wrong}
+
+Deze meldingen kunnen betekenen dat de klant al heeft betaald. Lees ze voordat je opnieuw een betaling ontvangt.
+
+### Wachttijd voor de terminal verstreken {#timed-out}
+
+Er zijn vijf minuten verstreken zonder resultaat en het paneel is gestopt met controleren. Kijk eerst op de terminal voordat je iets anders doet:
+
+- **De terminal geeft aan dat de betaling is goedgekeurd.** Laat de klant niet opnieuw betalen. Laad de pagina opnieuw; het paneel pakt de betaling weer op en rondt de verkoop af. Wordt de verkoop nog steeds niet afgerond, vraag dan je leidinggevende om de bestelnotities en het Windcave-portaal te controleren.
+- **De terminal geeft aan dat de betaling is geweigerd of geannuleerd.** Druk op **Terminalbetaling annuleren** of **Betaling opzijzetten** en ontvang daarna opnieuw een betaling.
+- **De terminal toont niets, wacht nog of is onduidelijk.** Ontvang nog geen nieuwe betaling. Vraag je leidinggevende om eerst het Windcave-portaal te controleren. Zie [de waarschuwing](#payment-controls).
+
+### Deze bestelling is al met een andere betaling betaald {#already-paid}
+
+De terminal heeft de betaling goedgekeurd, maar de bestelling was al op een andere manier betaald. De klant heeft dus twee keer betaald. Probeer het niet opnieuw. Betaal de terminalbetaling terug via het Windcave-portaal; deze staat vermeld in de bestelnotities.
+
+### De terminalbetaling kon niet worden geverifieerd {#not-verified}
+
+Windcave heeft een betaling goedgekeurd die niet op deze bestelling kon worden toegepast, bijvoorbeeld omdat het besteltotaal is gewijzigd. Belast de kaart niet opnieuw: Starten toont dezelfde melding totdat het probleem is opgelost. Controleer eerst de bestelnotities en het Windcave-portaal en schakel je leidinggevende in.
+
+<details>
+<summary>Geweigerd, terminal bezet, geen terminal gekozen en andere meldingen</summary>
+
+**Selecteer eerst een terminal.** Kies een terminal onder **Terminal** en druk daarna opnieuw op **Terminalbetaling starten**.
+
+**De betaling is geweigerd**, de eigen weigeringsmelding van de terminal of **Windcave heeft de betaling geweigerd (code …)**. Druk op **Terminalbetaling starten** om het opnieuw te proberen of gebruik een andere methode.
+
+**De terminal is nog bezig met het afronden van een eerdere transactie.** Rond die transactie af of annuleer deze op de terminal en begin daarna opnieuw.
+
+**Windcave heeft geen registratie van deze transactie. Start de betaling opnieuw.** De betaling heeft Windcave nooit bereikt. Druk opnieuw op **Terminalbetaling starten**.
+
+**Windcave heeft code … gemeld: controleer de Station-ID en HIT-instellingen.** Windcave heeft het verzoek geweigerd, vaak omdat een Station-ID onjuist is. Vraag degene die de betaalgateway heeft ingesteld om de [instellingen](#settings) te controleren of zet de betaling opzij.
+
+**Deze betaling is gestart in UAT** (of **productie**). Iemand heeft **Omgeving** gewijzigd terwijl de betaling liep. Zet deze terug om de betaling af te ronden of controleer de betaling in het Windcave-portaal.
+
+</details>
+
+<details>
+<summary>Meldingen tijdens het instellen</summary>
+
+**De Windcave HIT-toegangsgegevens zijn niet ingesteld.** De **HIT-gebruikersnaam** of **HIT-sleutel** is leeg. Vul beide in, sla op en controleer of **Omgeving** overeenkomt met die gegevens.
+
+**Geen Station-ID's ingesteld** in de lijst **Terminal**. Voeg de Station-ID's toe die je van Windcave hebt gekregen, één per regel, en sla op.
+
+**Activering wordt geweigerd.** De server heeft **PHP 7.4** of nieuwer en de PHP DOM-extensie (**php-xml**) nodig. Vraag je hostingprovider om deze in te schakelen.
+
+</details>
+
+## Na de verkoop {#receipts}
+
+Wanneer Windcave bontekst van de terminal verstuurt, wordt deze als **privénotitie** bij de bestelling opgeslagen. De POS toont zoals gewoonlijk de eigen bon.
+
+## Terugbetalingen {#refunds}
+
+Terugbetalingen vanuit WooCommerce worden in deze versie niet ondersteund. Betaal terug via het Windcave-portaal (Payline) of op de terminal en registreer de terugbetaling daarna handmatig bij de bestelling in WooCommerce. Zie [Terugbetalingen](../../pos/refunds.mdx).
+
+## Instellen {#setup}
+
+Dit deel is bedoeld voor degene die WP Admin van de winkel beheert. Voer deze vier stappen op volgorde uit:
+
+1. [Installeer de extensie](#install) vanuit de extensiecatalogus.
+2. [Vraag HIT-toegangsgegevens aan](#credentials) bij Windcave.
+3. [Vul de instellingen van de betaalgateway in](#gateway-settings).
+4. [Schakel de betaalgateway in voor de POS](#enable).
+
+### De extensie installeren {#install}
+
+Open `WP Admin > POS > Settings > Extensions`, zoek **Windcave Terminal for WooCommerce** en klik op **Installeren**. WCPOS downloadt, installeert en activeert de extensie in één keer. Zie [Een extensie installeren](../../extensions/index.mdx#installing-an-extension).
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[700, 0], [-42, 0], [-40, 0]]} alt="WP Admin, POS-instellingen, Extensies, gezocht op windcave: de kaart Windcave Terminal for WooCommerce met versie 0.1.1 en de knop Installeren">
+
+1. **Extensies zoeken** — typ `windcave` om de kaart te vinden.
+2. **Windcave Terminal for WooCommerce** — de extensie, met de versie die de catalogus installeert.
+3. **Installeren** — downloadt, installeert en activeert de extensie. Hiervoor is WCPOS Pro nodig.
+
+</JourneyShot>
+
+Zonder de catalogus download je het **zipbestand van de plugin** (niet het zipbestand met de broncode) van de [GitHub-releasepagina](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases). Upload het met **Plugin uploaden** onder `Plugins > Add Plugin` en activeer het daarna. WooCommerce moet actief zijn.
+
+### HIT-toegangsgegevens aanvragen bij Windcave {#credentials}
+
+Vraag Windcave om een **HIT-gebruikersnaam**, een **HIT-sleutel** en één **Station-ID** per terminal. Gebruik voor een ontwikkelaarsaccount het [formulier voor integratievereisten](https://www.windcave.com/merchant-attended-developer-hit) van Windcave.
+
+UAT en productie hebben aparte toegangsgegevens. Gebruik de UAT-gegevens totdat Windcave deze integratie certificeert.
+
+### De instellingen van de betaalgateway invullen {#gateway-settings}
+
+1. Ga naar `WP Admin > WooCommerce > Settings > Payments` en open **Windcave Terminal**.
+2. Laat **Omgeving** op **UAT (testen)** staan, de standaardinstelling. **Productie** is bedoeld voor na de certificering, met productietoegangsgegevens.
+3. Vul de **HIT-gebruikersnaam** en **HIT-sleutel** in.
+4. Vul je **Station-ID's** in, één per regel.
+5. Optioneel: stel een **Standaard Station-ID** in en vink **Terminalkeuze vergrendelen** aan, zodat kassamedewerkers altijd die terminal gebruiken.
+6. Laat **Leveranciers-ID** leeg. Windcave verstrekt deze tijdens de certificering.
+7. Optioneel: vink **Resultaatmeldingen (FPRN)** aan, zodat Windcave je winkel ook laat weten wanneer er een resultaat beschikbaar is, als aanvulling op de eigen controles van de kassa.
+8. Sla op.
+
+Er is geen knop om de verbinding te testen. De toegangsgegevens en Station-ID's worden bij de eerste betaling gecontroleerd, dus voer een testbetaling uit op een UAT-terminal.
+
+### Inschakelen voor de POS {#enable}
+
+Ga naar `WP Admin > POS > Settings > Checkout`, zoek **Windcave Terminal** en zet **Ingeschakeld** aan. Zie [Een betaalgateway inschakelen](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+Laat **Inschakelen/uitschakelen** in de WooCommerce-instellingen uit staan. De POS gebruikt de betaalgateway zodra **Ingeschakeld** hier aan staat, ongeacht of dat vakje is aangevinkt.
+
+## Overzicht van instellingen {#settings}
+
+Onder `WP Admin > WooCommerce > Settings > Payments > Windcave Terminal`. De stappen hierboven behandelen de benodigde instellingen; open de lijst voor alle instellingen en hun standaardwaarden.
+
+<details>
+<summary>Alle 15 instellingen</summary>
+
+| Instelling | Functie |
+|---|---|
+| **Inschakelen/uitschakelen** | Toont de betaalgateway ook in de webwinkel. Laat dit uit staan: online kan deze alleen betalingen ontvangen op de betaalpagina van een bestaande bestelling, niet bij het normale afrekenen. Standaard uitgeschakeld. De POS heeft een eigen schakelaar onder `POS > Settings > Checkout` |
+| **Titel** | De naam die kassamedewerkers kiezen op de betaalpagina. Standaard `Windcave Terminal` |
+| **Beschrijving** | De tekst onder de titel. Standaard `Pay in person on the Windcave terminal.` |
+| **Omgeving** | **UAT (testen)** (standaard) of **Productie**. Elke omgeving heeft eigen HIT-toegangsgegevens; voor productie is Windcave-certificering nodig |
+| **HIT-gebruikersnaam** | Verstrekt door Windcave, voor de gekozen omgeving |
+| **HIT-sleutel** | Verstrekt door Windcave, voor de gekozen omgeving |
+| **Station-ID's** | Eén Station-ID per regel, één per terminal. Windcave verstrekt deze; ze worden niet automatisch gevonden |
+| **Standaard Station-ID** | De terminal die bij het starten is geselecteerd en die wordt gebruikt als er geen wordt gekozen |
+| **Terminalkeuze vergrendelen** | Kassamedewerkers kunnen de terminal niet wijzigen: de standaard wordt altijd gebruikt. Werkt alleen als er een standaard is ingesteld |
+| **Leveranciers-ID** | Verstrekt door Windcave tijdens de certificering. Laat dit tot die tijd leeg |
+| **POS-naam** | De naam waaronder je POS bij Windcave bekend is. Standaard `WCPOS` |
+| **Resultaatmeldingen (FPRN)** | Windcave laat je winkel ook weten wanneer er een resultaat beschikbaar is, als aanvulling op de controles van de kassa. Standaard uitgeschakeld |
+| **Kassalogs** | Toont **Logs tonen**, **Kopiëren** en **Wissen** op het betaalpaneel. Standaard uitgeschakeld |
+| **Logniveau** | **Uit**, **Alleen fouten** of **Debug** (de standaard) |
+| **Ondersteuning** | **Ondersteuningsbundel downloaden** en een link naar de logs |
+
+</details>
+
+## Logs en ondersteuningsbundel {#logs-and-support-bundle}
+
+Logs staan onder `WP Admin > WooCommerce > Status > Logs`, bij de bron `windcave-terminal`. **Logniveau** staat aanvankelijk op **Debug**. Daarmee worden elk verzoek aan Windcave en elk antwoord vastgelegd, waarbij de HIT-sleutel en kaartnummers worden afgeschermd.
+
+Als een betaling mislukt, klik dan op **Ondersteuningsbundel downloaden** op de instellingenpagina van de betaalgateway en stuur het `.json`-bestand samen met het **bestelnummer** naar de ondersteuning.
+
+<details>
+<summary>Wat de ondersteuningsbundel bevat</summary>
+
+- De configuratie van je winkel: de versies van WordPress, WooCommerce, PHP en de extensie, de omgeving en het aantal terminals.
+- De instellingen van de betaalgateway, met de HIT-sleutel afgeschermd en alleen de eerste drie tekens van de HIT-gebruikersnaam.
+- Betaalpogingen van maximaal 20 recente bestellingen, zonder bonnen.
+- De laatste 1,000 regels van de twee nieuwste `windcave-terminal`-logbestanden. Deze kunnen bontekst van de terminal bevatten, met afgeschermde kaartnummers.
+
+Als WooCommerce de logs in de database bewaart, bevat de bundel geen logregels: exporteer ze via `WooCommerce > Status > Logs` en stuur ze ook mee.
+
+</details>
+
+## Vereisten {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Windcave-account">Een HIT-gebruikersnaam, een HIT-sleutel en één Station-ID per terminal. Voor echte betalingen is Windcave-certificering nodig</RequirementItem>
+  <RequirementItem label="Terminal">Een Windcave-terminal die HIT-betalingen accepteert</RequirementItem>
+  <RequirementItem label="Verbinding">Alleen online. De winkel stuurt elke betaling via internet naar de terminal, zodat elke kassa elke terminal kan gebruiken en er bij het afrekenen een kiest</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
+  <RequirementItem label="Server">WordPress 5.2 of nieuwer, WooCommerce en PHP 7.4 of nieuwer met de DOM-extensie (php-xml)</RequirementItem>
+  <RequirementItem label="Valuta">Een valuta met twee decimalen</RequirementItem>
+</RequirementsList>
+
+## Wat niet wordt ondersteund {#scope-and-limitations}
+
+- Terugbetalingen vanuit WooCommerce.
+- Fooien, toeslagen en contant geld opnemen bij een kaartbetaling.
+- Valuta's zonder twee decimalen.
+- Deelbetalingen: via de terminal wordt altijd de hele bestelling in rekening gebracht.
+- Terminals automatisch vinden: je voert elke Station-ID zelf in.
+- Het normale afrekenen in de webwinkel. Online kan de betaalgateway alleen betalingen ontvangen op de betaalpagina van een bestaande bestelling.
+
+<details>
+<summary>Zo werkt het, voor ontwikkelaars</summary>
+
+De betaalgateway gebruikt Windcave **HIT (door de host geïnitieerde transactie)** via HTTPS. **Omgeving** bepaalt of het UAT- of productie-endpoint wordt gebruikt. Elke terminal wordt aangesproken via de **Station-ID**.
+
+Bij het starten van een betaling wordt een transactiereferentie bij de bestelling opgeslagen. Daarna wordt een Purchase verstuurd voor het besteltotaal en de valuta. Het paneel vraagt Windcave elke 1,5 seconden om de status en toont dezelfde schermregels en ingeschakelde knoppen als de terminal. Als **Resultaatmeldingen (FPRN)** is ingeschakeld, roept Windcave ook de winkel aan zodra er een resultaat beschikbaar is.
+
+De bestelling wordt pas afgerond als het resultaat is goedgekeurd en overeenkomt met de betaalpoging die bij de bestelling is vastgelegd: de referentie, het bedrag, de omgeving en het besteltotaal en de valuta. Windcave krijgt 30 seconden om een nieuwe transactie te registreren voordat “geen registratie” als geweigerd telt. Een geplande controle volgt elke 10 minuten betalingen op waarop geen reactie meer kwam of die opzij zijn gezet.
+
+</details>
+
+## Gerelateerde documentatie {#related-documentation}
+
+- [Het tabblad Verouderd](../../pos/checkout/legacy-tab.mdx)
+- [Afrekenen](../../pos/checkout/index.mdx)
+- [Kassa-instellingen](../../settings/wp-admin/checkout.mdx)
+- [Extensies](../../extensions/index.mdx)
+- [Meld een probleem op GitHub](https://github.com/wcpos/windcave-terminal-for-woocommerce/issues). Neem voor je account, toegangsgegevens en terminals contact op met Windcave.
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="Het tabblad Verouderd" description="Betaalgateways die betalingen ontvangen op de eigen betaalpagina van de winkel" />
+  <LinkCard to="/settings/checkout" title="Kassa-instellingen" description="Schakel betaalgateways in voor de POS" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Alle betaalgateways" description="De andere betaalterminals waarmee WCPOS werkt" />
+</LinkCards>

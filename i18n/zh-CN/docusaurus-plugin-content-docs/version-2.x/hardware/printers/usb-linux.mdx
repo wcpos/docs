@@ -1,0 +1,205 @@
+---
+title: Linux 上的 USB 打印机
+slug: /hardware/receipt-printers/usb-printers-linux
+sidebar_label: Linux 上的 USB 打印机
+sidebar_position: 6
+description: "在 Linux 上，桌面版应用需要获得您的授权才能使用 USB 收据打印机。添加一条 udev 规则即可授予权限，让打印机正常打印。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
+
+在 Linux 上，桌面版应用必须获得您的授权才能使用 USB 收据打印机。只需在规则文件中添加一行内容，操作一次即可。
+
+如果您在 Linux 桌面版应用中点击**打印测试页**后，出现**未打印任何内容**并提示**应用无权访问打印机。请在系统设置中允许访问，然后重试。** 本页适用于您。Linux 没有对应的设置界面：下面的规则就是这项设置。
+
+<details id="other-signs">
+<summary>此问题的其他迹象</summary>
+
+- 该消息下方的**支持详情**显示 `LIBUSB_ERROR_ACCESS`。
+- 搜索结果中，打印机卡片显示的名称是 **USB 打印机**加上一串数字，而不是打印机自身的名称。这通常表示应用无法打开打印机以读取其名称。
+
+</details>
+
+:::note 开始之前
+请直接在收银设备上操作，并在该设备上打开本页，以便将下方内容复制到终端。打开**终端**应用（在 Ubuntu 和 Linux Mint 上按 **Ctrl+Alt+T**）。您还需要收银设备的管理员密码。如果没有，请将本页发送给设置该设备的人。
+:::
+
+## 允许应用使用打印机 {#do-this}
+
+下方的每条命令都放在灰色框中。要运行命令，请将指针移到框上，点击右上角的复制按钮。然后点击终端，按 **Ctrl+Shift+V** 粘贴，再按 **Enter**。
+
+当命令要求输入密码时，输入密码并按 Enter。输入时，屏幕不会显示任何字符，或只显示星号，这是正常现象。
+
+### 查找打印机的 ID {#find-ids}
+
+1. 连接打印机并开机。
+2. 查找打印机的两个 ID。在终端中运行：
+
+   ```bash
+   lsusb
+   ```
+
+   如果提示 `command not found`，请先[安装 lsusb](#command-not-found)。每一行代表一个 USB 设备。找到打印机所在的行，例如 `Bus 001 Device 007: ID 04b8:0e28 Seiko Epson Corp.`
+
+   在这一行中：
+
+   - 厂商 ID：`04b8`，即紧跟在 `ID` 后的代码。
+   - 型号 ID：`0e28`，即冒号后的代码。
+   - 厂商名称：`Seiko Epson Corp.`，位于行末，可帮助您找到对应行。
+
+   如果无法判断哪一行是打印机，请拔下打印机，再次运行 `lsusb`，查看哪一行消失了。
+
+### 创建并加载规则 {#create-rule}
+
+3. 在 nano 文本编辑器中打开一个新的规则文件：
+
+   ```bash
+   sudo nano /etc/udev/rules.d/99-receipt-printer.rules
+   ```
+
+   nano 会在终端内打开，显示空白页面和底部的快捷键列表。如果提示 `command not found`，请先[安装 nano](#command-not-found)。
+
+4. 将规则写入文件。此规则允许该收银设备上的每个账户使用具有这两个 ID 的任何打印机。像之前一样，使用框内的复制按钮复制这一行。该行比框的宽度更长：要查看完整内容，请将指针移到框上（手机上则点按），然后点击复制按钮左侧的自动换行按钮。
+
+   ```text
+   SUBSYSTEM=="usb", ATTRS{idVendor}=="04b8", ATTRS{idProduct}=="0e28", MODE="0666"
+   ```
+
+   然后，在 nano 中：
+   1. 按 **Ctrl+Shift+V** **粘贴规则**。
+   2. **替换两个 ID。** 用方向键移到 `04b8` 和 `0e28`。仅将这两个代码替换为您的打印机的两个 ID，输入内容必须与 `lsusb` 显示的完全一致。保留两侧的引号。
+   3. 保存前**检查这一行**：只有一行，以 `SUBSYSTEM=="usb",` 开头，以 `MODE="0666"` 结尾，原来 `04b8` 和 `0e28` 所在的引号内应是您的两个 ID。
+   4. 按 **Ctrl+O**，再按 **Enter** **保存**。
+   5. 按 **Ctrl+X** **退出 nano**，返回终端提示符。
+
+   <details id="rule-parts">
+   <summary>规则各部分的含义</summary>
+
+   规则包含四个部分，除最后一部分外，每部分都以逗号结尾：
+
+   - `SUBSYSTEM=="usb",`：此规则适用于 USB 设备。
+   - `ATTRS{idVendor}=="04b8",`：厂商 ID。
+   - `ATTRS{idProduct}=="0e28",`：型号 ID。
+   - `MODE="0666"`：此电脑上的每个账户都可以使用打印机，这正是收银设备所需的权限。
+
+   </details>
+
+5. 加载规则：
+
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+
+   如果要求输入密码，请再次输入。成功时不会输出任何内容，终端会重新显示提示符。如果输出错误，请在此停止，并参阅[仍有问题？](#still-stuck)
+
+6. 拔下打印机，然后重新插入。
+
+### 添加打印机并测试 {#add-and-test}
+
+7. 如果您之前通过**不测试直接保存**保存了此打印机，请先将其删除：在**设置 → 打印**中，打开该打印机所在行的 **⋮** 菜单，选择**删除**。
+8. 在桌面版应用中，进入**设置 → 打印**并点击**添加打印机**。应用会自动开始搜索 USB 打印机。选择带有 **USB** 标记的打印机卡片。现在应用能够打开打印机，卡片会显示打印机提供的名称。
+9. 点击**打印测试页**。面板会询问**测试页打印出来了吗？** 请作答：
+   - **是的，而且看起来正确**：打印机会被保存，面板会显示打印机名称和**已设置完成**。点击**完成**。打印机即可使用。
+   - **已打印，但标尺不准确**：选择打印机中的纸张，测试页会再次打印。请参阅[已打印，但标尺不准确](./setup-wizard.mdx#test-page-ruler)。
+   - **没有打印出来**：面板显示**未打印任何内容**。如果仍提示应用无权访问打印机，请参阅[添加规则后仍无权限](#still-not-allowed)。如果显示其他消息，请参阅[没有打印出来](./setup-wizard.mdx#test-page-nothing)。
+
+:::tip 以您自己的账户启动应用
+请按通常的方式打开桌面版应用，切勿使用 `sudo`。上述规则能让应用以您的身份使用打印机。
+:::
+
+## 遇到问题时 {#goes-wrong}
+
+查找您遇到的现象：
+
+- [添加规则后仍无权限](#still-not-allowed)
+- [`lsusb` 或 `nano`：找不到命令](#command-not-found)
+- [卡片名称为 `ttyUSB0`、`ttyACM0` 或 `rfcomm0`](#serial-port)
+- [未找到打印机](#no-printer-found)
+- [测试页可以打印，之后却无法打印收据](#prints-then-stops)
+
+### 添加规则后仍无权限 {#still-not-allowed}
+
+请依次检查：
+
+- 规则中的两个 ID 与 `lsusb` 完全一致，包括小写字母。
+- 规则文件中已写入您添加的那一行。使用 `cat /etc/udev/rules.d/99-receipt-printer.rules` 查看。
+- 完成步骤 5 后，您已拔下打印机并重新插入。
+
+如果三项均正确，请参阅[仍有问题？](#still-stuck)。如果想自行确认 Linux 是否应用了该规则，请先展开下方的检查说明。
+
+<details id="device-file">
+<summary>检查 Linux 是否应用了规则</summary>
+
+1. 再次运行 `lsusb`，因为每次插入打印机时，`Device` 编号都会变化。记下打印机所在行的 `Bus` 和 `Device` 编号，例如 `Bus 001` 和 `Device 007`。
+2. 将它们填入此命令，先填总线编号，然后运行：
+
+   ```bash
+   ls -l /dev/bus/usb/001/007
+   ```
+
+3. 查看输出行的开头：
+   - `crw-rw-rw-`：规则已生效。再次点击**打印测试页**。如果面板仍提示应用无权访问打印机，请参阅[仍有问题？](#still-stuck)
+   - `crw-rw-r--` 或 `crw-------`：规则尚未生效。重新检查上方的清单，再次运行设置步骤 5 中的加载命令，然后拔下打印机并重新插入，重复此处的步骤 1 至 3。如果输出行仍以这些字符开头，请参阅[仍有问题？](#still-stuck)
+
+</details>
+
+<details id="command-not-found">
+<summary>`lsusb` 或 `nano`：找不到命令</summary>
+
+安装缺少的程序，然后重新执行该步骤：
+
+- `lsusb`：在 Ubuntu 或 Debian 上运行 `sudo apt install usbutils`，在 Fedora 上运行 `sudo dnf install usbutils`。
+- `nano`：在 Ubuntu 或 Debian 上运行 `sudo apt install nano`，在 Fedora 上运行 `sudo dnf install nano`。
+
+</details>
+
+<details id="serial-port">
+<summary>卡片名称为 `ttyUSB0`, `ttyACM0` 或 `rfcomm0`</summary>
+
+该打印机通过串口连接，而不是作为 USB 打印机连接。Linux 将串口访问权限授予 `dialout` 组。将您自己的账户加入该组，然后注销并重新登录：
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+在 Arch Linux 上，该组为 `uucp`。
+
+</details>
+
+<details id="no-printer-found">
+<summary>未找到打印机</summary>
+
+应用只列出将自身标识为打印机的 USB 设备。检查线缆并确认打印机已开机，然后点击**重新扫描**。请参阅[未找到打印机](./setup-wizard.mdx#not-found)。
+
+</details>
+
+<details id="prints-then-stops">
+<summary>测试页可以打印，之后却无法打印收据</summary>
+
+这不是权限问题。请从[仍然无法打印？](./setup-wizard.mdx#troubleshoot)开始排查。
+
+</details>
+
+## 仍有问题？ {#still-stuck}
+
+在**未打印任何内容**面板上，或在**设置 → 打印**中打印机所在行的 **⋮** 菜单中，点击**复制设置报告**。将报告粘贴到您的消息中，同时附上打印机对应的 `lsusb` 输出行；如果执行了[检查](#device-file)，也请附上 `ls -l` 输出行。
+
+<SupportContact />
+
+## 应用为何需要此设置 {#why-it-happens}
+
+大多数程序通过 Linux 自带的打印系统打印。收据打印机需要直接接收命令（切纸、打开钱箱），因此桌面版应用会直接打开打印机。
+
+除非规则另有规定，否则 Linux 只允许管理员账户(`root`)访问 USB 设备。应用以您的身份运行，而非 `root`，因此没有规则时便无权打开打印机。您添加的规则为这一打印机型号设置了例外。
+
+Linux 也有自己的 USB 打印机驱动，插入打印机时会占用它。应用会在每次打印前自动将打印机从该驱动中释放，因此您无需移除或禁用驱动。但释放打印机与打印需要相同的权限，所以一条规则即可解决这两个问题。
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/receipt-printers/printer-setup-wizard" title="打印机设置向导" description="添加打印机、打印测试页并回答向导中的问题" />
+  <LinkCard to="/hardware/receipt-printers" title="收据打印机" description="各应用支持的连接方式及所有打印机指南" />
+  <LinkCard to="/hardware/receipt-printers/supported-printers" title="支持的收据打印机" description="哪些打印机可用，以及支持程度" />
+</LinkCards>

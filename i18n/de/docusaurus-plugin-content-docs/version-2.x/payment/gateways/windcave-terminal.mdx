@@ -1,0 +1,266 @@
+---
+title: Windcave
+slug: /hardware/card-readers/windcave
+description: "Nehmen Sie im POS-Checkout Kartenzahlungen über ein Windcave-Terminal entgegen und richten Sie die Erweiterung Windcave Terminal (HIT) in WP Admin ein."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/windcave-terminal/en/manifest.json';
+
+# Windcave Terminal Zahlungsgateway {#windcave-terminal-gateway}
+
+Die Kasse sendet den Bestellbetrag an ein Windcave-Terminal, der Kunde bezahlt am Terminal, und der Verkauf wird automatisch abgeschlossen, sobald Windcave die Zahlung genehmigt. Die Erweiterung benötigt [WCPOS Pro](../../getting-started/pro-license.mdx), sowohl für die Installation als auch für die Nutzung an der Kasse. Diese Seite besteht aus zwei Teilen: [Zahlung entgegennehmen](#take-payment) an der Kasse und [Einrichtung](#setup) in WP Admin.
+
+:::warning Noch nicht von Windcave zertifiziert
+**Nur für Testzahlungen.** Nehmen Sie damit noch keine echten Kundenzahlungen entgegen. Verwenden Sie ausschließlich die **UAT**-Zugangsdaten (Test) von Windcave.
+
+<details>
+<summary>Warum das so ist und was noch nicht getestet wurde</summary>
+
+Windcave verlangt, dass jede Kassensystem-Integration die QA-Zertifizierung besteht, bevor sie echte Zahlungen entgegennimmt. Diese Integration hat sie noch nicht bestanden. Sie wurde auch noch nicht mit einem Windcave-Konto oder an einem physischen Terminal ausgeführt. Die folgenden Schritte basieren auf der HIT-Dokumentation von Windcave und dem Code der Erweiterung.
+
+</details>
+:::
+
+{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves Station selection and logs into Pro and adds refunds; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
+
+## Zahlung entgegennehmen {#take-payment}
+
+Bevor Sie beginnen: Ihr Shop muss online sein, da die Zahlung auf der eigenen Zahlungsseite Ihres Shops im POS abläuft. Außerdem muss jemand mit WP-Admin-Zugriff das [Zahlungsgateway einrichten](#setup). Wenn **Kasse öffnen und schließen** aktiviert ist, [öffnen Sie zuerst die Kasse](../../pos/register/index.mdx#open).
+
+:::info Windcave übernimmt die gesamte Zahlung
+Am Terminal wird immer der gesamte Bestellbetrag berechnet. Die Zahlung für einen Verkauf lässt sich daher nicht auf das Terminal und eine andere Zahlungsart aufteilen.
+:::
+
+1. Stellen Sie den Warenkorb zusammen und drücken Sie auf **Kasse**.
+2. Öffnen Sie die Registerkarte **Legacy**. Die Zahlungsseite Ihres Shops öffnet sich im POS. Siehe [Die Registerkarte Legacy](../../pos/checkout/legacy-tab.mdx).
+
+   <details>
+   <summary>Die Registerkarte zeigt Nur Gesamtbetrag an</summary>
+
+   Für die Bestellung wurde bereits eine Zahlung entgegengenommen. Deshalb öffnet die Registerkarte die Zahlungsseite nicht. Um Windcave zu verwenden, [stornieren Sie zuerst diese Zahlung](../../pos/checkout/cancelling-a-payment.mdx).
+
+   </details>
+
+3. Wählen Sie **Windcave Terminal**. Ihr Shop hat möglicherweise einen anderen Namen dafür vergeben.
+4. Wählen Sie unter **Terminal** das Terminal aus. Bei nur einem Terminal oder einer gesperrten Standardauswahl ist es bereits ausgewählt. Bei zwei oder mehr Terminals ohne Standardauswahl müssen Sie eines auswählen.
+5. Drücken Sie auf **Terminalzahlung starten**. Im Zahlungsbereich erscheint **Wird an Terminal gesendet…**, und der gesamte Bestellbetrag wird an dieses Terminal gesendet.
+6. Der Kunde hält seine Karte an das Terminal, steckt sie ein oder zieht sie durch. Die Anzeige und die Schaltflächen des Terminals erscheinen auch im Zahlungsbereich. Wenn das Terminal Sie auffordert, eine Unterschrift zu prüfen, antworten Sie im Zahlungsbereich mit **JA** oder **NEIN**.
+7. Sobald Windcave die Zahlung genehmigt, erscheint im Zahlungsbereich **Zahlung abgeschlossen — Bestellung wird abgeschlossen…**, und der POS wechselt zum Beleg.
+
+Sie benötigen **Zahlung verarbeiten** unten auf der Registerkarte Legacy nicht: Der Verkauf wird automatisch abgeschlossen, sobald das Terminal die Zahlung genehmigt.
+
+### Zahlung abbrechen oder zurückstellen {#payment-controls}
+
+:::warning Eine zurückgestellte Zahlung kann noch durchgeführt werden
+Prüfen Sie das Terminal, bevor Sie eine andere Zahlungsart verwenden. Zeigt es die Zahlung als genehmigt an, belasten Sie den Kunden nicht erneut. Wenn der Status unklar ist, fragen Sie Ihre Filialleitung.
+:::
+
+- **Terminalzahlung abbrechen** ersetzt **Terminalzahlung starten**, solange eine Zahlung läuft. Damit wird **ABBRECHEN** am Terminal betätigt, sofern das Terminal dies anbietet. Ist das nicht der Fall, weist der Zahlungsbereich darauf hin: Brechen Sie die Zahlung direkt am Terminal ab oder stellen Sie sie zurück.
+- **Zahlung zurückstellen** erscheint, wenn eine Zahlung seit 5 Minuten ohne Antwort läuft oder sich am Terminal nicht abbrechen lässt. Dadurch wird die Zahlung bei Windcave **nicht** abgebrochen. Bevor Sie eine andere Zahlungsart verwenden, vergewissern Sie sich, dass das Terminal die Zahlung als abgelehnt oder abgebrochen anzeigt. Wenn es noch wartet, nichts anzeigt oder der Status unklar ist, bitten Sie Ihre Filialleitung, zuerst das Windcave-Portal zu prüfen.
+- **Neuladen der Seite** setzt die bereits laufende Zahlung fort und zeigt **Terminalzahlung abbrechen** an.
+
+<details>
+<summary>Was nach dem Zurückstellen einer Zahlung geschieht</summary>
+
+Ihr Shop fragt den Zahlungsstatus weiterhin alle 10 Minuten bei Windcave ab, auch wenn die Kasse bereits geschlossen ist. Genehmigt Windcave die Zahlung, nachdem die Bestellung auf andere Weise bezahlt wurde, erhält die Bestellung einen entsprechenden Hinweis. Erstatten Sie diese Zahlung im Windcave-Portal zurück.
+
+</details>
+
+## Wenn etwas schiefgeht {#goes-wrong}
+
+Diese Meldungen können bedeuten, dass der Kunde bereits bezahlt hat. Lesen Sie sie, bevor Sie erneut eine Zahlung entgegennehmen.
+
+### Zeitüberschreitung beim Warten auf das Terminal {#timed-out}
+
+Fünf Minuten sind ohne Ergebnis vergangen, und der Zahlungsbereich fragt den Status nicht mehr ab. Prüfen Sie zuerst das Terminal, bevor Sie etwas anderes tun:
+
+- **Es zeigt die Zahlung als genehmigt an.** Belasten Sie den Kunden nicht erneut. Laden Sie die Seite neu. Der Zahlungsbereich nimmt die Zahlung wieder auf und schließt den Verkauf ab. Wird der Verkauf weiterhin nicht abgeschlossen, bitten Sie Ihre Filialleitung, die Bestellnotizen und das Windcave-Portal zu prüfen.
+- **Es zeigt die Zahlung als abgelehnt oder abgebrochen an.** Drücken Sie auf **Terminalzahlung abbrechen** oder **Zahlung zurückstellen** und nehmen Sie anschließend die Zahlung erneut entgegen.
+- **Es zeigt nichts an, wartet noch oder der Status ist unklar.** Nehmen Sie noch keine weitere Zahlung entgegen. Bitten Sie Ihre Filialleitung, zuerst das Windcave-Portal zu prüfen. Siehe [den Warnhinweis](#payment-controls).
+
+### Diese Bestellung wurde bereits durch eine andere Zahlung bezahlt {#already-paid}
+
+Das Terminal hat die Zahlung genehmigt, aber die Bestellung war bereits auf andere Weise bezahlt. Der Kunde hat daher doppelt bezahlt. Versuchen Sie es nicht erneut. Erstatten Sie die Terminalzahlung im Windcave-Portal zurück; sie ist in den Bestellnotizen angegeben.
+
+### Die Terminalzahlung konnte nicht überprüft werden {#not-verified}
+
+Windcave hat eine Zahlung genehmigt, die dieser Bestellung nicht zugeordnet werden konnte, beispielsweise weil sich der Bestellbetrag geändert hat. Belasten Sie die Karte nicht erneut: Beim Starten erscheint dieselbe Meldung, bis das Problem geklärt ist. Prüfen Sie zuerst die Bestellnotizen und das Windcave-Portal und rufen Sie Ihre Filialleitung hinzu.
+
+<details>
+<summary>Abgelehnt, Terminal belegt, kein Terminal ausgewählt und weitere Meldungen</summary>
+
+**Wählen Sie zuerst ein Terminal aus.** Wählen Sie unter **Terminal** ein Terminal aus und drücken Sie erneut auf **Terminalzahlung starten**.
+
+**Die Zahlung wurde abgelehnt**, der Ablehnungstext des Terminals oder **Windcave hat die Zahlung abgelehnt (Code …)**. Drücken Sie auf **Terminalzahlung starten**, um es erneut zu versuchen, oder verwenden Sie eine andere Zahlungsart.
+
+**Das Terminal schließt noch eine vorherige Transaktion ab.** Schließen Sie diese Transaktion am Terminal ab oder brechen Sie sie dort ab und starten Sie anschließend erneut.
+
+**Windcave hat keinen Eintrag zu dieser Transaktion. Starten Sie die Zahlung erneut.** Die Zahlung hat Windcave nie erreicht. Drücken Sie erneut auf **Terminalzahlung starten**.
+
+**Windcave hat Code … gemeldet: Prüfen Sie die Stations-ID und die HIT-Einstellungen.** Windcave hat die Anfrage abgelehnt, häufig wegen einer falschen Stations-ID. Bitten Sie die Person, die das Zahlungsgateway eingerichtet hat, die [Einstellungen](#settings) zu prüfen, oder stellen Sie die Zahlung zurück.
+
+**Diese Zahlung wurde in UAT gestartet** (oder in der **Produktionsumgebung**). Jemand hat die **Umgebung** während der laufenden Zahlung geändert. Stellen Sie die ursprüngliche Umgebung wieder ein, um die Zahlung abzuschließen, oder prüfen Sie sie im Windcave-Portal.
+
+</details>
+
+<details>
+<summary>Meldungen während der Einrichtung</summary>
+
+**Die Windcave-HIT-Zugangsdaten sind nicht konfiguriert.** **HIT-Benutzername** oder **HIT-Schlüssel** ist leer. Geben Sie beides ein, speichern Sie und prüfen Sie, ob die **Umgebung** zu den Zugangsdaten passt.
+
+**Keine Stations-IDs konfiguriert** in der Liste **Terminal**. Fügen Sie die von Windcave erhaltenen Stations-IDs ein, eine pro Zeile, und speichern Sie.
+
+**Die Aktivierung wird verweigert.** Der Server benötigt **PHP 7.4** oder neuer sowie die PHP-DOM-Erweiterung (**php-xml**). Bitten Sie Ihren Hosting-Anbieter, sie zu aktivieren.
+
+</details>
+
+## Nach dem Verkauf {#receipts}
+
+Wenn Windcave Belegtext vom Terminal sendet, wird dieser als **private Notiz** in der Bestellung gespeichert. Der POS zeigt weiterhin wie gewohnt seinen eigenen Beleg an.
+
+## Rückerstattungen {#refunds}
+
+Rückerstattungen aus WooCommerce werden in dieser Version nicht unterstützt. Erstatten Sie die Zahlung im Windcave-Portal (Payline) oder am Terminal zurück und erfassen Sie die Rückerstattung anschließend manuell in der Bestellung in WooCommerce. Siehe [Rückerstattungen](../../pos/refunds.mdx).
+
+## Einrichtung {#setup}
+
+Dieser Teil richtet sich an die Person, die den Shop in WP Admin verwaltet. Führen Sie diese vier Schritte der Reihe nach aus:
+
+1. [Installieren Sie die Erweiterung](#install) aus dem Erweiterungsverzeichnis.
+2. [Fordern Sie HIT-Zugangsdaten](#credentials) bei Windcave an.
+3. [Füllen Sie die Einstellungen des Zahlungsgateways aus](#gateway-settings).
+4. [Aktivieren Sie es für den POS](#enable).
+
+### Erweiterung installieren {#install}
+
+Öffnen Sie `WP Admin > POS > Einstellungen > Erweiterungen`, suchen Sie **Windcave Terminal for WooCommerce** und klicken Sie auf **Installieren**. WCPOS lädt die Erweiterung herunter, installiert und aktiviert sie in einem Schritt. Siehe [Eine Erweiterung installieren](../../extensions/index.mdx#installing-an-extension).
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[700, 0], [-42, 0], [-40, 0]]} alt="WP Admin, POS-Einstellungen, Erweiterungen, Suche nach windcave: die Karte Windcave Terminal for WooCommerce in Version 0.1.1 mit der Schaltfläche Installieren">
+
+1. **Erweiterungen suchen** — geben Sie `windcave` ein, um die Karte zu finden.
+2. **Windcave Terminal for WooCommerce** — die Erweiterung mit der Version, die aus dem Verzeichnis installiert wird.
+3. **Installieren** — lädt die Erweiterung herunter, installiert und aktiviert sie. WCPOS Pro ist erforderlich.
+
+</JourneyShot>
+
+Ohne das Verzeichnis laden Sie die **Plugin-ZIP-Datei** (nicht die ZIP-Datei mit dem Quellcode) von der [GitHub-Releases-Seite](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases) herunter. Laden Sie sie unter `Plugins > Add Plugin` über **Plugin hochladen** hoch und aktivieren Sie das Plugin anschließend. WooCommerce muss aktiv sein.
+
+### HIT-Zugangsdaten bei Windcave anfordern {#credentials}
+
+Fordern Sie bei Windcave einen **HIT-Benutzernamen**, einen **HIT-Schlüssel** und für jedes Terminal eine **Stations-ID** an. Verwenden Sie für ein Entwicklerkonto das [Formular für Integrationsanforderungen](https://www.windcave.com/merchant-attended-developer-hit) von Windcave.
+
+UAT und Produktion verwenden getrennte Zugangsdaten. Verwenden Sie die UAT-Zugangsdaten, bis Windcave diese Integration zertifiziert hat.
+
+### Einstellungen des Zahlungsgateways ausfüllen {#gateway-settings}
+
+1. Gehen Sie zu `WP Admin > WooCommerce > Einstellungen > Zahlungen` und öffnen Sie **Windcave Terminal**.
+2. Belassen Sie **Umgebung** auf dem Standardwert **UAT (Test)**. **Produktion** ist für den Einsatz nach der Zertifizierung mit Produktionszugangsdaten vorgesehen.
+3. Geben Sie die Werte für **HIT-Benutzername** und **HIT-Schlüssel** ein.
+4. Geben Sie Ihre **Stations-IDs** ein, eine pro Zeile.
+5. Optional: Legen Sie eine **Standard-Stations-ID** fest und aktivieren Sie **Terminalauswahl sperren**, damit Kassierer immer dieses Terminal verwenden.
+6. Lassen Sie **Anbieter-ID** leer. Windcave vergibt sie während der Zertifizierung.
+7. Optional: Aktivieren Sie **Ergebnisbenachrichtigungen (FPRN)**. Dann informiert Windcave Ihren Shop zusätzlich, sobald ein Ergebnis vorliegt, als Ergänzung zu den eigenen Statusabfragen der Kasse.
+8. Speichern Sie.
+
+Es gibt keine Schaltfläche zum Testen der Verbindung. Zugangsdaten und Stations-IDs werden bei der ersten Zahlung geprüft. Führen Sie daher eine Testzahlung an einem UAT-Terminal durch.
+
+### Für den POS aktivieren {#enable}
+
+Gehen Sie zu `WP Admin > POS > Einstellungen > Kasse`, suchen Sie **Windcave Terminal** und schalten Sie **Aktiviert** ein. Siehe [Ein Zahlungsgateway aktivieren](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+Lassen Sie **Aktivieren/Deaktivieren** in den WooCommerce-Einstellungen ausgeschaltet. Der POS verwendet das Zahlungsgateway, sobald hier **Aktiviert** eingeschaltet ist, unabhängig davon, ob dieses Kontrollkästchen markiert ist.
+
+## Einstellungsreferenz {#settings}
+
+Unter `WP Admin > WooCommerce > Einstellungen > Zahlungen > Windcave Terminal`. Die obigen Schritte decken die benötigten Einstellungen ab. Öffnen Sie die Liste, um alle Einstellungen mit ihren Standardwerten zu sehen.
+
+<details>
+<summary>Alle 15 Einstellungen</summary>
+
+| Einstellung | Funktion |
+|---|---|
+| **Aktivieren/Deaktivieren** | Zeigt das Zahlungsgateway auch im Onlineshop an. Lassen Sie es ausgeschaltet: Online kann es Zahlungen nur auf der Zahlungsseite einer bestehenden Bestellung entgegennehmen, nicht im normalen Checkout. Standardmäßig ausgeschaltet. Der POS hat einen eigenen Schalter unter `POS > Einstellungen > Kasse` |
+| **Titel** | Der Name, den Kassierer auf der Zahlungsseite auswählen. Standardwert: `Windcave Terminal` |
+| **Beschreibung** | Der unter dem Titel angezeigte Text. Standardwert: `Pay in person on the Windcave terminal.` |
+| **Umgebung** | **UAT (Test)** (Standard) oder **Produktion**. Jede Umgebung hat eigene HIT-Zugangsdaten; für die Produktion ist eine Windcave-Zertifizierung erforderlich |
+| **HIT-Benutzername** | Von Windcave für die ausgewählte Umgebung bereitgestellt |
+| **HIT-Schlüssel** | Von Windcave für die ausgewählte Umgebung bereitgestellt |
+| **Stations-IDs** | Eine Stations-ID pro Zeile, eine pro Terminal. Sie werden von Windcave vergeben und nicht automatisch gefunden |
+| **Standard-Stations-ID** | Das anfangs ausgewählte Terminal; es wird auch verwendet, wenn keines ausgewählt wird |
+| **Terminalauswahl sperren** | Kassierer können das Terminal nicht wechseln: Es wird immer das Standardterminal verwendet. Funktioniert nur, wenn ein Standardterminal festgelegt ist |
+| **Anbieter-ID** | Wird von Windcave während der Zertifizierung vergeben. Bis dahin leer lassen |
+| **POS-Name** | Der Name, unter dem Ihr POS bei Windcave geführt wird. Standardwert: `WCPOS` |
+| **Ergebnisbenachrichtigungen (FPRN)** | Windcave informiert Ihren Shop zusätzlich, sobald ein Ergebnis vorliegt, als Ergänzung zu den Statusabfragen der Kasse. Standardmäßig ausgeschaltet |
+| **Checkout-Protokolle** | Zeigt **Protokolle anzeigen**, **Kopieren** und **Leeren** im Zahlungsbereich an. Standardmäßig ausgeschaltet |
+| **Protokollierungsstufe** | **Aus**, **Nur Fehler** oder **Debug** (Standard) |
+| **Support** | **Support-Paket herunterladen** und ein Link zu den Protokollen |
+
+</details>
+
+## Protokolle und Support-Paket {#logs-and-support-bundle}
+
+Die Protokolle finden Sie unter `WP Admin > WooCommerce > Status > Protokolle` mit der Quelle `windcave-terminal`. **Protokollierungsstufe** ist anfangs auf **Debug** eingestellt. Dabei werden jede Anfrage an Windcave und jede Antwort aufgezeichnet; der HIT-Schlüssel und Kartennummern werden maskiert.
+
+Wenn eine Zahlung fehlschlägt, klicken Sie auf der Einstellungsseite des Zahlungsgateways auf **Support-Paket herunterladen** und senden Sie die `.json`-Datei zusammen mit der **Bestellnummer** an den Support.
+
+<details>
+<summary>Inhalt des Support-Pakets</summary>
+
+- Die Konfiguration Ihres Shops: Versionen von WordPress, WooCommerce, PHP und der Erweiterung, die Umgebung und die Anzahl der Terminals.
+- Die Einstellungen des Zahlungsgateways mit maskiertem HIT-Schlüssel und auf die ersten drei Zeichen gekürztem HIT-Benutzernamen.
+- Zahlungsversuche aus bis zu 20 kürzlich aufgegebenen Bestellungen, ohne Belege.
+- Die letzten 1,000 Zeilen der beiden neuesten `windcave-terminal`-Protokolldateien. Diese können Belegtext vom Terminal enthalten, wobei Kartennummern maskiert sind.
+
+Wenn WooCommerce seine Protokolle in der Datenbank speichert, enthält das Paket keine Protokollzeilen. Exportieren Sie diese unter `WooCommerce > Status > Protokolle` und senden Sie sie ebenfalls mit.
+
+</details>
+
+## Voraussetzungen {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Windcave-Konto">Ein HIT-Benutzername, ein HIT-Schlüssel und eine Stations-ID pro Terminal. Echte Zahlungen erfordern eine Windcave-Zertifizierung</RequirementItem>
+  <RequirementItem label="Terminal">Ein Windcave-Terminal, das HIT-Zahlungen annimmt</RequirementItem>
+  <RequirementItem label="Verbindung">Nur online. Der Shop sendet jede Zahlung über das Internet an das Terminal. Daher kann jede Kasse jedes Terminal nutzen und beim Checkout eines auswählen</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
+  <RequirementItem label="Server">WordPress 5.2 oder neuer, WooCommerce und PHP 7.4 oder neuer mit der DOM-Erweiterung (php-xml)</RequirementItem>
+  <RequirementItem label="Währung">Eine Währung mit zwei Dezimalstellen</RequirementItem>
+</RequirementsList>
+
+## Was nicht unterstützt wird {#scope-and-limitations}
+
+- Rückerstattungen aus WooCommerce.
+- Trinkgelder, Zuschläge und Bargeldauszahlungen.
+- Währungen ohne zwei Dezimalstellen.
+- Teilzahlungen: Am Terminal wird immer der gesamte Bestellbetrag berechnet.
+- Automatische Terminalsuche: Sie geben jede Stations-ID selbst ein.
+- Der normale Checkout des Onlineshops. Online können Zahlungen nur auf der Zahlungsseite einer bestehenden Bestellung entgegengenommen werden.
+
+<details>
+<summary>Funktionsweise für Entwickler</summary>
+
+Das Zahlungsgateway verwendet Windcave **HIT (vom Host initiierte Transaktion)** über HTTPS. **Umgebung** bestimmt den UAT- oder Produktionsendpunkt, und jedes Terminal wird über seine **Stations-ID** angesprochen.
+
+Beim Start einer Zahlung wird eine Transaktionsreferenz in der Bestellung gespeichert. Anschließend wird eine Kaufanfrage mit Bestellbetrag und Währung gesendet. Der Zahlungsbereich fragt den Status alle 1.5 Sekunden bei Windcave ab und spiegelt die Anzeigezeilen und aktivierten Schaltflächen des Terminals wider. Wenn **Ergebnisbenachrichtigungen (FPRN)** aktiviert ist, ruft Windcave zusätzlich den Shop auf, sobald ein Ergebnis vorliegt.
+
+Die Bestellung wird nur abgeschlossen, wenn das Ergebnis genehmigt ist und mit dem in der Bestellung gespeicherten Zahlungsversuch übereinstimmt: Referenz, Betrag, Umgebung sowie Gesamtbetrag und Währung der Bestellung. Windcave hat 30 Sekunden Zeit, eine neue Transaktion zu registrieren, bevor „kein Eintrag“ als Ablehnung gilt. Eine geplante Prüfung fragt alle 10 Minuten Zahlungen nach, zu denen keine Rückmeldung mehr kam oder die zurückgestellt wurden.
+
+</details>
+
+## Weiterführende Dokumentation {#related-documentation}
+
+- [Die Registerkarte Legacy](../../pos/checkout/legacy-tab.mdx)
+- [Checkout](../../pos/checkout/index.mdx)
+- [Checkout-Einstellungen](../../settings/wp-admin/checkout.mdx)
+- [Erweiterungen](../../extensions/index.mdx)
+- [Ein Problem auf GitHub melden](https://github.com/wcpos/windcave-terminal-for-woocommerce/issues). Bei Fragen zu Ihrem Konto, Ihren Zugangsdaten und Terminals wenden Sie sich an Windcave.
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="Die Registerkarte Legacy" description="Zahlungsgateways, die Zahlungen auf der eigenen Zahlungsseite des Shops entgegennehmen" />
+  <LinkCard to="/settings/checkout" title="Checkout-Einstellungen" description="Zahlungsgateways für den POS aktivieren" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Alle Zahlungsgateways" description="Weitere Kartenterminals, mit denen WCPOS zusammenarbeitet" />
+</LinkCards>
