@@ -18,8 +18,30 @@ module.exports = {
   // /payment/gateways (not /payment/gateways/), so Vercel serves them without a
   // 308 and canonical/og:url name the final URL.
   trailingSlash: false,
-  // One eager git read instead of one git log per file.
-  future: { experimental_vcs: 'default-v2' },
+  future: {
+    // One eager git read instead of one git log per file.
+    experimental_vcs: 'default-v2',
+    // Docusaurus Faster uses rspack, SWC, LightningCSS, one MDX compile for
+    // server and client, and SSG in worker threads. The cold-cache 12-locale
+    // webpack build ran 30 to 46 minutes on Vercel and hit its 45-minute limit
+    // (deploy for 8a6a679, 2026-11-09); the Faster build is about 5x quicker.
+    // rspackPersistentCache is off because 12 locales of rspack cache can never
+    // fit Vercel's 1.5 GB build-cache limit. gitEagerVcs is off because
+    // experimental_vcs above already picks the eager reader.
+    faster: {
+      swcJsLoader: true,
+      swcJsMinimizer: true,
+      swcHtmlMinimizer: true,
+      lightningCssMinimizer: true,
+      mdxCrossCompilerCache: true,
+      rspackBundler: true,
+      rspackPersistentCache: false,
+      ssgWorkerThreads: true,
+      gitEagerVcs: false,
+    },
+    // ssgWorkerThreads requires this flag; no other v4 flag is turned on.
+    v4: { removeLegacyPostBuildHeadAttribute: true },
+  },
   onBrokenLinks: 'throw',
   favicon: 'img/favicon.ico',
   // iOS and crawlers request the root path regardless of markup.

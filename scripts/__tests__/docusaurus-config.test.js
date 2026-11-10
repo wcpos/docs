@@ -17,6 +17,34 @@ describe('git-backed sitemap freshness', () => {
   });
 });
 
+describe('Docusaurus Faster build', () => {
+  it('turns on every Faster feature except the persistent rspack cache', () => {
+    expect(config.future.faster).toEqual({
+      swcJsLoader: true,
+      swcJsMinimizer: true,
+      swcHtmlMinimizer: true,
+      lightningCssMinimizer: true,
+      mdxCrossCompilerCache: true,
+      rspackBundler: true,
+      rspackPersistentCache: false,
+      ssgWorkerThreads: true,
+      gitEagerVcs: false,
+    });
+  });
+
+  it('turns on only the v4 flag that SSG worker threads need', () => {
+    expect(config.future.v4).toEqual({ removeLegacyPostBuildHeadAttribute: true });
+  });
+
+  it('pins @docusaurus/faster to the @docusaurus/core version', () => {
+    const pkg = require('../../package.json');
+    expect(pkg.dependencies['@docusaurus/faster']).toBe(
+      pkg.dependencies['@docusaurus/core']
+    );
+    expect(pkg.dependencies['@docusaurus/faster']).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});
+
 describe('docusaurus locale configuration', () => {
   it('labels the English locale as English in the language menu', () => {
     expect(config.i18n.localeConfigs.en.label).toBe('English');
