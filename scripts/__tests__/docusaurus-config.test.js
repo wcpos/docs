@@ -54,6 +54,28 @@ describe('docusaurus locale configuration', () => {
     expect(config.i18n.locales).toContain('nl');
     expect(config.i18n.localeConfigs.nl.label).toBe('Nederlands');
   });
+
+  it('pins each locale to the baseUrl inferred by an all-locales build', () => {
+    for (const locale of config.i18n.locales) {
+      expect(config.i18n.localeConfigs[locale].baseUrl).toBe(
+        locale === config.i18n.defaultLocale ? '/' : `/${locale}/`
+      );
+    }
+  });
+
+  it('configures exactly the supported locales', () => {
+    expect(Object.keys(config.i18n.localeConfigs).sort()).toEqual(
+      [...config.i18n.locales].sort()
+    );
+  });
+
+  it('preserves the English language and path and Arabic direction', () => {
+    expect(config.i18n.localeConfigs.en).toMatchObject({
+      htmlLang: 'en-GB',
+      path: 'en',
+    });
+    expect(config.i18n.localeConfigs.ar.direction).toBe('rtl');
+  });
 });
 
 describe('docusaurus frontmatter parsing', () => {
