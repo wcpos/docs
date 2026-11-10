@@ -3,6 +3,8 @@ const {
   canonicalizeDescriptionQuoting,
 } = require('./scripts/validate-frontmatter');
 
+const LOCALES = ['en', 'es', 'fr', 'de', 'nl', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'];
+
 /** @type {import('@docusaurus/types').DocusaurusConfig} */
 module.exports = {
   title: 'WCPOS - Point of Sale for WooCommerce',
@@ -365,20 +367,20 @@ module.exports = {
   ],
   i18n: {
     defaultLocale: 'en',
-    locales: ['en', 'es', 'fr', 'de', 'nl', 'ja', 'pt-BR', 'ko', 'it', 'ar', 'hi-IN', 'zh-CN'],
-    localeConfigs: {
-      en: {
-        htmlLang: 'en-GB',
-        path: 'en',
-        label: 'English',
-      },
-      nl: {
-        label: 'Nederlands',
-      },
-      ar: {
-        direction: 'rtl',
-      },
-    },
+    locales: LOCALES,
+    // npm run build uses scripts/build-locales.js to build each locale in its own process.
+    // A single --locale build drops the locale segment from an inferred baseUrl,
+    // so pin each one to what an all-locales build infers.
+    localeConfigs: Object.fromEntries(
+      LOCALES.map((locale) => [locale, {
+        baseUrl: locale === 'en' ? '/' : `/${locale}/`,
+        ...{
+          en: { htmlLang: 'en-GB', path: 'en', label: 'English' },
+          nl: { label: 'Nederlands' },
+          ar: { direction: 'rtl' },
+        }[locale],
+      }]),
+    ),
   },
   plugins: [
     function silenceKnownWebpackWarnings() {
