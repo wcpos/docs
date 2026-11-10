@@ -1,0 +1,266 @@
+---
+title: Windcave
+slug: /hardware/card-readers/windcave
+description: "Receba pagamentos com cartão em um terminal Windcave pela tela de finalização da compra do POS e configure a extensão Windcave Terminal (HIT) no WP Admin."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/windcave-terminal/en/manifest.json';
+
+# Gateway de pagamento Windcave Terminal {#windcave-terminal-gateway}
+
+O caixa envia o total do pedido para um terminal Windcave, o cliente paga no terminal e a venda é concluída automaticamente quando a Windcave aprova o pagamento. A extensão precisa do [WCPOS Pro](../../getting-started/pro-license.mdx), tanto para a instalação quanto para o uso no caixa. Esta página tem duas partes: [receber um pagamento](#take-payment) no caixa e [configurar](#setup) no WP Admin.
+
+:::warning Ainda não certificado pela Windcave
+**Somente para pagamentos de teste.** Ainda não receba pagamentos reais de clientes com esta integração: use apenas as credenciais **UAT** (teste) da Windcave.
+
+<details>
+<summary>Por quê e o que ainda não foi testado</summary>
+
+A Windcave exige que toda integração de ponto de venda passe por sua certificação de QA antes de receber pagamentos reais. Esta integração ainda não passou. Ela também ainda não foi executada com uma conta Windcave nem em um terminal físico: os passos abaixo vêm da documentação HIT da Windcave e do código da extensão.
+
+</details>
+:::
+
+{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves Station selection and logs into Pro and adds refunds; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
+
+## Receber um pagamento {#take-payment}
+
+Antes de começar: sua loja precisa estar online, pois o pagamento é feito na própria página de pagamento da loja dentro do POS, e alguém com acesso ao WP Admin precisa [configurar o gateway de pagamento](#setup). Se **Abrir e fechar o caixa** estiver ativado, [abra o caixa](../../pos/register/index.mdx#open) primeiro.
+
+:::info A Windcave recebe o pagamento integral
+O terminal sempre cobra o pedido inteiro, por isso não é possível dividir uma venda com outro meio de pagamento.
+:::
+
+1. Adicione os itens ao carrinho e pressione **Finalizar Compra**.
+2. Abra a aba **Legado**. A página de pagamento da sua loja abre dentro do POS. Consulte [A aba Legado](../../pos/checkout/legacy-tab.mdx).
+
+   <details>
+   <summary>A aba informa Somente valor integral</summary>
+
+   Um pagamento já foi recebido para o pedido, por isso a aba não abre a página de pagamento. Para usar a Windcave, [cancele esse pagamento](../../pos/checkout/cancelling-a-payment.mdx) primeiro.
+
+   </details>
+
+3. Escolha **Windcave Terminal**. Sua loja pode ter dado outro nome a ele.
+4. Selecione o terminal em **Terminal**. Se houver apenas um terminal ou um padrão bloqueado, ele já estará selecionado. Se houver dois ou mais e nenhum padrão, você precisará escolher um.
+5. Pressione **Iniciar pagamento no terminal**. O painel informa **Enviando para o terminal…** e o valor total do pedido é enviado para esse terminal.
+6. O cliente aproxima, insere ou passa o cartão no terminal. Tudo o que o terminal mostra também aparece no painel, com os respectivos botões. Quando o terminal pedir para verificar uma assinatura, responda **SIM** ou **NÃO** no painel.
+7. Quando a Windcave aprova, o painel informa **Pagamento concluído — finalizando pedido…** e o POS avança para o recibo.
+
+Você não precisa usar **Processar pagamento** no rodapé da aba Legado: a venda é concluída automaticamente quando o terminal aprova.
+
+### Interromper ou deixar um pagamento de lado {#payment-controls}
+
+:::warning Um pagamento deixado de lado ainda pode ser aprovado
+Antes de receber de outra forma, confira o terminal. Se ele mostrar que o pagamento foi aprovado, não cobre o cliente novamente. Se não conseguir determinar o resultado, consulte seu gerente.
+:::
+
+- **Cancelar pagamento no terminal** substitui **Iniciar pagamento no terminal** enquanto um pagamento está em andamento. Esse botão aciona **CANCELAR** no terminal quando a opção está disponível. Caso contrário, o painel informa isso: cancele no próprio terminal ou deixe o pagamento de lado.
+- **Deixar pagamento de lado** aparece quando um pagamento está em andamento há 5 minutos sem resposta ou quando o terminal não permite cancelar. Essa opção **não** cancela o pagamento na Windcave. Antes de receber de outra forma, confirme que o terminal mostra o pagamento como recusado ou cancelado. Se ele ainda estiver aguardando, com a tela em branco ou sem um resultado claro, peça ao gerente para verificar o portal da Windcave primeiro.
+- **Recarregar a página** retoma o pagamento já em andamento, exibindo **Cancelar pagamento no terminal**.
+
+<details>
+<summary>O que acontece depois que você deixa um pagamento de lado</summary>
+
+Uma verificação na sua loja continua acompanhando o pagamento na Windcave a cada 10 minutos, mesmo depois que o caixa é fechado. Se a Windcave aprová-lo depois que o pedido tiver sido pago de outra forma, uma nota será adicionada ao pedido informando isso: reembolse esse pagamento no portal da Windcave.
+
+</details>
+
+## Se algo der errado {#goes-wrong}
+
+Estas mensagens podem significar que o cliente já pagou. Leia-as antes de receber outro pagamento.
+
+### O tempo de espera pelo terminal se esgotou {#timed-out}
+
+Cinco minutos se passaram sem resultado e o painel parou de verificar. Confira o terminal antes de fazer qualquer outra coisa:
+
+- **Ele mostra o pagamento aprovado.** Não cobre novamente. Recarregue a página para que o painel retome o pagamento e conclua a venda. Se a venda ainda não for concluída, peça ao gerente para verificar as notas do pedido e o portal da Windcave.
+- **Ele mostra o pagamento recusado ou cancelado.** Pressione **Cancelar pagamento no terminal** ou **Deixar pagamento de lado** e receba o pagamento novamente.
+- **A tela está em branco, ainda aguardando ou você não consegue determinar o resultado.** Não receba outro pagamento ainda. Peça ao gerente para verificar o portal da Windcave primeiro. Consulte [o aviso](#payment-controls).
+
+### Este pedido já foi pago por outro pagamento {#already-paid}
+
+O terminal aprovou, mas o pedido já havia sido pago de outra forma, então o cliente pagou duas vezes. Não tente novamente. Reembolse o pagamento do terminal no portal da Windcave; as notas do pedido identificam esse pagamento.
+
+### Não foi possível verificar o pagamento do terminal {#not-verified}
+
+A Windcave aprovou um pagamento que não pôde ser aplicado a este pedido, por exemplo, porque o total do pedido mudou. Não cobre o cartão novamente: Iniciar mostra a mesma mensagem até que a situação seja resolvida. Verifique primeiro as notas do pedido e o portal da Windcave e chame seu gerente.
+
+<details>
+<summary>Pagamento recusado, terminal ocupado, nenhum terminal selecionado e outras mensagens</summary>
+
+**Selecione um terminal primeiro.** Escolha um terminal em **Terminal** e pressione **Iniciar pagamento no terminal** novamente.
+
+**O pagamento foi recusado**, ou a mensagem de recusa do próprio terminal, ou **A Windcave recusou o pagamento (código …)**. Pressione **Iniciar pagamento no terminal** para tentar novamente ou receba por outro meio de pagamento.
+
+**O terminal ainda está concluindo uma transação anterior.** Conclua ou cancele essa transação no terminal e comece novamente.
+
+**A Windcave não tem registro desta transação. Inicie o pagamento novamente.** O pagamento não chegou à Windcave. Pressione **Iniciar pagamento no terminal** novamente.
+
+**A Windcave informou o código …: verifique o ID da estação e as configurações HIT.** A Windcave recusou a solicitação, geralmente porque um ID da estação está incorreto. Peça a quem configurou o gateway de pagamento para verificar as [configurações](#settings) ou deixe o pagamento de lado.
+
+**Este pagamento foi iniciado em UAT** (ou **produção**). Alguém alterou **Ambiente** enquanto o pagamento estava em andamento. Restaure a configuração anterior para concluir o pagamento ou verifique-o no portal da Windcave.
+
+</details>
+
+<details>
+<summary>Mensagens durante a configuração</summary>
+
+**As credenciais HIT da Windcave não estão configuradas.** O **Nome de usuário HIT** ou a **Chave HIT** está vazio. Preencha ambos, salve e verifique se **Ambiente** corresponde a essas credenciais.
+
+**Nenhum ID da estação configurado** na lista **Terminal**. Adicione os IDs da estação fornecidos pela Windcave, um por linha, e salve.
+
+**A ativação é recusada.** O servidor precisa de **PHP 7.4** ou mais recente e da extensão DOM do PHP (**php-xml**). Peça ao seu provedor de hospedagem para ativá-la.
+
+</details>
+
+## Após a venda {#receipts}
+
+Quando a Windcave envia o texto do recibo do terminal, ele é salvo no pedido como uma **nota privada**. O POS continua mostrando seu próprio recibo normalmente.
+
+## Reembolsos {#refunds}
+
+Esta versão não oferece suporte a reembolsos pelo WooCommerce. Faça o reembolso no portal da Windcave (Payline) ou no terminal e registre-o manualmente no pedido no WooCommerce. Consulte [Reembolsos](../../pos/refunds.mdx).
+
+## Configurar {#setup}
+
+Esta parte é para quem administra o WP Admin da loja. Siga estas quatro etapas na ordem:
+
+1. [Instale a extensão](#install) pelo diretório de extensões.
+2. [Obtenha as credenciais HIT](#credentials) com a Windcave.
+3. [Preencha as configurações do gateway de pagamento](#gateway-settings).
+4. [Ative para o POS](#enable).
+
+### Instalar a extensão {#install}
+
+Abra `WP Admin > POS > Configurações > Extensões`, encontre **Windcave Terminal for WooCommerce** e clique em **Instalar**. O WCPOS baixa, instala e ativa a extensão de uma só vez. Consulte [Instalar uma extensão](../../extensions/index.mdx#installing-an-extension).
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[700, 0], [-42, 0], [-40, 0]]} alt="WP Admin, Configurações do POS, Extensões, busca por windcave: o cartão Windcave Terminal for WooCommerce na versão 0.1.1 com o botão Instalar">
+
+1. **Pesquisar extensões** — digite `windcave` para encontrar o cartão.
+2. **Windcave Terminal for WooCommerce** — a extensão, com a versão que o diretório instala.
+3. **Instalar** — baixa, instala e ativa a extensão. Requer WCPOS Pro.
+
+</JourneyShot>
+
+Sem o diretório, baixe o **zip do plugin** (não o zip do código-fonte) na [página de versões do GitHub](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases), envie-o com **Enviar plugin** em `Plugins > Add Plugin` e ative-o. O WooCommerce precisa estar ativo.
+
+### Obter credenciais HIT com a Windcave {#credentials}
+
+Solicite à Windcave um **Nome de usuário HIT**, uma **Chave HIT** e um **ID da estação** para cada terminal. Para uma conta de desenvolvimento, use o [formulário de requisitos de integração](https://www.windcave.com/merchant-attended-developer-hit) da Windcave.
+
+As credenciais de UAT e de produção são separadas. Use as de UAT até que a Windcave certifique esta integração.
+
+### Preencher as configurações do gateway de pagamento {#gateway-settings}
+
+1. Acesse `WP Admin > WooCommerce > Configurações > Pagamentos` e abra **Windcave Terminal**.
+2. Mantenha **Ambiente** em **UAT (teste)**, a opção padrão. **Produção** é para depois da certificação, com credenciais de produção.
+3. Insira o **Nome de usuário HIT** e a **Chave HIT**.
+4. Insira seus **IDs da estação**, um por linha.
+5. Opcional: defina um **ID da estação padrão** e marque **Bloquear seleção de terminal** para que os caixas sempre o utilizem.
+6. Deixe **ID do fornecedor** vazio. A Windcave fornece um durante a certificação.
+7. Opcional: marque **Notificações de resultado (FPRN)** para que a Windcave também avise sua loja quando um resultado estiver pronto, como complemento às verificações do próprio caixa.
+8. Salve.
+
+Não há botão para testar a conexão. As credenciais e os IDs da estação são verificados no primeiro pagamento, por isso faça um pagamento de teste em um terminal UAT.
+
+### Ativar para o POS {#enable}
+
+Acesse `WP Admin > POS > Configurações > Finalização de compra`, encontre **Windcave Terminal** e ligue **Ativado**. Consulte [Ativar um gateway de pagamento](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+Deixe **Ativar/Desativar** desmarcado nas configurações do WooCommerce. O POS usa o gateway de pagamento assim que **Ativado** é ligado aqui, independentemente de essa caixa estar marcada ou não.
+
+## Referência de configurações {#settings}
+
+Em `WP Admin > WooCommerce > Configurações > Pagamentos > Windcave Terminal`. As etapas acima cobrem as configurações necessárias; abra a lista para ver todas as configurações e seus valores padrão.
+
+<details>
+<summary>Todas as 15 configurações</summary>
+
+| Configuração | O que faz |
+|---|---|
+| **Ativar/Desativar** | Lista o gateway de pagamento também na loja online. Deixe desativado: online, ele só pode receber pagamentos na página de pagamento de um pedido existente, não na finalização de compra normal. Desativado por padrão. O POS tem seu próprio controle em `POS > Configurações > Finalização de compra` |
+| **Título** | O nome que os caixas escolhem na página de pagamento. O padrão é `Windcave Terminal` |
+| **Descrição** | A linha exibida abaixo do título. O padrão é `Pay in person on the Windcave terminal.` |
+| **Ambiente** | **UAT (teste)** (padrão) ou **Produção**. Cada um tem suas próprias credenciais HIT; produção exige certificação da Windcave |
+| **Nome de usuário HIT** | Fornecido pela Windcave para o ambiente escolhido |
+| **Chave HIT** | Fornecida pela Windcave para o ambiente escolhido |
+| **IDs da estação** | Um ID da estação por linha, um por terminal. A Windcave os fornece; eles não são encontrados automaticamente |
+| **ID da estação padrão** | O terminal selecionado inicialmente e usado quando nenhum é escolhido |
+| **Bloquear seleção de terminal** | Os caixas não podem trocar o terminal: o padrão é sempre usado. Só funciona quando há um padrão definido |
+| **ID do fornecedor** | Fornecido pela Windcave durante a certificação. Deixe vazio até lá |
+| **Nome do POS** | O nome pelo qual seu POS é identificado na Windcave. O padrão é `WCPOS` |
+| **Notificações de resultado (FPRN)** | A Windcave também avisa sua loja quando um resultado está pronto, como complemento às verificações do caixa. Desativado por padrão |
+| **Logs da finalização da compra** | Exibe **Mostrar logs**, **Copiar** e **Limpar** no painel de pagamento. Desativado por padrão |
+| **Nível de log** | **Desativado**, **Somente erros** ou **Debug** (o padrão) |
+| **Suporte** | **Baixar pacote de suporte** e um link para os logs |
+
+</details>
+
+## Logs e pacote de suporte {#logs-and-support-bundle}
+
+Os logs ficam em `WP Admin > WooCommerce > Status > Logs`, na origem `windcave-terminal`. **Nível de log** começa em **Debug**, que registra cada solicitação à Windcave e cada resposta, com a chave HIT e os números dos cartões mascarados.
+
+Quando um pagamento falhar, clique em **Baixar pacote de suporte** na página de configurações do gateway de pagamento e envie o arquivo `.json` ao suporte com o **número do pedido**.
+
+<details>
+<summary>O que o pacote de suporte contém</summary>
+
+- A configuração da sua loja: as versões do WordPress, WooCommerce, PHP e da extensão, o ambiente e o número de terminais.
+- As configurações do gateway de pagamento, com a chave HIT mascarada e o nome de usuário HIT reduzido aos três primeiros caracteres.
+- Tentativas de pagamento de até 20 pedidos recentes, sem recibos.
+- As últimas 1,000 linhas dos dois arquivos de log `windcave-terminal` mais recentes. Elas podem conter o texto do recibo do terminal, com os números dos cartões mascarados.
+
+Se o WooCommerce armazena seus logs no banco de dados, o pacote não contém linhas de log: exporte-as de `WooCommerce > Status > Logs` e envie-as também.
+
+</details>
+
+## Requisitos {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Conta Windcave">Um nome de usuário HIT, uma chave HIT e um ID da estação por terminal. Pagamentos reais exigem certificação da Windcave</RequirementItem>
+  <RequirementItem label="Terminal">Um terminal Windcave que aceite pagamentos HIT</RequirementItem>
+  <RequirementItem label="Conexão">Somente online. A loja envia cada pagamento ao terminal pela internet, por isso qualquer caixa pode usar qualquer terminal e escolher um na finalização da compra</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
+  <RequirementItem label="Servidor">WordPress 5.2 ou mais recente, WooCommerce e PHP 7.4 ou mais recente com a extensão DOM (php-xml)</RequirementItem>
+  <RequirementItem label="Moeda">Uma moeda com duas casas decimais</RequirementItem>
+</RequirementsList>
+
+## O que a integração não faz {#scope-and-limitations}
+
+- Reembolsos pelo WooCommerce.
+- Gorjetas, acréscimos e saques.
+- Moedas sem duas casas decimais.
+- Pagamentos parciais: o terminal sempre cobra o pedido inteiro.
+- Encontrar terminais automaticamente: você precisa digitar cada ID da estação.
+- A finalização de compra normal da loja online. Online, só é possível receber pagamentos na página de pagamento de um pedido existente.
+
+<details>
+<summary>Como funciona, para desenvolvedores</summary>
+
+O gateway de pagamento usa o **HIT (Transação iniciada pelo host)** da Windcave via HTTPS. **Ambiente** seleciona o endpoint de UAT ou de produção, e cada terminal é endereçado pelo seu **ID da estação**.
+
+Ao iniciar um pagamento, uma referência da transação é registrada no pedido e, em seguida, uma operação de compra é enviada com o total e a moeda do pedido. O painel consulta o status na Windcave a cada 1.5 segundos e reproduz as linhas da tela do terminal e os botões habilitados. Com **Notificações de resultado (FPRN)** ativado, a Windcave também faz uma chamada à loja quando um resultado está pronto.
+
+O pedido só é concluído quando o resultado é aprovado e corresponde à tentativa registrada no pedido: a referência, o valor, o ambiente e o total e a moeda do pedido. A Windcave tem 30 segundos para registrar uma nova transação antes que "sem registro" seja considerado uma recusa. Uma verificação agendada a cada 10 minutos acompanha os pagamentos que ficaram sem resposta ou foram deixados de lado.
+
+</details>
+
+## Documentação relacionada {#related-documentation}
+
+- [A aba Legado](../../pos/checkout/legacy-tab.mdx)
+- [Finalização da compra](../../pos/checkout/index.mdx)
+- [Configurações do caixa](../../settings/wp-admin/checkout.mdx)
+- [Extensões](../../extensions/index.mdx)
+- [Relate um problema no GitHub](https://github.com/wcpos/windcave-terminal-for-woocommerce/issues). Para assuntos relacionados à sua conta, credenciais e terminais, entre em contato com a Windcave.
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="A aba Legado" description="Gateways de pagamento que recebem pagamentos na própria página de pagamento da loja" />
+  <LinkCard to="/settings/checkout" title="Configurações do caixa" description="Ative gateways de pagamento para o POS" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Todos os gateways de pagamento" description="Os outros terminais de cartão compatíveis com o WCPOS" />
+</LinkCards>

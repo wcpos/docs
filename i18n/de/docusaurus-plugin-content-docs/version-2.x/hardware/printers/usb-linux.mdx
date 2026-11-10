@@ -1,0 +1,205 @@
+---
+title: USB-Drucker unter Linux
+slug: /hardware/receipt-printers/usb-printers-linux
+sidebar_label: USB-Drucker unter Linux
+sidebar_position: 6
+description: "Unter Linux benötigt die Desktop-App Ihre Erlaubnis, um einen USB-Belegdrucker zu verwenden. Eine udev-Regel erteilt diese Berechtigung, und der Drucker kann drucken."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
+
+Unter Linux kann die Desktop-App einen USB-Belegdrucker erst verwenden, wenn Sie ihr den Zugriff erlauben. Dazu fügen Sie einmalig eine Zeile in eine Regeldatei ein.
+
+Diese Seite hilft Ihnen, wenn unter Linux **Testseite drucken** in der Desktop-App zu **Nichts gedruckt** führt und die Meldung **Die App durfte nicht auf den Drucker zugreifen. Erlauben Sie den Zugriff in Ihren Systemeinstellungen und versuchen Sie es erneut.** erscheint. Linux hat dafür keinen Einstellungsdialog: Die folgende Regel übernimmt diese Einstellung.
+
+<details id="other-signs">
+<summary>Weitere Anzeichen für dieses Problem</summary>
+
+- Unter der Meldung wird bei **Supportdetails** `LIBUSB_ERROR_ACCESS` angezeigt.
+- In der Suche trägt die Karte Ihres Druckers die Bezeichnung **USB-Drucker** mit einer Zahlenfolge statt des eigentlichen Druckernamens. Das bedeutet meist, dass die App nicht auf den Drucker zugreifen konnte, um seinen Namen auszulesen.
+
+</details>
+
+:::note Bevor Sie beginnen
+Führen Sie diese Schritte direkt am Kassenrechner aus und öffnen Sie diese Seite dort, damit Sie die folgenden Zeilen in dessen Terminal kopieren können. Öffnen Sie die App **Terminal** (unter Ubuntu und Linux Mint mit **Ctrl+Alt+T**). Sie benötigen außerdem das Administratorpasswort des Kassenrechners. Wenn Sie es nicht haben, senden Sie diese Seite an die Person, die den Kassenrechner eingerichtet hat.
+:::
+
+## Der App den Zugriff auf den Drucker erlauben {#do-this}
+
+Jeder der folgenden Befehle steht in einem grauen Kasten. Um einen Befehl auszuführen, bewegen Sie den Mauszeiger über den Kasten und drücken Sie auf die Kopierschaltfläche oben rechts. Klicken Sie dann in das Terminal, fügen Sie den Befehl mit **Ctrl+Shift+V** ein und drücken Sie **Enter**.
+
+Wenn ein Befehl nach dem Passwort fragt, geben Sie es ein und drücken Sie Enter. Während der Eingabe zeigt der Bildschirm nichts oder nur Sternchen an: Das ist normal.
+
+### Die IDs Ihres Druckers ermitteln {#find-ids}
+
+1. Schließen Sie den Drucker an und schalten Sie ihn ein.
+2. Ermitteln Sie die beiden IDs des Druckers. Führen Sie im Terminal folgenden Befehl aus:
+
+   ```bash
+   lsusb
+   ```
+
+   Wenn `command not found` erscheint, [installieren Sie zuerst lsusb](#command-not-found). Jede Zeile steht für ein USB-Gerät. Suchen Sie die Zeile Ihres Druckers, zum Beispiel `Bus 001 Device 007: ID 04b8:0e28 Seiko Epson Corp.`
+
+   In dieser Zeile stehen:
+
+   - Hersteller-ID: `04b8`, der Code direkt nach `ID`.
+   - Modell-ID: `0e28`, der Code nach dem Doppelpunkt.
+   - Herstellername: `Seiko Epson Corp.`, am Ende. Er hilft Ihnen, die Zeile zu finden.
+
+   Wenn Sie nicht erkennen können, welche Zeile zum Drucker gehört, ziehen Sie dessen Kabel ab, führen Sie `lsusb` erneut aus und prüfen Sie, welche Zeile fehlt.
+
+### Die Regel erstellen und laden {#create-rule}
+
+3. Öffnen Sie eine neue Regeldatei im Texteditor nano:
+
+   ```bash
+   sudo nano /etc/udev/rules.d/99-receipt-printer.rules
+   ```
+
+   nano öffnet sich im Terminal mit einer leeren Seite und einer Liste von Tastenkürzeln am unteren Rand. Wenn `command not found` erscheint, [installieren Sie zuerst nano](#command-not-found).
+
+4. Tragen Sie die Regel in die Datei ein. Sie erlaubt jedem Benutzerkonto auf diesem Kassenrechner, alle Drucker mit diesen beiden IDs zu verwenden. Kopieren Sie diese Zeile wie zuvor mit der Kopierschaltfläche des Kastens. Die Zeile ist länger als der Kasten: Um sie vollständig zu lesen, bewegen Sie den Mauszeiger über den Kasten (auf einem Telefon tippen Sie darauf) und drücken Sie die Schaltfläche für den Zeilenumbruch links neben der Kopierschaltfläche.
+
+   ```text
+   SUBSYSTEM=="usb", ATTRS{idVendor}=="04b8", ATTRS{idProduct}=="0e28", MODE="0666"
+   ```
+
+   Gehen Sie dann in nano wie folgt vor:
+   1. **Fügen Sie die Regel ein**, und zwar mit **Ctrl+Shift+V**.
+   2. **Ersetzen Sie die beiden IDs.** Navigieren Sie mit den Pfeiltasten zu `04b8` und `0e28`. Ersetzen Sie nur diese beiden Codes durch die beiden IDs Ihres Druckers, exakt so, wie `lsusb` sie anzeigt. Behalten Sie die Anführungszeichen bei.
+   3. **Prüfen Sie die Zeile**, bevor Sie speichern: eine einzige Zeile, die mit `SUBSYSTEM=="usb",` beginnt und mit `MODE="0666"` endet. Ihre beiden IDs müssen in Anführungszeichen an den Stellen stehen, an denen zuvor `04b8` und `0e28` standen.
+   4. **Speichern** Sie mit **Ctrl+O** und anschließend **Enter**.
+   5. **Beenden Sie nano** mit **Ctrl+X**. Sie befinden sich wieder an der Eingabeaufforderung des Terminals.
+
+   <details id="rule-parts">
+   <summary>Was die einzelnen Teile der Regel bedeuten</summary>
+
+   Die Regel besteht aus vier Teilen, die bis auf den letzten jeweils mit einem Komma enden:
+
+   - `SUBSYSTEM=="usb",`: Die Regel gilt für ein USB-Gerät.
+   - `ATTRS{idVendor}=="04b8",`: die Hersteller-ID.
+   - `ATTRS{idProduct}=="0e28",`: die Modell-ID.
+   - `MODE="0666"`: Jedes Benutzerkonto auf diesem Computer darf den Drucker verwenden, wie es für einen Kassenrechner erforderlich ist.
+
+   </details>
+
+5. Laden Sie die Regel:
+
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+
+   Falls das Passwort abgefragt wird, geben Sie es erneut ein. Bei Erfolg erscheint keine Ausgabe, und die Eingabeaufforderung kehrt zurück. Wird stattdessen ein Fehler ausgegeben, brechen Sie hier ab und lesen Sie [Sie kommen nicht weiter?](#still-stuck)
+
+6. Ziehen Sie das Druckerkabel ab und schließen Sie es wieder an.
+
+### Den Drucker hinzufügen und testen {#add-and-test}
+
+7. Wenn Sie diesen Drucker zuvor mit **Ohne Test speichern** gespeichert haben, löschen Sie ihn zuerst: Öffnen Sie unter **Einstellungen → Drucken** das Menü **⋮** in seiner Zeile und wählen Sie **Löschen**.
+8. Gehen Sie in der Desktop-App zu **Einstellungen → Drucken** und drücken Sie **Drucker hinzufügen**. Die Suche nach USB-Druckern startet automatisch. Wählen Sie die mit **USB** gekennzeichnete Karte Ihres Druckers. Da die App nun auf den Drucker zugreifen kann, zeigt die Karte den Namen an, den der Drucker selbst meldet.
+9. Drücken Sie **Testseite drucken**. Im Dialog erscheint die Frage **Wurde die Testseite gedruckt?** Wählen Sie Ihre Antwort:
+   - **Ja, und sie sieht richtig aus**: Der Drucker wird gespeichert, und im Dialog stehen der Druckername und **ist eingerichtet**. Drücken Sie **Fertig**. Der Drucker ist bereit.
+   - **Gedruckt, aber das Lineal stimmt nicht**: Wählen Sie das Papier in Ihrem Drucker aus. Die Testseite wird erneut gedruckt. Siehe [Gedruckt, aber das Lineal stimmt nicht](./setup-wizard.mdx#test-page-ruler).
+   - **Es kam nichts heraus**: Im Dialog erscheint **Nichts gedruckt**. Wenn weiterhin gemeldet wird, dass die App nicht auf den Drucker zugreifen durfte, lesen Sie [Zugriff trotz Regel weiterhin verweigert](#still-not-allowed). Bei jeder anderen Meldung lesen Sie [Es kam nichts heraus](./setup-wizard.mdx#test-page-nothing).
+
+:::tip Die App mit Ihrem eigenen Benutzerkonto starten
+Öffnen Sie die Desktop-App wie gewohnt, niemals mit `sudo`. Die Regel ermöglicht der App, den Drucker unter Ihrem Benutzerkonto zu verwenden.
+:::
+
+## Wenn etwas schiefgeht {#goes-wrong}
+
+Suchen Sie nach Ihrem Fehlerbild:
+
+- [Zugriff trotz Regel weiterhin verweigert](#still-not-allowed)
+- [`lsusb` oder `nano`: Befehl nicht gefunden](#command-not-found)
+- [Die Karte heißt `ttyUSB0`, `ttyACM0` oder `rfcomm0`](#serial-port)
+- [Kein Drucker gefunden](#no-printer-found)
+- [Die Testseite wird gedruckt, spätere Belege jedoch nicht](#prints-then-stops)
+
+### Zugriff trotz Regel weiterhin verweigert {#still-not-allowed}
+
+Prüfen Sie der Reihe nach:
+
+- Die beiden IDs in der Regel stimmen exakt mit `lsusb` überein, einschließlich der Kleinschreibung.
+- Die Regeldatei enthält Ihre Zeile. Zeigen Sie sie mit `cat /etc/udev/rules.d/99-receipt-printer.rules` an.
+- Sie haben nach Schritt 5 das Druckerkabel abgezogen und wieder angeschlossen.
+
+Wenn alle drei Punkte zutreffen, lesen Sie [Sie kommen nicht weiter?](#still-stuck). Um selbst festzustellen, ob Linux die Regel angewendet hat, öffnen Sie zunächst die folgende Prüfanleitung.
+
+<details id="device-file">
+<summary>Prüfen, ob Linux die Regel angewendet hat</summary>
+
+1. Führen Sie `lsusb` erneut aus, da sich die `Device`-Nummer bei jedem Anschließen des Druckers ändert. Notieren Sie die Nummern für `Bus` und `Device` aus der Druckerzeile, zum Beispiel `Bus 001` und `Device 007`.
+2. Setzen Sie sie in diesen Befehl ein, zuerst die Busnummer, und führen Sie ihn aus:
+
+   ```bash
+   ls -l /dev/bus/usb/001/007
+   ```
+
+3. Lesen Sie den Anfang der ausgegebenen Zeile:
+   - `crw-rw-rw-`: Die Regel ist wirksam. Drücken Sie erneut **Testseite drucken**. Wenn der Dialog weiterhin meldet, dass die App nicht auf den Drucker zugreifen durfte, lesen Sie [Sie kommen nicht weiter?](#still-stuck)
+   - `crw-rw-r--` oder `crw-------`: Die Regel ist nicht wirksam. Gehen Sie die obige Checkliste erneut durch und führen Sie den Ladebefehl aus Schritt 5 der Einrichtung nochmals aus. Ziehen Sie dann das Druckerkabel ab, schließen Sie es wieder an und wiederholen Sie hier die Schritte 1 bis 3. Wenn die Zeile weiterhin so beginnt, lesen Sie [Sie kommen nicht weiter?](#still-stuck)
+
+</details>
+
+<details id="command-not-found">
+<summary>`lsusb` oder `nano`: Befehl nicht gefunden</summary>
+
+Installieren Sie das fehlende Programm und wiederholen Sie dann den Schritt:
+
+- `lsusb`: `sudo apt install usbutils` unter Ubuntu oder Debian, `sudo dnf install usbutils` unter Fedora.
+- `nano`: `sudo apt install nano` unter Ubuntu oder Debian, `sudo dnf install nano` unter Fedora.
+
+</details>
+
+<details id="serial-port">
+<summary>Die Karte heißt `ttyUSB0`, `ttyACM0` oder `rfcomm0`</summary>
+
+Dieser Drucker wird über eine serielle Schnittstelle angeschlossen, nicht als USB-Drucker. Linux weist serielle Schnittstellen der Gruppe `dialout` zu. Fügen Sie Ihr Benutzerkonto dieser Gruppe hinzu und melden Sie sich anschließend ab und wieder an:
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+Unter Arch Linux heißt die Gruppe `uucp`.
+
+</details>
+
+<details id="no-printer-found">
+<summary>Kein Drucker gefunden</summary>
+
+Die App listet nur USB-Geräte auf, die sich als Drucker melden. Prüfen Sie das Kabel und ob der Drucker eingeschaltet ist. Drücken Sie dann **Erneut suchen**. Siehe [Kein Drucker gefunden](./setup-wizard.mdx#not-found).
+
+</details>
+
+<details id="prints-then-stops">
+<summary>Die Testseite wird gedruckt, spätere Belege jedoch nicht</summary>
+
+Das ist kein Berechtigungsproblem. Beginnen Sie bei [Der Drucker druckt immer noch nicht?](./setup-wizard.mdx#troubleshoot)
+
+</details>
+
+## Sie kommen nicht weiter? {#still-stuck}
+
+Drücken Sie im Dialog **Nichts gedruckt** auf **Einrichtungsbericht kopieren** oder wählen Sie diesen Eintrag im Menü **⋮** in der Druckerzeile unter **Einstellungen → Drucken**. Fügen Sie den Bericht zusammen mit der `lsusb`-Zeile Ihres Druckers in Ihre Nachricht ein und, falls Sie [die Prüfung](#device-file) durchgeführt haben, auch die `ls -l`-Zeile.
+
+<SupportContact />
+
+## Warum die App diese Berechtigung benötigt {#why-it-happens}
+
+Die meisten Programme drucken über das Drucksystem von Linux. Ein Belegdrucker muss Befehle direkt empfangen können (Papier schneiden, Kassenlade öffnen), deshalb greift die Desktop-App selbst auf den Drucker zu.
+
+Linux behält den Zugriff auf USB-Geräte seinem Administratorkonto (`root`) vor, sofern keine Regel etwas anderes festlegt. Die App läuft unter Ihrem Benutzerkonto, nicht als `root`, und darf deshalb ohne eine solche Regel nicht auf den Drucker zugreifen. Die hinzugefügte Regel macht für dieses eine Druckermodell eine Ausnahme.
+
+Linux besitzt außerdem einen eigenen Treiber für USB-Drucker, der den Drucker beim Anschließen übernimmt. Die App löst den Drucker vor jedem Druckvorgang selbstständig von diesem Treiber, sodass Sie ihn weder entfernen noch blockieren müssen. Dafür ist jedoch dieselbe Berechtigung erforderlich wie für das Drucken. Deshalb behebt eine einzige Regel beide Probleme.
+
+## Weiterführende Dokumentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/receipt-printers/printer-setup-wizard" title="Drucker-Einrichtungsassistent" description="Einen Drucker hinzufügen, die Testseite drucken und die Fragen dazu beantworten" />
+  <LinkCard to="/hardware/receipt-printers" title="Belegdrucker" description="Welche Verbindungen die einzelnen Apps unterstützen und alle Druckeranleitungen" />
+  <LinkCard to="/hardware/receipt-printers/supported-printers" title="Unterstützte Belegdrucker" description="Welche Drucker funktionieren und wie gut" />
+</LinkCards>

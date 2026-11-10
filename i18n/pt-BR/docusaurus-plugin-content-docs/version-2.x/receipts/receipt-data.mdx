@@ -1,0 +1,947 @@
+---
+title: Dados do recibo
+slug: /settings/receipt-templates/receipt-data
+sidebar_label: Dados do recibo
+sidebar_position: 5
+toc_max_heading_level: 2
+description: "Todos os campos que um modelo de recibo pode imprimir, do nome da loja aos totais, com trechos prontos para copiar em modelos HTML e térmicos."
+---
+
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
+
+**WP Admin:** os modelos são editados em `WP Admin → POS → Templates`; esta página lista os campos que eles podem imprimir.
+
+Para imprimir ou enviar um recibo por e-mail, consulte [Recibos e a tela de pagamento concluído](./at-checkout.mdx); para escolher um modelo ou pedir à IA que altere um para você, consulte [Personalize seu recibo](./customise.mdx).
+
+Esta página é voltada à edição manual do código de um modelo. Todos os modelos, HTML ou térmicos, imprimem a partir dos mesmos dados do recibo: a loja, o pedido, os itens, os totais e os pagamentos. A página mostra como imprimir um campo, apresenta três exemplos comuns e lista todos os campos.
+
+**Ir para:** [Encontrar um campo](#field-reference) · [Exemplos comuns](#common-recipes) · [Se algo der errado](#if-something-goes-wrong)
+
+## Imprimir um campo {#print-a-field}
+
+1. Abra o modelo em **WP Admin → POS → Modelos** (consulte os detalhes em [Editar manualmente](./customise.mdx#option-3--edit-it-by-hand)).
+2. No local em que o campo deve ser impresso, digite seu caminho entre chaves duplas, como `{{store.name}}`, `{{order.number}}` ou `{{totals.total_display}}`, ou insira-o pela lista de campos ao lado do código.
+3. Confira a prévia abaixo do código e clique em **Atualizar** para salvar.
+
+Para uma lista, como a de itens, envolva a linha em uma seção para que ela se repita uma vez por item:
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} —
+  {{line_total_display}}
+{{/lines}}
+```
+
+Uma seção também omite seu conteúdo quando o campo está vazio, é zero ou falso. Assim, `{{#customer.id}}…{{/customer.id}}` só imprime para um cliente identificado. Para imprimir valores monetários, use o campo que termina em `_display`; consulte [Campos monetários](#currency-fields).
+
+Os recibos também podem ser impressos offline: o aplicativo cria uma cópia dos dados do recibo a partir do pedido no dispositivo.
+
+<Accordion>
+  <AccordionItem question="Por que os recibos podem ser diferentes">
+
+### De onde vêm os dados {#where-the-data-comes-from}
+
+O servidor da sua loja gera os dados do recibo de cada pedido, e o aplicativo cria uma cópia reduzida a partir do pedido no dispositivo: ela não inclui `cashier`, horários de funcionamento, observações ou políticas da loja, nem `totals.paid_total` ou `totals.change_total`. Um modelo HTML ou térmico abre imediatamente com a cópia do dispositivo e passa a usar a do servidor quando ela chega; offline, a cópia do dispositivo é a que será impressa, então esses campos ficam vazios. Com o WCPOS Pro, a cópia do dispositivo também inclui o logotipo da loja; sem o Pro, o logotipo chega com a cópia do servidor. Um modelo PHP legado é sempre renderizado pelo servidor. Por isso, um modelo usa os campos abaixo, nunca métodos PHP de pedidos. Alguns campos só são impressos quando o servidor renderiza o modelo, como no download de um PDF; eles estão listados em [Se algo der errado](#if-something-goes-wrong).
+
+  </AccordionItem>
+</Accordion>
+
+## Mapa do recibo {#receipt-map}
+
+Cada parte de um recibo impresso vem de uma seção dos dados do recibo. Aponte para uma parte do recibo ou para seu cartão para destacar os dois; clique ou toque em qualquer um deles para ir aos campos dessa seção. No celular, os cartões aparecem após o recibo na mesma ordem, de cima para baixo.
+
+O recibo abaixo, os dois primeiros exemplos e a composição do preço usam o mesmo pedido de exemplo. Os valores dos itens são anteriores à aplicação do cupom (`line_subtotal_display`); os modelos de recibo da galeria imprimem os valores após sua aplicação (`line_total_display`, 26.10 para o café espresso).
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "IVA: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "Recibo #1042", right: "13 de jul. de 2026" },
+        { left: "Caixa: Ada", right: "Cliente: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Café espresso em grãos", right: "29.00" },
+        { left: "~34.00~ · Economia −5.00", sub: true },
+        { left: "1 × Caneca de cerâmica", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+        { left: "Valores dos itens antes do cupom: `line_subtotal_display`", sub: true },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "Subtotal", right: "52.75" },
+        { left: "Cupom SUMMER10", right: "−5.28" },
+        { left: "Embalagem para presente", right: "2.50" },
+        { left: "Frete", right: "10.00" },
+        { left: "TOTAL", right: "59.97", bold: true },
+        { left: "Total economizado", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "Cartão", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "Obrigado pela sua compra!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## Exemplos comuns {#common-recipes}
+
+A maioria das edições manuais se enquadra em um destes dois exemplos, apresentados para um modelo HTML. Um terceiro exemplo, abaixo deles, aborda a reimpressão de pedidos antigos. Cada cartão mostra as novas linhas em um recibo, depois o código delas e, por fim, onde adicioná-lo no modelo. O nome do item, o valor e o TOTAL vêm do restante do seu modelo.
+
+<Accordion>
+  <AccordionItem question="Como usar estes exemplos em um modelo térmico">
+
+Os mesmos campos e seções funcionam sem alterações: coloque cada linha impressa em um elemento `<text>` e omita `<s>`, pois o XML térmico não oferece texto tachado e imprime o preço sem esse efeito ([Modelos térmicos](./thermal-templates.mdx#text-and-formatting)).
+
+  </AccordionItem>
+</Accordion>
+
+<Recipes>
+  <Recipe
+    title="Tachar o preço normal"
+    why="Dentro da seção `{{#lines}}` já existente no modelo, adicione o bloco `{{#line_savings}}` após a linha do item. 34.00 de preço normal − 5.00 de economia na promoção − 2.90 de cupom = 26.10 pagos. O bloco omite ambas as linhas em pedidos sem histórico de preços registrado."
+    preview={[
+      { left: "2 × Café espresso em grãos", right: "26.10" },
+      { left: "~34.00~ · Economia −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}:
+    -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="Adicionar uma linha de total economizado"
+    why="Adicione estas linhas após a linha TOTAL. São duas seções: a linha é omitida quando o histórico de preços está incompleto ou quando não houve economia."
+    preview={[
+      { left: "TOTAL", right: "59.97", bold: true },
+      { left: "Total economizado", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+</Recipes>
+
+<Accordion>
+  <AccordionItem question="Reimprimir um pedido feito antes do WCPOS 1.9.0">
+
+<Recipes>
+  <Recipe
+    title="Reimprimir com segurança um pedido anterior à v1.9"
+    why="Para um pedido feito antes do WCPOS 1.9.0, não para o pedido de exemplo. Dentro da seção `{{#lines}}` já existente no modelo, adicione os blocos `{{#line_savings}}` e `{{#discounts}}` após a linha do item. A economia já está incluída no desconto, então isso imprime o desconto e omite a economia."
+    preview={[
+      { left: "1 × Café espresso em grãos", right: "14.50" },
+      { left: "~17.00~  Desconto −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{^savings_in_discounts}}
+      {{i18n.savings}}:
+      -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    {{i18n.discount}}:
+    -{{discounts_display}}
+  {{/discounts}}
+{{/lines}}`}
+  />
+</Recipes>
+
+  </AccordionItem>
+</Accordion>
+
+## Referência de campos {#field-reference}
+
+Expanda uma seção para ver seus campos. O primeiro item lista todas as seções e seus tipos.
+
+<Accordion>
+  <AccordionItem question="Todas as seções e seus tipos">
+
+### Seções de nível superior {#top-level-sections}
+
+| Seção | Conteúdo |
+|---------|---------------|
+| `order` (objeto) | Identificação, status, datas, observação e informações da URL de pagamento do pedido |
+| `store` (objeto) | Identificação, endereço, dados de contato, identificações fiscais, logotipo, horários e texto de rodapé da loja |
+| `cashier` (objeto) | Usuário que processou o pedido |
+| `customer` (objeto) | Nome de exibição, endereços e identificações fiscais do cliente |
+| `lines` (array) | Itens de produto do pedido |
+| `fees` (array) | Linhas de taxas adicionais |
+| `shipping` (array) | Linhas de frete |
+| `discounts` (array) | Linhas de cupons/descontos |
+| `totals` (objeto) | Totais do pedido, totais de pagamentos, resumo de reembolsos e contagens de itens |
+| `tax` (objeto) | Indicadores do modo de exibição de impostos para condições de seções |
+| `tax_summary` (array) | Linhas de resumo de impostos por alíquota |
+| `has_tax_summary` (booleano) | Condição auxiliar para `tax_summary` |
+| `payments` (array) | Linhas de pagamentos |
+| `refunds` (array) | Registros de reembolsos aplicados ao pedido |
+| `fiscal` (objeto) | Campos do snapshot fiscal preenchidos por integrações fiscais |
+| `register` (objeto) | O caixa que registrou a venda: `id` e `name`. Strings vazias quando desconhecido |
+| `software` (objeto) | O software que emitiu o recibo: `name` (`WCPOS`), `plugin_version`, `app_version`, `app_build`, `platform` |
+| `presentation_hints` (objeto) | Orientações de formatação e renderização |
+| `i18n` (objeto) | Rótulos traduzidos para modelos incluídos e personalizados |
+
+  </AccordionItem>
+  <AccordionItem question="Número, status e datas do pedido — order">
+
+### order {#order}
+
+| Campo | Tipo | Exemplo / descrição |
+|-------|------|-----------------------|
+| `order.id` | número | `1042` |
+| `order.number` | string | Número do pedido exibido ao usuário, por exemplo, `"1042"` |
+| `order.currency` | string | Código ISO da moeda, por exemplo, `"USD"` |
+| `order.customer_note` | string | Observação do cliente/pedido |
+| `order.wc_status` | string | Slug original do status do WooCommerce, por exemplo, `"processing"` |
+| `order.status_label` | string | Rótulo traduzido do status, incluindo status personalizados |
+| `order.created_via` | string | Origem/canal, por exemplo, `"woocommerce-pos"` |
+| `order.needs_payment` | booleano | Indica se uma seção de pagamento deve ser exibida |
+| `order.payment_url` | string | URL de pagamento do pedido, quando disponível |
+| `order.created` | objeto de data | Data de criação do pedido |
+| `order.paid` | objeto de data | Data do pagamento; strings vazias quando não foi pago |
+| `order.completed` | objeto de data | Data de conclusão; strings vazias quando não foi concluído |
+| `order.printed` | objeto de data | Data e hora da impressão/reimpressão no momento da renderização |
+
+  </AccordionItem>
+
+  <AccordionItem question="Nome, endereço, contato e horários da loja — store">
+
+### store {#store}
+
+| Campo | Tipo | Exemplo / descrição |
+|-------|------|-----------------------|
+| `store.id` | número | ID da loja ou ID histórico de lojas excluídas |
+| `store.name` | string | Nome de exibição da loja |
+| `store.address.address_1` | string | Linha 1 do endereço |
+| `store.address.address_2` | string | Linha de complemento do endereço |
+| `store.address.city` | string | Cidade/localidade |
+| `store.address.state` | string | Estado/região |
+| `store.address.postcode` | string | CEP |
+| `store.address.country` | string | Código ISO do país |
+| `store.address_lines` | array | Linhas de endereço pré-formatadas; recomendadas para a maioria dos modelos |
+| `store.tax_ids` | array | Identificações fiscais estruturadas da empresa; percorra esta lista em vez de usar uma única identificação fiscal |
+| `store.phone` | string | Telefone da loja |
+| `store.email` | string | E-mail da loja |
+| `store.logo` | string/null | URL ou URI de dados do logotipo da loja: o logotipo da própria loja ou, na falta dele, o logotipo do site WordPress, a menos que a loja desative essa opção. `null` quando nenhum dos dois existe |
+| `store.opening_hours` | string/null | Texto compacto dos horários de funcionamento |
+| `store.opening_hours_vertical` | string/null | Bloco de horários de funcionamento em várias linhas |
+| `store.opening_hours_inline` | string/null | Texto dos horários de funcionamento separados por vírgulas |
+| `store.opening_hours_notes` | string/null | Observações em texto livre sobre os horários de funcionamento |
+| `store.personal_notes` | string/null | Rodapé do recibo/mensagem pessoal |
+| `store.policies_and_conditions` | string/null | Texto de reembolso, devoluções ou termos |
+| `store.footer_imprint` | string/null | Informações legais do rodapé |
+
+### Objetos de identificação fiscal {#tax-id-objects}
+
+`store.tax_ids` e `customer.tax_ids` contêm objetos com a mesma estrutura:
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `type` | string | Identificador como `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein` ou `other` |
+| `value` | string | Valor da identificação fiscal a imprimir |
+| `country` | string/null | Código ISO do país; null para `eu_vat` e `other` |
+| `label` | string | Rótulo de exibição traduzido, resolvido antes da renderização |
+
+Exemplo:
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="Quem atendeu o cliente — cashier">
+
+### cashier {#cashier}
+
+| Campo | Tipo | Exemplo / descrição |
+|-------|------|-----------------------|
+| `cashier.id` | número | ID do usuário do WordPress, `0` quando desconhecido |
+| `cashier.name` | string | Nome de exibição do caixa |
+
+  </AccordionItem>
+
+  <AccordionItem question="Nome, endereços e identificações fiscais do cliente — customer">
+
+### customer {#customer}
+
+| Campo | Tipo | Exemplo / descrição |
+|-------|------|-----------------------|
+| `customer.id` | número/null | ID do cliente ou `null` para visitantes |
+| `customer.name` | string | Nome de exibição do cliente ou rótulo de visitante |
+| `customer.first_name` | string | Primeiro nome do endereço de cobrança, para uma saudação como "Obrigado, Nia". Vazio para visitantes sem esse nome |
+| `customer.billing_address.*` | objeto | Campos do endereço de cobrança do WooCommerce |
+| `customer.shipping_address.*` | objeto | Campos do endereço de entrega do WooCommerce |
+| `customer.tax_ids` | array | Identificações fiscais estruturadas do cliente capturadas em um snapshot do pedido |
+
+As chaves comuns de endereço incluem `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email` e `phone`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Itens vendidos — lines">
+
+### lines {#lines}
+
+Percorra a lista com `{{#lines}}...{{/lines}}`. Os valores de exemplo correspondem à linha do café espresso do [pedido de exemplo](#receipt-map).
+
+<FieldIndex
+  note="Cada campo monetário vem em duas formas: o número, para uma seção `{{#…}}` (zero e `null` a ocultam, e um campo `null` nem sequer tem um campo `_display`), e o texto `_display`, para impressão. Os campos marcados como incl/excl também têm versões `_incl` e `_excl`, cada uma com seu próprio `_display`."
+  emptyText="Nenhum campo corresponde — limpe o filtro para ver todos os campos de `lines[]`."
+  fields={[
+    { name: 'key', type: 'string', desc: "Chave estável da linha / ID do item do pedido.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "SKU do produto.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Nome de exibição do produto ou da linha.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Quantidade vendida.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Quantidade reembolsada nesta linha.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Preço unitário normal registrado. `null` em pedidos sem histórico de preços do POS — envolva-o em uma seção.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Preço unitário de venda antes do cupom — o preço registrado no POS, quando disponível; caso contrário, é derivado do subtotal armazenado da linha.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Preço normal menos preço de venda, limitado a um mínimo de zero. Zero é considerado falso, então as linhas condicionais ficam ocultas.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Preço normal registrado multiplicado pela quantidade.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Preço de venda antes do cupom multiplicado pela quantidade.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Economia total entre o preço normal e o preço de venda nesta linha.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "Verdadeiro quando a economia da linha já está incluída em `discounts`, como em pedidos feitos antes da v1.9.0. Use-o para não imprimir a economia duas vezes.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Valor unitário do WooCommerce antes dos descontos. Não use este campo como preço normal.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Valor unitário final após os descontos do WooCommerce.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Antes do cupom: subtotal da linha do WooCommerce antes dos descontos, o valor ao lado de cada item no recibo de exemplo acima.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "Desconto nativo do WooCommerce na linha, como valor positivo — apenas cupons nos pedidos atuais.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Após o cupom: total final da linha, o valor que os modelos de recibo da galeria imprimem ao lado de cada item.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Total reembolsado nesta linha, como valor positivo.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '""', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Linhas de impostos por alíquota para esta linha." },
+    { name: 'meta', type: 'array', desc: "Metadados do item do pedido em pares `{key, value}`." },
+    { name: 'attributes', type: 'array', desc: "Atributos do produto/variação em pares `{key, value}`." },
+  ]}
+/>
+
+### Exibir o preço normal e a economia {#displaying-regular-price-and-savings}
+
+Para um layout com preços unitários, exiba o preço normal registrado, o preço de venda e a economia assim:
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+Use os campos de total da linha quando a quantidade for relevante:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` é o preço antes dos cupons. Use `unit_price` ou `line_total` para obter o valor final após os descontos do WooCommerce.
+
+:::note Reimpressão de pedidos criados antes da v1.9.0
+Pedidos antigos do WCPOS podem já incluir a redução do preço normal para o preço de venda em `discounts`. Se o seu modelo personalizado imprime tanto a economia quanto os descontos da linha, use `savings_in_discounts` para evitar exibir a mesma redução duas vezes:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+Se o modelo não imprime uma linha de `discounts` por item, continue exibindo `line_savings` mesmo quando `savings_in_discounts` for verdadeiro. Os modelos incluídos tratam essa distinção automaticamente.
+:::
+
+  </AccordionItem>
+
+  <AccordionItem question="Taxas adicionais e frete — fees, shipping">
+
+### fees e shipping {#fees-and-shipping}
+
+Percorra as listas com `{{#fees}}...{{/fees}}` e `{{#shipping}}...{{/shipping}}`.
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `label` | string | Rótulo da taxa adicional ou nome do método de entrega |
+| `method_id` | string | ID do método de entrega (somente frete) |
+| `total` / `_incl` / `_excl` | número | Totais conforme a configuração de exibição, com impostos e sem impostos |
+| `taxes` | array | Linhas de impostos por alíquota |
+| `meta` | array | Pares de metadados `{key, value}` |
+
+Variantes formatadas: `total_display`, `total_incl_display` e `total_excl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Cupons e descontos — discounts">
+
+### discounts {#discounts}
+
+Percorra a lista com `{{#discounts}}...{{/discounts}}`.
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `label` | string | Descrição do cupom ou, na falta dela, seu código. Um desconto adicionado no carrinho do POS exibe `Discount` ou `Discount (10%)` para um percentual |
+| `code` | string | Código do cupom |
+| `discount_type` | string | Slug do tipo de cupom do WooCommerce, por exemplo, `fixed_cart`, `percent` ou `fixed_product`. Vazio quando o cupom não existe mais. |
+| `total` / `_incl` / `_excl` | número | Valor do desconto como número positivo |
+
+Variantes formatadas: `total_display`, `total_incl_display` e `total_excl_display`. Adicione seu próprio sinal de menos no modelo se quiser exibir os descontos como linhas negativas.
+
+`discount_type` foi adicionado na v1.2 dos dados do recibo. Snapshots de recibos fiscais capturados antes disso não contêm esse campo. {/* pending: monorepo#3363 */}
+
+  </AccordionItem>
+
+  <AccordionItem question="Totais, valores pagos, reembolsos e contagens de itens — totals">
+
+### totals {#totals}
+
+Os valores vêm do [pedido de exemplo](#receipt-map), que posteriormente recebeu um reembolso parcial de $7.25.
+
+<FieldIndex
+  note="Os campos monetários seguem o mesmo pareamento dos itens: um número simples para condições e uma string `_display` para impressão, com variantes `_incl`/`_excl` onde indicado."
+  emptyText="Nenhum campo corresponde — limpe o filtro para ver todos os campos de `totals`."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Subtotal do pedido antes dos descontos.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total de descontos do pedido como valor positivo — apenas cupons nos pedidos atuais.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Economia total registrada entre o preço normal e o preço de venda de todos os itens de produto, incluindo promoções do catálogo e alterações de preço no caixa.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Soma dos descontos do WooCommerce e da economia em relação ao preço normal, sem a sobreposição dos pedidos antigos. Um único valor para mostrar ao cliente tudo o que ele economizou.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Indica se o recibo tem dados de preços registrados suficientes para calcular os totais completos da economia.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Valor total dos impostos.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total geral do pedido, conforme a configuração de exibição de impostos: quando os preços são exibidos sem impostos, é o total menos os impostos. `total_incl` é sempre o valor cobrado.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Valor pago / aplicado.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "Troco devolvido ao cliente.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '""', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Total reembolsado como valor positivo.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Total menos reembolsos, limitado a um mínimo de zero. `0` quando nada foi reembolsado, então use `refund_total` como condição.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Soma das quantidades dos itens do pedido.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Contagem de linhas de produtos.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+Use `total_saved` quando quiser mostrar ao cliente um único valor com tudo o que ele economizou. Não calcule esse valor somando `discount_total` e `sale_savings_total` no modelo: pedidos criados antes da v1.9.0 podem já incluir a economia de preço do POS no total de descontos do WooCommerce. O campo canônico `total_saved` detecta e remove essa sobreposição.
+
+Os totais de economia são `null` e `total_saved_complete` é falso quando alguma linha de produto não tem dados de preços registrados suficientes para um cálculo agregado confiável. Condicione a linha a `total_saved_complete` e depois use `total_saved` para ocultar o valor zero:
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+Os modelos incluídos imprimem **Total economizado** usando a variante com impostos, `totals.total_saved_incl_display`, dentro de uma única condição `{{#totals.total_saved_incl}}`. Essa condição basta porque o valor é `null` quando o histórico de preços está incompleto e zero quando não houve economia.
+
+  </AccordionItem>
+
+  <AccordionItem question="Linhas de impostos — tax, tax_summary">
+
+### tax e tax_summary {#tax-and-tax_summary}
+
+Use `tax` para condições baseadas no modo de exibição e `tax_summary` para linhas discriminadas por alíquota.
+
+| Campo de imposto | Tipo | Descrição |
+|-----------|------|-------------|
+| `tax.display` | string | `incl` ou `excl` |
+| `tax.display_incl` | booleano | Verdadeiro quando os preços são exibidos com impostos |
+| `tax.display_excl` | booleano | Verdadeiro quando os preços são exibidos sem impostos |
+| `tax.breakdown` | string | `hidden`, `single` ou `itemized` |
+| `tax.breakdown_hidden` | booleano | Verdadeiro quando as linhas de impostos devem ficar ocultas |
+| `tax.breakdown_single` | booleano | Verdadeiro quando se prefere um único total de impostos |
+| `tax.breakdown_itemized` | booleano | Verdadeiro quando se preferem linhas por alíquota |
+| `has_tax_summary` | booleano | Verdadeiro quando `tax_summary` contém linhas |
+
+Percorra `tax_summary` com `{{#tax_summary}}...{{/tax_summary}}`.
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `code` | string | ID/código da alíquota de imposto |
+| `rate` | número/null | Percentual da alíquota, quando resolvido |
+| `label` | string | Rótulo da alíquota de imposto |
+| `compound` | booleano | Indica se a alíquota é composta |
+| `taxable_amount_excl` | número/null | Base tributável sem impostos |
+| `tax_amount` | número | Imposto cobrado |
+| `taxable_amount_incl` | número/null | Base tributável com impostos |
+
+Variantes formatadas: `taxable_amount_excl_display`, `tax_amount_display` e `taxable_amount_incl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Pagamentos recebidos — payments">
+
+### payments {#payments}
+
+Percorra a lista com `{{#payments}}...{{/payments}}`.
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `method_id` | string | Identificador do método de pagamento |
+| `method_title` | string | Título de exibição do método de pagamento |
+| `amount` | número | Valor aplicado ao pedido |
+| `transaction_id` | string | ID da transação no gateway de pagamento |
+| `tendered` | número | Valor entregue em dinheiro, quando presente |
+| `change` | número | Troco devolvido em dinheiro, quando presente |
+
+Variantes formatadas: `amount_display`, `tendered_display` e `change_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Reembolsos — refunds">
+
+### refunds {#refunds}
+
+Percorra a lista com `{{#refunds}}...{{/refunds}}`. Os valores dos reembolsos são números positivos: o modelo adiciona um sinal de menos ou os imprime em um bloco próprio de itens devolvidos.
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `id` | número | ID do registro de reembolso |
+| `date` | objeto de data | Data de criação do reembolso |
+| `amount` | número | Total do reembolso |
+| `subtotal` | número | Subtotal da linha reembolsada |
+| `tax_total` | número | Imposto reembolsado |
+| `shipping_total` | número | Valor do frete reembolsado |
+| `shipping_tax` | número | Imposto sobre o frete reembolsado |
+| `reason` | string | Motivo do reembolso |
+| `refunded_by_id` | número/null | ID do usuário que emitiu o reembolso |
+| `refunded_by_name` | string | Nome de exibição do usuário que emitiu o reembolso |
+| `refunded_payment` | booleano | Indica se o pagamento foi reembolsado pelo gateway de pagamento |
+| `destination` | string | Destino da devolução do dinheiro: `original_method`, `cash` ou `manual` para um reembolso feito no POS; vazio nos demais casos |
+| `gateway_id` | string | ID do gateway de pagamento usado no reembolso |
+| `gateway_title` | string | Título de exibição do gateway de pagamento |
+| `processing_mode` | string | Modo de processamento pelo provedor/manual |
+| `lines` | array | Linhas de produtos reembolsados |
+| `fees` | array | Linhas de taxas adicionais reembolsadas |
+| `shipping` | array | Linhas de frete reembolsadas |
+
+Os campos das linhas de reembolso incluem `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl` e `taxes`; os modelos renderizados no aplicativo POS também recebem `line_total` e `unit_total`. As linhas de taxas adicionais e frete reembolsados usam `label`, `total`, `total_incl`, `total_excl` e `taxes`, e as linhas de frete acrescentam `method_id`. Variantes de exibição são adicionadas para os totais e os valores de impostos.
+
+  </AccordionItem>
+
+  <AccordionItem question="Registros fiscais — fiscal">
+
+### fiscal {#fiscal}
+
+As integrações fiscais e o WCPOS Pro preenchem os campos de identificação, como o número do recibo, o hash e o conteúdo do código QR. Os campos do documento indicam que tipo de documento está sendo impresso, permitindo que um modelo imprima um reembolso ou um relatório de caixa de forma diferente de uma venda.
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `fiscal.document_type` | string | `sale` por padrão; também `refund`, `void`, `cancellation`, `closure`, `xreport` ou `handover` |
+| `fiscal.is_sale_document` | booleano | Verdadeiro para uma venda. Use os indicadores `is_…` como condições de seções |
+| `fiscal.is_refund_document` | booleano | Verdadeiro para um reembolso |
+| `fiscal.is_void_document` | booleano | Verdadeiro para uma anulação: uma venda cancelada antes de ser concluída |
+| `fiscal.is_cancellation_document` | booleano | Verdadeiro para um cancelamento: uma venda concluída que foi cancelada posteriormente |
+| `fiscal.is_closure_document` | booleano | Verdadeiro para um fechamento de caixa |
+| `fiscal.is_x_report` | booleano | Verdadeiro para um relatório X |
+| `fiscal.is_handover` | booleano | Verdadeiro para um comprovante de passagem de caixa |
+| `fiscal.corrects` | string | Em um reembolso, a identificação da venda que ele corrige |
+| `fiscal.sale_time` | objeto de data/null | Momento em que o caixa registrou a venda, no fuso horário do caixa |
+| `fiscal.sale_tz` | string | Fuso horário do caixa, por exemplo, `"Europe/Berlin"` |
+| `fiscal.received_at` | objeto de data/null | Momento em que o servidor da loja recebeu a venda |
+| `fiscal.sale_counter` | número/null | Contador de vendas do próprio caixa |
+| `fiscal.immutable_id` | string | Identificador fiscal imutável |
+| `fiscal.receipt_number` | string | Número do recibo fiscal |
+| `fiscal.sequence` | número/null | Contador de sequência |
+| `fiscal.hash` | string | Valor do hash/assinatura |
+| `fiscal.qr_payload` | string | Conteúdo do código QR para verificação fiscal |
+| `fiscal.tax_agency_code` | string | Código da autoridade fiscal |
+| `fiscal.signed_at` | string | Data e hora da assinatura fiscal |
+| `fiscal.signature_excerpt` | string | Assinatura truncada para exibição |
+| `fiscal.document_label` | string | Rótulo do documento, por exemplo, Nota fiscal |
+| `fiscal.is_reprint` | booleano | Indica se esta renderização é uma reimpressão |
+| `fiscal.reprint_count` | número | Contagem de reimpressões |
+| `fiscal.extra_fields` | array/objeto | Valores específicos da jurisdição, geralmente uma lista de linhas `{label, value}` |
+
+Imprima os campos extras com um laço:
+
+```mustache
+{{#fiscal.extra_fields}}
+  {{label}}: {{value}}
+{{/fiscal.extra_fields}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="Formatação — presentation_hints">
+
+### presentation_hints {#presentation_hints}
+
+Esses campos se destinam principalmente ao aplicativo e ao servidor, que os usam para formatar o recibo. Modelos renderizados pelo servidor podem imprimir todos eles; modelos renderizados no aplicativo POS recebem apenas `display_tax`, `prices_entered_with_tax`, `rounding_mode`, `locale` e `order_barcode_type`.
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | string | `incl` ou `excl`. Preenchido pelo aplicativo; o servidor o omite |
+| `presentation_hints.hour12` | booleano/null | Verdadeiro quando o formato de hora da loja usa um relógio de 12 horas |
+| `presentation_hints.hour_token` | string/null | Padrão de hora do formato de horário da loja: `h`, `hh`, `H` ou `HH` |
+| `presentation_hints.prices_entered_with_tax` | booleano | Indica se os preços do catálogo incluem impostos |
+| `presentation_hints.rounding_mode` | string | Configuração de arredondamento de impostos do WooCommerce |
+| `presentation_hints.locale` | string | Localidade usada na formatação |
+| `presentation_hints.timezone` | string | Fuso horário do recibo |
+| `presentation_hints.currency_position` | string | Posição do símbolo da moeda |
+| `presentation_hints.currency_symbol` | string | Símbolo da moeda |
+| `presentation_hints.price_thousand_separator` | string | Separador de milhares |
+| `presentation_hints.price_decimal_separator` | string | Separador decimal |
+| `presentation_hints.price_num_decimals` | número | Casas decimais |
+| `presentation_hints.price_display_suffix` | string | Sufixo de exibição de preço do WooCommerce |
+| `presentation_hints.order_barcode_type` | string | Tipo de código de barras para um modelo que lê esse campo: `code128` (o padrão), `qrcode`, `ean13`, `ean8` ou `upca`. Preenchido pelo aplicativo; o servidor o omite, e os modelos da galeria definem o tipo de código de barras no próprio modelo |
+
+Os campos monetários pré-formatados (os valores `*_display`, como `totals.total_display`) renderizam os valores com o **símbolo da moeda** na moeda do pedido, usando a posição e os separadores acima — assim, os recibos exibem `$12.00`, não `USD 12.00`. O campo bruto `order.currency` continua sendo o código ISO para qualquer lógica no seu modelo.
+
+  </AccordionItem>
+
+  <AccordionItem question="Textos do recibo — i18n">
+
+### i18n {#i18n}
+
+Sempre que possível, use os rótulos de `i18n` em vez de escrever textos fixos no código:
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+As chaves comuns incluem `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, os rótulos fiscais `copy` (imprime CÓPIA), `reprint`, `register`, `sale_time`, `software`, `document_refund`, `document_void` e `document_cancellation`, e as chaves de rótulos de identificação fiscal, como `store_tax_id_label_eu_vat` e `customer_tax_id_label_other`. Extensões podem adicionar outras chaves.
+
+  </AccordionItem>
+</Accordion>
+
+## Como os preços se relacionam {#price-model}
+
+Um item no recibo tem vários preços, e fica mais fácil entender os nomes olhando os próprios valores. Esta é a linha do café espresso do pedido de exemplo — um produto de $17.00 em promoção por $14.50, com um cupom de 10% aplicado adicionalmente:
+
+<PriceFlow
+  caption="Café espresso em grãos — uma unidade (o pedido tem duas)"
+  scaleLabel="preço normal 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 pagos" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  summary={[
+    { label: "Economia em promoções no pedido inteiro", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Todos os descontos de cupons no pedido inteiro", value: '`totals.discount_total` = 5.28' },
+    { label: "Economia + descontos, sem a sobreposição dos pedidos antigos", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+A economia na promoção é a diferença entre o preço normal e o preço de venda. O desconto é o valor deduzido por um cupom, conforme calculado pelo WooCommerce. Os totais de pedidos e os relatórios do WooCommerce contêm apenas os descontos, então `total_saved` soma os dois em um único valor para o cliente.
+
+## Regras de renderização {#rendering-rules}
+
+Como imprimir valores monetários, preços com ou sem impostos e datas. Abra a seção de que você precisa.
+
+<Accordion>
+  <AccordionItem question="Imprimir valores monetários e ocultar valores zero">
+
+### Campos monetários {#currency-fields}
+
+Os campos monetários continuam sendo números, e cada um recebe um campo `_display` formatado no idioma e na moeda da loja:
+
+| Campo numérico | Campo de exibição |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+Imprima o campo `_display`. Use o número apenas para uma seção ou para saída legível por máquina: `{{#totals.change_total}}…{{/totals.change_total}}` omite a linha quando o valor é zero.
+
+  </AccordionItem>
+
+  <AccordionItem question="Imprimir preços com ou sem impostos">
+
+### Campos que respeitam a exibição de impostos {#tax-display-aware-fields}
+
+Vários campos têm três versões: com impostos (`_incl`), sem impostos (`_excl`) e uma sem sufixo que segue a configuração da loja para exibir preços no carrinho com ou sem impostos.
+
+| Campo auxiliar | Campo com impostos | Campo sem impostos |
+|-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+  </AccordionItem>
+
+  <AccordionItem question="Imprimir datas e horários">
+
+### Objetos de data {#date-objects}
+
+Cada data já vem formatada de várias maneiras, então o modelo nunca precisa formatá-la por conta própria.
+
+| Campo | Descrição |
+|-------|-------------|
+| `datetime`, `date`, `time` | Strings padrão de data/hora |
+| `datetime_short`, `datetime_long`, `datetime_full` | Formatos combinados adaptados à localidade |
+| `date_short`, `date_long`, `date_full` | Formatos apenas de data adaptados à localidade |
+| `date_ymd`, `date_dmy`, `date_mdy` | Formatos de data com ordem fixa |
+| `weekday_short`, `weekday_long` | Nomes dos dias da semana |
+| `day`, `month`, `month_short`, `month_long`, `year` | Partes individuais da data |
+
+Objetos de data disponíveis: `order.created`, `order.paid`, `order.completed`, `order.printed`, `refunds[].date`, `fiscal.sale_time` e `fiscal.received_at`. `order.printed` é atualizado no momento da renderização, o que é útil para reimpressões. As duas datas de `fiscal` são `null` quando o recibo não tem registro fiscal, então envolva-as em uma seção.
+
+  </AccordionItem>
+
+</Accordion>
+
+## Estender os dados do recibo {#extending}
+
+Um plugin pode adicionar seus próprios campos aos dados do recibo por meio do filtro `wcpos_receipt_data`.
+
+<Accordion>
+  <AccordionItem question="O filtro — seus argumentos, os seis modos e um exemplo">
+
+O WCPOS mantém os campos acima livres de dados específicos de plugins. Quando um plugin precisa que o recibo tenha uma informação que o WooCommerce não representa em seu modelo de dados, ele próprio a adiciona pelo filtro `wcpos_receipt_data`, da mesma forma que os plugins filtram os totais de pedidos do próprio WooCommerce. O filtro é executado em todos os recibos gerados pelo servidor: recibos em tempo real, snapshots fiscais no momento do pagamento, downloads de PDF e modelos PHP legados. Antes do WCPOS 2.0, esse filtro se chamava `woocommerce_pos_receipt_data`; esse nome ainda funciona, mas está obsoleto desde a versão 2.0 e será removido, no mínimo, na versão 2.2 (consulte [Nomenclatura de hooks](../extensions/index.mdx#hook-naming)).
+
+O terceiro argumento, `$mode`, indica qual documento está sendo gerado: `live`, `fiscal`, `refund`, `preview` (recibos de exemplo no editor de modelos e na galeria), `closure` ou `xreport` (documentos de fechamento de caixa e relatório X). Em `preview`, `closure` e `xreport`, o pedido ainda não foi salvo e seu ID é `0`; um plugin que precisa de um pedido salvo deve retornar `$data` sem alterações quando `$order->get_id()` for `0`.
+
+```php
+add_filter( 'wcpos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+O modelo pode então usar a nova chave como condição, como em qualquer outra seção:
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+As chaves definidas no esquema devem manter os tipos documentados. As chaves adicionadas não fazem parte do esquema, então não aparecem no seletor de campos do editor de modelos, e os snapshots fiscais só contêm o que o filtro adicionou no momento em que o pedido foi pago. O filtro está disponível a partir do WCPOS 1.10.8.
+
+  </AccordionItem>
+
+  <AccordionItem question="Quais recibos imprimem uma chave adicionada">
+
+Toda chave adicionada chega aos recibos que o próprio servidor renderiza: downloads de PDF e modelos PHP legados. Modelos HTML e térmicos renderizados no aplicativo POS reconstroem os dados primeiro: uma chave adicionada dentro de `order`, `store`, `cashier` ou `customer` é mantida, mas uma chave adicionada em qualquer outro lugar, como na linha de descontos acima, é omitida. {/* pending: monorepo#3363 */} Em um recibo em tempo real com um snapshot fiscal, a identificação fiscal, `register` e `software` são copiados do snapshot após a execução do filtro. Por isso, alterá-los nesse filtro não tem efeito; em vez disso, acrescente as informações ao snapshot.
+
+  </AccordionItem>
+</Accordion>
+
+## Se algo der errado {#if-something-goes-wrong}
+
+**Uma linha imprime `$0.00` em um recibo e nada em outro.** Alguns campos `_display`, como `totals.change_total_display`, `totals.refund_total_display` e `payments[].tendered_display`, ficam vazios quando o valor é zero e o servidor renderiza o recibo, mas exibem `$0.00` quando o aplicativo faz a renderização. Coloque a linha dentro de uma seção baseada no número para que ela seja omitida em ambos os casos: `{{#totals.change_total}}…{{/totals.change_total}}`.
+
+**A linha Total economizado não aparece.** `totals.total_saved_complete` é falso: pelo menos um item não tem preço normal registrado, então não é possível calcular a economia. Isso costuma acontecer com pedidos registrados antes do WCPOS 1.9.0.
+
+**O total é menor do que o cliente pagou.** A loja exibe os preços sem impostos, então `totals.total` é o total antes dos impostos. Imprima `totals.total_incl_display` para mostrar o valor cobrado. O recibo PHP legado incluído no WCPOS imprime esse valor.
+
+**Um campo é impresso no PDF baixado, mas não no POS.** Os modelos renderizados no aplicativo reconstroem os dados primeiro e omitem alguns campos, que só são impressos em downloads de PDF e modelos PHP legados. Imprima os campos da lista abaixo apenas nesses casos ou condicione sua exibição a uma seção para que o recibo do POS os omita. {/* pending: monorepo#3363 */}
+
+<Accordion>
+  <AccordionItem question="Campos que diferem entre recibos PDF e do POS">
+
+- `lines[].attributes`, `lines[].total_refunded_display` e `lines[].unit_subtotal_display` (com suas variantes `_incl` e `_excl`)
+- `software.platform`
+- `presentation_hints`, exceto `display_tax`, `prices_entered_with_tax`, `rounding_mode`, `locale` e `order_barcode_type`
+- identificações fiscais de clientes dos tipos alemão, holandês, francês, de empresa do Reino Unido e suíço
+- chaves que um plugin adiciona fora de `order`, `store`, `cashier` e `customer`; consulte [Estender os dados do recibo](#extending)
+
+</AccordionItem>
+</Accordion>
+
+## Versões {#versions}
+
+Os dados do recibo têm seu próprio número de versão, separado do número do plugin. Os campos mais recentes não estão presentes em recibos antigos, como um snapshot fiscal capturado antes de o campo existir, então condicione sua exibição a uma seção.
+
+| Versão | Adições |
+|---------|-------|
+| 1.1 | Preço normal, preço de venda e economia de cada item, além dos totais de economia do pedido, incluindo **Total economizado**. Nenhum deles altera os totais do pedido ou os relatórios do WooCommerce |
+| 1.2 | `discounts[].discount_type` |
+| 1.3 | `customer.first_name` e os rótulos de exibição do cliente em `i18n` |
+| 1.4 | `register`, `software`, os campos de documento fiscal (`fiscal.document_type`, os indicadores `is_…`, `sale_time`, `received_at`, `sale_tz`, `sale_counter`, `corrects`) e seus rótulos em `i18n` |
+
+## Documentação relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/settings/receipt-templates/html-templates" title="Modelos HTML" description="Crie um modelo de recibo em HTML e Mustache." />
+  <LinkCard to="/settings/receipt-templates/thermal-templates" title="Modelos térmicos" description="Crie um modelo para uma impressora de recibos." />
+  <LinkCard to="/settings/receipt-templates/customise-receipt" title="Personalize seu recibo" description="Escolha um modelo ou peça à IA que altere um para você." />
+</LinkCards>

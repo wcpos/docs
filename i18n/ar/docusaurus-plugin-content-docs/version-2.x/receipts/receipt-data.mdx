@@ -1,0 +1,947 @@
+---
+title: بيانات الإيصال
+slug: /settings/receipt-templates/receipt-data
+sidebar_label: بيانات الإيصال
+sidebar_position: 5
+toc_max_heading_level: 2
+description: "كل حقل يمكن لنموذج الإيصال طباعته، من اسم المتجر إلى الإجماليات، مع مقتطفات جاهزة للنسخ لنماذج HTML والنماذج الحرارية."
+---
+
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
+
+**إدارة WordPress:** تُحرَّر النماذج في `WP Admin → POS → Templates`؛ وتسرد هذه الصفحة الحقول التي يمكنها طباعتها.
+
+لطباعة إيصال أو إرساله بالبريد الإلكتروني، راجع [الإيصالات وشاشة إتمام الدفع](./at-checkout.mdx)؛ ولاختيار نموذج أو تعديله باستخدام الذكاء الاصطناعي، راجع [تخصيص إيصالك](./customise.mdx).
+
+هذه الصفحة مخصصة لتحرير شيفرة النموذج يدويًا. تطبع جميع النماذج، سواء كانت HTML أو حرارية، من بيانات الإيصال نفسها: المتجر والطلب والأصناف والإجماليات والمدفوعات. توضح الصفحة كيفية طباعة حقل، وتقدم ثلاثة أمثلة شائعة، وتسرد جميع الحقول.
+
+**انتقل إلى:** [البحث عن حقل](#field-reference) · [أمثلة شائعة](#common-recipes) · [عند حدوث مشكلة](#if-something-goes-wrong)
+
+## طباعة حقل {#print-a-field}
+
+1. افتح النموذج في **WP Admin → نقاط البيع → النماذج** (راجع التفاصيل في [تحريره يدويًا](./customise.mdx#option-3--edit-it-by-hand)).
+2. في الموضع الذي تريد طباعة الحقل فيه، اكتب مساره بين قوسين معقوفين مزدوجين، مثل `{{store.name}}` أو `{{order.number}}` أو `{{totals.total_display}}`، أو أدرجه من قائمة الحقول بجانب الشيفرة.
+3. راجع المعاينة أسفل الشيفرة، ثم انقر على **تحديث** للحفظ.
+
+لطباعة قائمة، مثل الأصناف، ضع الصف داخل قسم ليتكرر مرة لكل صنف:
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} —
+  {{line_total_display}}
+{{/lines}}
+```
+
+يحذف القسم محتوياته أيضًا عندما يكون الحقل فارغًا أو صفرًا أو ذا قيمة منطقية خاطئة، لذا لا تُطبع محتويات `{{#customer.id}}…{{/customer.id}}` إلا لعميل له اسم. لطباعة المبالغ، استخدم الحقل المنتهي بـ `_display`؛ راجع [حقول العملة](#currency-fields).
+
+يمكن طباعة الإيصالات دون اتصال أيضًا: ينشئ التطبيق نسخة من بيانات الإيصال من الطلب الموجود على الجهاز.
+
+<Accordion>
+  <AccordionItem question="لماذا قد تختلف الإيصالات">
+
+### مصدر البيانات {#where-the-data-comes-from}
+
+ينشئ خادم متجرك بيانات الإيصال لكل طلب، وينشئ التطبيق نسخة مختصرة من الطلب الموجود على الجهاز: لا تتضمن `cashier`، ولا ساعات عمل المتجر أو ملاحظاته أو سياساته، ولا `totals.paid_total` أو `totals.change_total`. يُفتح نموذج HTML أو النموذج الحراري فورًا من نسخة الجهاز، ثم ينتقل إلى نسخة الخادم عند وصولها؛ وعند عدم الاتصال، تُطبع نسخة الجهاز، فتظهر تلك الحقول فارغة. مع WCPOS Pro، تتضمن نسخة الجهاز شعار المتجر أيضًا؛ وبدون Pro، يصل الشعار مع نسخة الخادم. يُصيَّر نموذج PHP القديم دائمًا على الخادم. ولهذا يستخدم النموذج الحقول أدناه ولا يستخدم دوال الطلب في PHP مطلقًا. لا تُطبع بعض الحقول إلا عندما يُصيِّر الخادم النموذج، كما يحدث عند تنزيل PDF؛ وتسردها فقرة [عند حدوث مشكلة](#if-something-goes-wrong).
+
+  </AccordionItem>
+</Accordion>
+
+## خريطة الإيصال {#receipt-map}
+
+يأتي كل جزء من الإيصال المطبوع من قسم في بيانات الإيصال. وجّه المؤشر إلى جزء من الإيصال أو إلى بطاقته لإبراز الاثنين؛ وانقر أو اضغط على أي منهما للانتقال إلى حقول ذلك القسم. على الهاتف، تأتي البطاقات بعد الإيصال بالترتيب نفسه، من الأعلى إلى الأسفل.
+
+يستخدم الإيصال أدناه والمثالان الأولان وتفصيل السعر الطلب النموذجي نفسه. مبالغ أصنافه هي المبالغ قبل الكوبون (`line_subtotal_display`)؛ أما نماذج الإيصال في المعرض فتطبعها بعده (`line_total_display`، ومبلغه 26.10 للإسبريسو).
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 روست لين، بورتلاند OR", center: true, sub: true },
+        { left: "ضريبة القيمة المضافة: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "إيصال #1042", right: "13 يوليو 2026" },
+        { left: "أمين الصندوق: آدا", right: "العميل: نيا", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × حبوب إسبريسو", right: "29.00" },
+        { left: "~34.00~ · توفير −5.00", sub: true },
+        { left: "1 × كوب خزفي", right: "18.00" },
+        { left: "1 × كرواسون", right: "5.75" },
+        { left: "مبالغ الأصناف قبل الكوبون: `line_subtotal_display`", sub: true },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "المجموع الفرعي", right: "52.75" },
+        { left: "كوبون SUMMER10", right: "−5.28" },
+        { left: "تغليف الهدايا", right: "2.50" },
+        { left: "الشحن", right: "10.00" },
+        { left: "الإجمالي", right: "59.97", bold: true },
+        { left: "إجمالي التوفير", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "بطاقة", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "شكرًا لشرائك!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## أمثلة تطبيقية شائعة {#common-recipes}
+
+تندرج معظم التعديلات اليدوية ضمن أحد هذين المثالين المعروضين لنموذج HTML، ويغطي مثال ثالث أسفلهما إعادة طباعة الطلبات القديمة. تعرض كل بطاقة الصفوف الجديدة على الإيصال، ثم شيفرتها، ثم موضع إضافتها في نموذجك. يأتي اسم الصنف والمبلغ والإجمالي من بقية نموذجك.
+
+<Accordion>
+  <AccordionItem question="استخدام هذه الأمثلة في نموذج حراري">
+
+تعمل الحقول والأقسام نفسها دون تغيير: ضع كل سطر مطبوع داخل `<text>` واحذف `<s>`، لأن XML الحراري لا يدعم الشطب ويطبع السعر دون تنسيق شطب ([النماذج الحرارية](./thermal-templates.mdx#text-and-formatting)).
+
+  </AccordionItem>
+</Accordion>
+
+<Recipes>
+  <Recipe
+    title="شطب السعر العادي"
+    why="داخل قسم `{{#lines}}` الموجود في نموذجك، أضف كتلة `{{#line_savings}}` بعد صف الصنف. السعر العادي 34.00 − توفير التخفيض 5.00 − الكوبون 2.90 = المبلغ المدفوع 26.10. تحذف الكتلة كلا الصفين في الطلبات التي ليس لها سجل أسعار محفوظ."
+    preview={[
+      { left: "2 × حبوب إسبريسو", right: "26.10" },
+      { left: "~34.00~ · توفير −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}:
+    -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="إضافة صف إجمالي التوفير"
+    why="أضف هذه الأسطر بعد صف الإجمالي. يوجد قسمان: يُحذف الصف عندما يكون سجل الأسعار غير مكتمل، أو عندما لا يوجد أي توفير."
+    preview={[
+      { left: "الإجمالي", right: "59.97", bold: true },
+      { left: "إجمالي التوفير", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+</Recipes>
+
+<Accordion>
+  <AccordionItem question="إعادة طباعة طلب أُنشئ قبل WCPOS 1.9.0">
+
+<Recipes>
+  <Recipe
+    title="إعادة طباعة طلب سابق للإصدار v1.9 بأمان"
+    why="لطلب أُنشئ قبل WCPOS 1.9.0، وليس للطلب النموذجي. داخل قسم `{{#lines}}` الموجود في نموذجك، أضف كتلتي `{{#line_savings}}` و`{{#discounts}}` بعد صف الصنف. التوفير مشمول بالفعل في الخصم، لذا يطبع هذا الخصم ويحذف التوفير."
+    preview={[
+      { left: "1 × حبوب إسبريسو", right: "14.50" },
+      { left: "~17.00~  خصم −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{^savings_in_discounts}}
+      {{i18n.savings}}:
+      -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    {{i18n.discount}}:
+    -{{discounts_display}}
+  {{/discounts}}
+{{/lines}}`}
+  />
+</Recipes>
+
+  </AccordionItem>
+</Accordion>
+
+## مرجع الحقول {#field-reference}
+
+وسّع قسمًا لعرض حقوله. يسرد العنصر الأول جميع الأقسام وأنواعها.
+
+<Accordion>
+  <AccordionItem question="جميع الأقسام وأنواعها">
+
+### أقسام المستوى الأعلى {#top-level-sections}
+
+| القسم | محتوياته |
+|---------|---------------|
+| `order` (كائن) | هوية الطلب وحالته وتواريخه وملاحظته ومعلومات URL الدفع |
+| `store` (كائن) | هوية المتجر وعنوانه وبيانات الاتصال به ومعرّفاته الضريبية وشعاره وساعات عمله ونص التذييل |
+| `cashier` (كائن) | المستخدم الذي عالج الطلب |
+| `customer` (كائن) | اسم العرض للعميل وعناوينه ومعرّفاته الضريبية |
+| `lines` (مصفوفة) | بنود المنتجات |
+| `fees` (مصفوفة) | صفوف الرسوم |
+| `shipping` (مصفوفة) | صفوف الشحن |
+| `discounts` (مصفوفة) | صفوف الكوبونات/الخصومات |
+| `totals` (كائن) | إجماليات الطلب وإجماليات المدفوعات وملخص المبالغ المسترجعة وأعداد الأصناف |
+| `tax` (كائن) | أعلام وضع عرض الضريبة لشروط إظهار الأقسام |
+| `tax_summary` (مصفوفة) | صفوف ملخص الضريبة لكل معدل |
+| `has_tax_summary` (قيمة منطقية) | شرط مبسّط لإظهار `tax_summary` |
+| `payments` (مصفوفة) | صفوف المدفوعات |
+| `refunds` (مصفوفة) | سجلات الاسترجاع المطبقة على الطلب |
+| `fiscal` (كائن) | حقول اللقطة الضريبية التي تملؤها التكاملات الضريبية |
+| `register` (كائن) | صندوق البيع الذي سجّل عملية البيع: `id` و`name`. سلاسل فارغة عندما يكون غير معروف |
+| `software` (كائن) | البرنامج الذي أصدر الإيصال: `name` (`WCPOS`) و`plugin_version` و`app_version` و`app_build` و`platform` |
+| `presentation_hints` (كائن) | تلميحات التنسيق والتصيير |
+| `i18n` (كائن) | تسميات مترجمة للنماذج المرفقة والمخصصة |
+
+  </AccordionItem>
+  <AccordionItem question="رقم الطلب وحالته وتواريخه — order">
+
+### order {#order}
+
+| الحقل | النوع | مثال / وصف |
+|-------|------|-----------------------|
+| `order.id` | رقم | `1042` |
+| `order.number` | سلسلة نصية | رقم الطلب الظاهر للمستخدم، مثل `"1042"` |
+| `order.currency` | سلسلة نصية | رمز العملة وفق ISO، مثل `"USD"` |
+| `order.customer_note` | سلسلة نصية | ملاحظة العميل/الطلب |
+| `order.wc_status` | سلسلة نصية | الاسم اللطيف الخام لحالة WooCommerce، مثل `"processing"` |
+| `order.status_label` | سلسلة نصية | تسمية الحالة المترجمة، بما فيها الحالات المخصصة |
+| `order.created_via` | سلسلة نصية | المصدر/القناة، مثل `"woocommerce-pos"` |
+| `order.needs_payment` | قيمة منطقية | ما إذا كان ينبغي إظهار قسم الدفع |
+| `order.payment_url` | سلسلة نصية | URL دفع الطلب عند توفره |
+| `order.created` | كائن تاريخ | تاريخ إنشاء الطلب |
+| `order.paid` | كائن تاريخ | تاريخ الدفع، وسلاسل فارغة إذا لم يُدفع |
+| `order.completed` | كائن تاريخ | تاريخ الاكتمال، وسلاسل فارغة إذا لم يكتمل |
+| `order.printed` | كائن تاريخ | الطابع الزمني للطباعة/إعادة الطباعة وقت التصيير |
+
+  </AccordionItem>
+
+  <AccordionItem question="اسم المتجر وعنوانه وبيانات الاتصال وساعات العمل — store">
+
+### store {#store}
+
+| الحقل | النوع | مثال / وصف |
+|-------|------|-----------------------|
+| `store.id` | رقم | معرّف المتجر، أو المعرّف التاريخي للمتاجر المحذوفة |
+| `store.name` | سلسلة نصية | اسم العرض للمتجر |
+| `store.address.address_1` | سلسلة نصية | السطر 1 من عنوان الشارع |
+| `store.address.address_2` | سلسلة نصية | سطر الجناح/الوحدة |
+| `store.address.city` | سلسلة نصية | المدينة/المنطقة المحلية |
+| `store.address.state` | سلسلة نصية | الولاية/المنطقة |
+| `store.address.postcode` | سلسلة نصية | الرمز البريدي |
+| `store.address.country` | سلسلة نصية | رمز البلد وفق ISO |
+| `store.address_lines` | مصفوفة | أسطر عنوان منسقة مسبقًا؛ يُنصح بها لمعظم النماذج |
+| `store.tax_ids` | مصفوفة | معرّفات ضريبية منظّمة للنشاط التجاري؛ استخدم حلقة عليها بدلًا من معرّف ضريبي واحد |
+| `store.phone` | سلسلة نصية | هاتف المتجر |
+| `store.email` | سلسلة نصية | البريد الإلكتروني للمتجر |
+| `store.logo` | سلسلة نصية/null | URL شعار المتجر أو URI بياناته: شعار المتجر نفسه، وإلا فشعار موقع WordPress ما لم يعطّل المتجر ذلك. تكون القيمة `null` عند عدم وجود أي منهما |
+| `store.opening_hours` | سلسلة نصية/null | نص موجز لساعات العمل |
+| `store.opening_hours_vertical` | سلسلة نصية/null | كتلة ساعات العمل على عدة أسطر |
+| `store.opening_hours_inline` | سلسلة نصية/null | نص ساعات العمل مفصول بفواصل |
+| `store.opening_hours_notes` | سلسلة نصية/null | ملاحظات حرة عن ساعات العمل |
+| `store.personal_notes` | سلسلة نصية/null | تذييل الإيصال/ملاحظة شخصية |
+| `store.policies_and_conditions` | سلسلة نصية/null | نص الاسترجاع أو المرتجعات أو الشروط |
+| `store.footer_imprint` | سلسلة نصية/null | البيانات القانونية في التذييل |
+
+### كائنات المعرّفات الضريبية {#tax-id-objects}
+
+يحتوي `store.tax_ids` و`customer.tax_ids` على كائنات بالبنية نفسها:
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `type` | سلسلة نصية | معرّف مثل `eu_vat` أو `de_steuernummer` أو `au_abn` أو `br_cpf` أو `us_ein` أو `other` |
+| `value` | سلسلة نصية | قيمة المعرّف الضريبي المطلوب طباعتها |
+| `country` | سلسلة نصية/null | رمز البلد وفق ISO؛ وتكون القيمة null لكل من `eu_vat` و`other` |
+| `label` | سلسلة نصية | تسمية عرض مترجمة تُحدَّد قبل التصيير |
+
+مثال:
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="من خدم العميل — cashier">
+
+### cashier {#cashier}
+
+| الحقل | النوع | مثال / وصف |
+|-------|------|-----------------------|
+| `cashier.id` | رقم | معرّف مستخدم WordPress، والقيمة `0` عندما يكون غير معروف |
+| `cashier.name` | سلسلة نصية | اسم العرض لأمين الصندوق |
+
+  </AccordionItem>
+
+  <AccordionItem question="اسم العميل وعناوينه ومعرّفاته الضريبية — customer">
+
+### customer {#customer}
+
+| الحقل | النوع | مثال / وصف |
+|-------|------|-----------------------|
+| `customer.id` | رقم/null | معرّف العميل، أو `null` للزوار |
+| `customer.name` | سلسلة نصية | اسم العرض للعميل، أو تسمية الزائر |
+| `customer.first_name` | سلسلة نصية | الاسم الأول في بيانات الفوترة، لتحية مثل «شكرًا، نيا». فارغ للزوار الذين ليس لديهم اسم أول |
+| `customer.billing_address.*` | كائن | حقول عنوان الفوترة في WooCommerce |
+| `customer.shipping_address.*` | كائن | حقول عنوان الشحن في WooCommerce |
+| `customer.tax_ids` | مصفوفة | معرّفات ضريبية منظّمة للعميل محفوظة كلقطة من الطلب |
+
+تشمل مفاتيح العنوان الشائعة `first_name` و`last_name` و`company` و`address_1` و`address_2` و`city` و`state` و`postcode` و`country` و`email` و`phone`.
+
+  </AccordionItem>
+
+  <AccordionItem question="الأصناف المباعة — lines">
+
+### lines {#lines}
+
+استخدم حلقة `{{#lines}}...{{/lines}}`. القيم النموذجية هي لبند الإسبريسو من [الطلب النموذجي](#receipt-map).
+
+<FieldIndex
+  note="لكل حقل نقدي صيغتان: الرقم، لقسم `{{#…}}` (يخفيه الصفر و`null`، ولا يكون للحقل ذي القيمة `null` حقل `_display` أصلًا)، ونص `_display` للطباعة. الحقول الموسومة incl/excl لها أيضًا نسختا `_incl` و`_excl`، ولكل منهما حقل `_display` خاص بها."
+  emptyText="لا توجد حقول مطابقة — امسح عامل التصفية لعرض جميع حقول `lines[]`."
+  fields={[
+    { name: 'key', type: 'string', desc: "مفتاح ثابت للبند / معرّف صنف الطلب.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "SKU المنتج.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "اسم العرض للمنتج أو البند.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "الكمية المباعة.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "الكمية المسترجعة لهذا البند.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "السعر العادي المسجّل للوحدة. تكون قيمته `null` في الطلبات التي ليس لها سجل أسعار POS — ضعه داخل قسم.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "سعر بيع الوحدة قبل الكوبون — سعر POS المسجّل عند توفره، وإلا فيُشتق من المجموع الفرعي المحفوظ للبند.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "السعر العادي مطروحًا منه سعر البيع، بحد أدنى صفر. يُعامل الصفر كقيمة منطقية خاطئة، لذا تختفي الصفوف المشروطة به.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "السعر العادي المسجّل مضروبًا في الكمية.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "سعر البيع قبل الكوبون مضروبًا في الكمية.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "إجمالي التوفير الناتج عن الفرق بين السعر العادي وسعر البيع لهذا البند.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "قيمة صحيحة عندما يكون توفير البند مشمولًا بالفعل في `discounts`، كما في الطلبات المنشأة قبل v1.9.0. استخدمه حتى لا يُطبع التوفير مرتين.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "قيمة الوحدة قبل الخصم في WooCommerce. لا تستخدمها كسعر عادي.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "قيمة الوحدة النهائية بعد خصومات WooCommerce.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "قبل الكوبون: المجموع الفرعي للبند قبل الخصم في WooCommerce، وهو المبلغ بجانب كل صنف في الإيصال النموذجي أعلاه.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "خصم البند الأصلي في WooCommerce كقيمة موجبة — الكوبونات فقط في الطلبات الحالية.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "بعد الكوبون: إجمالي البند النهائي، وهو ما تطبعه نماذج الإيصال في المعرض بجانب كل صنف.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "إجمالي المبلغ المسترجع لهذا البند كقيمة موجبة.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '""', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "صفوف الضريبة لكل معدل لهذا البند." },
+    { name: 'meta', type: 'array', desc: "البيانات الوصفية لصنف الطلب كأزواج `{key, value}`." },
+    { name: 'attributes', type: 'array', desc: "سمات المنتج/التنويعة كأزواج `{key, value}`." },
+  ]}
+/>
+
+### عرض السعر العادي والتوفير {#displaying-regular-price-and-savings}
+
+لتخطيط يعرض سعر الوحدة، اعرض السعر العادي المسجّل وسعر البيع والتوفير كما يلي:
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+استخدم حقول إجمالي البند عندما تكون الكمية مهمة:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` هو السعر قبل الكوبونات. استخدم `unit_price` أو `line_total` للمبلغ النهائي بعد خصومات WooCommerce.
+
+:::note إعادة طباعة الطلبات المنشأة قبل v1.9.0
+قد تتضمن طلبات WCPOS القديمة بالفعل التخفيض من السعر العادي إلى سعر البيع ضمن `discounts`. إذا كان نموذجك المخصص يطبع توفير البند وخصوماته معًا، فاستخدم `savings_in_discounts` لتجنب عرض التخفيض نفسه مرتين:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+إذا لم يكن النموذج يطبع صف `discounts` على مستوى البند، فاستمر في عرض `line_savings` حتى عندما تكون قيمة `savings_in_discounts` صحيحة. تتعامل النماذج المرفقة مع هذا الاختلاف تلقائيًا.
+:::
+
+  </AccordionItem>
+
+  <AccordionItem question="الرسوم والشحن — fees, shipping">
+
+### fees وshipping {#fees-and-shipping}
+
+استخدم الحلقتين `{{#fees}}...{{/fees}}` و`{{#shipping}}...{{/shipping}}`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `label` | سلسلة نصية | تسمية الرسم أو اسم طريقة الشحن |
+| `method_id` | سلسلة نصية | معرّف طريقة الشحن (للشحن فقط) |
+| `total` / `_incl` / `_excl` | رقم | الإجماليات بحسب إعداد العرض، والشاملة للضريبة، وغير الشاملة لها |
+| `taxes` | مصفوفة | صفوف الضريبة لكل معدل |
+| `meta` | مصفوفة | أزواج البيانات الوصفية `{key, value}` |
+
+الصيغ المنسقة: `total_display` و`total_incl_display` و`total_excl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="الكوبونات والخصومات — discounts">
+
+### discounts {#discounts}
+
+استخدم حلقة `{{#discounts}}...{{/discounts}}`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `label` | سلسلة نصية | وصف الكوبون، أو رمزه عند غياب الوصف. يظهر الخصم المضاف في سلة POS باسم `Discount`، أو `Discount (10%)` إذا كان نسبة مئوية |
+| `code` | سلسلة نصية | رمز الكوبون |
+| `discount_type` | سلسلة نصية | الاسم اللطيف لنوع كوبون WooCommerce، مثل `fixed_cart` أو `percent` أو `fixed_product`. فارغ عندما لا يعود الكوبون موجودًا. |
+| `total` / `_incl` / `_excl` | رقم | مبلغ الخصم كقيمة موجبة |
+
+الصيغ المنسقة: `total_display` و`total_incl_display` و`total_excl_display`. أضف علامة سالب في النموذج إذا أردت عرض الخصومات كصفوف سالبة.
+
+أُضيف `discount_type` في الإصدار v1.2 من بيانات الإيصال. لا تتضمنه لقطات الإيصالات الضريبية المحفوظة قبل ذلك. {/* pending: monorepo#3363 */}
+
+  </AccordionItem>
+
+  <AccordionItem question="الإجماليات والمبالغ المدفوعة والمسترجعة وأعداد الأصناف — totals">
+
+### totals {#totals}
+
+القيم النموذجية من [الطلب النموذجي](#receipt-map)، الذي استُرجع منه لاحقًا مبلغ جزئي قدره $7.25.
+
+<FieldIndex
+  note="تتبع الحقول النقدية الاقتران نفسه المستخدم في بنود الأصناف: رقم مجرد لشروط الإظهار وسلسلة `_display` للطباعة، مع صيغتي `_incl`/`_excl` حيث يُشار إلى ذلك."
+  emptyText="لا توجد حقول مطابقة — امسح عامل التصفية لعرض جميع حقول `totals`."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "المجموع الفرعي للطلب قبل الخصومات.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "إجمالي خصومات الطلب كقيمة موجبة — الكوبونات فقط في الطلبات الحالية.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "إجمالي التوفير المسجّل الناتج عن الفرق بين السعر العادي وسعر البيع لجميع بنود المنتجات، بما في ذلك تخفيضات الكتالوج وتغييرات الأسعار عند صندوق البيع.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "مجموع خصومات WooCommerce والتوفير من السعر العادي، بعد إزالة التداخل في الطلبات القديمة. قيمة واحدة تظهر للعميل كل ما وفّره.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "ما إذا كان الإيصال يتضمن بيانات أسعار مسجّلة كافية لحساب إجماليات التوفير الكاملة.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "إجمالي مبلغ الضريبة.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "الإجمالي الكلي للطلب وفق إعداد عرض الضريبة: عندما تُعرض الأسعار دون ضريبة، يكون الإجمالي مطروحًا منه الضريبة. يمثّل `total_incl` دائمًا المبلغ المحصّل.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "المبلغ المدفوع / المطبّق.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "الباقي المعاد إلى العميل.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '""', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "إجمالي المبلغ المسترجع كقيمة موجبة.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "الإجمالي مطروحًا منه المبالغ المسترجعة، بحد أدنى صفر. تكون القيمة `0` عندما لا يُسترجع شيء، لذا اجعل إظهاره مشروطًا بـ `refund_total`.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "مجموع كميات بنود الأصناف.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "عدد صفوف بنود المنتجات.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+استخدم `total_saved` عندما تريد عرض قيمة واحدة للعميل تمثّل كل ما وفّره. لا تحسبه بجمع `discount_total` و`sale_savings_total` في النموذج: فقد تتضمن الطلبات المنشأة قبل v1.9.0 بالفعل التوفير من سعر POS ضمن إجمالي خصومات WooCommerce. يكتشف الحقل المعتمد `total_saved` هذا التداخل ويزيله.
+
+تكون إجماليات التوفير `null` وتكون قيمة `total_saved_complete` خاطئة عندما يفتقر أي بند منتج إلى بيانات أسعار مسجّلة كافية لحساب مجموع موثوق. اجعل إظهار الصف مشروطًا بـ `total_saved_complete`، ثم استخدم `total_saved` لإخفاء القيمة الصفرية:
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+تطبع النماذج المرفقة **إجمالي التوفير** من الصيغة الشاملة للضريبة، `totals.total_saved_incl_display`، داخل شرط إظهار واحد هو `{{#totals.total_saved_incl}}`. يكفي هذا الشرط وحده لأن القيمة تكون `null` عندما يكون سجل الأسعار غير مكتمل، وصفرًا عندما لا يوجد أي توفير.
+
+  </AccordionItem>
+
+  <AccordionItem question="صفوف الضريبة — tax, tax_summary">
+
+### tax وtax_summary {#tax-and-tax_summary}
+
+استخدم `tax` لشروط الإظهار حسب وضع العرض، و`tax_summary` لصفوف المعدلات المفصّلة.
+
+| حقل الضريبة | النوع | الوصف |
+|-----------|------|-------------|
+| `tax.display` | سلسلة نصية | `incl` أو `excl` |
+| `tax.display_incl` | قيمة منطقية | صحيحة عندما تُعرض الأسعار شاملة للضريبة |
+| `tax.display_excl` | قيمة منطقية | صحيحة عندما تُعرض الأسعار غير شاملة للضريبة |
+| `tax.breakdown` | سلسلة نصية | `hidden` أو `single` أو `itemized` |
+| `tax.breakdown_hidden` | قيمة منطقية | صحيحة عندما ينبغي إخفاء صفوف الضريبة |
+| `tax.breakdown_single` | قيمة منطقية | صحيحة عندما يُفضَّل إجمالي ضريبي واحد |
+| `tax.breakdown_itemized` | قيمة منطقية | صحيحة عندما تُفضَّل صفوف منفصلة لكل معدل |
+| `has_tax_summary` | قيمة منطقية | صحيحة عندما يحتوي `tax_summary` على صفوف |
+
+كرّر عناصر `tax_summary` باستخدام `{{#tax_summary}}...{{/tax_summary}}`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `code` | سلسلة نصية | معرّف/رمز معدل الضريبة |
+| `rate` | رقم/null | النسبة المئوية للمعدل عند تحديدها |
+| `label` | سلسلة نصية | تسمية معدل الضريبة |
+| `compound` | قيمة منطقية | ما إذا كان المعدل مركبًا |
+| `taxable_amount_excl` | رقم/null | الأساس الخاضع للضريبة دون الضريبة |
+| `tax_amount` | رقم | الضريبة المحصّلة |
+| `taxable_amount_incl` | رقم/null | الأساس الخاضع للضريبة شاملًا الضريبة |
+
+الصيغ المنسقة: `taxable_amount_excl_display` و`tax_amount_display` و`taxable_amount_incl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="المدفوعات المحصّلة — payments">
+
+### payments {#payments}
+
+استخدم حلقة `{{#payments}}...{{/payments}}`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `method_id` | سلسلة نصية | معرّف طريقة الدفع |
+| `method_title` | سلسلة نصية | عنوان العرض لطريقة الدفع |
+| `amount` | رقم | المبلغ المطبّق على الطلب |
+| `transaction_id` | سلسلة نصية | معرّف المعاملة في بوابة الدفع |
+| `tendered` | رقم | المبلغ النقدي المقدّم عند وجوده |
+| `change` | رقم | الباقي النقدي المعاد عند وجوده |
+
+الصيغ المنسقة: `amount_display` و`tendered_display` و`change_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="عمليات الاسترجاع — refunds">
+
+### refunds {#refunds}
+
+استخدم حلقة `{{#refunds}}...{{/refunds}}`. المبالغ المسترجعة أرقام موجبة: يضيف النموذج علامة سالب، أو يطبعها في كتلة خاصة بالأصناف المرتجعة.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `id` | رقم | معرّف سجل الاسترجاع |
+| `date` | كائن تاريخ | تاريخ إنشاء الاسترجاع |
+| `amount` | رقم | إجمالي الاسترجاع |
+| `subtotal` | رقم | المجموع الفرعي للبند المسترجع |
+| `tax_total` | رقم | الضريبة المسترجعة |
+| `shipping_total` | رقم | مبلغ الشحن المسترجع |
+| `shipping_tax` | رقم | ضريبة الشحن المسترجعة |
+| `reason` | سلسلة نصية | سبب الاسترجاع |
+| `refunded_by_id` | رقم/null | معرّف المستخدم الذي أصدر الاسترجاع |
+| `refunded_by_name` | سلسلة نصية | اسم العرض للمستخدم الذي أصدر الاسترجاع |
+| `refunded_payment` | قيمة منطقية | ما إذا كانت الدفعة قد استُرجعت عبر بوابة الدفع |
+| `destination` | سلسلة نصية | وجهة إعادة المال: `original_method` أو `cash` أو `manual` للاسترجاع الذي أُجري في POS؛ وفارغ في غير ذلك |
+| `gateway_id` | سلسلة نصية | معرّف بوابة الدفع المستخدمة للاسترجاع |
+| `gateway_title` | سلسلة نصية | عنوان العرض لبوابة الدفع |
+| `processing_mode` | سلسلة نصية | وضع المعالجة عبر المزوّد/يدويًا |
+| `lines` | مصفوفة | صفوف المنتجات المسترجعة |
+| `fees` | مصفوفة | صفوف الرسوم المسترجعة |
+| `shipping` | مصفوفة | صفوف الشحن المسترجع |
+
+تشمل حقول بنود الاسترجاع `name` و`sku` و`qty` و`total` و`total_incl` و`total_excl` و`taxes`؛ وتحصل النماذج المصيَّرة في تطبيق POS أيضًا على `line_total` و`unit_total`. تستخدم صفوف الرسوم والشحن المسترجعة `label` و`total` و`total_incl` و`total_excl` و`taxes`، وتضيف صفوف الشحن `method_id`. تُضاف صيغ العرض للإجماليات ومبالغ الضرائب.
+
+  </AccordionItem>
+
+  <AccordionItem question="السجلات الضريبية — fiscal">
+
+### fiscal {#fiscal}
+
+تملأ التكاملات الضريبية وWCPOS Pro حقول الهوية، مثل رقم الإيصال وقيمة التجزئة ومحتوى QR. تحدد حقول المستند نوع المستند الجاري طباعته، بحيث يستطيع النموذج طباعة استرجاع أو تقرير صندوق بيع بطريقة تختلف عن عملية البيع.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `fiscal.document_type` | سلسلة نصية | `sale` افتراضيًا؛ وكذلك `refund` أو `void` أو `cancellation` أو `closure` أو `xreport` أو `handover` |
+| `fiscal.is_sale_document` | قيمة منطقية | صحيحة لعملية بيع. استخدم أعلام `is_…` كشروط لإظهار الأقسام |
+| `fiscal.is_refund_document` | قيمة منطقية | صحيحة للاسترجاع |
+| `fiscal.is_void_document` | قيمة منطقية | صحيحة للإبطال: عملية بيع أُلغيت قبل اكتمالها |
+| `fiscal.is_cancellation_document` | قيمة منطقية | صحيحة للإلغاء: عملية بيع مكتملة أُلغيت لاحقًا |
+| `fiscal.is_closure_document` | قيمة منطقية | صحيحة لإغلاق صندوق البيع |
+| `fiscal.is_x_report` | قيمة منطقية | صحيحة لتقرير X |
+| `fiscal.is_handover` | قيمة منطقية | صحيحة لقسيمة التسليم |
+| `fiscal.corrects` | سلسلة نصية | هوية عملية البيع التي يصححها الاسترجاع |
+| `fiscal.sale_time` | كائن تاريخ/null | وقت تسجيل صندوق البيع للعملية، بالمنطقة الزمنية للصندوق |
+| `fiscal.sale_tz` | سلسلة نصية | المنطقة الزمنية لصندوق البيع، مثل `"Europe/Berlin"` |
+| `fiscal.received_at` | كائن تاريخ/null | وقت استلام خادم المتجر لعملية البيع |
+| `fiscal.sale_counter` | رقم/null | عدّاد المبيعات الخاص بصندوق البيع |
+| `fiscal.immutable_id` | سلسلة نصية | معرّف ضريبي غير قابل للتغيير |
+| `fiscal.receipt_number` | سلسلة نصية | رقم الإيصال الضريبي |
+| `fiscal.sequence` | رقم/null | عدّاد التسلسل |
+| `fiscal.hash` | سلسلة نصية | قيمة التجزئة/التوقيع |
+| `fiscal.qr_payload` | سلسلة نصية | محتوى QR للتحقق الضريبي |
+| `fiscal.tax_agency_code` | سلسلة نصية | رمز الهيئة الضريبية |
+| `fiscal.signed_at` | سلسلة نصية | الطابع الزمني للتوقيع الضريبي |
+| `fiscal.signature_excerpt` | سلسلة نصية | توقيع مختصر للعرض |
+| `fiscal.document_label` | سلسلة نصية | تسمية المستند، مثل فاتورة ضريبية |
+| `fiscal.is_reprint` | قيمة منطقية | ما إذا كان هذا التصيير لإعادة طباعة |
+| `fiscal.reprint_count` | رقم | عدد مرات إعادة الطباعة |
+| `fiscal.extra_fields` | مصفوفة/كائن | قيم خاصة بالاختصاص القضائي، وعادةً ما تكون قائمة صفوف `{label, value}` |
+
+اطبع الحقول الإضافية باستخدام حلقة:
+
+```mustache
+{{#fiscal.extra_fields}}
+  {{label}}: {{value}}
+{{/fiscal.extra_fields}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="التنسيق — presentation_hints">
+
+### presentation_hints {#presentation_hints}
+
+هذه الحقول مخصصة في الغالب للتطبيق والخادم، اللذين يستخدمانها لتنسيق الإيصال. يمكن للنماذج التي يصيّرها الخادم طباعتها جميعًا؛ أما النماذج المصيَّرة في تطبيق POS فلا تحصل إلا على `display_tax` و`prices_entered_with_tax` و`rounding_mode` و`locale` و`order_barcode_type`.
+
+| الحقل | النوع | الوصف |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | سلسلة نصية | `incl` أو `excl`. يملؤه التطبيق؛ ويحذفه الخادم |
+| `presentation_hints.hour12` | قيمة منطقية/null | صحيحة عندما يستخدم تنسيق وقت المتجر نظام 12 ساعة |
+| `presentation_hints.hour_token` | سلسلة نصية/null | نمط الساعة من تنسيق وقت المتجر: `h` أو `hh` أو `H` أو `HH` |
+| `presentation_hints.prices_entered_with_tax` | قيمة منطقية | ما إذا كانت أسعار الكتالوج تشمل الضريبة |
+| `presentation_hints.rounding_mode` | سلسلة نصية | إعداد تقريب الضريبة في WooCommerce |
+| `presentation_hints.locale` | سلسلة نصية | الإعدادات المحلية المستخدمة للتنسيق |
+| `presentation_hints.timezone` | سلسلة نصية | المنطقة الزمنية للإيصال |
+| `presentation_hints.currency_position` | سلسلة نصية | موضع رمز العملة |
+| `presentation_hints.currency_symbol` | سلسلة نصية | رمز العملة |
+| `presentation_hints.price_thousand_separator` | سلسلة نصية | فاصل الآلاف |
+| `presentation_hints.price_decimal_separator` | سلسلة نصية | الفاصل العشري |
+| `presentation_hints.price_num_decimals` | رقم | عدد المنازل العشرية |
+| `presentation_hints.price_display_suffix` | سلسلة نصية | لاحقة عرض السعر في WooCommerce |
+| `presentation_hints.order_barcode_type` | سلسلة نصية | نوع الرمز الشريطي للنموذج الذي يقرأه: `code128` (الافتراضي) أو `qrcode` أو `ean13` أو `ean8` أو `upca`. يملؤه التطبيق؛ ويحذفه الخادم، وتحدد نماذج المعرض نوع الرمز الشريطي داخل النموذج |
+
+تعرض الحقول النقدية المنسقة مسبقًا (قيم `*_display` مثل `totals.total_display`) المبالغ مع **رمز العملة** بعملة الطلب، باستخدام الموضع والفواصل أعلاه — لذا تعرض الإيصالات `$12.00` وليس `USD 12.00`. يظل الحقل الخام `order.currency` رمز ISO لأي منطق في نموذجك.
+
+  </AccordionItem>
+
+  <AccordionItem question="نصوص الإيصال — i18n">
+
+### i18n {#i18n}
+
+استخدم تسميات `i18n` بدلًا من كتابة النصوص مباشرة في الشيفرة حيثما أمكن:
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+تشمل المفاتيح الشائعة `order` و`date` و`cashier` و`customer` و`item` و`sku` و`qty` و`unit_price` و`regular_price` و`selling_price` و`savings` و`discount` و`subtotal` و`total_saved` و`total` و`tax` و`paid` و`tendered` و`change` و`tax_summary` و`refunded` و`net_total` و`customer_note` و`thank_you_purchase` و`opening_hours`، والتسميات الضريبية `copy` (تطبع نسخة) و`reprint` و`register` و`sale_time` و`software` و`document_refund` و`document_void` و`document_cancellation`، ومفاتيح تسميات المعرّفات الضريبية مثل `store_tax_id_label_eu_vat` و`customer_tax_id_label_other`. قد تضيف الملحقات مفاتيح إضافية.
+
+  </AccordionItem>
+</Accordion>
+
+## العلاقة بين الأسعار {#price-model}
+
+يحمل الصنف الواحد في الإيصال عدة أسعار، ويسهل فهم أسمائها بالنظر إلى المبالغ نفسها. هذا هو بند الإسبريسو من الطلب النموذجي — منتج بسعر $17.00 مخفّض إلى $14.50، مع كوبون إضافي بنسبة 10%:
+
+<PriceFlow
+  caption="حبوب إسبريسو — وحدة واحدة (الطلب يتضمن وحدتين)"
+  scaleLabel="السعر العادي 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 مدفوع" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  summary={[
+    { label: "التوفير من التخفيضات على مستوى الطلب", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "جميع خصومات الكوبونات على مستوى الطلب", value: '`totals.discount_total` = 5.28' },
+    { label: "التوفير + الخصومات، بعد إزالة التداخل في الطلبات القديمة", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+التوفير من التخفيض هو الفرق بين السعر العادي وسعر البيع. والخصم هو ما اقتطعه الكوبون بحسب حساب WooCommerce. تتضمن إجماليات الطلبات والتقارير في WooCommerce الخصومات فقط، لذا يجمع `total_saved` الاثنين في قيمة واحدة للعميل.
+
+## قواعد التصيير {#rendering-rules}
+
+كيفية طباعة المبالغ والأسعار الشاملة للضريبة أو غير الشاملة لها والتواريخ. افتح القسم الذي تحتاج إليه.
+
+<Accordion>
+  <AccordionItem question="طباعة المبالغ وإخفاء المبالغ الصفرية">
+
+### حقول العملة {#currency-fields}
+
+تبقى الحقول النقدية أرقامًا، ويكون لكل منها حقل `_display` منسّق بلغة المتجر وعملته:
+
+| الحقل الرقمي | حقل العرض |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+اطبع حقل `_display`. استخدم الرقم فقط لقسم أو لمخرجات قابلة للقراءة آليًا: يحذف `{{#totals.change_total}}…{{/totals.change_total}}` صفه عندما يكون المبلغ صفرًا.
+
+  </AccordionItem>
+
+  <AccordionItem question="طباعة الأسعار مع الضريبة أو بدونها">
+
+### الحقول التي تراعي إعداد عرض الضريبة {#tax-display-aware-fields}
+
+تتوفر عدة حقول بثلاث صيغ: شاملة للضريبة (`_incl`)، وغير شاملة لها (`_excl`)، وصيغة أساسية تتبع إعداد المتجر لعرض الأسعار في السلة مع الضريبة أو بدونها.
+
+| الحقل المبسّط | الحقل الشامل للضريبة | الحقل غير الشامل للضريبة |
+|-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+  </AccordionItem>
+
+  <AccordionItem question="طباعة التواريخ والأوقات">
+
+### كائنات التاريخ {#date-objects}
+
+يأتي كل تاريخ منسقًا مسبقًا بعدة طرق، فلا يحتاج النموذج إلى تنسيق التاريخ بنفسه.
+
+| الحقل | الوصف |
+|-------|-------------|
+| `datetime`, `date`, `time` | سلاسل التاريخ/الوقت الافتراضية |
+| `datetime_short`, `datetime_long`, `datetime_full` | تنسيقات مجمّعة تراعي الإعدادات المحلية |
+| `date_short`, `date_long`, `date_full` | تنسيقات للتاريخ فقط تراعي الإعدادات المحلية |
+| `date_ymd`, `date_dmy`, `date_mdy` | تنسيقات تاريخ بترتيب ثابت |
+| `weekday_short`, `weekday_long` | أسماء الأيام |
+| `day`, `month`, `month_short`, `month_long`, `year` | أجزاء التاريخ المنفردة |
+
+كائنات التاريخ المتاحة: `order.created` و`order.paid` و`order.completed` و`order.printed` و`refunds[].date` و`fiscal.sale_time` و`fiscal.received_at`. يُحدَّث `order.printed` وقت التصيير، وهو مفيد لإعادة الطباعة. يكون تاريخا `fiscal` بقيمة `null` عندما لا يكون للإيصال سجل ضريبي، لذا ضعهما داخل قسم.
+
+  </AccordionItem>
+
+</Accordion>
+
+## توسيع بيانات الإيصال {#extending}
+
+يمكن لإضافة أن تضيف حقولها الخاصة إلى بيانات الإيصال عبر المرشّح `wcpos_receipt_data`.
+
+<Accordion>
+  <AccordionItem question="المرشّح — وسائطه وأوضاعه الستة ومثال">
+
+يحافظ WCPOS على الحقول أعلاه خالية من البيانات الخاصة بأي إضافة بعينها. عندما تحتاج إضافة إلى تضمين الإيصال معلومات لا يمثّلها WooCommerce، تضيفها بنفسها عبر المرشّح `wcpos_receipt_data`، بالطريقة نفسها التي ترشّح بها الإضافات إجماليات طلبات WooCommerce. يعمل المرشّح على كل إيصال ينشئه الخادم: الإيصالات المباشرة واللقطات الضريبية وقت الدفع وتنزيلات PDF ونماذج PHP القديمة. قبل WCPOS 2.0 كان هذا المرشّح يُسمّى `woocommerce_pos_receipt_data`؛ ولا يزال ذلك الاسم يعمل، لكنه مهمل منذ 2.0 وسيُزال في 2.2 على أقرب تقدير (راجع [تسمية الخطافات](../extensions/index.mdx#hook-naming)).
+
+يحدد الوسيط الثالث، `$mode`، المستند الجاري إنشاؤه: `live` أو `fiscal` أو `refund` أو `preview` (إيصالات نموذجية في محرر النماذج والمعرض) أو `closure` أو `xreport` (مستندات إغلاق صندوق البيع وتقرير X). في `preview` و`closure` و`xreport` يكون الطلب غير محفوظ ومعرّفه `0`؛ وينبغي لأي إضافة تحتاج إلى طلب محفوظ أن تعيد `$data` دون تغيير عندما تكون قيمة `$order->get_id()` هي `0`.
+
+```php
+add_filter( 'wcpos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+يمكن للنموذج بعد ذلك استخدام المفتاح الجديد كشرط إظهار، مثل أي قسم آخر:
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+ينبغي أن تحتفظ المفاتيح المعرّفة في المخطط بأنواعها الموثّقة. المفاتيح المضافة ليست جزءًا من المخطط، لذا لا تظهر في منتقي الحقول في محرر النماذج، ولا تتضمن اللقطات الضريبية إلا ما أضافه المرشّح وقت دفع الطلب. يتوفر المرشّح بدءًا من WCPOS 1.10.8.
+
+  </AccordionItem>
+
+  <AccordionItem question="الإيصالات التي تطبع مفتاحًا مضافًا">
+
+يصل كل مفتاح مضاف إلى الإيصالات التي يصيّرها الخادم بنفسه: تنزيلات PDF ونماذج PHP القديمة. تعيد نماذج HTML والنماذج الحرارية المصيَّرة في تطبيق POS بناء البيانات أولًا: يصل المفتاح المضاف داخل `order` أو `store` أو `cashier` أو `customer`، لكن يُحذف أي مفتاح مضاف في موضع آخر، مثل صف الخصومات أعلاه. {/* pending: monorepo#3363 */} في الإيصال المباشر الذي له لقطة ضريبية، تُنسخ الهوية الضريبية و`register` و`software` من اللقطة بعد تشغيل المرشّح، لذا لا يؤثر تغييرها في هذا المرشّح؛ بل أضف المعلومات إلى اللقطة نفسها.
+
+  </AccordionItem>
+</Accordion>
+
+## عند حدوث مشكلة {#if-something-goes-wrong}
+
+**يطبع صف `$0.00` في إيصال ولا يطبع شيئًا في آخر.** تكون بعض حقول `_display`، مثل `totals.change_total_display` و`totals.refund_total_display` و`payments[].tendered_display`، فارغة عند الصفر عندما يصيّر الخادم الإيصال، وتكون `$0.00` عندما يصيّره التطبيق. ضع الصف داخل قسم مشروط بالرقم بدلًا من ذلك، ليُحذف في الحالتين: `{{#totals.change_total}}…{{/totals.change_total}}`.
+
+**صف إجمالي التوفير غير موجود.** قيمة `totals.total_saved_complete` خاطئة: يوجد صنف واحد على الأقل ليس له سعر عادي مسجّل، لذا لا يمكن حساب التوفير. يحدث ذلك عادةً في الطلبات المسجّلة قبل WCPOS 1.9.0.
+
+**الإجمالي أقل مما دفعه العميل.** يعرض المتجر الأسعار دون ضريبة، لذا فإن `totals.total` هو الإجمالي قبل الضريبة. اطبع `totals.total_incl_display` لعرض المبلغ المحصّل. يطبع إيصال PHP القديم المرفق مع WCPOS ذلك المبلغ.
+
+**يُطبع حقل في ملف PDF المنزّل، لكنه لا يُطبع في POS.** تعيد النماذج المصيَّرة في التطبيق بناء البيانات أولًا وتحذف بعض الحقول، التي لا تُطبع إلا في تنزيلات PDF ونماذج PHP القديمة. اطبع أي حقل من القائمة أدناه في تلك النماذج فقط، أو اجعل إظهاره مشروطًا بقسم حتى يحذفه إيصال POS. {/* pending: monorepo#3363 */}
+
+<Accordion>
+  <AccordionItem question="الحقول التي تختلف بين إيصالات PDF وPOS">
+
+- `lines[].attributes` و`lines[].total_refunded_display` و`lines[].unit_subtotal_display` (مع صيغتيه `_incl` و`_excl`)
+- `software.platform`
+- حقول `presentation_hints` باستثناء `display_tax` و`prices_entered_with_tax` و`rounding_mode` و`locale` و`order_barcode_type`
+- المعرّفات الضريبية للعملاء من الأنواع الألمانية والهولندية والفرنسية والشركات البريطانية والسويسرية
+- المفاتيح التي تضيفها إضافة خارج `order` و`store` و`cashier` و`customer`؛ راجع [توسيع بيانات الإيصال](#extending)
+
+</AccordionItem>
+</Accordion>
+
+## الإصدارات {#versions}
+
+لبيانات الإيصال رقم إصدار خاص بها، منفصل عن إصدار الإضافة. لا تتوفر الحقول الأحدث في الإيصالات القديمة، مثل لقطة ضريبية أُخذت قبل وجود الحقل، لذا اجعل إظهارها مشروطًا بقسم.
+
+| الإصدار | الإضافات |
+|---------|-------|
+| 1.1 | السعر العادي وسعر البيع والتوفير لكل صنف، وإجماليات التوفير للطلب، بما فيها **إجمالي التوفير**. لا يغيّر أي منها إجماليات الطلب أو تقارير WooCommerce |
+| 1.2 | `discounts[].discount_type` |
+| 1.3 | `customer.first_name` وتسميات عرض العميل في `i18n` |
+| 1.4 | `register` و`software` وحقول المستند الضريبي (`fiscal.document_type` وأعلام `is_…` و`sale_time` و`received_at` و`sale_tz` و`sale_counter` و`corrects`) وتسمياتها في `i18n` |
+
+## وثائق ذات صلة {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/settings/receipt-templates/html-templates" title="نماذج HTML" description="اكتب نموذج إيصال باستخدام HTML وMustache." />
+  <LinkCard to="/settings/receipt-templates/thermal-templates" title="النماذج الحرارية" description="اكتب نموذجًا لطابعة إيصالات." />
+  <LinkCard to="/settings/receipt-templates/customise-receipt" title="تخصيص إيصالك" description="اختر نموذجًا، أو اطلب من الذكاء الاصطناعي تعديله لك." />
+</LinkCards>

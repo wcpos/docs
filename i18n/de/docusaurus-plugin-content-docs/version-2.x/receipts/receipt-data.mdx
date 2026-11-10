@@ -1,0 +1,947 @@
+---
+title: Belegdaten
+slug: /settings/receipt-templates/receipt-data
+sidebar_label: Belegdaten
+sidebar_position: 5
+toc_max_heading_level: 2
+description: "Alle Felder, die eine Belegvorlage drucken kann, vom Filialnamen bis zu den Summen, mit direkt verwendbaren Codebeispielen für HTML- und Thermodruckvorlagen."
+---
+
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
+
+**WP Admin:** Vorlagen werden unter `WP Admin → POS → Templates` bearbeitet; diese Seite listet die Felder auf, die sie drucken können.
+
+Wie Sie einen Beleg drucken oder per E-Mail versenden, erfahren Sie unter [Belege und der Bildschirm nach der Zahlung](./at-checkout.mdx). Wie Sie eine Vorlage auswählen oder von KI anpassen lassen, erfahren Sie unter [Ihren Beleg anpassen](./customise.mdx).
+
+Diese Seite richtet sich an alle, die den Code einer Vorlage von Hand bearbeiten. Jede Vorlage, ob HTML oder Thermodruck, verwendet dieselben Belegdaten: Filiale, Bestellung, Artikel, Summen und Zahlungen. Die Seite zeigt, wie Sie ein Feld drucken, stellt drei häufige Beispiele vor und listet alle Felder auf.
+
+**Direkt zu:** [Feld finden](#field-reference) · [Häufige Beispiele](#common-recipes) · [Wenn etwas schiefgeht](#if-something-goes-wrong)
+
+## Ein Feld drucken {#print-a-field}
+
+1. Öffnen Sie die Vorlage unter **WP Admin → POS → Vorlagen** (Einzelheiten finden Sie unter [Von Hand bearbeiten](./customise.mdx#option-3--edit-it-by-hand)).
+2. Geben Sie an der Stelle, an der das Feld gedruckt werden soll, seinen Pfad in doppelten geschweiften Klammern ein, etwa `{{store.name}}`, `{{order.number}}` oder `{{totals.total_display}}`, oder fügen Sie es aus der Feldliste neben dem Code ein.
+3. Prüfen Sie die Vorschau unter dem Code und klicken Sie dann zum Speichern auf **Aktualisieren**.
+
+Bei einer Liste, etwa den Artikeln, umschließen Sie die Zeile mit einem Abschnitt. Sie wird dann einmal pro Artikel wiederholt:
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} —
+  {{line_total_display}}
+{{/lines}}
+```
+
+Ein Abschnitt lässt seinen Inhalt auch weg, wenn das Feld leer, null oder falsch ist. Daher wird `{{#customer.id}}…{{/customer.id}}` nur für einen namentlich bekannten Kunden gedruckt. Verwenden Sie für Geldbeträge das Feld, das auf `_display` endet; siehe [Währungsfelder](#currency-fields).
+
+Belege lassen sich auch offline drucken: Die App erstellt aus der Bestellung auf dem Gerät eine Kopie der Belegdaten.
+
+<Accordion>
+  <AccordionItem question="Warum Belege voneinander abweichen können">
+
+### Woher die Daten stammen {#where-the-data-comes-from}
+
+Der Server Ihrer Filiale erstellt die Belegdaten für jede Bestellung, und die App erstellt aus der Bestellung auf dem Gerät eine verkürzte Kopie: Diese enthält weder `cashier` noch Öffnungszeiten, Hinweise oder Bedingungen der Filiale und auch kein `totals.paid_total` oder `totals.change_total`. Eine HTML- oder Thermodruckvorlage öffnet sich sofort mit der Kopie vom Gerät und wechselt zur Serverkopie, sobald diese eintrifft. Offline wird die Kopie vom Gerät gedruckt, sodass diese Felder leer bleiben. Mit WCPOS Pro enthält die Kopie auf dem Gerät auch das Filiallogo; ohne Pro kommt das Logo mit der Serverkopie. Eine ältere PHP-Vorlage wird immer vom Server gerendert. Deshalb verwendet eine Vorlage die unten aufgeführten Felder und niemals PHP-Bestellmethoden. Einige Felder werden nur gedruckt, wenn der Server die Vorlage rendert, etwa bei einem PDF-Download; sie sind unter [Wenn etwas schiefgeht](#if-something-goes-wrong) aufgeführt.
+
+  </AccordionItem>
+</Accordion>
+
+## Die Bereiche des Belegs {#receipt-map}
+
+Jeder Teil eines gedruckten Belegs stammt aus einem Abschnitt der Belegdaten. Zeigen Sie auf einen Bereich des Belegs oder seine Karte, um beide hervorzuheben. Klicken oder tippen Sie auf einen der beiden, um zu den Feldern dieses Abschnitts zu springen. Auf einem Smartphone folgen die Karten unter dem Beleg in derselben Reihenfolge von oben nach unten.
+
+Der folgende Beleg, die ersten beiden Beispiele und die Preisaufschlüsselung verwenden dieselbe Beispielbestellung. Die Artikelbeträge gelten vor Anwendung des Gutscheins (`line_subtotal_display`); die Belegvorlagen der Galerie drucken sie nach dessen Anwendung (`line_total_display`, 26.10 für den Espresso).
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "USt-ID: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "Beleg #1042", right: "13. Juli 2026" },
+        { left: "Kassierer: Ada", right: "Kunde: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Espressobohnen", right: "29.00" },
+        { left: "~34.00~ · Ersparnis −5.00", sub: true },
+        { left: "1 × Keramiktasse", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+        { left: "Artikelbeträge vor Gutschein: `line_subtotal_display`", sub: true },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "Zwischensumme", right: "52.75" },
+        { left: "Gutschein SUMMER10", right: "−5.28" },
+        { left: "Geschenkverpackung", right: "2.50" },
+        { left: "Versand", right: "10.00" },
+        { left: "GESAMT", right: "59.97", bold: true },
+        { left: "Insgesamt gespart", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "Karte", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "Vielen Dank für Ihren Einkauf!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## Häufige Anwendungsbeispiele {#common-recipes}
+
+Die meisten manuellen Anpassungen entsprechen einem der folgenden zwei Beispiele für eine HTML-Vorlage. Ein drittes Beispiel darunter behandelt den erneuten Druck älterer Bestellungen. Jede Karte zeigt zunächst die neuen Zeilen auf einem Beleg, dann den zugehörigen Code und schließlich, wo Sie ihn in Ihrer Vorlage einfügen. Artikelname, Betrag und GESAMT stammen aus dem übrigen Teil Ihrer Vorlage.
+
+<Accordion>
+  <AccordionItem question="Verwendung in einer Thermodruckvorlage">
+
+Dieselben Felder und Abschnitte funktionieren unverändert: Setzen Sie jede gedruckte Zeile in ein `<text>` -Element und lassen Sie `<s>` weg, da Thermodruck-XML keine Durchstreichung unterstützt und den Preis ohne Formatierung druckt ([Thermodruckvorlagen](./thermal-templates.mdx#text-and-formatting)).
+
+  </AccordionItem>
+</Accordion>
+
+<Recipes>
+  <Recipe
+    title="Den regulären Preis durchstreichen"
+    why="Fügen Sie innerhalb des vorhandenen Abschnitts `{{#lines}}` Ihrer Vorlage den Block `{{#line_savings}}` nach der Artikelzeile ein. 34.00 regulärer Preis − 5.00 Angebotspreisersparnis − 2.90 Gutschein = 26.10 bezahlt. Bei Bestellungen ohne gespeicherte Preishistorie lässt der Block beide Zeilen weg."
+    preview={[
+      { left: "2 × Espressobohnen", right: "26.10" },
+      { left: "~34.00~ · Ersparnis −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}:
+    -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="Eine Zeile für „Insgesamt gespart“ hinzufügen"
+    why="Fügen Sie diese Zeilen nach Ihrer GESAMT-Zeile ein. Zwei Abschnitte sorgen dafür, dass die Zeile bei unvollständiger Preishistorie oder ohne Ersparnis entfällt."
+    preview={[
+      { left: "GESAMT", right: "59.97", bold: true },
+      { left: "Insgesamt gespart", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+</Recipes>
+
+<Accordion>
+  <AccordionItem question="Eine vor WCPOS 1.9.0 erstellte Bestellung erneut drucken">
+
+<Recipes>
+  <Recipe
+    title="Eine Bestellung von vor v1.9 korrekt erneut drucken"
+    why="Für eine vor WCPOS 1.9.0 erstellte Bestellung, nicht für die Beispielbestellung. Fügen Sie innerhalb des vorhandenen Abschnitts `{{#lines}}` Ihrer Vorlage die Blöcke `{{#line_savings}}` und `{{#discounts}}` nach der Artikelzeile ein. Die Ersparnis ist bereits im Rabatt enthalten, daher wird hier der Rabatt gedruckt und die Ersparnis weggelassen."
+    preview={[
+      { left: "1 × Espressobohnen", right: "14.50" },
+      { left: "~17.00~  Rabatt −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{^savings_in_discounts}}
+      {{i18n.savings}}:
+      -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    {{i18n.discount}}:
+    -{{discounts_display}}
+  {{/discounts}}
+{{/lines}}`}
+  />
+</Recipes>
+
+  </AccordionItem>
+</Accordion>
+
+## Feldreferenz {#field-reference}
+
+Klappen Sie einen Abschnitt auf, um seine Felder zu sehen. Der erste Eintrag listet alle Abschnitte und ihre Typen auf.
+
+<Accordion>
+  <AccordionItem question="Alle Abschnitte und ihre Typen">
+
+### Abschnitte auf oberster Ebene {#top-level-sections}
+
+| Abschnitt | Inhalt |
+|---------|---------------|
+| `order` (Objekt) | Bestellkennung, Status, Datumsangaben, Notiz und Informationen zur Zahlungs-URL |
+| `store` (Objekt) | Filialkennung, Adresse, Kontaktdaten, Steuer-IDs, Logo, Öffnungszeiten und Fußzeilentext |
+| `cashier` (Objekt) | Benutzer, der die Bestellung bearbeitet hat |
+| `customer` (Objekt) | Anzeigename, Adressen und Steuer-IDs des Kunden |
+| `lines` (Array) | Produktpositionen |
+| `fees` (Array) | Gebührenzeilen |
+| `shipping` (Array) | Versandzeilen |
+| `discounts` (Array) | Gutschein-/Rabattzeilen |
+| `totals` (Objekt) | Bestellsummen, Zahlungssummen, Rückerstattungsübersicht und Artikelanzahlen |
+| `tax` (Objekt) | Kennzeichen für die Steueranzeige als Abschnittsbedingungen |
+| `tax_summary` (Array) | Zeilen der Steuerübersicht je Steuersatz |
+| `has_tax_summary` (boolescher Wert) | Einfache Bedingung für `tax_summary` |
+| `payments` (Array) | Zahlungszeilen |
+| `refunds` (Array) | Der Bestellung zugeordnete Rückerstattungsdatensätze |
+| `fiscal` (Objekt) | Felder des Fiskaldaten-Snapshots, die von Fiskalintegrationen befüllt werden |
+| `register` (Objekt) | Die Kasse, an der der Verkauf erfolgte: `id` und `name`. Leere Zeichenfolgen, wenn unbekannt |
+| `software` (Objekt) | Die Software, die den Beleg ausgestellt hat: `name` (`WCPOS`), `plugin_version`, `app_version`, `app_build`, `platform` |
+| `presentation_hints` (Objekt) | Hinweise zur Formatierung und zum Rendering |
+| `i18n` (Objekt) | Übersetzte Beschriftungen für mitgelieferte und benutzerdefinierte Vorlagen |
+
+  </AccordionItem>
+  <AccordionItem question="Bestellnummer, Status und Datumsangaben — order">
+
+### order {#order}
+
+| Feld | Typ | Beispiel / Beschreibung |
+|-------|------|-----------------------|
+| `order.id` | Zahl | `1042` |
+| `order.number` | Zeichenfolge | Für Menschen lesbare Bestellnummer, z. B. `"1042"` |
+| `order.currency` | Zeichenfolge | ISO-Währungscode, z. B. `"USD"` |
+| `order.customer_note` | Zeichenfolge | Kunden-/Bestellnotiz |
+| `order.wc_status` | Zeichenfolge | Unverarbeiteter WooCommerce-Status-Slug, z. B. `"processing"` |
+| `order.status_label` | Zeichenfolge | Lokalisierte Statusbezeichnung, einschließlich benutzerdefinierter Status |
+| `order.created_via` | Zeichenfolge | Quelle/Kanal, z. B. `"woocommerce-pos"` |
+| `order.needs_payment` | boolescher Wert | Ob ein Zahlungsabschnitt angezeigt werden soll |
+| `order.payment_url` | Zeichenfolge | Zahlungs-URL der Bestellung, falls verfügbar |
+| `order.created` | Datumsobjekt | Erstellungsdatum der Bestellung |
+| `order.paid` | Datumsobjekt | Zahlungsdatum; leere Zeichenfolgen, wenn nicht bezahlt |
+| `order.completed` | Datumsobjekt | Abschlussdatum; leere Zeichenfolgen, wenn nicht abgeschlossen |
+| `order.printed` | Datumsobjekt | Beim Rendern erfasster Zeitstempel des Drucks/Nachdrucks |
+
+  </AccordionItem>
+
+  <AccordionItem question="Filialname, Adresse, Kontakt und Öffnungszeiten — store">
+
+### store {#store}
+
+| Feld | Typ | Beispiel / Beschreibung |
+|-------|------|-----------------------|
+| `store.id` | Zahl | Filial-ID oder historische ID bei gelöschten Filialen |
+| `store.name` | Zeichenfolge | Anzeigename der Filiale |
+| `store.address.address_1` | Zeichenfolge | Adresszeile 1 |
+| `store.address.address_2` | Zeichenfolge | Adresszusatz, etwa Wohnung oder Einheit |
+| `store.address.city` | Zeichenfolge | Stadt/Ort |
+| `store.address.state` | Zeichenfolge | Bundesland/Region |
+| `store.address.postcode` | Zeichenfolge | Postleitzahl |
+| `store.address.country` | Zeichenfolge | ISO-Ländercode |
+| `store.address_lines` | Array | Vorformatierte Adresszeilen; für die meisten Vorlagen empfohlen |
+| `store.tax_ids` | Array | Strukturierte Unternehmens-Steuer-IDs; durchlaufen Sie diese in einer Schleife, statt eine einzelne Steuer-ID zu verwenden |
+| `store.phone` | Zeichenfolge | Telefonnummer der Filiale |
+| `store.email` | Zeichenfolge | E-Mail-Adresse der Filiale |
+| `store.logo` | Zeichenfolge/null | URL oder Daten-URI des Filiallogos: das eigene Logo der Filiale, andernfalls das WordPress-Website-Logo, sofern die Filiale dies nicht deaktiviert. `null`, wenn keines vorhanden ist |
+| `store.opening_hours` | Zeichenfolge/null | Kompakter Öffnungszeitentext |
+| `store.opening_hours_vertical` | Zeichenfolge/null | Mehrzeiliger Öffnungszeitenblock |
+| `store.opening_hours_inline` | Zeichenfolge/null | Durch Kommas getrennter Öffnungszeitentext |
+| `store.opening_hours_notes` | Zeichenfolge/null | Freitext-Hinweise zu Öffnungszeiten |
+| `store.personal_notes` | Zeichenfolge/null | Belegfußzeile/persönliche Notiz |
+| `store.policies_and_conditions` | Zeichenfolge/null | Text zu Rückerstattungen, Rückgaben oder Geschäftsbedingungen |
+| `store.footer_imprint` | Zeichenfolge/null | Rechtliches Impressum in der Fußzeile |
+
+### Steuer-ID-Objekte {#tax-id-objects}
+
+`store.tax_ids` und `customer.tax_ids` enthalten Objekte mit derselben Struktur:
+
+| Feld | Typ | Beschreibung |
+|-------|------|-------------|
+| `type` | Zeichenfolge | Kennung wie `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein` oder `other` |
+| `value` | Zeichenfolge | Zu druckender Steuer-ID-Wert |
+| `country` | Zeichenfolge/null | ISO-Ländercode; null für `eu_vat` und `other` |
+| `label` | Zeichenfolge | Lokalisierte Anzeigebezeichnung, die vor dem Rendern ermittelt wird |
+
+Beispiel:
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="Wer den Kunden bedient hat — cashier">
+
+### cashier {#cashier}
+
+| Feld | Typ | Beispiel / Beschreibung |
+|-------|------|-----------------------|
+| `cashier.id` | Zahl | WordPress-Benutzer-ID, `0`, wenn unbekannt |
+| `cashier.name` | Zeichenfolge | Anzeigename des Kassierers |
+
+  </AccordionItem>
+
+  <AccordionItem question="Kundenname, Adressen und Steuer-IDs — customer">
+
+### customer {#customer}
+
+| Feld | Typ | Beispiel / Beschreibung |
+|-------|------|-----------------------|
+| `customer.id` | Zahl/null | Kunden-ID oder `null` bei Gästen |
+| `customer.name` | Zeichenfolge | Anzeigename des Kunden oder Gastbezeichnung |
+| `customer.first_name` | Zeichenfolge | Vorname aus der Rechnungsadresse, für eine Begrüßung wie „Danke, Nia“. Leer bei Gästen ohne Vornamen |
+| `customer.billing_address.*` | Objekt | Felder der WooCommerce-Rechnungsadresse |
+| `customer.shipping_address.*` | Objekt | Felder der WooCommerce-Lieferadresse |
+| `customer.tax_ids` | Array | Strukturierte Kunden-Steuer-IDs, die als Snapshot aus der Bestellung übernommen wurden |
+
+Häufige Adressschlüssel sind `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email` und `phone`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Verkaufte Artikel — lines">
+
+### lines {#lines}
+
+Durchlaufen Sie die Einträge mit `{{#lines}}...{{/lines}}`. Die Beispielwerte stammen aus der Espresso-Position der [Beispielbestellung](#receipt-map).
+
+<FieldIndex
+  note="Jedes Geldfeld liegt in zwei Formen vor: als Zahl für einen `{{#…}}`-Abschnitt (0 und `null` blenden ihn aus, und ein Feld mit `null` hat überhaupt kein `_display`-Feld) sowie als `_display`-Text zum Drucken. Mit incl/excl markierte Felder haben zusätzlich `_incl`- und `_excl`-Varianten, jeweils mit eigenem `_display`."
+  emptyText="Keine passenden Felder — entfernen Sie den Filter, um alle Felder von `lines[]` zu sehen."
+  fields={[
+    { name: 'key', type: 'string', desc: "Stabiler Positionsschlüssel / Bestellpositions-ID.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "Produkt-SKU.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Anzeigename des Produkts oder der Position.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Verkaufte Menge.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Für diese Position zurückerstattete Menge.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Gespeicherter regulärer Stückpreis. Bei Bestellungen ohne POS-Preishistorie `null` — umschließen Sie ihn mit einem Abschnitt.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Verkaufsstückpreis vor Gutscheinabzug — der gespeicherte POS-Preis, falls vorhanden, andernfalls aus der gespeicherten Positionszwischensumme abgeleitet.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Regulärer Preis minus Verkaufspreis, mindestens null. Der Wert 0 gilt als falsch, daher werden durch eine Bedingung geschützte Zeilen ausgeblendet.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Gespeicherter regulärer Preis multipliziert mit der Menge.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Verkaufspreis vor Gutscheinabzug multipliziert mit der Menge.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Gesamte Ersparnis dieser Position durch die Differenz zwischen regulärem Preis und Verkaufspreis.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "Wahr, wenn die Ersparnis der Position bereits in `discounts` enthalten ist, wie bei Bestellungen von vor v1.9.0. Verwenden Sie dieses Feld, damit eine Ersparnis nicht doppelt gedruckt wird.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce-Stückwert vor Rabattabzug. Verwenden Sie ihn nicht als regulären Preis.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Endgültiger Stückwert nach WooCommerce-Rabatten.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Vor Gutscheinabzug: die WooCommerce-Positionszwischensumme vor Rabattabzug, also der Betrag neben jedem Artikel auf dem Beispielbeleg oben.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "Nativer WooCommerce-Positionsrabatt als positiver Wert — bei aktuellen Bestellungen nur Gutscheine.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Nach Gutscheinabzug: die endgültige Positionssumme, die die Belegvorlagen der Galerie neben jedem Artikel drucken.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Gesamter Rückerstattungsbetrag für diese Position als positiver Wert.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '""', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Steuerzeilen je Steuersatz für diese Position." },
+    { name: 'meta', type: 'array', desc: "Metadaten der Bestellposition als `{key, value}`-Paare." },
+    { name: 'attributes', type: 'array', desc: "Produkt-/Varianteneigenschaften als `{key, value}`-Paare." },
+  ]}
+/>
+
+### Regulären Preis und Ersparnis anzeigen {#displaying-regular-price-and-savings}
+
+Bei einem Layout mit Stückpreisen zeigen Sie den gespeicherten regulären Preis, den Verkaufspreis und die Ersparnis so an:
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+Verwenden Sie die Felder für Positionssummen, wenn die Menge berücksichtigt werden soll:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` ist der Preis vor Gutscheinabzug. Verwenden Sie `unit_price` oder `line_total` für den endgültigen Betrag nach WooCommerce-Rabatten.
+
+:::note Vor v1.9.0 erstellte Bestellungen erneut drucken
+Bei älteren WCPOS-Bestellungen kann die Reduzierung vom regulären Preis auf den Verkaufspreis bereits in `discounts` enthalten sein. Wenn Ihre benutzerdefinierte Vorlage sowohl Positionsersparnisse als auch Positionsrabatte druckt, verwenden Sie `savings_in_discounts`, damit dieselbe Reduzierung nicht doppelt angezeigt wird:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+Wenn die Vorlage keine `discounts`-Zeile auf Positionsebene druckt, zeigen Sie `line_savings` weiterhin an, auch wenn `savings_in_discounts` wahr ist. Die mitgelieferten Vorlagen berücksichtigen diesen Unterschied automatisch.
+:::
+
+  </AccordionItem>
+
+  <AccordionItem question="Gebühren und Versand — fees, shipping">
+
+### fees und shipping {#fees-and-shipping}
+
+Durchlaufen Sie die Einträge mit `{{#fees}}...{{/fees}}` und `{{#shipping}}...{{/shipping}}`.
+
+| Feld | Typ | Beschreibung |
+|-------|------|-------------|
+| `label` | Zeichenfolge | Gebührenbezeichnung oder Name der Versandart |
+| `method_id` | Zeichenfolge | ID der Versandart (nur Versand) |
+| `total` / `_incl` / `_excl` | Zahl | Summen gemäß Anzeigeeinstellung sowie inklusive und exklusive Steuer |
+| `taxes` | Array | Steuerzeilen je Steuersatz |
+| `meta` | Array | Metadaten als `{key, value}`-Paare |
+
+Formatierte Varianten: `total_display`, `total_incl_display` und `total_excl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Gutscheine und Rabatte — discounts">
+
+### discounts {#discounts}
+
+Durchlaufen Sie die Einträge mit `{{#discounts}}...{{/discounts}}`.
+
+| Feld | Typ | Beschreibung |
+|-------|------|-------------|
+| `label` | Zeichenfolge | Gutscheinbeschreibung oder ersatzweise der Code. Ein im POS-Warenkorb hinzugefügter Rabatt wird als `Discount` bezeichnet, bei einem prozentualen Rabatt als `Discount (10%)` |
+| `code` | Zeichenfolge | Gutscheincode |
+| `discount_type` | Zeichenfolge | WooCommerce-Slug des Gutscheintyps, etwa `fixed_cart`, `percent` oder `fixed_product`. Leer, wenn der Gutschein nicht mehr existiert. |
+| `total` / `_incl` / `_excl` | Zahl | Rabattbetrag als positiver Wert |
+
+Formatierte Varianten: `total_display`, `total_incl_display` und `total_excl_display`. Fügen Sie in der Vorlage selbst ein Minuszeichen hinzu, wenn Rabatte als negative Zeilen erscheinen sollen.
+
+`discount_type` wurde in Belegdaten v1.2 hinzugefügt. Zuvor erstellte Fiskalbeleg-Snapshots enthalten dieses Feld nicht. {/* pending: monorepo#3363 */}
+
+  </AccordionItem>
+
+  <AccordionItem question="Summen, bezahlte Beträge, Rückerstattungen und Artikelanzahlen — totals">
+
+### totals {#totals}
+
+Die Beispielwerte stammen aus der [Beispielbestellung](#receipt-map), für die später eine Teilrückerstattung von $7.25 erfolgte.
+
+<FieldIndex
+  note="Geldfelder liegen wie bei den Artikelpositionen paarweise vor: als reine Zahl für Bedingungen und als `_display`-Zeichenfolge zum Drucken, bei entsprechender Markierung mit `_incl`-/`_excl`-Varianten."
+  emptyText="Keine passenden Felder — entfernen Sie den Filter, um alle Felder von `totals` zu sehen."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Bestellzwischensumme vor Rabattabzug.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Gesamtrabatt der Bestellung als positiver Wert — bei aktuellen Bestellungen nur Gutscheine.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Gesamte gespeicherte Ersparnis aus der Differenz zwischen regulärem Preis und Verkaufspreis über alle Produktpositionen, einschließlich Katalogangeboten und Preisänderungen an der Kasse.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "WooCommerce-Rabatte und Ersparnisse gegenüber dem regulären Preis zusammengefasst, ohne Überschneidungen aus älteren Bestellungen. Eine einzige Zahl für die gesamte Ersparnis des Kunden.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Ob der Beleg genügend gespeicherte Preisdaten enthält, um die gesamte Ersparnis zu berechnen.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Gesamter Steuerbetrag.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Gesamtsumme der Bestellung gemäß der Steueranzeigeeinstellung: Bei Preisen exklusive Steuer ist dies die Gesamtsumme abzüglich Steuer. `total_incl` ist immer der berechnete Betrag.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Bezahlter / angerechneter Betrag.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "An den Kunden ausgegebenes Wechselgeld.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '""', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Gesamter Rückerstattungsbetrag als positiver Wert.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Gesamtsumme abzüglich Rückerstattungen, mindestens null. `0`, wenn nichts zurückerstattet wurde; verwenden Sie daher `refund_total` als Bedingung.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Summe der Mengen aller Artikelpositionen.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Anzahl der Produktpositionszeilen.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+Verwenden Sie `total_saved`, wenn Sie dem Kunden die gesamte Ersparnis als eine Zahl anzeigen möchten. Berechnen Sie diese nicht, indem Sie in der Vorlage `discount_total` und `sale_savings_total` addieren: Bei vor v1.9.0 erstellten Bestellungen kann die POS-Preisersparnis bereits im WooCommerce-Gesamtrabatt enthalten sein. Das maßgebliche Feld `total_saved` erkennt und entfernt diese Überschneidung.
+
+Die Ersparnissummen sind `null` und `total_saved_complete` ist falsch, wenn bei mindestens einer Produktposition nicht genügend Preisdaten für eine verlässliche Gesamtsumme gespeichert sind. Verwenden Sie `total_saved_complete` als Bedingung für die Zeile und anschließend `total_saved`, um einen Nullwert auszublenden:
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+Die mitgelieferten Vorlagen drucken **Insgesamt gespart** aus der Variante inklusive Steuer, `totals.total_saved_incl_display`, innerhalb einer einzigen Bedingung `{{#totals.total_saved_incl}}`. Diese eine Bedingung genügt, da der Wert bei unvollständiger Preishistorie `null` ist und bei fehlender Ersparnis null.
+
+  </AccordionItem>
+
+  <AccordionItem question="Steuerzeilen — tax, tax_summary">
+
+### tax und tax_summary {#tax-and-tax_summary}
+
+Verwenden Sie `tax` für Bedingungen zum Anzeigemodus und `tax_summary` für nach Steuersatz aufgeschlüsselte Zeilen.
+
+| Steuerfeld | Typ | Beschreibung |
+|-----------|------|-------------|
+| `tax.display` | Zeichenfolge | `incl` oder `excl` |
+| `tax.display_incl` | boolescher Wert | Wahr, wenn Preise inklusive Steuer angezeigt werden |
+| `tax.display_excl` | boolescher Wert | Wahr, wenn Preise exklusive Steuer angezeigt werden |
+| `tax.breakdown` | Zeichenfolge | `hidden`, `single` oder `itemized` |
+| `tax.breakdown_hidden` | boolescher Wert | Wahr, wenn Steuerzeilen ausgeblendet werden sollen |
+| `tax.breakdown_single` | boolescher Wert | Wahr, wenn eine einzige Steuersumme bevorzugt wird |
+| `tax.breakdown_itemized` | boolescher Wert | Wahr, wenn Zeilen je Steuersatz bevorzugt werden |
+| `has_tax_summary` | boolescher Wert | Wahr, wenn `tax_summary` Zeilen enthält |
+
+Durchlaufen Sie `tax_summary` mit `{{#tax_summary}}...{{/tax_summary}}`.
+
+| Feld | Typ | Beschreibung |
+|-------|------|-------------|
+| `code` | Zeichenfolge | Steuersatz-ID/-Code |
+| `rate` | Zahl/null | Steuersatz in Prozent, sofern ermittelt |
+| `label` | Zeichenfolge | Steuersatzbezeichnung |
+| `compound` | boolescher Wert | Ob der Steuersatz auf einen bereits versteuerten Betrag angewendet wird |
+| `taxable_amount_excl` | Zahl/null | Steuerpflichtiger Grundbetrag exklusive Steuer |
+| `tax_amount` | Zahl | Erhobene Steuer |
+| `taxable_amount_incl` | Zahl/null | Steuerpflichtiger Grundbetrag inklusive Steuer |
+
+Formatierte Varianten: `taxable_amount_excl_display`, `tax_amount_display` und `taxable_amount_incl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Entgegengenommene Zahlungen — payments">
+
+### payments {#payments}
+
+Durchlaufen Sie die Einträge mit `{{#payments}}...{{/payments}}`.
+
+| Feld | Typ | Beschreibung |
+|-------|------|-------------|
+| `method_id` | Zeichenfolge | Kennung der Zahlungsart |
+| `method_title` | Zeichenfolge | Anzeigename der Zahlungsart |
+| `amount` | Zahl | Auf die Bestellung angerechneter Betrag |
+| `transaction_id` | Zeichenfolge | Transaktions-ID des Zahlungsgateways |
+| `tendered` | Zahl | Übergebener Bargeldbetrag, sofern vorhanden |
+| `change` | Zahl | Ausgegebenes Wechselgeld, sofern vorhanden |
+
+Formatierte Varianten: `amount_display`, `tendered_display` und `change_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Rückerstattungen — refunds">
+
+### refunds {#refunds}
+
+Durchlaufen Sie die Einträge mit `{{#refunds}}...{{/refunds}}`. Rückerstattungsbeträge sind positive Zahlen: Die Vorlage fügt ein Minuszeichen hinzu oder druckt sie in einem eigenen Block für zurückgegebene Artikel.
+
+| Feld | Typ | Beschreibung |
+|-------|------|-------------|
+| `id` | Zahl | ID des Rückerstattungsdatensatzes |
+| `date` | Datumsobjekt | Erstellungsdatum der Rückerstattung |
+| `amount` | Zahl | Rückerstattungssumme |
+| `subtotal` | Zahl | Zurückerstattete Positionszwischensumme |
+| `tax_total` | Zahl | Zurückerstattete Steuer |
+| `shipping_total` | Zahl | Zurückerstatteter Versandbetrag |
+| `shipping_tax` | Zahl | Zurückerstattete Versandsteuer |
+| `reason` | Zeichenfolge | Rückerstattungsgrund |
+| `refunded_by_id` | Zahl/null | ID des Benutzers, der die Rückerstattung veranlasst hat |
+| `refunded_by_name` | Zeichenfolge | Anzeigename des Benutzers, der die Rückerstattung veranlasst hat |
+| `refunded_payment` | boolescher Wert | Ob die Zahlung über das Zahlungsgateway zurückerstattet wurde |
+| `destination` | Zeichenfolge | Wohin das Geld zurückgezahlt wurde: `original_method`, `cash` oder `manual` bei einer Rückerstattung im POS; andernfalls leer |
+| `gateway_id` | Zeichenfolge | ID des für die Rückerstattung verwendeten Zahlungsgateways |
+| `gateway_title` | Zeichenfolge | Anzeigename des Zahlungsgateways |
+| `processing_mode` | Zeichenfolge | Verarbeitungsmodus: über Anbieter oder manuell |
+| `lines` | Array | Zurückerstattete Produktzeilen |
+| `fees` | Array | Zurückerstattete Gebührenzeilen |
+| `shipping` | Array | Zurückerstattete Versandzeilen |
+
+Zu den Feldern einer Rückerstattungsposition gehören `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl` und `taxes`; in der POS-App gerenderte Vorlagen erhalten zusätzlich `line_total` und `unit_total`. Gebühren- und Versandzeilen einer Rückerstattung verwenden `label`, `total`, `total_incl`, `total_excl` und `taxes`; Versandzeilen enthalten zusätzlich `method_id`. Für Summen und Steuerbeträge werden Anzeigevarianten hinzugefügt.
+
+  </AccordionItem>
+
+  <AccordionItem question="Fiskaldatensätze — fiscal">
+
+### fiscal {#fiscal}
+
+Fiskalintegrationen und WCPOS Pro füllen die Identifikationsfelder wie Belegnummer, Hash und QR-Nutzdaten aus. Die Dokumentfelder geben an, welche Art von Dokument gedruckt wird, sodass eine Vorlage eine Rückerstattung oder einen Kassenbericht anders als einen Verkauf drucken kann.
+
+| Feld | Typ | Beschreibung |
+|-------|------|-------------|
+| `fiscal.document_type` | Zeichenfolge | Standardmäßig `sale`; auch `refund`, `void`, `cancellation`, `closure`, `xreport` oder `handover` |
+| `fiscal.is_sale_document` | boolescher Wert | Wahr bei einem Verkauf. Verwenden Sie die `is_…`-Kennzeichen als Abschnittsbedingungen |
+| `fiscal.is_refund_document` | boolescher Wert | Wahr bei einer Rückerstattung |
+| `fiscal.is_void_document` | boolescher Wert | Wahr bei einem Abbruch: einem Verkauf, der vor seinem Abschluss storniert wurde |
+| `fiscal.is_cancellation_document` | boolescher Wert | Wahr bei einer nachträglichen Stornierung: einem abgeschlossenen Verkauf, der später storniert wurde |
+| `fiscal.is_closure_document` | boolescher Wert | Wahr bei einem Kassenabschluss |
+| `fiscal.is_x_report` | boolescher Wert | Wahr bei einem X-Bericht |
+| `fiscal.is_handover` | boolescher Wert | Wahr bei einem Übergabebeleg |
+| `fiscal.corrects` | Zeichenfolge | Bei einer Rückerstattung die Kennung des Verkaufs, den sie korrigiert |
+| `fiscal.sale_time` | Datumsobjekt/null | Zeitpunkt, zu dem die Kasse den Verkauf erfasst hat, in der Zeitzone der Kasse |
+| `fiscal.sale_tz` | Zeichenfolge | Zeitzone der Kasse, z. B. `"Europe/Berlin"` |
+| `fiscal.received_at` | Datumsobjekt/null | Zeitpunkt, zu dem der Server der Filiale den Verkauf empfangen hat |
+| `fiscal.sale_counter` | Zahl/null | Eigener Verkaufszähler der Kasse |
+| `fiscal.immutable_id` | Zeichenfolge | Unveränderliche Fiskalkennung |
+| `fiscal.receipt_number` | Zeichenfolge | Fiskalbelegnummer |
+| `fiscal.sequence` | Zahl/null | Sequenzzähler |
+| `fiscal.hash` | Zeichenfolge | Hash-/Signaturwert |
+| `fiscal.qr_payload` | Zeichenfolge | QR-Nutzdaten zur fiskalischen Verifizierung |
+| `fiscal.tax_agency_code` | Zeichenfolge | Code der Steuerbehörde |
+| `fiscal.signed_at` | Zeichenfolge | Zeitstempel der fiskalischen Signierung |
+| `fiscal.signature_excerpt` | Zeichenfolge | Gekürzte Signatur zur Anzeige |
+| `fiscal.document_label` | Zeichenfolge | Dokumentbezeichnung, z. B. Steuerrechnung |
+| `fiscal.is_reprint` | boolescher Wert | Ob diese Ausgabe ein Nachdruck ist |
+| `fiscal.reprint_count` | Zahl | Anzahl der Nachdrucke |
+| `fiscal.extra_fields` | Array/Objekt | Werte für den jeweiligen Rechtsraum, meist eine Liste von `{label, value}`-Zeilen |
+
+Drucken Sie die zusätzlichen Felder mit einer Schleife:
+
+```mustache
+{{#fiscal.extra_fields}}
+  {{label}}: {{value}}
+{{/fiscal.extra_fields}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="Formatierung — presentation_hints">
+
+### presentation_hints {#presentation_hints}
+
+Diese Felder sind hauptsächlich für die App und den Server gedacht, die damit den Beleg formatieren. Vom Server gerenderte Vorlagen können alle diese Felder drucken; in der POS-App gerenderte Vorlagen erhalten nur `display_tax`, `prices_entered_with_tax`, `rounding_mode`, `locale` und `order_barcode_type`.
+
+| Feld | Typ | Beschreibung |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | Zeichenfolge | `incl` oder `excl`. Wird von der App befüllt; der Server lässt es weg |
+| `presentation_hints.hour12` | boolescher Wert/null | Wahr, wenn das Zeitformat der Filiale eine 12-Stunden-Uhr verwendet |
+| `presentation_hints.hour_token` | Zeichenfolge/null | Stundenmuster aus dem Zeitformat der Filiale: `h`, `hh`, `H` oder `HH` |
+| `presentation_hints.prices_entered_with_tax` | boolescher Wert | Ob Katalogpreise die Steuer enthalten |
+| `presentation_hints.rounding_mode` | Zeichenfolge | WooCommerce-Einstellung zur Steuerrundung |
+| `presentation_hints.locale` | Zeichenfolge | Für die Formatierung verwendetes Gebietsschema |
+| `presentation_hints.timezone` | Zeichenfolge | Zeitzone des Belegs |
+| `presentation_hints.currency_position` | Zeichenfolge | Position des Währungssymbols |
+| `presentation_hints.currency_symbol` | Zeichenfolge | Währungssymbol |
+| `presentation_hints.price_thousand_separator` | Zeichenfolge | Tausendertrennzeichen |
+| `presentation_hints.price_decimal_separator` | Zeichenfolge | Dezimaltrennzeichen |
+| `presentation_hints.price_num_decimals` | Zahl | Nachkommastellen |
+| `presentation_hints.price_display_suffix` | Zeichenfolge | WooCommerce-Suffix für die Preisanzeige |
+| `presentation_hints.order_barcode_type` | Zeichenfolge | Barcode-Typ für eine Vorlage, die dieses Feld ausliest: `code128` (Standard), `qrcode`, `ean13`, `ean8` oder `upca`. Wird von der App befüllt; der Server lässt es weg, und die Galerievorlagen legen ihren Barcode-Typ in der Vorlage fest |
+
+Die vorformatierten Geldfelder (die `*_display`-Werte wie `totals.total_display`) geben Beträge mit dem **Währungssymbol** in der Bestellwährung aus und verwenden dabei die oben genannten Positionen und Trennzeichen — Belege zeigen also `$12.00` statt `USD 12.00`. Das unverarbeitete Feld `order.currency` bleibt der ISO-Code für die Logik in Ihrer Vorlage.
+
+  </AccordionItem>
+
+  <AccordionItem question="Belegtexte — i18n">
+
+### i18n {#i18n}
+
+Verwenden Sie nach Möglichkeit `i18n`-Beschriftungen, statt Text fest einzutragen:
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+Häufige Schlüssel sind `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, die fiskalischen Beschriftungen `copy` (druckt KOPIE), `reprint`, `register`, `sale_time`, `software`, `document_refund`, `document_void` und `document_cancellation` sowie die Schlüssel für Steuer-ID-Beschriftungen wie `store_tax_id_label_eu_vat` und `customer_tax_id_label_other`. Erweiterungen können zusätzliche Schlüssel hinzufügen.
+
+  </AccordionItem>
+</Accordion>
+
+## Wie die Preise zusammenhängen {#price-model}
+
+Ein Artikel auf dem Beleg hat mehrere Preise. Die Bezeichnungen lassen sich am besten anhand der Beträge nachvollziehen. Dies ist die Espresso-Position aus der Beispielbestellung — ein Produkt für $17.00, das im Angebot $14.50 kostet, mit einem zusätzlichen Gutschein über 10%:
+
+<PriceFlow
+  caption="Espressobohnen — eine Einheit (die Bestellung enthält zwei)"
+  scaleLabel="regulärer Preis 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 bezahlt" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  summary={[
+    { label: "Angebotspreisersparnisse der gesamten Bestellung", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Alle Gutscheinrabatte der gesamten Bestellung", value: '`totals.discount_total` = 5.28' },
+    { label: "Ersparnisse + Rabatte, ohne Überschneidungen aus älteren Bestellungen", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Eine Angebotspreisersparnis ist die Differenz zwischen regulärem Preis und Verkaufspreis. Ein Rabatt ist der von WooCommerce berechnete Gutscheinabzug. Die Bestellsummen und Berichte von WooCommerce enthalten nur die Rabatte. Daher fasst `total_saved` beides zu einer Zahl für den Kunden zusammen.
+
+## Regeln für die Ausgabe {#rendering-rules}
+
+So werden Geldbeträge, Preise mit oder ohne Steuer und Datumsangaben gedruckt. Öffnen Sie den benötigten Abschnitt.
+
+<Accordion>
+  <AccordionItem question="Geldbeträge drucken und Nullbeträge ausblenden">
+
+### Währungsfelder {#currency-fields}
+
+Geldfelder bleiben Zahlen. Jedes erhält ein `_display`-Feld, das in der Sprache und Währung der Filiale formatiert ist:
+
+| Numerisches Feld | Anzeigefeld |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+Drucken Sie das `_display`-Feld. Verwenden Sie die Zahl nur für einen Abschnitt oder für maschinenlesbare Ausgaben: `{{#totals.change_total}}…{{/totals.change_total}}` lässt die zugehörige Zeile weg, wenn der Betrag null ist.
+
+  </AccordionItem>
+
+  <AccordionItem question="Preise mit oder ohne Steuer drucken">
+
+### Felder, die die Steueranzeige berücksichtigen {#tax-display-aware-fields}
+
+Mehrere Felder liegen in drei Varianten vor: mit Steuer (`_incl`), ohne Steuer (`_excl`) und ohne Zusatz. Letztere folgt der Filialeinstellung dafür, ob Preise im Warenkorb mit oder ohne Steuer angezeigt werden.
+
+| Feld gemäß Anzeigeeinstellung | Feld inklusive Steuer | Feld exklusive Steuer |
+|-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+  </AccordionItem>
+
+  <AccordionItem question="Datum und Uhrzeit drucken">
+
+### Datumsobjekte {#date-objects}
+
+Jedes Datum liegt bereits in mehreren Formaten vor, sodass eine Vorlage Datumsangaben nie selbst formatieren muss.
+
+| Feld | Beschreibung |
+|-------|-------------|
+| `datetime`, `date`, `time` | Standardzeichenfolgen für Datum/Uhrzeit |
+| `datetime_short`, `datetime_long`, `datetime_full` | Kombinierte Formate gemäß Gebietsschema |
+| `date_short`, `date_long`, `date_full` | Reine Datumsformate gemäß Gebietsschema |
+| `date_ymd`, `date_dmy`, `date_mdy` | Datumsformate mit fester Reihenfolge |
+| `weekday_short`, `weekday_long` | Wochentagsnamen |
+| `day`, `month`, `month_short`, `month_long`, `year` | Einzelne Datumsbestandteile |
+
+Verfügbare Datumsobjekte: `order.created`, `order.paid`, `order.completed`, `order.printed`, `refunds[].date`, `fiscal.sale_time` und `fiscal.received_at`. `order.printed` wird beim Rendern aktualisiert, was für Nachdrucke nützlich ist. Die beiden `fiscal`-Datumswerte sind `null`, wenn der Beleg keinen Fiskaldatensatz hat. Umschließen Sie sie daher mit einem Abschnitt.
+
+  </AccordionItem>
+
+</Accordion>
+
+## Belegdaten erweitern {#extending}
+
+Ein Plugin kann über den Filter `wcpos_receipt_data` eigene Felder zu den Belegdaten hinzufügen.
+
+<Accordion>
+  <AccordionItem question="Der Filter — seine Argumente, die sechs Modi und ein Beispiel">
+
+WCPOS hält die oben genannten Felder frei von pluginspezifischen Daten. Wenn ein Plugin auf dem Beleg Informationen benötigt, die WooCommerce nicht abbildet, fügt es diese selbst über den Filter `wcpos_receipt_data` hinzu — genauso, wie Plugins die Bestellsummen von WooCommerce filtern. Der Filter wird bei jedem Beleg ausgeführt, den der Server erstellt: aktuellen Belegen, Fiskaldaten-Snapshots zum Zahlungszeitpunkt, PDF-Downloads und älteren PHP-Vorlagen. Vor WCPOS 2.0 hieß dieser Filter `woocommerce_pos_receipt_data`; dieser Name funktioniert weiterhin, ist aber seit 2.0 veraltet und wird frühestens in 2.2 entfernt (siehe [Hook-Benennung](../extensions/index.mdx#hook-naming)).
+
+Das dritte Argument, `$mode`, gibt an, welches Dokument erstellt wird: `live`, `fiscal`, `refund`, `preview` (Beispielbelege im Vorlageneditor und in der Galerie), `closure` oder `xreport` (Kassenabschluss- und X-Bericht-Dokumente). Bei `preview`, `closure` und `xreport` handelt es sich um eine ungespeicherte Bestellung mit der ID `0`. Ein Plugin, das eine gespeicherte Bestellung benötigt, sollte `$data` unverändert zurückgeben, wenn `$order->get_id()` den Wert `0` hat.
+
+```php
+add_filter( 'wcpos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+Eine Vorlage kann den neuen Schlüssel dann wie jeden anderen Abschnitt als Bedingung verwenden:
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+Im Schema definierte Schlüssel sollten ihre dokumentierten Typen beibehalten. Hinzugefügte Schlüssel sind nicht Teil des Schemas und erscheinen daher nicht in der Feldauswahl des Vorlageneditors. Fiskaldaten-Snapshots enthalten nur das, was der Filter zum Zahlungszeitpunkt der Bestellung hinzugefügt hat. Der Filter ist ab WCPOS 1.10.8 verfügbar.
+
+  </AccordionItem>
+
+  <AccordionItem question="Welche Belege einen hinzugefügten Schlüssel drucken">
+
+Jeder hinzugefügte Schlüssel steht den Belegen zur Verfügung, die der Server selbst rendert: PDF-Downloads und älteren PHP-Vorlagen. HTML- und Thermodruckvorlagen, die in der POS-App gerendert werden, bauen die Daten zunächst neu auf: Ein innerhalb von `order`, `store`, `cashier` oder `customer` hinzugefügter Schlüssel wird übernommen. Ein an anderer Stelle hinzugefügter Schlüssel, etwa in der Rabattzeile oben, wird dagegen weggelassen. {/* pending: monorepo#3363 */} Bei einem aktuellen Beleg mit Fiskaldaten-Snapshot werden die Fiskalkennung, `register` und `software` nach Ausführung des Filters aus dem Snapshot kopiert. Änderungen an diesen Werten in diesem Filter haben daher keine Wirkung; erweitern Sie stattdessen den Snapshot.
+
+  </AccordionItem>
+</Accordion>
+
+## Wenn etwas schiefgeht {#if-something-goes-wrong}
+
+**Eine Zeile druckt auf einem Beleg `$0.00` und auf einem anderen nichts.** Einige `_display`-Felder wie `totals.change_total_display`, `totals.refund_total_display` und `payments[].tendered_display` bleiben bei null leer, wenn der Server den Beleg rendert, und zeigen `$0.00`, wenn die App ihn rendert. Umschließen Sie die Zeile stattdessen mit einem Abschnitt, der die Zahl als Bedingung verwendet, damit sie in beiden Fällen entfällt: `{{#totals.change_total}}…{{/totals.change_total}}`.
+
+**Die Zeile „Insgesamt gespart“ fehlt.** `totals.total_saved_complete` ist falsch: Für mindestens einen Artikel ist kein regulärer Preis gespeichert, sodass sich die Ersparnis nicht berechnen lässt. Das betrifft üblicherweise Bestellungen, die vor WCPOS 1.9.0 an der Kasse erfasst wurden.
+
+**Die Gesamtsumme ist niedriger als der vom Kunden bezahlte Betrag.** Die Filiale zeigt Preise exklusive Steuer an, daher ist `totals.total` die Summe vor Steuer. Drucken Sie `totals.total_incl_display` für den berechneten Betrag. Der mit WCPOS gelieferte ältere PHP-Beleg druckt diesen Betrag.
+
+**Ein Feld wird im PDF-Download gedruckt, aber nicht im POS.** In der App gerenderte Vorlagen bauen die Daten zunächst neu auf und lassen dabei einige Felder weg, die nur in PDF-Downloads und älteren PHP-Vorlagen gedruckt werden. Drucken Sie ein Feld aus der folgenden Liste nur dort, oder umschließen Sie es mit einem Abschnitt, damit der POS-Beleg es weglässt. {/* pending: monorepo#3363 */}
+
+<Accordion>
+  <AccordionItem question="Felder, die sich zwischen PDF- und POS-Belegen unterscheiden">
+
+- `lines[].attributes`, `lines[].total_refunded_display` und `lines[].unit_subtotal_display` (mit seinen Varianten `_incl` und `_excl`)
+- `software.platform`
+- `presentation_hints` außer `display_tax`, `prices_entered_with_tax`, `rounding_mode`, `locale` und `order_barcode_type`
+- Kunden-Steuer-IDs der deutschen, niederländischen, französischen und schweizerischen Typen sowie des Typs für britische Unternehmen
+- Schlüssel, die ein Plugin außerhalb von `order`, `store`, `cashier` und `customer` hinzufügt; siehe [Belegdaten erweitern](#extending)
+
+</AccordionItem>
+</Accordion>
+
+## Versionen {#versions}
+
+Die Belegdaten haben eine eigene Versionsnummer, unabhängig von der des Plugins. Neuere Felder fehlen in älteren Belegen, etwa in einem Fiskaldaten-Snapshot, der vor Einführung des Feldes erstellt wurde. Umschließen Sie sie daher mit einem Abschnitt.
+
+| Version | Hinzugefügt |
+|---------|-------|
+| 1.1 | Regulärer Preis, Verkaufspreis und Ersparnis für jeden Artikel sowie die Ersparnissummen der Bestellung, einschließlich **Insgesamt gespart**. Keines dieser Felder verändert die Bestellsummen oder WooCommerce-Berichte |
+| 1.2 | `discounts[].discount_type` |
+| 1.3 | `customer.first_name` und die Kunden-Anzeigebezeichnungen in `i18n` |
+| 1.4 | `register`, `software`, die fiskalischen Dokumentfelder (`fiscal.document_type`, die `is_…`-Kennzeichen, `sale_time`, `received_at`, `sale_tz`, `sale_counter`, `corrects`) und ihre `i18n`-Beschriftungen |
+
+## Weiterführende Dokumentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/settings/receipt-templates/html-templates" title="HTML-Vorlagen" description="Schreiben Sie eine Belegvorlage in HTML und Mustache." />
+  <LinkCard to="/settings/receipt-templates/thermal-templates" title="Thermodruckvorlagen" description="Schreiben Sie eine Vorlage für einen Belegdrucker." />
+  <LinkCard to="/settings/receipt-templates/customise-receipt" title="Ihren Beleg anpassen" description="Wählen Sie eine Vorlage aus oder lassen Sie sie von KI anpassen." />
+</LinkCards>

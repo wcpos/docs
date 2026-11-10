@@ -1,0 +1,205 @@
+---
+title: Impressoras USB no Linux
+slug: /hardware/receipt-printers/usb-printers-linux
+sidebar_label: Impressoras USB no Linux
+sidebar_position: 6
+description: "No Linux, o aplicativo desktop precisa da sua permissão para usar uma impressora USB de recibos. Uma regra udev concede essa permissão, e a impressora passa a imprimir."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
+
+No Linux, o aplicativo desktop não pode usar uma impressora USB de recibos até que você permita. Você faz isso uma única vez, adicionando uma linha a um arquivo de regras.
+
+Esta página é para você se, no Linux, **Imprimir uma página de teste** no aplicativo desktop termina em **Nada foi impresso** com a mensagem **O aplicativo não teve permissão para acessar a impressora. Permita o acesso nas configurações do sistema e tente novamente.** O Linux não tem uma tela de configurações para isso: a regra abaixo é a configuração.
+
+<details id="other-signs">
+<summary>Outros sinais desse problema</summary>
+
+- **Detalhes para suporte**, abaixo dessa mensagem, mostra `LIBUSB_ERROR_ACCESS`.
+- Na busca, o cartão da sua impressora mostra **Impressora USB** e uma sequência de números, em vez do nome da impressora. Isso geralmente significa que o aplicativo não conseguiu abrir a conexão com a impressora para ler seu nome.
+
+</details>
+
+:::note Antes de começar
+Faça isso no próprio caixa, com esta página aberta nele, para poder copiar as linhas abaixo para o terminal. Abra o aplicativo **Terminal** (no Ubuntu e no Linux Mint, pressione **Ctrl+Alt+T**). Você também precisa da senha de administrador do caixa. Se não a tiver, envie esta página para quem configurou o caixa.
+:::
+
+## Permita que o aplicativo use a impressora {#do-this}
+
+Cada comando abaixo está em uma caixa cinza. Para executar um deles, posicione o ponteiro sobre a caixa e pressione o botão de copiar no canto superior direito. Depois, clique no terminal, cole com **Ctrl+Shift+V** e pressione **Enter**.
+
+Quando um comando pedir a senha, digite-a e pressione Enter. Enquanto você digita, a tela não mostra nada ou mostra apenas asteriscos: isso é normal.
+
+### Encontre os IDs da sua impressora {#find-ids}
+
+1. Conecte a impressora e ligue-a.
+2. Encontre os dois IDs da impressora. No terminal, execute:
+
+   ```bash
+   lsusb
+   ```
+
+   Se aparecer `command not found`, [instale o lsusb](#command-not-found) primeiro. Cada linha representa um dispositivo USB. Encontre a linha da sua impressora, por exemplo `Bus 001 Device 007: ID 04b8:0e28 Seiko Epson Corp.`
+
+   Nessa linha:
+
+   - ID do fabricante: `04b8`, o código logo após `ID`.
+   - ID do modelo: `0e28`, o código após os dois-pontos.
+   - Nome do fabricante: `Seiko Epson Corp.`, no final. Ele ajuda você a encontrar a linha.
+
+   Se não conseguir identificar a linha da impressora, desconecte-a, execute `lsusb` novamente e veja qual linha desapareceu.
+
+### Crie e carregue a regra {#create-rule}
+
+3. Abra um novo arquivo de regras no editor de texto nano:
+
+   ```bash
+   sudo nano /etc/udev/rules.d/99-receipt-printer.rules
+   ```
+
+   O nano abre dentro do terminal, com uma página vazia e uma lista de teclas na parte inferior. Se aparecer `command not found`, [instale o nano](#command-not-found) primeiro.
+
+4. Insira a regra no arquivo. Ela permite que todas as contas deste caixa usem qualquer impressora com esses dois IDs. Copie esta linha com o botão de copiar da caixa, como antes. Ela é mais longa que a caixa: para lê-la inteira, posicione o ponteiro sobre a caixa (em um celular, toque nela) e pressione o botão de quebra de linha à esquerda do botão de copiar.
+
+   ```text
+   SUBSYSTEM=="usb", ATTRS{idVendor}=="04b8", ATTRS{idProduct}=="0e28", MODE="0666"
+   ```
+
+   Depois, no nano:
+   1. **Cole a regra** com **Ctrl+Shift+V**.
+   2. **Substitua os dois IDs.** Com as teclas de seta, vá até `04b8` e `0e28`. Substitua apenas esses dois códigos pelos dois IDs da sua impressora, digitados exatamente como aparecem em `lsusb`. Mantenha as aspas ao redor deles.
+   3. **Confira a linha** antes de salvar: uma única linha, começando com `SUBSYSTEM=="usb",` e terminando com `MODE="0666"`, com seus dois IDs entre aspas onde estavam `04b8` e `0e28`.
+   4. **Salve** com **Ctrl+O** e depois **Enter**.
+   5. **Saia do nano** com **Ctrl+X**. Você volta ao prompt do terminal.
+
+   <details id="rule-parts">
+   <summary>O que significa cada parte da regra</summary>
+
+   A regra tem quatro partes, cada uma terminando em vírgula, exceto a última:
+
+   - `SUBSYSTEM=="usb",`: a regra se aplica a um dispositivo USB.
+   - `ATTRS{idVendor}=="04b8",`: o ID do fabricante.
+   - `ATTRS{idProduct}=="0e28",`: o ID do modelo.
+   - `MODE="0666"`: todas as contas deste computador podem usar a impressora, que é o necessário para um caixa.
+
+   </details>
+
+5. Carregue a regra:
+
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+
+   Se pedir a senha, digite-a novamente. Quando funciona, o comando não mostra nada e o prompt reaparece. Se aparecer um erro, pare aqui e consulte [Ainda com dificuldades?](#still-stuck)
+
+6. Desconecte a impressora e conecte-a novamente.
+
+### Adicione a impressora e teste {#add-and-test}
+
+7. Se você salvou essa impressora antes com **Salvar sem testar**, exclua-a primeiro: em **Configurações → Impressão**, abra o menu **⋮** na linha dela e escolha **Excluir**.
+8. No aplicativo desktop, vá para **Configurações → Impressão** e pressione **Adicionar impressora**. A busca por impressoras USB começa automaticamente. Escolha o cartão da sua impressora, identificado como **USB**. Agora que o aplicativo consegue abrir a conexão com a impressora, o cartão mostra o nome informado por ela.
+9. Pressione **Imprimir uma página de teste**. O painel pergunta **A página de teste foi impressa?** Responda:
+   - **Sim, e está correta**: a impressora é salva, e o painel mostra o nome da impressora e **está configurada**. Pressione **Concluído**. A impressora está pronta.
+   - **Imprimiu, mas a régua está incorreta**: escolha o papel da sua impressora, e a página de teste será impressa novamente. Consulte [Imprimiu, mas a régua está incorreta](./setup-wizard.mdx#test-page-ruler).
+   - **Não saiu nada**: o painel mostra **Nada foi impresso**. Se ainda disser que o aplicativo não teve permissão para acessar a impressora, consulte [Ainda sem permissão após a regra](#still-not-allowed). Para qualquer outra mensagem, consulte [Não saiu nada](./setup-wizard.mdx#test-page-nothing).
+
+:::tip Inicie o aplicativo com seu próprio usuário
+Abra o aplicativo desktop da forma habitual, nunca com `sudo`. É a regra que permite ao aplicativo usar a impressora com seu usuário.
+:::
+
+## Se algo der errado {#goes-wrong}
+
+Encontre o sintoma:
+
+- [Ainda sem permissão após a regra](#still-not-allowed)
+- [`lsusb` ou `nano`: comando não encontrado](#command-not-found)
+- [O cartão tem o nome `ttyUSB0`, `ttyACM0` ou `rfcomm0`](#serial-port)
+- [Nenhuma impressora encontrada](#no-printer-found)
+- [A página de teste é impressa, mas os recibos seguintes não](#prints-then-stops)
+
+### Ainda sem permissão após a regra {#still-not-allowed}
+
+Verifique, nesta ordem:
+
+- Os dois IDs da regra correspondem exatamente aos de `lsusb`, inclusive as letras minúsculas.
+- O arquivo de regras contém a sua linha. Exiba-o com `cat /etc/udev/rules.d/99-receipt-printer.rules`.
+- Você desconectou a impressora e a conectou novamente após a etapa 5.
+
+Se os três itens estiverem corretos, consulte [Ainda com dificuldades?](#still-stuck). Para conferir por conta própria se o Linux aplicou a regra, abra primeiro a verificação abaixo.
+
+<details id="device-file">
+<summary>Verifique se o Linux aplicou a regra</summary>
+
+1. Execute `lsusb` novamente, pois o número de `Device` muda cada vez que a impressora é conectada. Anote os números de `Bus` e `Device` na linha da impressora, por exemplo `Bus 001` e `Device 007`.
+2. Insira-os neste comando, primeiro o barramento, e execute-o:
+
+   ```bash
+   ls -l /dev/bus/usb/001/007
+   ```
+
+3. Leia o início da linha exibida:
+   - `crw-rw-rw-`: a regra entrou em vigor. Pressione **Imprimir uma página de teste** novamente. Se o painel ainda disser que o aplicativo não teve permissão para acessar a impressora, consulte [Ainda com dificuldades?](#still-stuck)
+   - `crw-rw-r--` ou `crw-------`: a regra não entrou em vigor. Revise a lista de verificação acima, execute novamente o comando de carregamento da etapa 5 da configuração, depois desconecte a impressora, conecte-a novamente e repita as etapas 1 a 3 daqui. Se a linha ainda começar assim, consulte [Ainda com dificuldades?](#still-stuck)
+
+</details>
+
+<details id="command-not-found">
+<summary>`lsusb` ou `nano`: comando não encontrado</summary>
+
+Instale o programa que falta e execute a etapa novamente:
+
+- `lsusb`: `sudo apt install usbutils` no Ubuntu ou Debian, `sudo dnf install usbutils` no Fedora.
+- `nano`: `sudo apt install nano` no Ubuntu ou Debian, `sudo dnf install nano` no Fedora.
+
+</details>
+
+<details id="serial-port">
+<summary>O cartão tem o nome `ttyUSB0`, `ttyACM0` ou `rfcomm0`</summary>
+
+Essa impressora se conecta por uma porta serial, não como uma impressora USB, e o Linux atribui as portas seriais ao grupo `dialout`. Adicione seu usuário a esse grupo, depois encerre a sessão e entre novamente:
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+No Arch Linux, o grupo é `uucp`.
+
+</details>
+
+<details id="no-printer-found">
+<summary>Nenhuma impressora encontrada</summary>
+
+O aplicativo lista apenas dispositivos USB que se identificam como impressoras. Verifique o cabo e se a impressora está ligada, depois pressione **Buscar novamente**. Consulte [Nenhuma impressora encontrada](./setup-wizard.mdx#not-found).
+
+</details>
+
+<details id="prints-then-stops">
+<summary>A página de teste é impressa, mas os recibos seguintes não</summary>
+
+Isso não é um problema de permissão. Comece por [Ainda não imprime?](./setup-wizard.mdx#troubleshoot)
+
+</details>
+
+## Ainda com dificuldades? {#still-stuck}
+
+Pressione **Copiar relatório de configuração** no painel **Nada foi impresso** ou no menu **⋮** na linha da impressora em **Configurações → Impressão**. Cole-o na sua mensagem, junto com a linha de `lsusb` da sua impressora e, se você executou a verificação, a linha de `ls -l` obtida [nela](#device-file).
+
+<SupportContact />
+
+## Por que o aplicativo precisa disso {#why-it-happens}
+
+A maioria dos programas imprime pelo sistema de impressão do próprio Linux. Uma impressora de recibos precisa receber comandos diretamente (cortar o papel, abrir a gaveta), por isso o aplicativo desktop abre a conexão com a própria impressora.
+
+O Linux reserva os dispositivos USB para a conta de administrador (`root`), a menos que uma regra determine o contrário. O aplicativo é executado com seu usuário, não como `root`, por isso, sem uma regra, ele não tem permissão para abrir a conexão com a impressora. A regra que você adicionou cria uma exceção para esse modelo específico de impressora.
+
+O Linux também tem seu próprio driver para impressoras USB, que assume o controle da impressora quando você a conecta. O aplicativo libera a impressora desse driver automaticamente antes de cada impressão, então você não precisa removê-lo nem bloqueá-lo. Mas essa liberação exige a mesma permissão que a impressão, por isso uma única regra resolve as duas situações.
+
+## Documentação relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/receipt-printers/printer-setup-wizard" title="Assistente de configuração de impressora" description="Adicione uma impressora, imprima a página de teste e responda às perguntas" />
+  <LinkCard to="/hardware/receipt-printers" title="Impressoras de recibos" description="A quais impressoras cada aplicativo pode se conectar e todos os guias de impressoras" />
+  <LinkCard to="/hardware/receipt-printers/supported-printers" title="Impressoras de recibos compatíveis" description="Quais impressoras funcionam e como funcionam" />
+</LinkCards>

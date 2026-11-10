@@ -1,0 +1,205 @@
+---
+title: Stampanti USB su Linux
+slug: /hardware/receipt-printers/usb-printers-linux
+sidebar_label: Stampanti USB su Linux
+sidebar_position: 6
+description: "Su Linux, l'app desktop richiede la tua autorizzazione per usare una stampante USB per ricevute. Basta una regola udev per concederla e consentire alla stampante di stampare."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
+
+Su Linux, l'app desktop non può usare una stampante USB per ricevute finché non la autorizzi. Basta farlo una volta, aggiungendo una riga a un file di regole.
+
+Questa pagina fa per te se, su Linux, **Stampa una pagina di prova** nell'app desktop termina con **Nessuna stampa** e il messaggio **L'app non è autorizzata ad accedere alla stampante. Autorizzala nelle impostazioni di sistema, poi riprova.** Linux non ha una schermata delle impostazioni per questo: l'impostazione è la regola qui sotto.
+
+<details id="other-signs">
+<summary>Altri segnali di questo problema</summary>
+
+- **Dettagli per l'assistenza**, sotto quel messaggio, mostra `LIBUSB_ERROR_ACCESS`.
+- Nei risultati di ricerca, la scheda della stampante mostra **Stampante USB** seguito da una serie di numeri, anziché il nome della stampante. Di solito significa che l'app non ha potuto accedere alla stampante per leggerne il nome.
+
+</details>
+
+:::note Prima di iniziare
+Esegui questa procedura direttamente sulla cassa, aprendo lì questa pagina, così puoi copiare le righe sottostanti nel suo terminale. Apri l'app **Terminale** (su Ubuntu e Linux Mint, premi **Ctrl+Alt+T**). Ti serve anche la password di amministratore della cassa. Se non ce l'hai, invia questa pagina a chi ha configurato la cassa.
+:::
+
+## Consenti all'app di usare la stampante {#do-this}
+
+Ogni comando qui sotto si trova in un riquadro grigio. Per eseguirlo, porta il puntatore sul riquadro e premi il pulsante di copia nell'angolo in alto a destra. Poi fai clic nel terminale, incolla con **Ctrl+Shift+V** e premi **Invio**.
+
+Quando un comando richiede la password, digitala e premi Invio. Mentre scrivi, lo schermo non mostra nulla o mostra solo asterischi: è normale.
+
+### Trova gli ID della stampante {#find-ids}
+
+1. Collega la stampante e accendila.
+2. Trova i due ID della stampante. Nel terminale, esegui:
+
+   ```bash
+   lsusb
+   ```
+
+   Se compare `command not found`, prima [installa lsusb](#command-not-found). Ogni riga corrisponde a un dispositivo USB. Trova la riga della tua stampante, ad esempio `Bus 001 Device 007: ID 04b8:0e28 Seiko Epson Corp.`
+
+   In quella riga:
+
+   - ID del produttore: `04b8`, il codice subito dopo `ID`.
+   - ID del modello: `0e28`, il codice dopo i due punti.
+   - Nome del produttore: `Seiko Epson Corp.`, alla fine. Ti aiuta a trovare la riga.
+
+   Se non riesci a capire quale riga corrisponde alla stampante, scollegala, esegui di nuovo `lsusb` e controlla quale riga è scomparsa.
+
+### Crea e carica la regola {#create-rule}
+
+3. Apri un nuovo file di regole nell'editor di testo nano:
+
+   ```bash
+   sudo nano /etc/udev/rules.d/99-receipt-printer.rules
+   ```
+
+   nano si apre nel terminale, con una pagina vuota e un elenco di tasti in basso. Se compare `command not found`, prima [installa nano](#command-not-found).
+
+4. Inserisci la regola nel file. La regola consente a ogni account su questa cassa di usare qualsiasi stampante con questi due ID. Copia questa riga con il pulsante di copia del riquadro, come prima. È più lunga del riquadro: per leggerla per intero, porta il puntatore sul riquadro (su un telefono, toccalo) e premi il pulsante per andare a capo a sinistra di quello di copia.
+
+   ```text
+   SUBSYSTEM=="usb", ATTRS{idVendor}=="04b8", ATTRS{idProduct}=="0e28", MODE="0666"
+   ```
+
+   Poi, in nano:
+   1. **Incolla la regola** con **Ctrl+Shift+V**.
+   2. **Sostituisci i due ID.** Con i tasti freccia, spostati su `04b8` e `0e28`. Sostituisci solo quei due codici con i due ID della tua stampante, digitandoli esattamente come li mostra `lsusb`. Mantieni le virgolette che li racchiudono.
+   3. **Controlla la riga** prima di salvare: una sola riga, che inizia con `SUBSYSTEM=="usb",` e termina con `MODE="0666"`, con i tuoi due ID tra virgolette al posto di `04b8` e `0e28`.
+   4. **Salva** con **Ctrl+O**, poi **Invio**.
+   5. **Esci da nano** con **Ctrl+X**. Torni al prompt del terminale.
+
+   <details id="rule-parts">
+   <summary>Cosa significa ogni parte della regola</summary>
+
+   La regola ha quattro parti, ciascuna seguita da una virgola tranne l'ultima:
+
+   - `SUBSYSTEM=="usb",`: la regola riguarda un dispositivo USB.
+   - `ATTRS{idVendor}=="04b8",`: l'ID del produttore.
+   - `ATTRS{idProduct}=="0e28",`: l'ID del modello.
+   - `MODE="0666"`: ogni account su questo computer può usare la stampante, come serve su una cassa.
+
+   </details>
+
+5. Carica la regola:
+
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+
+   Se viene richiesta la password, digitala di nuovo. Se il comando riesce, non mostra nulla e ricompare il prompt. Se invece mostra un errore, fermati qui e vedi [Hai ancora problemi?](#still-stuck)
+
+6. Scollega la stampante e ricollegala.
+
+### Aggiungi la stampante e provala {#add-and-test}
+
+7. Se in precedenza hai salvato questa stampante con **Salva senza provare**, prima eliminala: in **Impostazioni → Stampa**, apri il menu **⋮** sulla sua riga e scegli **Elimina**.
+8. Nell'app desktop, vai in **Impostazioni → Stampa** e premi **Aggiungi stampante**. La ricerca delle stampanti USB si avvia automaticamente. Scegli la scheda della tua stampante, contrassegnata da **USB**. Ora che l'app può accedere alla stampante, la scheda mostra il nome fornito dalla stampante stessa.
+9. Premi **Stampa una pagina di prova**. Il pannello chiede **La pagina di prova è stata stampata?** Rispondi:
+   - **Sì, ed è corretta**: la stampante viene salvata e il pannello mostra il nome della stampante seguito da **è configurata**. Premi **Fine**. La stampante è pronta.
+   - **Stampata, ma il righello non corrisponde**: scegli la carta presente nella stampante e la pagina di prova viene stampata di nuovo. Vedi [Stampata, ma il righello non corrisponde](./setup-wizard.mdx#test-page-ruler).
+   - **Non è uscito nulla**: il pannello mostra **Nessuna stampa**. Se indica ancora che l'app non è autorizzata ad accedere alla stampante, vedi [Accesso ancora negato dopo la regola](#still-not-allowed). Per qualsiasi altro messaggio, vedi [Non è uscito nulla](./setup-wizard.mdx#test-page-nothing).
+
+:::tip Avvia l'app con il tuo account
+Apri l'app desktop come fai di solito, mai con `sudo`. È la regola che consente all'app di usare la stampante con il tuo account.
+:::
+
+## Se qualcosa va storto {#goes-wrong}
+
+Trova il tuo problema:
+
+- [Accesso ancora negato dopo la regola](#still-not-allowed)
+- [`lsusb` o `nano`: comando non trovato](#command-not-found)
+- [La scheda si chiama `ttyUSB0`, `ttyACM0` o `rfcomm0`](#serial-port)
+- [Nessuna stampante trovata](#no-printer-found)
+- [La pagina di prova viene stampata, ma le ricevute successive no](#prints-then-stops)
+
+### Accesso ancora negato dopo la regola {#still-not-allowed}
+
+Controlla, in ordine:
+
+- I due ID nella regola corrispondono esattamente a quelli di `lsusb`, comprese le lettere minuscole.
+- Il file di regole contiene la tua riga. Visualizzalo con `cat /etc/udev/rules.d/99-receipt-printer.rules`.
+- Hai scollegato e ricollegato la stampante dopo il passaggio 5.
+
+Se tutti e tre i punti sono corretti, vedi [Hai ancora problemi?](#still-stuck). Per verificare di persona se Linux ha applicato la regola, apri prima il controllo qui sotto.
+
+<details id="device-file">
+<summary>Verifica se Linux ha applicato la regola</summary>
+
+1. Esegui di nuovo `lsusb`, perché il numero `Device` cambia ogni volta che colleghi la stampante. Annota i numeri `Bus` e `Device` sulla riga della stampante, ad esempio `Bus 001` e `Device 007`.
+2. Inseriscili in questo comando, prima il bus, ed eseguilo:
+
+   ```bash
+   ls -l /dev/bus/usb/001/007
+   ```
+
+3. Leggi l'inizio della riga che viene mostrata:
+   - `crw-rw-rw-`: la regola ha avuto effetto. Premi di nuovo **Stampa una pagina di prova**. Se il pannello indica ancora che l'app non è autorizzata ad accedere alla stampante, vedi [Hai ancora problemi?](#still-stuck)
+   - `crw-rw-r--` o `crw-------`: la regola non ha avuto effetto. Ricontrolla l'elenco qui sopra, esegui di nuovo il comando di caricamento del passaggio 5 della configurazione, poi scollega e ricollega la stampante e ripeti i passaggi da 1 a 3 di questo controllo. Se la riga inizia ancora così, vedi [Hai ancora problemi?](#still-stuck)
+
+</details>
+
+<details id="command-not-found">
+<summary>`lsusb` o `nano`: comando non trovato</summary>
+
+Installa il programma mancante, poi ripeti il passaggio:
+
+- `lsusb`: `sudo apt install usbutils` su Ubuntu o Debian, `sudo dnf install usbutils` su Fedora.
+- `nano`: `sudo apt install nano` su Ubuntu o Debian, `sudo dnf install nano` su Fedora.
+
+</details>
+
+<details id="serial-port">
+<summary>La scheda si chiama `ttyUSB0`, `ttyACM0` o `rfcomm0`</summary>
+
+Quella stampante si collega tramite una porta seriale, non come stampante USB, e Linux assegna le porte seriali al gruppo `dialout`. Aggiungi il tuo account al gruppo, poi disconnettiti e accedi di nuovo:
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+Su Arch Linux il gruppo è `uucp`.
+
+</details>
+
+<details id="no-printer-found">
+<summary>Nessuna stampante trovata</summary>
+
+L'app elenca solo i dispositivi USB che si identificano come stampanti. Controlla il cavo e che la stampante sia accesa, poi premi **Ripeti ricerca**. Vedi [Nessuna stampante trovata](./setup-wizard.mdx#not-found).
+
+</details>
+
+<details id="prints-then-stops">
+<summary>La pagina di prova viene stampata, ma le ricevute successive no</summary>
+
+Non è un problema di autorizzazioni. Parti da [La stampante continua a non stampare?](./setup-wizard.mdx#troubleshoot)
+
+</details>
+
+## Hai ancora problemi? {#still-stuck}
+
+Premi **Copia report di configurazione** nel pannello **Nessuna stampa** oppure nel menu **⋮** sulla riga della stampante in **Impostazioni → Stampa**. Incollalo nel tuo messaggio, insieme alla riga di `lsusb` della stampante e, se hai eseguito [il controllo](#device-file), alla riga di `ls -l`.
+
+<SupportContact />
+
+## Perché l'app ne ha bisogno {#why-it-happens}
+
+La maggior parte dei programmi stampa tramite il sistema di stampa di Linux. Una stampante per ricevute richiede l'invio diretto dei comandi (tagliare la carta, aprire il cassetto), quindi l'app desktop accede direttamente alla stampante.
+
+Linux riserva i dispositivi USB al proprio account amministratore (`root`), a meno che una regola non disponga diversamente. L'app viene eseguita con il tuo account, non come `root`, quindi senza una regola non è autorizzata ad accedere alla stampante. La regola che hai aggiunto crea un'eccezione per questo specifico modello di stampante.
+
+Linux ha anche un proprio driver per le stampanti USB, che prende il controllo della stampante quando la colleghi. Prima di ogni stampa, l'app la libera automaticamente da quel driver, quindi non devi rimuoverlo o bloccarlo. Per liberarla, però, serve la stessa autorizzazione necessaria per stampare: ecco perché una sola regola risolve entrambi i problemi.
+
+## Documentazione correlata {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/receipt-printers/printer-setup-wizard" title="Procedura guidata di configurazione della stampante" description="Aggiungi una stampante, stampa la pagina di prova e rispondi alle domande" />
+  <LinkCard to="/hardware/receipt-printers" title="Stampanti per ricevute" description="A cosa può collegarsi ogni app e tutte le guide alle stampanti" />
+  <LinkCard to="/hardware/receipt-printers/supported-printers" title="Stampanti per ricevute supportate" description="Quali stampanti funzionano e quanto bene" />
+</LinkCards>

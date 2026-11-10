@@ -1,0 +1,947 @@
+---
+title: レシートデータ
+slug: /settings/receipt-templates/receipt-data
+sidebar_label: レシートデータ
+sidebar_position: 5
+toc_max_heading_level: 2
+description: "店舗名から合計まで、レシートテンプレートで印刷できるすべてのフィールドを紹介します。HTML テンプレートと感熱紙用テンプレートにコピーして使えるコード例も掲載しています。"
+---
+
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
+
+**WP 管理画面：** テンプレートは `WP Admin → POS → Templates` で編集します。このページでは、テンプレートで印刷できるフィールドを紹介します。
+
+レシートの印刷やメール送信については[レシートと支払い完了画面](./at-checkout.mdx)、テンプレートの選択や AI による変更については[レシートのカスタマイズ](./customise.mdx)をご覧ください。
+
+このページは、テンプレートのコードを手動で編集する方向けです。HTML 用も感熱紙用も、すべてのテンプレートは店舗、注文、商品、合計、支払いという共通のレシートデータを使って印刷します。フィールドの印刷方法、よく使う例を三つ、そしてすべてのフィールドを紹介します。
+
+**移動先：** [フィールドを探す](#field-reference) · [よく使う例](#common-recipes) · [問題が発生した場合](#if-something-goes-wrong)
+
+## フィールドを印刷する {#print-a-field}
+
+1. **WP Admin → POS → テンプレート** でテンプレートを開きます（詳しくは[手動で編集する](./customise.mdx#option-3--edit-it-by-hand)をご覧ください）。
+2. フィールドを印刷する位置に、`{{store.name}}`、`{{order.number}}`、`{{totals.total_display}}` のようにパスを二重の波括弧で囲んで入力するか、コードの横にあるフィールド一覧から挿入します。
+3. コードの下にあるプレビューを確認し、**更新**をクリックして保存します。
+
+商品などのリストは、行をセクションで囲むと、項目ごとにその行が繰り返されます。
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} —
+  {{line_total_display}}
+{{/lines}}
+```
+
+フィールドが空、ゼロ、または偽の場合もセクションの内容は省略されるため、`{{#customer.id}}…{{/customer.id}}` は名前のある顧客の場合にのみ印刷されます。金額の印刷には、末尾が `_display` のフィールドを使ってください。[通貨フィールド](#currency-fields)をご覧ください。
+
+レシートはオフラインでも印刷できます。アプリが端末上の注文からレシートデータのコピーを作成します。
+
+<Accordion>
+  <AccordionItem question="レシートの内容が異なる理由">
+
+### データの取得元 {#where-the-data-comes-from}
+
+店舗のサーバーが注文ごとのレシートデータを作成し、アプリは端末上の注文から簡略版のコピーを作成します。このコピーには `cashier`、店舗の営業時間、メモ、ポリシー、`totals.paid_total`、`totals.change_total` は含まれません。HTML 用または感熱紙用のテンプレートは、まず端末のコピーですぐに開き、サーバーのデータが届くと切り替わります。オフラインでは端末のコピーで印刷するため、これらのフィールドは空になります。WCPOS Pro では端末のコピーにも店舗のロゴが含まれます。Pro がない場合、ロゴはサーバーのコピーとともに届きます。従来の PHP テンプレートは常にサーバーで描画されます。このため、テンプレートでは以下のフィールドを使用し、PHP の注文メソッドは使用しません。一部のフィールドは、PDF のダウンロード時など、サーバーがテンプレートを描画する場合にのみ印刷されます。該当するフィールドは[問題が発生した場合](#if-something-goes-wrong)に記載しています。
+
+  </AccordionItem>
+</Accordion>
+
+## レシートとデータの対応 {#receipt-map}
+
+印刷されたレシートの各部分は、レシートデータの各セクションに対応しています。レシートの一部かそのカードにポインターを合わせると、対応する両方が強調表示されます。どちらかをクリックまたはタップすると、そのセクションのフィールドに移動します。スマートフォンでは、レシートの下に、上から下へ同じ順序でカードが並びます。
+
+以下のレシート、最初の二つの例、価格の内訳では、同じサンプル注文を使用しています。商品の金額はクーポン適用前(`line_subtotal_display`)です。ギャラリーのレシートテンプレートでは適用後の金額（`line_total_display`、エスプレッソは 26.10）を印刷します。
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "VAT: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "レシート #1042", right: "2026年7月13日" },
+        { left: "レジ係：Ada", right: "顧客：Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × エスプレッソ豆", right: "29.00" },
+        { left: "~34.00~ · 値引き額 −5.00", sub: true },
+        { left: "1 × 陶器のマグカップ", right: "18.00" },
+        { left: "1 × クロワッサン", right: "5.75" },
+        { left: "クーポン適用前の商品金額：`line_subtotal_display`", sub: true },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "小計", right: "52.75" },
+        { left: "クーポン SUMMER10", right: "−5.28" },
+        { left: "ギフト包装", right: "2.50" },
+        { left: "配送料", right: "10.00" },
+        { left: "合計", right: "59.97", bold: true },
+        { left: "お得になった合計額", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "カード", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "お買い上げありがとうございます！", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## よく使う編集例 {#common-recipes}
+
+手動での編集は、主に以下の二つの例に当てはまります。HTML テンプレートでの例を示し、その下の三つ目の例では古い注文の再印刷を扱います。各カードには、レシートに追加される行、そのコード、テンプレート内の追加位置の順に示しています。商品名、金額、合計はテンプレートの他の部分から出力されます。
+
+<Accordion>
+  <AccordionItem question="感熱紙用テンプレートでの使用">
+
+同じフィールドとセクションをそのまま使えます。印刷する各行を `<text>` 要素で囲み、 `<s>`は省略してください。感熱紙用 XML は取り消し線に対応しておらず、価格を通常の文字で印刷するためです（[感熱紙用テンプレート](./thermal-templates.mdx#text-and-formatting)）。
+
+  </AccordionItem>
+</Accordion>
+
+<Recipes>
+  <Recipe
+    title="通常価格に取り消し線を引く"
+    why="テンプレート内の既存の `{{#lines}}` セクションで、商品行の後に `{{#line_savings}}` ブロックを追加します。通常価格 34.00 − セールによる値引き 5.00 − クーポン 2.90 = 支払額 26.10 です。価格履歴が記録されていない注文では、このブロックの両方の行が省略されます。"
+    preview={[
+      { left: "2 × エスプレッソ豆", right: "26.10" },
+      { left: "~34.00~ · 値引き額 −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}:
+    -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="お得になった合計額の行を追加する"
+    why="合計行の後にこれらの行を追加します。二つのセクションにより、価格履歴が不完全な場合や値引きがない場合は行が省略されます。"
+    preview={[
+      { left: "合計", right: "59.97", bold: true },
+      { left: "お得になった合計額", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+</Recipes>
+
+<Accordion>
+  <AccordionItem question="WCPOS 1.9.0 より前に作成した注文を再印刷する">
+
+<Recipes>
+  <Recipe
+    title="v1.9 より前の注文を安全に再印刷する"
+    why="サンプル注文ではなく、WCPOS 1.9.0 より前に作成した注文用です。テンプレート内の既存の `{{#lines}}` セクションで、商品行の後に `{{#line_savings}}` と `{{#discounts}}` のブロックを追加します。値引き額はすでに割引額に含まれているため、割引額を印刷し、値引き額は省略します。"
+    preview={[
+      { left: "1 × エスプレッソ豆", right: "14.50" },
+      { left: "~17.00~  割引 −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{^savings_in_discounts}}
+      {{i18n.savings}}:
+      -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    {{i18n.discount}}:
+    -{{discounts_display}}
+  {{/discounts}}
+{{/lines}}`}
+  />
+</Recipes>
+
+  </AccordionItem>
+</Accordion>
+
+## フィールドリファレンス {#field-reference}
+
+セクションを展開するとフィールドが表示されます。最初の項目には、すべてのセクションとその型を記載しています。
+
+<Accordion>
+  <AccordionItem question="すべてのセクションとその型">
+
+### 最上位のセクション {#top-level-sections}
+
+| セクション | 内容 |
+|---------|---------------|
+| `order`（オブジェクト） | 注文の識別情報、ステータス、日付、メモ、支払い URL の情報 |
+| `store`（オブジェクト） | 店舗の識別情報、住所、連絡先、納税者 ID、ロゴ、営業時間、フッターのテキスト |
+| `cashier`（オブジェクト） | 注文を処理したユーザー |
+| `customer`（オブジェクト） | 顧客の表示名、住所、納税者 ID |
+| `lines`（配列） | 商品の明細行 |
+| `fees`（配列） | 手数料の行 |
+| `shipping`（配列） | 配送料の行 |
+| `discounts`（配列） | クーポン・割引の行 |
+| `totals`（オブジェクト） | 注文合計、支払合計、払い戻しの概要、商品数 |
+| `tax`（オブジェクト） | セクションの表示条件に使う税表示モードのフラグ |
+| `tax_summary`（配列） | 税率別の税額集計行 |
+| `has_tax_summary`（真偽値） | `tax_summary` の表示条件に使えるフラグ |
+| `payments`（配列） | 支払いの行 |
+| `refunds`（配列） | 注文に適用された払い戻しの記録 |
+| `fiscal`（オブジェクト） | 税務連携で設定される税務用スナップショットのフィールド |
+| `register`（オブジェクト） | 売上を記録したレジの `id` と `name`。不明な場合は空文字列 |
+| `software`（オブジェクト） | レシートを発行したソフトウェア：`name`(`WCPOS`)、`plugin_version`、`app_version`、`app_build`、`platform` |
+| `presentation_hints`（オブジェクト） | 書式と描画処理のヒント |
+| `i18n`（オブジェクト） | 標準テンプレートとカスタムテンプレート用の翻訳済みラベル |
+
+  </AccordionItem>
+  <AccordionItem question="注文番号、ステータス、日付 — order">
+
+### order {#order}
+
+| フィールド | 型 | 例 / 説明 |
+|-------|------|-----------------------|
+| `order.id` | number | `1042` |
+| `order.number` | string | 表示用の注文番号（例：`"1042"`） |
+| `order.currency` | string | ISO 通貨コード（例：`"USD"`） |
+| `order.customer_note` | string | 顧客・注文のメモ |
+| `order.wc_status` | string | WooCommerce のステータスの元のスラッグ（例：`"processing"`） |
+| `order.status_label` | string | カスタムステータスも含めた翻訳済みのステータスラベル |
+| `order.created_via` | string | 注文元・チャネル（例：`"woocommerce-pos"`） |
+| `order.needs_payment` | boolean | 支払いセクションを表示するかどうか |
+| `order.payment_url` | string | 利用可能な場合の注文の支払い URL |
+| `order.created` | 日付オブジェクト | 注文の作成日 |
+| `order.paid` | 日付オブジェクト | 支払い日。未払いの場合は空文字列 |
+| `order.completed` | 日付オブジェクト | 完了日。未完了の場合は空文字列 |
+| `order.printed` | 日付オブジェクト | 描画時点の印刷・再印刷のタイムスタンプ |
+
+  </AccordionItem>
+
+  <AccordionItem question="店舗名、住所、連絡先、営業時間 — store">
+
+### store {#store}
+
+| フィールド | 型 | 例 / 説明 |
+|-------|------|-----------------------|
+| `store.id` | number | 店舗 ID。削除された店舗の場合は過去の ID |
+| `store.name` | string | 店舗の表示名 |
+| `store.address.address_1` | string | 住所の 1 行目 |
+| `store.address.address_2` | string | 建物名・部屋番号の行 |
+| `store.address.city` | string | 市区町村 |
+| `store.address.state` | string | 都道府県・地域 |
+| `store.address.postcode` | string | 郵便番号 |
+| `store.address.country` | string | ISO 国コード |
+| `store.address_lines` | array | 書式設定済みの住所行。ほとんどのテンプレートで推奨 |
+| `store.tax_ids` | array | 構造化された事業者の納税者 ID。単一の納税者 ID を使う代わりに、これをループで処理します |
+| `store.phone` | string | 店舗の電話番号 |
+| `store.email` | string | 店舗のメールアドレス |
+| `store.logo` | string/null | 店舗ロゴの URL またはデータ URI。店舗独自のロゴがなければ、店舗側で無効にしていない限り WordPress サイトのロゴを使用します。どちらもない場合は `null` |
+| `store.opening_hours` | string/null | 簡潔な営業時間のテキスト |
+| `store.opening_hours_vertical` | string/null | 複数行の営業時間ブロック |
+| `store.opening_hours_inline` | string/null | カンマ区切りの営業時間のテキスト |
+| `store.opening_hours_notes` | string/null | 営業時間に関する自由記述のメモ |
+| `store.personal_notes` | string/null | レシートのフッター・任意のメモ |
+| `store.policies_and_conditions` | string/null | 払い戻し、返品、利用規約のテキスト |
+| `store.footer_imprint` | string/null | フッターの法定表記 |
+
+### 納税者 ID オブジェクト {#tax-id-objects}
+
+`store.tax_ids` と `customer.tax_ids` には、同じ構造のオブジェクトが含まれます。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `type` | string | `eu_vat`、`de_steuernummer`、`au_abn`、`br_cpf`、`us_ein`、`other` などの識別子 |
+| `value` | string | 印刷する納税者 ID の値 |
+| `country` | string/null | ISO 国コード。`eu_vat` と `other` では null |
+| `label` | string | 描画前に確定される翻訳済みの表示ラベル |
+
+例：
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="顧客を担当したスタッフ — cashier">
+
+### cashier {#cashier}
+
+| フィールド | 型 | 例 / 説明 |
+|-------|------|-----------------------|
+| `cashier.id` | number | WordPress ユーザー ID。不明な場合は `0` |
+| `cashier.name` | string | レジ係の表示名 |
+
+  </AccordionItem>
+
+  <AccordionItem question="顧客名、住所、納税者 ID — customer">
+
+### customer {#customer}
+
+| フィールド | 型 | 例 / 説明 |
+|-------|------|-----------------------|
+| `customer.id` | number/null | 顧客 ID。ゲストの場合は `null` |
+| `customer.name` | string | 顧客の表示名、またはゲストのラベル |
+| `customer.first_name` | string | 請求先の名。「Nia 様、ありがとうございます」などの挨拶に使用します。名のないゲストの場合は空 |
+| `customer.billing_address.*` | object | WooCommerce の請求先住所フィールド |
+| `customer.shipping_address.*` | object | WooCommerce の配送先住所フィールド |
+| `customer.tax_ids` | array | 注文からスナップショットとして保存された、構造化された顧客の納税者 ID |
+
+よく使う住所キーには、`first_name`、`last_name`、`company`、`address_1`、`address_2`、`city`、`state`、`postcode`、`country`、`email`、`phone` があります。
+
+  </AccordionItem>
+
+  <AccordionItem question="販売した商品 — lines">
+
+### lines {#lines}
+
+`{{#lines}}...{{/lines}}` でループ処理します。サンプル値は[サンプル注文](#receipt-map)のエスプレッソの行のものです。
+
+<FieldIndex
+  note="各金額フィールドには二つの形式があります。`{{#…}}` セクション用の数値（ゼロと `null` では非表示になり、`null` のフィールドには `_display` フィールド自体がありません）と、印刷用の `_display` テキストです。incl/excl と記されたフィールドには `_incl` 版と `_excl` 版もあり、それぞれに `_display` があります。"
+  emptyText="一致するフィールドがありません。フィルターをクリアすると `lines[]` 全体が表示されます。"
+  fields={[
+    { name: 'key', type: 'string', desc: "変化しない明細行キー / 注文項目 ID。", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "商品の SKU。", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "商品または明細行の表示名。", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "販売数量。", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "この明細行の払い戻し数量。", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "記録された通常単価。POS の価格履歴がない注文では `null` になるため、セクションで囲んでください。",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "クーポン適用前の販売単価。POS の記録価格があればそれを使用し、なければ保存された明細行の小計から算出します。",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "通常価格から販売価格を引いた値で、下限はゼロです。ゼロは偽と見なされるため、条件付きの行は自動的に非表示になります。",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "記録された通常価格に数量を掛けた値。",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "クーポン適用前の販売価格に数量を掛けた値。",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "この明細行の、通常価格から販売価格への値引き額の合計。",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "v1.9.0 より前の注文のように、明細行の値引き額がすでに `discounts` に含まれている場合は真です。値引き額の二重印刷を防ぐために使用します。",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce の割引前の単価。通常価格としては使わないでください。",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce の割引適用後の最終単価。",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "クーポン適用前：WooCommerce の割引前の明細行小計。上のサンプルレシートで各商品の横にある金額です。",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce 標準の明細行の割引額を正の値で表したもの。現在の注文ではクーポンのみです。",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "クーポン適用後：明細行の最終合計。ギャラリーのレシートテンプレートで各商品の横に印刷される金額です。",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "この明細行の払い戻し合計額を正の値で表したもの。",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '""', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "この明細行の税率別の税額行。" },
+    { name: 'meta', type: 'array', desc: "`{key, value}` のペアで表した注文項目のメタデータ。" },
+    { name: 'attributes', type: 'array', desc: "`{key, value}` のペアで表した商品・バリエーションの属性。" },
+  ]}
+/>
+
+### 通常価格と値引き額の表示 {#displaying-regular-price-and-savings}
+
+単価を表示するレイアウトでは、記録された通常価格、販売価格、値引き額を次のように表示します。
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+数量を反映する場合は、明細行の合計フィールドを使用します。
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` はクーポン適用前の価格です。WooCommerce の割引適用後の最終金額には `unit_price` または `line_total` を使用します。
+
+:::note v1.9.0 より前に作成された注文の再印刷
+古い WCPOS の注文では、通常価格から販売価格への値引きがすでに `discounts` に含まれている場合があります。カスタムテンプレートで明細行の値引き額と割引額の両方を印刷する場合は、`savings_in_discounts` を使って同じ値引きが二重に表示されるのを防いでください。
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+テンプレートで明細行ごとの `discounts` 行を印刷しない場合は、`savings_in_discounts` が真でも `line_savings` を表示してください。標準テンプレートでは、この違いを自動的に処理します。
+:::
+
+  </AccordionItem>
+
+  <AccordionItem question="手数料と配送料 — fees, shipping">
+
+### fees と shipping {#fees-and-shipping}
+
+`{{#fees}}...{{/fees}}` と `{{#shipping}}...{{/shipping}}` でループ処理します。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `label` | string | 手数料のラベルまたは配送方法名 |
+| `method_id` | string | 配送方法 ID（配送料のみ） |
+| `total` / `_incl` / `_excl` | number | 表示設定に従う合計、税込合計、税抜合計 |
+| `taxes` | array | 税率別の税額行 |
+| `meta` | array | `{key, value}` のメタデータのペア |
+
+書式設定済みの形式：`total_display`、`total_incl_display`、`total_excl_display`。
+
+  </AccordionItem>
+
+  <AccordionItem question="クーポンと割引 — discounts">
+
+### discounts {#discounts}
+
+`{{#discounts}}...{{/discounts}}` でループ処理します。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `label` | string | クーポンの説明。説明がない場合はコード。POS のカートで追加した割引は `Discount`、割合での割引は `Discount (10%)` と表示されます |
+| `code` | string | クーポンコード |
+| `discount_type` | string | WooCommerce のクーポン種別のスラッグ。例：`fixed_cart`、`percent`、`fixed_product`。クーポンが存在しなくなった場合は空です。 |
+| `total` / `_incl` / `_excl` | number | 割引額を正の値で表したもの |
+
+書式設定済みの形式：`total_display`、`total_incl_display`、`total_excl_display`。割引を負の金額の行として表示する場合は、テンプレート内でマイナス記号を追加してください。
+
+`discount_type` はレシートデータ v1.2 で追加されました。それ以前に取得された税務用レシートのスナップショットには含まれていません。{/* pending: monorepo#3363 */}
+
+  </AccordionItem>
+
+  <AccordionItem question="合計、支払額、払い戻し、商品数 — totals">
+
+### totals {#totals}
+
+サンプル値は[サンプル注文](#receipt-map)のものです。この注文には、後から $7.25 の一部払い戻しが行われています。
+
+<FieldIndex
+  note="金額フィールドは商品明細と同じペア構成です。表示条件用の数値と印刷用の `_display` 文字列があり、記載のあるものには `_incl`/`_excl` 形式もあります。"
+  emptyText="一致するフィールドがありません。フィルターをクリアすると `totals` 全体が表示されます。"
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "割引前の注文小計。",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "注文の割引合計を正の値で表したもの。現在の注文ではクーポンのみです。",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "商品明細全体で記録された、通常価格から販売価格への値引き額の合計。カタログのセールとレジでの価格変更を含みます。",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "WooCommerce の割引額と通常価格からの値引き額を合算し、旧バージョンでの重複を除いた値。お得になった金額の全体を顧客に示す一つの数値です。",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "値引きと割引の合計をすべて計算するために十分な価格データが、レシートに記録されているかどうか。",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "税額の合計。",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "税表示設定に従った注文の総合計。価格を税抜で表示する場合は税を除いた合計です。`total_incl` は常に請求額を表します。",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "支払い済み・充当済みの金額。",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "顧客に返したお釣り。",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '""', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "払い戻し合計額を正の値で表したもの。",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "合計から払い戻し額を引いた値で、下限はゼロです。払い戻しがない場合は `0` になるため、`refund_total` を表示条件に使用してください。",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "商品明細の数量の合計。", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "商品明細の行数。", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+顧客にお得になった金額の全体を一つの数値で示すには、`total_saved` を使用します。テンプレートで `discount_total` と `sale_savings_total` を加算して計算しないでください。v1.9.0 より前に作成された注文では、POS での値引き額が WooCommerce の割引合計にすでに含まれている場合があります。標準の `total_saved` フィールドは、この重複を検出して除外します。
+
+いずれかの商品明細で、正確な集計に必要な価格データが不足している場合、値引きの合計は `null` になり、`total_saved_complete` は偽になります。`total_saved_complete` を行の表示条件にし、さらに `total_saved` を使ってゼロの場合を非表示にします。
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+標準テンプレートでは、単一の `{{#totals.total_saved_incl}}` を表示条件として、税込形式の `totals.total_saved_incl_display` から**お得になった合計額**を印刷します。価格履歴が不完全なら値は `null`、値引きや割引がなければゼロになるため、この一つの条件だけで十分です。
+
+  </AccordionItem>
+
+  <AccordionItem question="税額行 — tax, tax_summary">
+
+### tax と tax_summary {#tax-and-tax_summary}
+
+表示モードの条件には `tax`、税率別の明細行には `tax_summary` を使用します。
+
+| 税フィールド | 型 | 説明 |
+|-----------|------|-------------|
+| `tax.display` | string | `incl` または `excl` |
+| `tax.display_incl` | boolean | 価格を税込で表示する場合は真 |
+| `tax.display_excl` | boolean | 価格を税抜で表示する場合は真 |
+| `tax.breakdown` | string | `hidden`、`single`、`itemized` のいずれか |
+| `tax.breakdown_hidden` | boolean | 税額行を非表示にする場合は真 |
+| `tax.breakdown_single` | boolean | 税額を一つの合計で表示する場合は真 |
+| `tax.breakdown_itemized` | boolean | 税率別の行で表示する場合は真 |
+| `has_tax_summary` | boolean | `tax_summary` に行が含まれる場合は真 |
+
+`{{#tax_summary}}...{{/tax_summary}}` で `tax_summary` をループ処理します。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `code` | string | 税率 ID・コード |
+| `rate` | number/null | 確定した税率（パーセント） |
+| `label` | string | 税率のラベル |
+| `compound` | boolean | 複合税率かどうか |
+| `taxable_amount_excl` | number/null | 税抜の課税対象額 |
+| `tax_amount` | number | 徴収した税額 |
+| `taxable_amount_incl` | number/null | 税込の課税対象額 |
+
+書式設定済みの形式：`taxable_amount_excl_display`、`tax_amount_display`、`taxable_amount_incl_display`。
+
+  </AccordionItem>
+
+  <AccordionItem question="受け取った支払い — payments">
+
+### payments {#payments}
+
+`{{#payments}}...{{/payments}}` でループ処理します。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `method_id` | string | 支払い方法の識別子 |
+| `method_title` | string | 支払い方法の表示名 |
+| `amount` | number | 注文に充当した金額 |
+| `transaction_id` | string | 決済ゲートウェイの取引 ID |
+| `tendered` | number | 現金のお預かり額（存在する場合） |
+| `change` | number | 現金で返したお釣り（存在する場合） |
+
+書式設定済みの形式：`amount_display`、`tendered_display`、`change_display`。
+
+  </AccordionItem>
+
+  <AccordionItem question="払い戻し — refunds">
+
+### refunds {#refunds}
+
+`{{#refunds}}...{{/refunds}}` でループ処理します。払い戻し額は正の数値です。テンプレートでマイナス記号を付けるか、返品商品専用のブロックに印刷します。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `id` | number | 払い戻し記録の ID |
+| `date` | 日付オブジェクト | 払い戻しの作成日 |
+| `amount` | number | 払い戻しの合計 |
+| `subtotal` | number | 払い戻した明細行の小計 |
+| `tax_total` | number | 払い戻した税額 |
+| `shipping_total` | number | 払い戻した配送料 |
+| `shipping_tax` | number | 払い戻した配送料の税額 |
+| `reason` | string | 払い戻しの理由 |
+| `refunded_by_id` | number/null | 払い戻しを行ったユーザーの ID |
+| `refunded_by_name` | string | 払い戻しを行ったユーザーの表示名 |
+| `refunded_payment` | boolean | 決済ゲートウェイを通じて払い戻したかどうか |
+| `destination` | string | 返金先。POS で行った払い戻しでは `original_method`、`cash`、`manual` のいずれか。それ以外は空 |
+| `gateway_id` | string | 払い戻しに使用した決済ゲートウェイの ID |
+| `gateway_title` | string | 決済ゲートウェイの表示名 |
+| `processing_mode` | string | 決済サービス経由・手動の処理モード |
+| `lines` | array | 払い戻した商品の行 |
+| `fees` | array | 払い戻した手数料の行 |
+| `shipping` | array | 払い戻した配送料の行 |
+
+払い戻し明細のフィールドには `name`、`sku`、`qty`、`total`、`total_incl`、`total_excl`、`taxes` があります。POS アプリで描画するテンプレートでは、`line_total` と `unit_total` も利用できます。払い戻しの手数料と配送料の行には `label`、`total`、`total_incl`、`total_excl`、`taxes` を使用し、配送料の行にはさらに `method_id` が含まれます。合計と税額には表示用の形式も追加されます。
+
+  </AccordionItem>
+
+  <AccordionItem question="税務記録 — fiscal">
+
+### fiscal {#fiscal}
+
+税務連携と WCPOS Pro が、レシート番号、ハッシュ、QR ペイロードなどの識別フィールドを設定します。書類フィールドは印刷する書類の種類を示すため、テンプレートで払い戻しやレジレポートを売上とは異なる形式で印刷できます。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `fiscal.document_type` | string | 既定値は `sale`。ほかに `refund`、`void`、`cancellation`、`closure`、`xreport`、`handover` |
+| `fiscal.is_sale_document` | boolean | 売上の場合は真。`is_…` フラグをセクションの表示条件に使用します |
+| `fiscal.is_refund_document` | boolean | 払い戻しの場合は真 |
+| `fiscal.is_void_document` | boolean | 売上の完了前の取り消しの場合は真 |
+| `fiscal.is_cancellation_document` | boolean | 完了済みの売上を後から取り消した場合は真 |
+| `fiscal.is_closure_document` | boolean | レジ締めの場合は真 |
+| `fiscal.is_x_report` | boolean | X レポートの場合は真 |
+| `fiscal.is_handover` | boolean | 引き継ぎ伝票の場合は真 |
+| `fiscal.corrects` | string | 払い戻しの場合、修正対象の売上の識別情報 |
+| `fiscal.sale_time` | 日付オブジェクト/null | レジが売上を記録した日時（レジのタイムゾーン） |
+| `fiscal.sale_tz` | string | レジのタイムゾーン（例：`"Europe/Berlin"`） |
+| `fiscal.received_at` | 日付オブジェクト/null | 店舗のサーバーが売上を受信した日時 |
+| `fiscal.sale_counter` | number/null | レジ独自の売上カウンター |
+| `fiscal.immutable_id` | string | 変更不可の税務識別子 |
+| `fiscal.receipt_number` | string | 税務用レシート番号 |
+| `fiscal.sequence` | number/null | 連番カウンター |
+| `fiscal.hash` | string | ハッシュ・署名の値 |
+| `fiscal.qr_payload` | string | 税務検証用の QR ペイロード |
+| `fiscal.tax_agency_code` | string | 税務当局のコード |
+| `fiscal.signed_at` | string | 税務署名のタイムスタンプ |
+| `fiscal.signature_excerpt` | string | 表示用に短縮した署名 |
+| `fiscal.document_label` | string | 書類のラベル（例：税務用請求書） |
+| `fiscal.is_reprint` | boolean | 今回の描画が再印刷かどうか |
+| `fiscal.reprint_count` | number | 再印刷回数 |
+| `fiscal.extra_fields` | array/object | 管轄地域固有の値。通常は `{label, value}` の行のリスト |
+
+追加フィールドはループで印刷します。
+
+```mustache
+{{#fiscal.extra_fields}}
+  {{label}}: {{value}}
+{{/fiscal.extra_fields}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="書式設定 — presentation_hints">
+
+### presentation_hints {#presentation_hints}
+
+これらのフィールドは主に、レシートの書式設定を行うアプリとサーバー向けです。サーバーで描画するテンプレートではすべて印刷できますが、POS アプリで描画するテンプレートで利用できるのは `display_tax`、`prices_entered_with_tax`、`rounding_mode`、`locale`、`order_barcode_type` だけです。
+
+| フィールド | 型 | 説明 |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | string | `incl` または `excl`。アプリが設定し、サーバーでは省略されます |
+| `presentation_hints.hour12` | boolean/null | 店舗の時刻形式が 12 時間制の場合は真 |
+| `presentation_hints.hour_token` | string/null | 店舗の時刻形式で使う時間のパターン：`h`、`hh`、`H`、`HH` |
+| `presentation_hints.prices_entered_with_tax` | boolean | カタログ価格が税込かどうか |
+| `presentation_hints.rounding_mode` | string | WooCommerce の税額の端数処理設定 |
+| `presentation_hints.locale` | string | 書式設定に使用するロケール |
+| `presentation_hints.timezone` | string | レシートのタイムゾーン |
+| `presentation_hints.currency_position` | string | 通貨記号の位置 |
+| `presentation_hints.currency_symbol` | string | 通貨記号 |
+| `presentation_hints.price_thousand_separator` | string | 桁区切り記号 |
+| `presentation_hints.price_decimal_separator` | string | 小数点記号 |
+| `presentation_hints.price_num_decimals` | number | 小数点以下の桁数 |
+| `presentation_hints.price_display_suffix` | string | WooCommerce の価格表示の接尾辞 |
+| `presentation_hints.order_barcode_type` | string | このフィールドを読み取るテンプレート用のバーコード種別：`code128`（既定値）、`qrcode`、`ean13`、`ean8`、`upca`。アプリが設定し、サーバーでは省略されます。ギャラリーのテンプレートでは、バーコード種別をテンプレート内で設定します |
+
+書式設定済みの金額フィールド（`totals.total_display` などの `*_display` 値）は、上記の位置と区切り記号を使い、注文の通貨の**通貨記号**を付けて金額を表示します。したがって、レシートには `USD 12.00` ではなく `$12.00` と表示されます。元の `order.currency` フィールドは ISO コードのままなので、テンプレート内の処理に利用できます。
+
+  </AccordionItem>
+
+  <AccordionItem question="レシートの文言 — i18n">
+
+### i18n {#i18n}
+
+可能な限りテキストを直接書き込まず、`i18n` ラベルを使用してください。
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+よく使うキーには `order`、`date`、`cashier`、`customer`、`item`、`sku`、`qty`、`unit_price`、`regular_price`、`selling_price`、`savings`、`discount`、`subtotal`、`total_saved`、`total`、`tax`、`paid`、`tendered`、`change`、`tax_summary`、`refunded`、`net_total`、`customer_note`、`thank_you_purchase`、`opening_hours` があります。税務用ラベルには `copy`（控えと印刷）、`reprint`、`register`、`sale_time`、`software`、`document_refund`、`document_void`、`document_cancellation` があり、納税者 ID のラベルキーには `store_tax_id_label_eu_vat` や `customer_tax_id_label_other` などがあります。拡張機能によってキーが追加される場合もあります。
+
+  </AccordionItem>
+</Accordion>
+
+## 各価格の関係 {#price-model}
+
+レシートの一つの商品には複数の価格があり、実際の金額を見るとそれぞれの名前を理解しやすくなります。これはサンプル注文のエスプレッソの行です。$17.00 の商品がセールで $14.50 になり、さらに 10% のクーポンが適用されています。
+
+<PriceFlow
+  caption="エスプレッソ豆 — 一つあたり（注文には二つ含まれます）"
+  scaleLabel="通常価格 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "支払額 13.05" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  summary={[
+    { label: "注文全体のセールによる値引き額", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "注文全体のクーポンによる割引額", value: '`totals.discount_total` = 5.28' },
+    { label: "値引き額 + 割引額（旧バージョンでの重複を除く）", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+セールによる値引き額は、通常価格と販売価格の差です。割引額は、WooCommerce が計算したクーポンによる減額分です。WooCommerce の注文合計とレポートには割引額だけが記録されるため、`total_saved` は両者を合算し、顧客向けの一つの数値にまとめます。
+
+## 描画ルール {#rendering-rules}
+
+金額、税込・税抜価格、日付の印刷方法です。必要な項目を開いてください。
+
+<Accordion>
+  <AccordionItem question="金額を印刷し、ゼロの金額を非表示にする">
+
+### 通貨フィールド {#currency-fields}
+
+金額フィールドは数値のまま保持され、それぞれに店舗の言語と通貨で書式設定された `_display` フィールドが用意されます。
+
+| 数値フィールド | 表示用フィールド |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+印刷には `_display` フィールドを使用します。数値はセクションの条件や機械可読の出力にのみ使用してください。`{{#totals.change_total}}…{{/totals.change_total}}` は、金額がゼロの場合にその行を省略します。
+
+  </AccordionItem>
+
+  <AccordionItem question="税込または税抜で価格を印刷する">
+
+### 税表示設定に対応したフィールド {#tax-display-aware-fields}
+
+いくつかのフィールドには三つの形式があります。税込(`_incl`)、税抜(`_excl`)、そしてカート内の価格を税込・税抜のどちらで表示するかという店舗設定に従う、接尾辞なしの形式です。
+
+| 設定に従うフィールド | 税込フィールド | 税抜フィールド |
+|-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+  </AccordionItem>
+
+  <AccordionItem question="日付と時刻を印刷する">
+
+### 日付オブジェクト {#date-objects}
+
+各日付は複数の形式に書式設定された状態で提供されるため、テンプレート側で日付の書式設定を行う必要はありません。
+
+| フィールド | 説明 |
+|-------|-------------|
+| `datetime`、`date`、`time` | 既定の日付・時刻文字列 |
+| `datetime_short`、`datetime_long`、`datetime_full` | ロケールに応じた日付と時刻の組み合わせ形式 |
+| `date_short`、`date_long`、`date_full` | ロケールに応じた日付のみの形式 |
+| `date_ymd`、`date_dmy`、`date_mdy` | 年月日の順序が固定された日付形式 |
+| `weekday_short`、`weekday_long` | 曜日名 |
+| `day`、`month`、`month_short`、`month_long`、`year` | 日付の各構成要素 |
+
+利用できる日付オブジェクトは、`order.created`、`order.paid`、`order.completed`、`order.printed`、`refunds[].date`、`fiscal.sale_time`、`fiscal.received_at` です。`order.printed` は描画時に更新されるため、再印刷に便利です。レシートに税務記録がない場合、二つの `fiscal` の日付は `null` になるので、セクションで囲んでください。
+
+  </AccordionItem>
+
+</Accordion>
+
+## レシートデータの拡張 {#extending}
+
+プラグインは `wcpos_receipt_data` フィルターを使って、レシートデータに独自のフィールドを追加できます。
+
+<Accordion>
+  <AccordionItem question="フィルターの引数、六つのモード、使用例">
+
+WCPOS は、上記のフィールドに特定のプラグイン固有のデータを含めません。WooCommerce で扱われない情報をレシートに持たせる必要がある場合、プラグイン自身が `wcpos_receipt_data` フィルターを使って追加します。プラグインが WooCommerce 自体の注文合計にフィルターを適用するのと同じ仕組みです。このフィルターは、ライブレシート、支払い時点の税務用スナップショット、PDF ダウンロード、従来の PHP テンプレートなど、サーバーが作成するすべてのレシートで実行されます。WCPOS 2.0 より前は、このフィルターの名前は `woocommerce_pos_receipt_data` でした。旧名は引き続き動作しますが、2.0 以降は非推奨で、早ければ 2.2 で削除されます（[フックの命名](../extensions/index.mdx#hook-naming)を参照）。
+
+第三引数の `$mode` は、作成する書類の種類を示します。`live`、`fiscal`、`refund`、`preview`（テンプレートエディターとギャラリーのサンプルレシート）、`closure`、`xreport`（レジ締めと X レポートの書類）です。`preview`、`closure`、`xreport` では、注文は未保存で ID は `0` です。保存済みの注文を必要とするプラグインは、`$order->get_id()` が `0` の場合、`$data` を変更せずに返すようにしてください。
+
+```php
+add_filter( 'wcpos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+テンプレートでは、他のセクションと同様に、新しいキーを表示条件にできます。
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+スキーマで定義されたキーは、ドキュメントに記載された型を維持してください。追加したキーはスキーマに含まれないため、テンプレートエディターのフィールド選択には表示されません。また、税務用スナップショットに含まれるのは、注文の支払い時点でフィルターが追加した内容だけです。このフィルターは WCPOS 1.10.8 から利用できます。
+
+  </AccordionItem>
+
+  <AccordionItem question="追加したキーを印刷できるレシート">
+
+追加したキーはすべて、サーバー自身が描画するレシート、つまり PDF ダウンロードと従来の PHP テンプレートに渡されます。POS アプリで描画する HTML 用と感熱紙用のテンプレートでは、まずデータを再構築します。`order`、`store`、`cashier`、`customer` 内に追加したキーは引き継がれますが、上記の割引行など、それ以外に追加したキーは省略されます。{/* pending: monorepo#3363 */} 税務用スナップショットを持つライブレシートでは、フィルター実行後に税務識別情報、`register`、`software` がスナップショットからコピーされるため、このフィルターで変更しても反映されません。代わりにスナップショットの内容を拡充してください。
+
+  </AccordionItem>
+</Accordion>
+
+## 問題が発生した場合 {#if-something-goes-wrong}
+
+**あるレシートでは行に `$0.00` と印刷され、別のレシートでは何も印刷されません。** `totals.change_total_display`、`totals.refund_total_display`、`payments[].tendered_display` など、一部の `_display` フィールドは、値がゼロの場合、サーバーで描画すると空になり、アプリで描画すると `$0.00` になります。代わりに数値を条件とするセクション内に行を入れると、どちらでも省略されます：`{{#totals.change_total}}…{{/totals.change_total}}`。
+
+**お得になった合計額の行が表示されません。** `totals.total_saved_complete` が偽になっています。少なくとも一つの商品で通常価格が記録されていないため、値引き額を計算できません。通常は WCPOS 1.9.0 より前に会計処理した注文で発生します。
+
+**合計が顧客の支払額より少なくなっています。** 店舗が税抜価格を表示しているため、`totals.total` は税抜合計です。請求額を表示するには `totals.total_incl_display` を印刷してください。WCPOS に付属する従来の PHP レシートでは、この金額を印刷します。
+
+**PDF ダウンロードでは印刷されるフィールドが、POS では印刷されません。** アプリで描画するテンプレートは、最初にデータを再構築する際、一部のフィールドを省略します。これらは PDF ダウンロードと従来の PHP テンプレートでのみ印刷されます。以下のフィールドはそれらでのみ印刷するか、セクションを表示条件として使い、POS レシートでは省略されるようにしてください。{/* pending: monorepo#3363 */}
+
+<Accordion>
+  <AccordionItem question="PDF と POS のレシートで異なるフィールド">
+
+- `lines[].attributes`、`lines[].total_refunded_display`、`lines[].unit_subtotal_display`（その `_incl` 版と `_excl` 版も含む）
+- `software.platform`
+- `display_tax`、`prices_entered_with_tax`、`rounding_mode`、`locale`、`order_barcode_type` 以外の `presentation_hints`
+- ドイツ、オランダ、フランス、英国企業、スイスの各種別の顧客納税者 ID
+- プラグインが `order`、`store`、`cashier`、`customer` の外に追加したキー。[レシートデータの拡張](#extending)をご覧ください。
+
+</AccordionItem>
+</Accordion>
+
+## バージョン {#versions}
+
+レシートデータには、プラグインとは別の独自のバージョン番号があります。フィールドの追加前に取得した税務用スナップショットなど、古いレシートには新しいフィールドが存在しないため、セクションを表示条件にしてください。
+
+| バージョン | 追加内容 |
+|---------|-------|
+| 1.1 | 各商品の通常価格、販売価格、値引き額と、**お得になった合計額**を含む注文全体の値引き・割引の合計。いずれも注文合計や WooCommerce のレポートには影響しません |
+| 1.2 | `discounts[].discount_type` |
+| 1.3 | `customer.first_name` と `i18n` 内の顧客表示用ラベル |
+| 1.4 | `register`、`software`、税務書類のフィールド（`fiscal.document_type`、`is_…` フラグ、`sale_time`、`received_at`、`sale_tz`、`sale_counter`、`corrects`）と、それらの `i18n` ラベル |
+
+## 関連ドキュメント {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/settings/receipt-templates/html-templates" title="HTML テンプレート" description="HTML と Mustache でレシートテンプレートを作成します。" />
+  <LinkCard to="/settings/receipt-templates/thermal-templates" title="感熱紙用テンプレート" description="レシートプリンター用のテンプレートを作成します。" />
+  <LinkCard to="/settings/receipt-templates/customise-receipt" title="レシートのカスタマイズ" description="テンプレートを選ぶか、AI に変更を依頼します。" />
+</LinkCards>

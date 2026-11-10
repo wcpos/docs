@@ -1,0 +1,205 @@
+---
+title: USB-printers op Linux
+slug: /hardware/receipt-printers/usb-printers-linux
+sidebar_label: USB-printers op Linux
+sidebar_position: 6
+description: "Op Linux heeft de desktop-app je toestemming nodig om een USB-bonprinter te gebruiken. Eén udev-regel geeft die toestemming, waarna de printer kan printen."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
+
+Op Linux kan de desktop-app pas een USB-bonprinter gebruiken als je daarvoor toestemming geeft. Dat doe je eenmalig door één regel aan een regelbestand toe te voegen.
+
+Deze pagina is voor jou als **Testpagina printen** in de desktop-app op Linux eindigt met **Niets geprint** en de melding **De app kreeg geen toegang tot de printer. Sta dit toe in je systeeminstellingen en probeer het opnieuw.** Linux heeft hiervoor geen instellingenscherm: de onderstaande regel is de instelling.
+
+<details id="other-signs">
+<summary>Andere aanwijzingen voor dit probleem</summary>
+
+- Bij **Ondersteuningsdetails**, onder die melding, staat `LIBUSB_ERROR_ACCESS`.
+- In de zoekresultaten heet de kaart van je printer **USB-printer** met een reeks cijfers, in plaats van de eigen naam van de printer. Dat betekent meestal dat de app de printer niet kon openen om de naam te lezen.
+
+</details>
+
+:::note Voordat je begint
+Doe dit op de kassa zelf en open deze pagina daar, zodat je de onderstaande regels naar de terminal kunt kopiëren. Open de app **Terminal** (druk op Ubuntu en Linux Mint op **Ctrl+Alt+T**). Je hebt ook het beheerderswachtwoord van de kassa nodig. Heb je dat niet, stuur deze pagina dan naar degene die de kassa heeft ingesteld.
+:::
+
+## Geef de app toegang tot de printer {#do-this}
+
+Elk commando hieronder staat in een grijs vak. Om een commando uit te voeren, wijs je het vak aan en druk je op de kopieerknop rechtsboven. Klik daarna in de terminal, plak met **Ctrl+Shift+V** en druk op **Enter**.
+
+Als een commando om het wachtwoord vraagt, typ je dit en druk je op Enter. Tijdens het typen zie je niets of alleen sterretjes op het scherm: dat is normaal.
+
+### Zoek de ID’s van je printer {#find-ids}
+
+1. Sluit de printer aan en zet deze aan.
+2. Zoek de twee ID’s van de printer. Voer in de terminal het volgende uit:
+
+   ```bash
+   lsusb
+   ```
+
+   Als je `command not found` ziet, [installeer dan eerst lsusb](#command-not-found). Elke regel is één USB-apparaat. Zoek de regel van je printer, bijvoorbeeld `Bus 001 Device 007: ID 04b8:0e28 Seiko Epson Corp.`
+
+   In die regel:
+
+   - Fabrikant-ID: `04b8`, de code direct na `ID`.
+   - Model-ID: `0e28`, de code na de dubbele punt.
+   - Naam van de fabrikant: `Seiko Epson Corp.`, aan het einde. Hiermee kun je de regel vinden.
+
+   Weet je niet welke regel de printer is? Koppel de printer los, voer `lsusb` opnieuw uit en kijk welke regel is verdwenen.
+
+### Maak de regel aan en laad deze {#create-rule}
+
+3. Open een nieuw regelbestand in de teksteditor nano:
+
+   ```bash
+   sudo nano /etc/udev/rules.d/99-receipt-printer.rules
+   ```
+
+   nano opent in de terminal, met een lege pagina en onderaan een lijst met toetsen. Als je `command not found` ziet, [installeer dan eerst nano](#command-not-found).
+
+4. Zet de regel in het bestand. Met deze regel kan elk account op deze kassa elke printer met deze twee ID’s gebruiken. Kopieer deze regel met de kopieerknop van het vak, net als hiervoor. De regel is langer dan het vak: om de hele regel te lezen, wijs je het vak aan (tik erop op een telefoon) en druk je op de knop voor regelomloop links van de kopieerknop.
+
+   ```text
+   SUBSYSTEM=="usb", ATTRS{idVendor}=="04b8", ATTRS{idProduct}=="0e28", MODE="0666"
+   ```
+
+   Doe daarna in nano het volgende:
+   1. **Plak de regel** met **Ctrl+Shift+V**.
+   2. **Vervang de twee ID’s.** Ga met de pijltjestoetsen naar `04b8` en `0e28`. Vervang alleen die twee codes door de twee ID’s van je printer, precies zoals `lsusb` ze weergeeft. Laat de aanhalingstekens eromheen staan.
+   3. **Controleer de regel** voordat je opslaat: één regel die begint met `SUBSYSTEM=="usb",` en eindigt met `MODE="0666"`, met je twee ID’s tussen aanhalingstekens op de plek van `04b8` en `0e28`.
+   4. **Sla op** met **Ctrl+O** en daarna **Enter**.
+   5. **Sluit nano af** met **Ctrl+X**. Je bent terug bij de terminalprompt.
+
+   <details id="rule-parts">
+   <summary>Wat elk onderdeel van de regel betekent</summary>
+
+   De regel heeft vier onderdelen, die behalve het laatste allemaal eindigen met een komma:
+
+   - `SUBSYSTEM=="usb",`: de regel geldt voor een USB-apparaat.
+   - `ATTRS{idVendor}=="04b8",`: de ID van de fabrikant.
+   - `ATTRS{idProduct}=="0e28",`: de ID van het model.
+   - `MODE="0666"`: elk account op deze computer mag de printer gebruiken, zoals nodig is voor een kassa.
+
+   </details>
+
+5. Laad de regel:
+
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+
+   Als om het wachtwoord wordt gevraagd, typ je het opnieuw. Als het lukt, verschijnt er geen uitvoer en komt de prompt terug. Verschijnt er een foutmelding, stop dan hier en zie [Kom je er nog niet uit?](#still-stuck)
+
+6. Koppel de printer los en sluit deze opnieuw aan.
+
+### Voeg de printer toe en test deze {#add-and-test}
+
+7. Als je deze printer eerder hebt opgeslagen met **Opslaan zonder te testen**, verwijder deze dan eerst: open in **Instellingen → Printen** het menu **⋮** op de rij van de printer en kies **Verwijderen**.
+8. Ga in de desktop-app naar **Instellingen → Printen** en druk op **Printer toevoegen**. Het zoeken naar USB-printers begint automatisch. Kies de kaart van je printer, met het label **USB**. Nu de app de printer kan openen, toont de kaart de naam die de printer zelf doorgeeft.
+9. Druk op **Testpagina printen**. Het paneel vraagt **Is de testpagina geprint?** Geef antwoord:
+   - **Ja, en deze ziet er goed uit**: de printer wordt opgeslagen en het paneel toont de naam van je printer met **is ingesteld**. Druk op **Gereed**. De printer is klaar voor gebruik.
+   - **Geprint, maar de liniaal klopt niet**: kies het papier in je printer, waarna de testpagina opnieuw wordt geprint. Zie [Geprint, maar de liniaal klopt niet](./setup-wizard.mdx#test-page-ruler).
+   - **Er kwam niets uit**: het paneel toont **Niets geprint**. Als er nog steeds staat dat de app geen toegang kreeg tot de printer, zie [Nog steeds geen toegang na het toevoegen van de regel](#still-not-allowed). Zie voor elke andere melding [Er kwam niets uit](./setup-wizard.mdx#test-page-nothing).
+
+:::tip Start de app met je eigen account
+Open de desktop-app op de gebruikelijke manier, nooit met `sudo`. De regel zorgt ervoor dat de app de printer via je eigen account kan gebruiken.
+:::
+
+## Als er iets misgaat {#goes-wrong}
+
+Zoek het probleem dat je ziet:
+
+- [Nog steeds geen toegang na het toevoegen van de regel](#still-not-allowed)
+- [`lsusb` of `nano`: commando niet gevonden](#command-not-found)
+- [De kaart heet `ttyUSB0`, `ttyACM0` of `rfcomm0`](#serial-port)
+- [Geen printer gevonden](#no-printer-found)
+- [De testpagina wordt geprint, maar latere bonnen niet](#prints-then-stops)
+
+### Nog steeds geen toegang na het toevoegen van de regel {#still-not-allowed}
+
+Controleer achtereenvolgens:
+
+- De twee ID’s in de regel komen precies overeen met `lsusb`, inclusief kleine letters.
+- Je regel staat in het regelbestand. Toon de inhoud met `cat /etc/udev/rules.d/99-receipt-printer.rules`.
+- Je hebt de printer na stap 5 losgekoppeld en opnieuw aangesloten.
+
+Als alle drie kloppen, zie [Kom je er nog niet uit?](#still-stuck). Open eerst de onderstaande controle om zelf te zien of Linux de regel heeft toegepast.
+
+<details id="device-file">
+<summary>Controleer of Linux de regel heeft toegepast</summary>
+
+1. Voer `lsusb` opnieuw uit, want het `Device`-nummer verandert telkens als je de printer aansluit. Noteer de nummers bij `Bus` en `Device` op de regel van de printer, bijvoorbeeld `Bus 001` en `Device 007`.
+2. Vul ze in dit commando in, eerst het busnummer, en voer het uit:
+
+   ```bash
+   ls -l /dev/bus/usb/001/007
+   ```
+
+3. Lees het begin van de regel die verschijnt:
+   - `crw-rw-rw-`: de regel is toegepast. Druk opnieuw op **Testpagina printen**. Als het paneel nog steeds meldt dat de app geen toegang kreeg tot de printer, zie [Kom je er nog niet uit?](#still-stuck)
+   - `crw-rw-r--` of `crw-------`: de regel is niet toegepast. Loop de bovenstaande checklist opnieuw na, voer het laadcommando uit stap 5 van de installatie opnieuw uit, koppel de printer los, sluit deze weer aan en herhaal hier stap 1 tot en met 3. Als de regel nog steeds zo begint, zie [Kom je er nog niet uit?](#still-stuck)
+
+</details>
+
+<details id="command-not-found">
+<summary>`lsusb` of `nano`: commando niet gevonden</summary>
+
+Installeer het ontbrekende programma en voer de stap opnieuw uit:
+
+- `lsusb`: `sudo apt install usbutils` op Ubuntu of Debian, `sudo dnf install usbutils` op Fedora.
+- `nano`: `sudo apt install nano` op Ubuntu of Debian, `sudo dnf install nano` op Fedora.
+
+</details>
+
+<details id="serial-port">
+<summary>De kaart heet `ttyUSB0`, `ttyACM0` of `rfcomm0`</summary>
+
+Die printer maakt verbinding via een seriële poort, niet als USB-printer, en Linux wijst seriële poorten toe aan de groep `dialout`. Voeg jezelf aan die groep toe, meld je af en meld je weer aan:
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+Op Arch Linux heet de groep `uucp`.
+
+</details>
+
+<details id="no-printer-found">
+<summary>Geen printer gevonden</summary>
+
+De app toont alleen USB-apparaten die aangeven dat ze een printer zijn. Controleer de kabel en of de printer aanstaat en druk daarna op **Opnieuw scannen**. Zie [Geen printer gevonden](./setup-wizard.mdx#not-found).
+
+</details>
+
+<details id="prints-then-stops">
+<summary>De testpagina wordt geprint, maar latere bonnen niet</summary>
+
+Dat is geen probleem met toegangsrechten. Begin bij [Nog steeds geen afdruk?](./setup-wizard.mdx#troubleshoot)
+
+</details>
+
+## Kom je er nog niet uit? {#still-stuck}
+
+Druk op **Installatierapport kopiëren** in het paneel **Niets geprint**, of in het menu **⋮** op de rij van de printer in **Instellingen → Printen**. Plak het in je bericht, samen met de `lsusb`-regel van je printer en, als je die hebt opgevraagd, de `ls -l`-regel uit [de controle](#device-file).
+
+<SupportContact />
+
+## Waarom de app dit nodig heeft {#why-it-happens}
+
+De meeste programma’s printen via het eigen afdruksysteem van Linux. Een bonprinter moet rechtstreeks commando’s ontvangen (papier afsnijden, lade openen), dus de desktop-app opent de printer zelf.
+
+Linux reserveert USB-apparaten voor het beheerdersaccount (`root`), tenzij een regel anders bepaalt. De app draait onder je eigen account, niet als `root`, en mag de printer dus zonder regel niet openen. De toegevoegde regel maakt een uitzondering voor dit ene printermodel.
+
+Linux heeft ook een eigen stuurprogramma voor USB-printers, dat de printer in gebruik neemt zodra je deze aansluit. De app maakt de printer vóór elke afdruk zelf los van dat stuurprogramma, dus je hoeft het niet te verwijderen of te blokkeren. Maar daarvoor zijn dezelfde toegangsrechten nodig als voor het printen. Daarom lost één regel beide problemen op.
+
+## Gerelateerde documentatie {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/receipt-printers/printer-setup-wizard" title="Installatiewizard voor printers" description="Voeg een printer toe, print de testpagina en beantwoord de vragen" />
+  <LinkCard to="/hardware/receipt-printers" title="Bonprinters" description="Waarmee elke app verbinding kan maken en alle printerhandleidingen" />
+  <LinkCard to="/hardware/receipt-printers/supported-printers" title="Ondersteunde bonprinters" description="Welke printers werken en hoe goed" />
+</LinkCards>

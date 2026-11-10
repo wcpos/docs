@@ -1,0 +1,947 @@
+---
+title: 收据数据
+slug: /settings/receipt-templates/receipt-data
+sidebar_label: 收据数据
+sidebar_position: 5
+toc_max_heading_level: 2
+description: "收据模板可打印的所有字段，从店铺名称到总计，并提供可直接复制的 HTML 和热敏模板代码片段。"
+---
+
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
+
+**WP 后台：** 模板在 `WP Admin → POS → Templates` 中编辑；本页列出了模板可打印的字段。
+
+要打印收据或通过电子邮件发送收据，请参阅[收据与已付款界面](./at-checkout.mdx)；要选择模板或让 AI 帮您修改模板，请参阅[自定义收据](./customise.mdx)。
+
+本页适用于手动编辑模板代码。无论是 HTML 模板还是热敏模板，打印时都使用同一套收据数据：店铺、订单、商品、总计和付款。本页介绍如何打印字段，提供三个常见示例，并列出所有字段。
+
+**跳转至：** [查找字段](#field-reference) · [常见示例](#common-recipes) · [问题排查](#if-something-goes-wrong)
+
+## 打印字段 {#print-a-field}
+
+1. 在 **WP Admin → 收银台 → 模板** 中打开模板（详见[手动编辑](./customise.mdx#option-3--edit-it-by-hand)）。
+2. 在需要打印字段的位置，将字段路径放在双花括号内，例如 `{{store.name}}`、`{{order.number}}` 或 `{{totals.total_display}}`，也可以从代码旁的字段列表中插入。
+3. 检查代码下方的预览，然后点击 **更新** 保存。
+
+对于商品等列表，将行包裹在区块中，即可为每个条目重复输出一次：
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} —
+  {{line_total_display}}
+{{/lines}}
+```
+
+字段为空、零或假时，区块也会省略其内容，因此 `{{#customer.id}}…{{/customer.id}}` 仅在有具名客户时打印。打印金额时，请使用以 `_display` 结尾的字段；参阅[货币字段](#currency-fields)。
+
+离线时也能打印收据：应用会根据设备上的订单构建一份收据数据。
+
+<Accordion>
+  <AccordionItem question="为什么收据可能不同">
+
+### 数据来源 {#where-the-data-comes-from}
+
+店铺服务器会为每笔订单构建收据数据，应用则根据设备上的订单构建一份精简副本：其中没有 `cashier`，没有店铺营业时间、备注或政策，也没有 `totals.paid_total` 或 `totals.change_total`。HTML 或热敏模板会立即使用设备副本打开，收到服务器副本后再切换过去；离线时打印的是设备副本，因此这些字段会显示为空。使用 WCPOS Pro 时，设备副本也包含店铺标志；未使用 Pro 时，标志随服务器副本一起到达。旧版 PHP 模板始终由服务器渲染。因此，模板使用下列字段，而不使用 PHP 订单方法。少数字段仅在服务器渲染模板时才会打印，例如下载 PDF 时；[问题排查](#if-something-goes-wrong)中列出了这些字段。
+
+  </AccordionItem>
+</Accordion>
+
+## 收据数据对应关系 {#receipt-map}
+
+打印收据的每个部分都对应收据数据中的一个分区。将指针移到收据的某个部分或对应卡片上，两者就会同时高亮；点击或轻触其中任意一个，即可跳转到该分区的字段。在手机上，卡片按相同顺序从上到下排列在收据后面。
+
+下方收据、前两个示例和价格明细使用的是同一笔示例订单。其商品金额为使用优惠券前的金额(`line_subtotal_display`)；模板库中的收据模板打印的是使用优惠券后的金额（`line_total_display`，浓缩咖啡豆为 26.10）。
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane，俄勒冈州波特兰", center: true, sub: true },
+        { left: "VAT：US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "收据 #1042", right: "2026 年七月 13 日" },
+        { left: "收银员：Ada", right: "客户：Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × 浓缩咖啡豆", right: "29.00" },
+        { left: "~34.00~ · 节省 −5.00", sub: true },
+        { left: "1 × 陶瓷杯", right: "18.00" },
+        { left: "1 × 可颂", right: "5.75" },
+        { left: "使用优惠券前的商品金额：`line_subtotal_display`", sub: true },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "小计", right: "52.75" },
+        { left: "优惠券 SUMMER10", right: "−5.28" },
+        { left: "礼品包装", right: "2.50" },
+        { left: "运费", right: "10.00" },
+        { left: "总计", right: "59.97", bold: true },
+        { left: "共节省", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "银行卡", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "感谢您的惠顾！", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## 常见示例 {#common-recipes}
+
+大多数手动修改属于以下两种情况，这里以 HTML 模板为例演示；下方的第三个示例介绍如何重印旧订单。每张卡片依次展示收据上新增的行、对应代码，以及在模板中的添加位置。商品名称、金额和总计来自模板的其他部分。
+
+<Accordion>
+  <AccordionItem question="在热敏模板中使用这些示例">
+
+字段和区块可原样使用：将每一打印行放在 `<text>` 元素中，并省略 `<s>`，因为热敏 XML 不支持删除线，会以普通文本打印价格（[热敏模板](./thermal-templates.mdx#text-and-formatting)）。
+
+  </AccordionItem>
+</Accordion>
+
+<Recipes>
+  <Recipe
+    title="为原价添加删除线"
+    why="在模板现有的 `{{#lines}}` 区块中，在商品行后添加 `{{#line_savings}}` 区块。原价 34.00 − 促销节省 5.00 − 优惠券 2.90 = 实付 26.10。对于未记录价格历史的订单，该区块会省略这两行。"
+    preview={[
+      { left: "2 × 浓缩咖啡豆", right: "26.10" },
+      { left: "~34.00~ · 节省 −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}:
+    -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="添加“共节省”行"
+    why="将这些行添加到总计行之后。其中有两个区块：价格历史不完整或没有节省金额时，会省略该行。"
+    preview={[
+      { left: "总计", right: "59.97", bold: true },
+      { left: "共节省", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+</Recipes>
+
+<Accordion>
+  <AccordionItem question="重印 WCPOS 1.9.0 之前创建的订单">
+
+<Recipes>
+  <Recipe
+    title="正确重印 v1.9 之前的订单"
+    why="适用于 WCPOS 1.9.0 之前创建的订单，而非示例订单。在模板现有的 `{{#lines}}` 区块中，在商品行后添加 `{{#line_savings}}` 和 `{{#discounts}}` 区块。节省金额已包含在折扣中，因此这里打印折扣，省略节省金额。"
+    preview={[
+      { left: "1 × 浓缩咖啡豆", right: "14.50" },
+      { left: "~17.00~  折扣 −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{^savings_in_discounts}}
+      {{i18n.savings}}:
+      -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    {{i18n.discount}}:
+    -{{discounts_display}}
+  {{/discounts}}
+{{/lines}}`}
+  />
+</Recipes>
+
+  </AccordionItem>
+</Accordion>
+
+## 字段参考 {#field-reference}
+
+展开分区即可查看其字段。第一项列出了所有分区及其类型。
+
+<Accordion>
+  <AccordionItem question="所有分区及其类型">
+
+### 顶层分区 {#top-level-sections}
+
+| 分区 | 包含的内容 |
+|---------|---------------|
+| `order`（对象） | 订单标识、状态、日期、备注和付款 URL 信息 |
+| `store`（对象） | 店铺标识、地址、联系方式、税号、标志、营业时间和页脚文本 |
+| `cashier`（对象） | 处理订单的用户 |
+| `customer`（对象） | 客户显示名称、地址和税号 |
+| `lines`（数组） | 商品行项目 |
+| `fees`（数组） | 费用行 |
+| `shipping`（数组） | 运费行 |
+| `discounts`（数组） | 优惠券/折扣行 |
+| `totals`（对象） | 订单总计、付款总计、退款汇总和商品数量 |
+| `tax`（对象） | 用于区块条件判断的税费显示模式标志 |
+| `tax_summary`（数组） | 按税率汇总的税费行 |
+| `has_tax_summary`（布尔值） | 用于判断 `tax_summary` 是否有内容的便捷条件 |
+| `payments`（数组） | 付款行 |
+| `refunds`（数组） | 应用于订单的退款记录 |
+| `fiscal`（对象） | 由税务集成填充的税务快照字段 |
+| `register`（对象） | 完成这笔销售的收银机：`id` 和 `name`。未知时为空字符串 |
+| `software`（对象） | 开具收据的软件：`name`(`WCPOS`)、`plugin_version`、`app_version`、`app_build`、`platform` |
+| `presentation_hints`（对象） | 格式设置和渲染器提示 |
+| `i18n`（对象） | 内置模板和自定义模板使用的翻译标签 |
+
+  </AccordionItem>
+  <AccordionItem question="订单号、状态和日期 — order">
+
+### order {#order}
+
+| 字段 | 类型 | 示例 / 说明 |
+|-------|------|-----------------------|
+| `order.id` | 数字 | `1042` |
+| `order.number` | 字符串 | 面向用户显示的订单号，例如 `"1042"` |
+| `order.currency` | 字符串 | ISO 货币代码，例如 `"USD"` |
+| `order.customer_note` | 字符串 | 客户/订单备注 |
+| `order.wc_status` | 字符串 | 原始 WooCommerce 状态标识，例如 `"processing"` |
+| `order.status_label` | 字符串 | 本地化的状态标签，包括自定义状态 |
+| `order.created_via` | 字符串 | 来源/渠道，例如 `"woocommerce-pos"` |
+| `order.needs_payment` | 布尔值 | 是否应显示付款分区 |
+| `order.payment_url` | 字符串 | 订单付款 URL（如有） |
+| `order.created` | 日期对象 | 订单创建日期 |
+| `order.paid` | 日期对象 | 付款日期，未付款时为空字符串 |
+| `order.completed` | 日期对象 | 完成日期，未完成时为空字符串 |
+| `order.printed` | 日期对象 | 渲染时的打印/重印时间戳 |
+
+  </AccordionItem>
+
+  <AccordionItem question="店铺名称、地址、联系方式和营业时间 — store">
+
+### store {#store}
+
+| 字段 | 类型 | 示例 / 说明 |
+|-------|------|-----------------------|
+| `store.id` | 数字 | 店铺 ID，或已删除店铺的历史 ID |
+| `store.name` | 字符串 | 店铺显示名称 |
+| `store.address.address_1` | 字符串 | 街道地址第 1 行 |
+| `store.address.address_2` | 字符串 | 房间/单元地址行 |
+| `store.address.city` | 字符串 | 城市/地方 |
+| `store.address.state` | 字符串 | 州/地区 |
+| `store.address.postcode` | 字符串 | 邮政编码 |
+| `store.address.country` | 字符串 | ISO 国家代码 |
+| `store.address_lines` | 数组 | 已格式化的地址行；推荐大多数模板使用 |
+| `store.tax_ids` | 数组 | 结构化的企业税号；应循环遍历此字段，而非使用单个税号 |
+| `store.phone` | 字符串 | 店铺电话 |
+| `store.email` | 字符串 | 店铺电子邮箱 |
+| `store.logo` | 字符串/null | 店铺标志 URL 或数据 URI：优先使用店铺自己的标志，否则使用 WordPress 站点标志，除非店铺关闭了此选项。两者均无时为 `null` |
+| `store.opening_hours` | 字符串/null | 简短的营业时间文本 |
+| `store.opening_hours_vertical` | 字符串/null | 多行营业时间文本块 |
+| `store.opening_hours_inline` | 字符串/null | 以逗号分隔的营业时间文本 |
+| `store.opening_hours_notes` | 字符串/null | 自由填写的营业时间备注 |
+| `store.personal_notes` | 字符串/null | 收据页脚/个性化备注 |
+| `store.policies_and_conditions` | 字符串/null | 退款、退货或条款文本 |
+| `store.footer_imprint` | 字符串/null | 页脚法律声明 |
+
+### 税号对象 {#tax-id-objects}
+
+`store.tax_ids` 和 `customer.tax_ids` 包含结构相同的对象：
+
+| 字段 | 类型 | 说明 |
+|-------|------|-------------|
+| `type` | 字符串 | 标识符，例如 `eu_vat`、`de_steuernummer`、`au_abn`、`br_cpf`、`us_ein` 或 `other` |
+| `value` | 字符串 | 要打印的税号值 |
+| `country` | 字符串/null | ISO 国家代码；`eu_vat` 和 `other` 为 null |
+| `label` | 字符串 | 本地化的显示标签，在渲染前解析确定 |
+
+示例：
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="为客户服务的人员 — cashier">
+
+### cashier {#cashier}
+
+| 字段 | 类型 | 示例 / 说明 |
+|-------|------|-----------------------|
+| `cashier.id` | 数字 | WordPress 用户 ID，未知时为 `0` |
+| `cashier.name` | 字符串 | 收银员显示名称 |
+
+  </AccordionItem>
+
+  <AccordionItem question="客户姓名、地址和税号 — customer">
+
+### customer {#customer}
+
+| 字段 | 类型 | 示例 / 说明 |
+|-------|------|-----------------------|
+| `customer.id` | 数字/null | 客户 ID，访客为 `null` |
+| `customer.name` | 字符串 | 客户显示名称或访客标签 |
+| `customer.first_name` | 字符串 | 账单地址中的名字，用于“谢谢您，Nia”等问候语。未提供名字的访客为空 |
+| `customer.billing_address.*` | 对象 | WooCommerce 账单地址字段 |
+| `customer.shipping_address.*` | 对象 | WooCommerce 收货地址字段 |
+| `customer.tax_ids` | 数组 | 从订单快照中获取的结构化客户税号 |
+
+常用地址键包括 `first_name`、`last_name`、`company`、`address_1`、`address_2`、`city`、`state`、`postcode`、`country`、`email` 和 `phone`。
+
+  </AccordionItem>
+
+  <AccordionItem question="售出的商品 — lines">
+
+### lines {#lines}
+
+使用 `{{#lines}}...{{/lines}}` 循环遍历。示例值来自[示例订单](#receipt-map)中的浓缩咖啡豆行。
+
+<FieldIndex
+  note="每个金额字段都成对提供：数字用于 `{{#…}}` 区块（零和 `null` 会隐藏区块，而值为 `null` 的字段完全没有对应的 `_display` 字段），`_display` 文本则用于打印。标记为 incl/excl 的字段还提供 `_incl` 和 `_excl` 版本，各自都有对应的 `_display`。"
+  emptyText="没有匹配的字段 — 清除筛选条件以查看 `lines[]` 的所有字段。"
+  fields={[
+    { name: 'key', type: 'string', desc: "稳定的行键 / 订单项目 ID。", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "商品 SKU。", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "商品或行的显示名称。", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "售出数量。", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "此行已退款的数量。", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "记录的原始单价。没有 POS 价格历史的订单中为 `null`，请将其包裹在区块中。",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "使用优惠券前的销售单价：如有记录，则使用 POS 价格，否则根据保存的行小计推算。",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "原价减去售价，最低为零。零视为假值，因此有条件判断的行会自动隐藏。",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "记录的原价乘以数量。",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "使用优惠券前的售价乘以数量。",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "此行从原价降至售价所节省的总金额。",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "当此行的节省金额已包含在 `discounts` 中时为真，例如 v1.9.0 之前创建的订单。用此字段避免重复打印节省金额。",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce 折扣前的单价。不要将其作为原价使用。",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "应用 WooCommerce 折扣后的最终单价。",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "使用优惠券前：WooCommerce 折扣前的行小计，即上方示例收据中每件商品旁的金额。",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "以正值表示的 WooCommerce 原生行折扣；当前订单中仅包含优惠券折扣。",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "使用优惠券后：最终行总计，即模板库中的收据模板在每件商品旁打印的金额。",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "以正值表示的此行退款总额。",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '""', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "此行按税率划分的税费行。" },
+    { name: 'meta', type: 'array', desc: "以 `{key, value}` 键值对表示的订单项目元数据。" },
+    { name: 'attributes', type: 'array', desc: "以 `{key, value}` 键值对表示的商品/变体属性。" },
+  ]}
+/>
+
+### 显示原价和节省金额 {#displaying-regular-price-and-savings}
+
+采用单价布局时，可按以下方式显示记录的原价、售价和节省金额：
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+需要考虑数量时，使用行总计字段：
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` 是使用优惠券前的价格。要显示应用 WooCommerce 折扣后的最终金额，请使用 `unit_price` 或 `line_total`。
+
+:::note 重印 v1.9.0 之前创建的订单
+较早的 WCPOS 订单可能已经将原价到售价的降价金额计入 `discounts`。如果自定义模板同时打印行节省金额和行折扣，请使用 `savings_in_discounts`，避免重复显示同一笔减免：
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+如果模板不打印行级 `discounts` 行，即使 `savings_in_discounts` 为真，也应继续显示 `line_savings`。内置模板会自动处理这种区别。
+:::
+
+  </AccordionItem>
+
+  <AccordionItem question="费用和运费 — fees、shipping">
+
+### fees 和 shipping {#fees-and-shipping}
+
+使用 `{{#fees}}...{{/fees}}` 和 `{{#shipping}}...{{/shipping}}` 循环遍历。
+
+| 字段 | 类型 | 说明 |
+|-------|------|-------------|
+| `label` | 字符串 | 费用标签或配送方式名称 |
+| `method_id` | 字符串 | 配送方式 ID（仅适用于运费） |
+| `total` / `_incl` / `_excl` | 数字 | 按显示设置计算的总额、含税总额和不含税总额 |
+| `taxes` | 数组 | 按税率划分的税费行 |
+| `meta` | 数组 | `{key, value}` 元数据键值对 |
+
+格式化版本：`total_display`、`total_incl_display` 和 `total_excl_display`。
+
+  </AccordionItem>
+
+  <AccordionItem question="优惠券和折扣 — discounts">
+
+### discounts {#discounts}
+
+使用 `{{#discounts}}...{{/discounts}}` 循环遍历。
+
+| 字段 | 类型 | 说明 |
+|-------|------|-------------|
+| `label` | 字符串 | 优惠券说明，无说明时使用优惠券代码。在 POS 购物车中添加的折扣显示为 `Discount`，百分比折扣则显示为 `Discount (10%)` |
+| `code` | 字符串 | 优惠券代码 |
+| `discount_type` | 字符串 | WooCommerce 优惠券类型标识，例如 `fixed_cart`、`percent` 或 `fixed_product`。优惠券已不存在时为空。 |
+| `total` / `_incl` / `_excl` | 数字 | 以正值表示的折扣金额 |
+
+格式化版本：`total_display`、`total_incl_display` 和 `total_excl_display`。如果希望将折扣行显示为负数，请在模板中自行添加负号。
+
+`discount_type` 在收据数据 v1.2 中加入。此前生成的税务收据快照不包含此字段。{/* pending: monorepo#3363 */}
+
+  </AccordionItem>
+
+  <AccordionItem question="总计、已付金额、退款和商品数量 — totals">
+
+### totals {#totals}
+
+示例值来自[示例订单](#receipt-map)，该订单后来发生了一笔 $7.25 的部分退款。
+
+<FieldIndex
+  note="金额字段与商品行采用相同的配对方式：纯数字用于条件判断，`_display` 字符串用于打印，标记处还提供 `_incl`/`_excl` 版本。"
+  emptyText="没有匹配的字段 — 清除筛选条件以查看 `totals` 的所有字段。"
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "折扣前的订单小计。",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "以正值表示的订单折扣总额；当前订单中仅包含优惠券折扣。",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "所有商品行中记录的原价到售价的节省总额，包括商品目录中的促销降价和收银时的改价。",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "合计 WooCommerce 折扣和相对原价的节省金额，并扣除旧版数据中的重复部分。以一个数值向客户展示节省的全部金额。",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "收据中是否记录了足够的价格数据，可据此计算完整的节省总额。",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "税费总额。",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "订单总额，遵循税费显示设置：显示不含税价格时，此值为总额减去税费。`total_incl` 始终是实际收取的金额。",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "已支付 / 已抵付的金额。",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "退给客户的找零。",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '""', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "以正值表示的退款总额。",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "总额减去退款，最低为零。没有退款时为 `0`，因此请用 `refund_total` 作为显示条件。",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "各商品行数量之和。", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "商品行的行数。", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+如果希望用一个数值向客户展示节省的全部金额，请使用 `total_saved`。不要在模板中将 `discount_total` 与 `sale_savings_total` 相加来计算：v1.9.0 之前创建的订单可能已经将 POS 改价节省金额计入 WooCommerce 折扣总额。标准字段 `total_saved` 会识别并扣除这部分重复金额。
+
+只要有任一商品行缺少足够的价格记录，无法可靠汇总，节省总额就会为 `null`，且 `total_saved_complete` 为假。先用 `total_saved_complete` 控制该行是否显示，再用 `total_saved` 隐藏零值：
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+内置模板使用含税版本 `totals.total_saved_incl_display` 打印 **共节省**，并将其包裹在单个 `{{#totals.total_saved_incl}}` 条件区块中。这一个条件就足够，因为价格历史不完整时该值为 `null`，没有节省金额时为零。
+
+  </AccordionItem>
+
+  <AccordionItem question="税费行 — tax、tax_summary">
+
+### tax 和 tax_summary {#tax-and-tax_summary}
+
+使用 `tax` 判断显示模式，使用 `tax_summary` 输出按税率划分的明细行。
+
+| 税费字段 | 类型 | 说明 |
+|-----------|------|-------------|
+| `tax.display` | 字符串 | `incl` 或 `excl` |
+| `tax.display_incl` | 布尔值 | 显示含税价格时为真 |
+| `tax.display_excl` | 布尔值 | 显示不含税价格时为真 |
+| `tax.breakdown` | 字符串 | `hidden`、`single` 或 `itemized` |
+| `tax.breakdown_hidden` | 布尔值 | 应隐藏税费行时为真 |
+| `tax.breakdown_single` | 布尔值 | 首选显示单一税费总额时为真 |
+| `tax.breakdown_itemized` | 布尔值 | 首选按税率分行显示时为真 |
+| `has_tax_summary` | 布尔值 | `tax_summary` 包含数据行时为真 |
+
+使用 `{{#tax_summary}}...{{/tax_summary}}` 循环遍历 `tax_summary`。
+
+| 字段 | 类型 | 说明 |
+|-------|------|-------------|
+| `code` | 字符串 | 税率 ID/代码 |
+| `rate` | 数字/null | 解析确定后的税率百分比 |
+| `label` | 字符串 | 税率标签 |
+| `compound` | 布尔值 | 是否为复合税率 |
+| `taxable_amount_excl` | 数字/null | 不含税的计税基数 |
+| `tax_amount` | 数字 | 已收取的税费 |
+| `taxable_amount_incl` | 数字/null | 含税的计税基数 |
+
+格式化版本：`taxable_amount_excl_display`、`tax_amount_display` 和 `taxable_amount_incl_display`。
+
+  </AccordionItem>
+
+  <AccordionItem question="已收款项 — payments">
+
+### payments {#payments}
+
+使用 `{{#payments}}...{{/payments}}` 循环遍历。
+
+| 字段 | 类型 | 说明 |
+|-------|------|-------------|
+| `method_id` | 字符串 | 付款方式标识符 |
+| `method_title` | 字符串 | 付款方式显示名称 |
+| `amount` | 数字 | 抵付订单的金额 |
+| `transaction_id` | 字符串 | 网关交易 ID |
+| `tendered` | 数字 | 客户交付的现金金额（如有） |
+| `change` | 数字 | 退还的现金找零（如有） |
+
+格式化版本：`amount_display`、`tendered_display` 和 `change_display`。
+
+  </AccordionItem>
+
+  <AccordionItem question="退款 — refunds">
+
+### refunds {#refunds}
+
+使用 `{{#refunds}}...{{/refunds}}` 循环遍历。退款金额为正数：模板需添加负号，或将其打印在单独的退货商品区块中。
+
+| 字段 | 类型 | 说明 |
+|-------|------|-------------|
+| `id` | 数字 | 退款记录 ID |
+| `date` | 日期对象 | 退款创建日期 |
+| `amount` | 数字 | 退款总额 |
+| `subtotal` | 数字 | 已退款的行小计 |
+| `tax_total` | 数字 | 已退税费 |
+| `shipping_total` | 数字 | 已退运费金额 |
+| `shipping_tax` | 数字 | 已退运费税额 |
+| `reason` | 字符串 | 退款原因 |
+| `refunded_by_id` | 数字/null | 发起退款的用户 ID |
+| `refunded_by_name` | 字符串 | 发起退款的用户显示名称 |
+| `refunded_payment` | 布尔值 | 是否通过网关退还了款项 |
+| `destination` | 字符串 | 款项退回的去向：在 POS 中发起的退款为 `original_method`、`cash` 或 `manual`；其他情况为空 |
+| `gateway_id` | 字符串 | 退款所用的网关 ID |
+| `gateway_title` | 字符串 | 网关显示名称 |
+| `processing_mode` | 字符串 | 服务商处理/手动处理模式 |
+| `lines` | 数组 | 已退款的商品行 |
+| `fees` | 数组 | 已退款的费用行 |
+| `shipping` | 数组 | 已退款的运费行 |
+
+退款商品行字段包括 `name`、`sku`、`qty`、`total`、`total_incl`、`total_excl` 和 `taxes`；在 POS 应用中渲染的模板还会获得 `line_total` 和 `unit_total`。退款费用行和运费行使用 `label`、`total`、`total_incl`、`total_excl` 和 `taxes`，运费行另有 `method_id`。总额和税额均会添加显示版本。
+
+  </AccordionItem>
+
+  <AccordionItem question="税务记录 — fiscal">
+
+### fiscal {#fiscal}
+
+税务集成和 WCPOS Pro 会填充标识字段，例如收据编号、哈希值和二维码数据。单据字段表明正在打印哪类单据，因此模板可以采用不同于销售单的方式打印退款单或收银机报表。
+
+| 字段 | 类型 | 说明 |
+|-------|------|-------------|
+| `fiscal.document_type` | 字符串 | 默认为 `sale`；也可以是 `refund`、`void`、`cancellation`、`closure`、`xreport` 或 `handover` |
+| `fiscal.is_sale_document` | 布尔值 | 销售单为真。使用 `is_…` 标志作为区块显示条件 |
+| `fiscal.is_refund_document` | 布尔值 | 退款单为真 |
+| `fiscal.is_void_document` | 布尔值 | 作废单为真，即销售完成前取消 |
+| `fiscal.is_cancellation_document` | 布尔值 | 撤销单为真，即已完成的销售后来被取消 |
+| `fiscal.is_closure_document` | 布尔值 | 收银机结算单为真 |
+| `fiscal.is_x_report` | 布尔值 | X 报表为真 |
+| `fiscal.is_handover` | 布尔值 | 交接单为真 |
+| `fiscal.corrects` | 字符串 | 退款时，所更正销售单的标识 |
+| `fiscal.sale_time` | 日期对象/null | 收银机记录销售的时间，使用收银机的时区 |
+| `fiscal.sale_tz` | 字符串 | 收银机的时区，例如 `"Europe/Berlin"` |
+| `fiscal.received_at` | 日期对象/null | 店铺服务器收到销售记录的时间 |
+| `fiscal.sale_counter` | 数字/null | 收银机自身的销售计数器 |
+| `fiscal.immutable_id` | 字符串 | 不可变的税务标识符 |
+| `fiscal.receipt_number` | 字符串 | 税务收据编号 |
+| `fiscal.sequence` | 数字/null | 序列计数器 |
+| `fiscal.hash` | 字符串 | 哈希/签名值 |
+| `fiscal.qr_payload` | 字符串 | 用于税务验证的二维码数据 |
+| `fiscal.tax_agency_code` | 字符串 | 税务机关代码 |
+| `fiscal.signed_at` | 字符串 | 税务签名时间戳 |
+| `fiscal.signature_excerpt` | 字符串 | 截取后用于显示的签名 |
+| `fiscal.document_label` | 字符串 | 单据标签，例如税务发票 |
+| `fiscal.is_reprint` | 布尔值 | 本次渲染是否为重印 |
+| `fiscal.reprint_count` | 数字 | 重印次数 |
+| `fiscal.extra_fields` | 数组/对象 | 特定司法管辖区的值，通常是由 `{label, value}` 行组成的列表 |
+
+通过循环打印附加字段：
+
+```mustache
+{{#fiscal.extra_fields}}
+  {{label}}: {{value}}
+{{/fiscal.extra_fields}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="格式设置 — presentation_hints">
+
+### presentation_hints {#presentation_hints}
+
+这些字段主要供应用和服务器使用，用于设置收据格式。由服务器渲染的模板可以打印全部字段；在 POS 应用中渲染的模板只能获得 `display_tax`、`prices_entered_with_tax`、`rounding_mode`、`locale` 和 `order_barcode_type`。
+
+| 字段 | 类型 | 说明 |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | 字符串 | `incl` 或 `excl`。由应用填充；服务器不提供此字段 |
+| `presentation_hints.hour12` | 布尔值/null | 店铺时间格式使用 12 小时制时为真 |
+| `presentation_hints.hour_token` | 字符串/null | 店铺时间格式中的小时模式：`h`、`hh`、`H` 或 `HH` |
+| `presentation_hints.prices_entered_with_tax` | 布尔值 | 商品目录价格是否含税 |
+| `presentation_hints.rounding_mode` | 字符串 | WooCommerce 税费舍入设置 |
+| `presentation_hints.locale` | 字符串 | 格式化时使用的语言区域设置 |
+| `presentation_hints.timezone` | 字符串 | 收据时区 |
+| `presentation_hints.currency_position` | 字符串 | 货币符号位置 |
+| `presentation_hints.currency_symbol` | 字符串 | 货币符号 |
+| `presentation_hints.price_thousand_separator` | 字符串 | 千位分隔符 |
+| `presentation_hints.price_decimal_separator` | 字符串 | 小数分隔符 |
+| `presentation_hints.price_num_decimals` | 数字 | 小数位数 |
+| `presentation_hints.price_display_suffix` | 字符串 | WooCommerce 价格显示后缀 |
+| `presentation_hints.order_barcode_type` | 字符串 | 供读取此字段的模板使用的条形码类型：`code128`（默认）、`qrcode`、`ean13`、`ean8` 或 `upca`。由应用填充；服务器不提供此字段，模板库中的模板在模板内设置条形码类型 |
+
+预先格式化的金额字段（如 `totals.total_display` 等 `*_display` 值）会按订单货币显示金额及其 **货币符号**，并使用上方的位置和分隔符设置，因此收据显示 `$12.00`，而非 `USD 12.00`。原始 `order.currency` 字段仍为 ISO 代码，可用于模板中的逻辑判断。
+
+  </AccordionItem>
+
+  <AccordionItem question="收据用语 — i18n">
+
+### i18n {#i18n}
+
+尽可能使用 `i18n` 标签，而不要将文本硬编码：
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+常用键包括 `order`、`date`、`cashier`、`customer`、`item`、`sku`、`qty`、`unit_price`、`regular_price`、`selling_price`、`savings`、`discount`、`subtotal`、`total_saved`、`total`、`tax`、`paid`、`tendered`、`change`、`tax_summary`、`refunded`、`net_total`、`customer_note`、`thank_you_purchase`、`opening_hours`，税务标签 `copy`（打印“副本”）、`reprint`、`register`、`sale_time`、`software`、`document_refund`、`document_void` 和 `document_cancellation`，以及 `store_tax_id_label_eu_vat` 和 `customer_tax_id_label_other` 等税号标签键。扩展可以添加其他键。
+
+  </AccordionItem>
+</Accordion>
+
+## 各项价格之间的关系 {#price-model}
+
+收据上的一件商品会有多种价格，结合具体金额最容易理解这些名称。以下是示例订单中的浓缩咖啡豆行：一件原价 $17.00 的商品，促销价为 $14.50，再叠加 10% 优惠券：
+
+<PriceFlow
+  caption="浓缩咖啡豆 — 一件（订单中有两件）"
+  scaleLabel="原价 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "实付 13.05" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  summary={[
+    { label: "整笔订单的促销节省金额", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "整笔订单的全部优惠券折扣", value: '`totals.discount_total` = 5.28' },
+    { label: "节省金额 + 折扣，已扣除旧版重复部分", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+促销节省金额是原价与售价之差。折扣是 WooCommerce 计算出的优惠券减免金额。WooCommerce 的订单总计和报表仅包含折扣，因此 `total_saved` 将两者合为一个数值供客户查看。
+
+## 渲染规则 {#rendering-rules}
+
+了解金额、含税或不含税价格以及日期的打印方式。展开所需项目即可。
+
+<Accordion>
+  <AccordionItem question="打印金额并隐藏零金额">
+
+### 货币字段 {#currency-fields}
+
+金额字段保留数字类型，每个字段都有一个按店铺语言和货币格式化的 `_display` 字段：
+
+| 数值字段 | 显示字段 |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+打印时使用 `_display` 字段。数字仅用于区块条件判断或机器可读输出：金额为零时，`{{#totals.change_total}}…{{/totals.change_total}}` 会省略所在行。
+
+  </AccordionItem>
+
+  <AccordionItem question="打印含税或不含税价格">
+
+### 遵循税费显示设置的字段 {#tax-display-aware-fields}
+
+一些字段提供三个版本：含税(`_incl`)、不含税(`_excl`)，以及不带后缀的版本，后者遵循店铺关于购物车价格是否含税的显示设置。
+
+| 便捷字段 | 含税字段 | 不含税字段 |
+|-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+  </AccordionItem>
+
+  <AccordionItem question="打印日期和时间">
+
+### 日期对象 {#date-objects}
+
+每个日期都已提供多种格式化形式，模板无需自行设置日期格式。
+
+| 字段 | 说明 |
+|-------|-------------|
+| `datetime`、`date`、`time` | 默认日期/时间字符串 |
+| `datetime_short`、`datetime_long`、`datetime_full` | 遵循语言区域设置的日期时间组合格式 |
+| `date_short`、`date_long`、`date_full` | 遵循语言区域设置的纯日期格式 |
+| `date_ymd`、`date_dmy`、`date_mdy` | 固定顺序的日期格式 |
+| `weekday_short`、`weekday_long` | 星期名称 |
+| `day`、`month`、`month_short`、`month_long`、`year` | 日期的各个组成部分 |
+
+可用的日期对象：`order.created`、`order.paid`、`order.completed`、`order.printed`、`refunds[].date`、`fiscal.sale_time` 和 `fiscal.received_at`。`order.printed` 会在渲染时刷新，便于重印时使用。收据没有税务记录时，两个 `fiscal` 日期均为 `null`，因此请将其包裹在区块中。
+
+  </AccordionItem>
+
+</Accordion>
+
+## 扩展收据数据 {#extending}
+
+插件可以通过 `wcpos_receipt_data` 过滤器向收据数据添加自己的字段。
+
+<Accordion>
+  <AccordionItem question="过滤器：参数、六种模式和示例">
+
+WCPOS 不会在上述字段中加入任何特定插件的数据。当插件需要向收据提供 WooCommerce 数据模型之外的信息时，应自行通过 `wcpos_receipt_data` 过滤器添加，方式与插件过滤 WooCommerce 自身订单总计时相同。服务器每次构建收据时都会运行该过滤器，包括实时收据、付款时的税务快照、PDF 下载和旧版 PHP 模板。在 WCPOS 2.0 之前，此过滤器名为 `woocommerce_pos_receipt_data`；该名称仍可使用，但从 2.0 起已弃用，最早将在 2.2 移除（参阅[钩子命名](../extensions/index.mdx#hook-naming)）。
+
+第三个参数 `$mode` 表示正在构建的单据类型：`live`、`fiscal`、`refund`、`preview`（模板编辑器和模板库中的示例收据）、`closure` 或 `xreport`（收银机结算单和 X 报表）。在 `preview`、`closure` 和 `xreport` 模式下，订单尚未保存，ID 为 `0`；需要已保存订单的插件，应在 `$order->get_id()` 为 `0` 时原样返回 `$data`。
+
+```php
+add_filter( 'wcpos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+随后，模板就可以像使用其他区块一样，以新键作为显示条件：
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+数据结构定义中的键应保持文档规定的类型。新增键不属于该定义，因此不会出现在模板编辑器的字段选择器中；税务快照也仅包含订单付款时过滤器添加的内容。此过滤器从 WCPOS 1.10.8 起可用。
+
+  </AccordionItem>
+
+  <AccordionItem question="哪些收据会打印新增键">
+
+服务器自行渲染的收据会收到所有新增键，包括 PDF 下载和旧版 PHP 模板。在 POS 应用中渲染的 HTML 和热敏模板会先重新构建数据：添加到 `order`、`store`、`cashier` 或 `customer` 内的键会保留，但添加到其他位置的键（如上方折扣行中的键）会被省略。{/* pending: monorepo#3363 */} 对于带有税务快照的实时收据，税务标识、`register` 和 `software` 会在过滤器运行后从快照中复制，因此在此过滤器中修改它们不会生效；请改为扩充快照。
+
+  </AccordionItem>
+</Accordion>
+
+## 问题排查 {#if-something-goes-wrong}
+
+**某行在一张收据上打印 `$0.00`，在另一张收据上却为空。** 某些 `_display` 字段，例如 `totals.change_total_display`、`totals.refund_total_display` 和 `payments[].tendered_display`，值为零时，在服务器渲染的收据中为空，在应用渲染的收据中则为 `$0.00`。改为将该行放入以数字字段为条件的区块中，即可在两种情况下都省略它：`{{#totals.change_total}}…{{/totals.change_total}}`。
+
+**缺少“共节省”行。** `totals.total_saved_complete` 为假：至少有一件商品没有记录原价，因此无法计算节省金额。通常出现在 WCPOS 1.9.0 之前收银生成的订单中。
+
+**总计小于客户实付金额。** 店铺显示的是不含税价格，因此 `totals.total` 为税前总额。要打印实际收取的金额，请使用 `totals.total_incl_display`。WCPOS 附带的旧版 PHP 收据打印的就是该金额。
+
+**某字段在下载的 PDF 中打印，却不在 POS 中打印。** 应用中渲染的模板会先重新构建数据，并省略少数字段；这些字段仅在 PDF 下载和旧版 PHP 模板中打印。下列字段请仅在这两类收据中打印，或用区块控制显示，让 POS 收据将其省略。{/* pending: monorepo#3363 */}
+
+<Accordion>
+  <AccordionItem question="PDF 与 POS 收据中存在差异的字段">
+
+- `lines[].attributes`、`lines[].total_refunded_display` 和 `lines[].unit_subtotal_display`（及其 `_incl` 和 `_excl` 版本）
+- `software.platform`
+- `presentation_hints` 中除 `display_tax`、`prices_entered_with_tax`、`rounding_mode`、`locale` 和 `order_barcode_type` 以外的字段
+- 德国、荷兰、法国、英国公司及瑞士类型的客户税号
+- 插件在 `order`、`store`、`cashier` 和 `customer` 之外添加的键；参阅[扩展收据数据](#extending)
+
+</AccordionItem>
+</Accordion>
+
+## 版本 {#versions}
+
+收据数据有独立于插件的版本号。旧收据中没有较新的字段，例如在字段加入前生成的税务快照，因此请用区块控制这些字段的显示。
+
+| 版本 | 新增内容 |
+|---------|-------|
+| 1.1 | 每件商品的原价、售价和节省金额，以及订单的节省总额，包括 **共节省**。这些字段都不会改变订单总计或 WooCommerce 报表 |
+| 1.2 | `discounts[].discount_type` |
+| 1.3 | `customer.first_name` 和 `i18n` 中的客户显示标签 |
+| 1.4 | `register`、`software`、税务单据字段（`fiscal.document_type`、`is_…` 标志、`sale_time`、`received_at`、`sale_tz`、`sale_counter`、`corrects`）及其 `i18n` 标签 |
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/settings/receipt-templates/html-templates" title="HTML 模板" description="使用 HTML 和 Mustache 编写收据模板。" />
+  <LinkCard to="/settings/receipt-templates/thermal-templates" title="热敏模板" description="为收据打印机编写模板。" />
+  <LinkCard to="/settings/receipt-templates/customise-receipt" title="自定义收据" description="选择模板，或让 AI 帮您修改模板。" />
+</LinkCards>
