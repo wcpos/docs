@@ -1,0 +1,323 @@
+---
+title: Mercado Pago
+slug: /hardware/card-readers/mercado-pago
+description: "Nehmen Sie Kartenzahlungen vom POS-Checkout aus auf einem Mercado Pago Point Smart-Terminal entgegen und richten Sie die Erweiterung Mercado Pago Terminal in WP Admin ein."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/mercadopago-terminal/en/manifest.json';
+
+# Zahlungsgateway Mercado Pago Terminal {#mercado-pago-terminal-gateway}
+
+Die Kasse sendet den Bestellbetrag an ein Mercado Pago **Point Smart**-Terminal. Der Kunde bezahlt am Terminal, und der Verkauf wird automatisch abgeschlossen, sobald Mercado Pago die Zahlung bestätigt. Diese Seite besteht aus zwei Teilen: [Zahlungen annehmen](#take-payment) an der Kasse und [Einrichtung](#setup) in WP Admin.
+
+:::warning Beta: Führen Sie zuerst eine Testzahlung durch
+Diese Erweiterung ist neu. Bisher wurde damit noch keine Kartenzahlung oder Rückerstattung abgeschlossen. Nehmen Sie daher zuerst eine kleine Zahlung entgegen und erstatten Sie diese, bevor Sie sich auf die Erweiterung verlassen.
+
+<details>
+<summary>Was bisher ausprobiert wurde</summary>
+
+Mit einem Live-Konto und einem echten Point Smart konnten Terminals aufgelistet, ein Terminal in den PDV-Modus versetzt sowie über Mercado Pago eine Zahlung dafür erstellt und abgebrochen werden. Noch nicht getestet wurden die Anzeige der Zahlung auf dem Terminal, eine abgeschlossene Kartenzahlung, die Benachrichtigung von Mercado Pago zu einer bezahlten Bestellung, Rückerstattungen sowie die Sandbox von Mercado Pago (Modus **Test**).
+
+</details>
+:::
+
+{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves the payment panel, logs and support bundle into Pro, refuses unsigned webhooks and moves the webhook to /wp-json/wcpos/v2/payments/webhook?provider=mercadopago; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
+
+## Eine Zahlung annehmen {#take-payment}
+
+Sie benötigen [WCPOS Pro](../../getting-started/pro-license.mdx) und einen online erreichbaren Shop, da die Zahlung auf der eigenen Zahlungsseite Ihres Shops innerhalb des POS abläuft. Zuerst muss jemand mit Zugriff auf WP Admin [das Zahlungsgateway einrichten](#setup).
+
+:::note Öffnen Sie zuerst die Kasse
+Wenn **Kasse öffnen und schließen** aktiviert ist, kann bei geschlossener Kasse keine Zahlung erfasst werden. Eine bereits eingezogene Kartenzahlung müsste dann zurückerstattet werden. Siehe [Kasse](../../pos/checkout/index.mdx).
+:::
+
+Das Terminal wird über den Tab **Legacy** im Checkout bedient. Im folgenden Bild ist Mercado Pago nicht eingerichtet. Deshalb zeigt die Liste andere Zahlungsgateways, und **Karte** ist ausgewählt. In Ihrem Shop steht **Mercado Pago Terminal** in dieser Liste:
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[92, 0], [-34, 150], [-24, 0]]} alt="Der Tab Legacy im Checkout eines Shops ohne eingerichtetes Mercado Pago: der Tab selbst, die Zahlungsseite des Shops innerhalb des POS mit dem Bestellbetrag und der Liste anderer Zahlungsgateways sowie die Schaltfläche Zahlung verarbeiten">
+
+1. Tab **Legacy** — öffnet die eigene Zahlungsseite Ihres Shops innerhalb des POS.
+2. **Zahlungsseite Ihres Shops** — der Bestellbetrag und die Zahlungsgateways des Shops. **Mercado Pago Terminal** erscheint nach der Einrichtung in dieser Liste. Wählen Sie es aus, um darunter den Zahlungsbereich mit **Terminal** und **Terminalzahlung starten** zu öffnen.
+3. **Zahlung verarbeiten** — bei Mercado Pago nicht erforderlich: Der Verkauf wird automatisch abgeschlossen, sobald die Zahlung bestätigt ist.
+
+</JourneyShot>
+
+1. Füllen Sie den Warenkorb und drücken Sie **Kasse**.
+2. Öffnen Sie den Tab **Legacy**. Die Zahlungsseite Ihres Shops wird innerhalb des POS geöffnet. Siehe [Der Tab Legacy](../../pos/checkout/legacy-tab.mdx).
+3. Wählen Sie **Mercado Pago Terminal**. In Ihrem Shop wurde möglicherweise ein anderer Name dafür vergeben.
+4. Prüfen Sie das Terminal unter **Terminal**. Das Standardterminal ist bereits ausgewählt. Wenn die Terminalauswahl gesperrt ist, können Sie es nicht ändern.
+5. Drücken Sie **Terminalzahlung starten**. Im Zahlungsbereich erscheint **Wird an das Terminal gesendet…**, dann **Warten auf das Terminal…**, und der gesamte Bestellbetrag wird an dieses Terminal gesendet.
+6. Der Kunde bezahlt am Terminal. Währenddessen zeigt der Zahlungsbereich **Der Kunde bezahlt am Terminal…** an. Wenn **Bestätigen Sie die Zahlung am Terminal.** erscheint, führen Sie den am Terminal angeforderten Schritt aus.
+7. Sobald Mercado Pago die Zahlung bestätigt, erscheint **Zahlung abgeschlossen — Bestellung wird abgeschlossen…**, und der POS wechselt zum Beleg.
+
+Die Schaltfläche **Zahlung verarbeiten** unten im Tab Legacy benötigen Sie nicht: Der Verkauf wird automatisch abgeschlossen, sobald Mercado Pago bestätigt. Wenn Sie vorher darauf drücken, erscheint lediglich der Hinweis, dass die Bestellung noch nicht bezahlt wurde.
+
+Über das Terminal wird immer die gesamte Bestellung abgerechnet. Ein Verkauf lässt sich daher nicht auf das Terminal und eine andere Zahlungsart aufteilen. Sobald eine Zahlung für die Bestellung angenommen wurde, kann der Tab Legacy nicht mehr verwendet werden. [Brechen Sie diese Zahlung](../../pos/checkout/cancelling-a-payment.mdx) zuerst ab.
+
+### Abbrechen oder warten {#payment-controls}
+
+- **Terminalzahlung abbrechen** ersetzt **Terminalzahlung starten**, während eine Zahlung läuft. Dies funktioniert nur, bis das Terminal die Zahlung übernimmt. Danach erscheint im Zahlungsbereich **Die Zahlung ist bereits auf dem Terminal. Brechen Sie sie am Terminal ab oder warten Sie, bis sie abläuft.**
+- **Eine Zahlung läuft ab**, sobald seit ihrem Start bei Mercado Pago 5 Minuten vergangen sind. Der Zahlungsbereich prüft den Status weiter. Wenn der Kunde vorher bezahlt, wird der Verkauf daher trotzdem abgeschlossen.
+- **Beim Neuladen der Seite** wird die bereits laufende Zahlung wieder aufgenommen, und **Terminalzahlung abbrechen** wird angezeigt.
+- **Falls die Kassenansicht geschlossen wurde**, während eine Zahlung lief, belasten Sie die Karte nicht erneut. Ihr Shop ist darauf ausgelegt, eine bezahlte Bestellung anhand der Benachrichtigung von Mercado Pago und einer Prüfung alle 5 Minuten automatisch abzuschließen. Dies wurde jedoch noch nicht im Live-Betrieb getestet. Öffnen Sie die Bestellung sowie die Zahlung in Ihrem Mercado Pago-Konto und prüfen Sie, ob bezahlt wurde.
+
+## Nach dem Verkauf {#receipts}
+
+Das Terminal druckt keinen Beleg. Drucken Sie den POS-Beleg wie gewohnt aus oder senden Sie ihn per E-Mail. Siehe [Belege im Checkout](../../receipts/at-checkout.mdx).
+
+In der Bestellung wird die Zahlung mit der Bestell-ID von Mercado Pago als Transaktions-ID erfasst.
+
+## Rückerstattungen {#refunds}
+
+Öffnen Sie in WP Admin die Bestellung, klicken Sie auf **Rückerstattung**, geben Sie den Betrag ein und drücken Sie **… über Mercado Pago Terminal zurückerstatten**. Der gesamte Bestellbetrag wird als vollständige Rückerstattung zurückgezahlt, ein kleinerer Betrag als Teilrückerstattung. Mercado Pago erlaubt Rückerstattungen bis zu **90 Tage** nach der Zahlung.
+
+Einige Kartenakquirer erlauben Rückerstattungen nur am Terminal. Wenn Mercado Pago die Rückerstattung ablehnt, führen Sie sie am Point-Terminal durch und erfassen Sie sie anschließend in WooCommerce mit **Manuell zurückerstatten**. Siehe [Rückerstattungen](../../pos/refunds.mdx).
+
+## Wenn etwas schiefgeht {#goes-wrong}
+
+Die Statuszeile im Zahlungsbereich zeigt, was passiert ist. Öffnen Sie den Eintrag, der mit denselben Worten beginnt.
+
+### Die Zahlung startet nicht {#wont-start}
+
+<details>
+<summary>Wählen Sie zuerst ein Terminal aus.</summary>
+
+Wählen Sie unter **Terminal** ein Terminal aus und drücken Sie erneut **Terminalzahlung starten**.
+
+</details>
+
+<details>
+<summary>Terminal … befindet sich im Modus STANDALONE.</summary>
+
+Das Terminal kann noch keine Zahlungen von der Kasse annehmen. Bitten Sie die Person, die das Zahlungsgateway eingerichtet hat, [es auf PDV umzustellen](#terminals) und neu zu starten.
+
+</details>
+
+<details>
+<summary>Keine Terminals in diesem Mercado Pago-Konto gefunden. / Terminals konnten nicht geladen werden.</summary>
+
+Der Shop kann seine Terminals nicht auflisten. Bitten Sie die Person, die das Zahlungsgateway eingerichtet hat, die [Diagnose](#settings) zu prüfen.
+
+</details>
+
+<details>
+<summary>Mercado Pago Terminal ist deaktiviert.</summary>
+
+Das Zahlungsgateway ist für den POS deaktiviert. Bitten Sie die für WP Admin zuständige Person, [es zu aktivieren](#turn-on).
+
+</details>
+
+<details>
+<summary>Anfrage an Mercado Pago Terminal fehlgeschlagen.</summary>
+
+Die Kasse konnte Ihren Shop oder Mercado Pago nicht erreichen. Falls der Kunde möglicherweise bereits bezahlt hat, prüfen Sie die Bestellung und Ihr Mercado Pago-Konto, bevor Sie eine weitere Zahlung starten. Andernfalls prüfen Sie die Verbindung und versuchen Sie es erneut. Wenn das Problem weiterhin auftritt, senden Sie das [Support-Paket](#logs-and-support-bundle).
+
+</details>
+
+### Die Zahlung hängt oder schlägt fehl {#stalls}
+
+Prüfen Sie das Terminal, bevor Sie erneut beginnen. **Belasten Sie die Karte niemals zweimal**: Falls der Kunde möglicherweise bereits bezahlt hat, prüfen Sie zuerst die Bestellung und Ihr Mercado Pago-Konto.
+
+<details>
+<summary>Es wird weiterhin auf das Terminal gewartet.</summary>
+
+Seit einer Minute liegt keine Antwort vor. Wenn das Terminal die Zahlung anzeigt, lassen Sie den Kunden den Vorgang abschließen. Andernfalls drücken Sie **Terminalzahlung abbrechen** und beginnen Sie erneut.
+
+</details>
+
+<details>
+<summary>Die Zahlung ist bereits auf dem Terminal.</summary>
+
+Brechen Sie sie am Terminal ab oder warten Sie die 5 Minuten, bis sie abläuft. Der Zahlungsbereich prüft den Status weiter. Bezahlt der Kunde doch noch, wird der Verkauf trotzdem abgeschlossen.
+
+</details>
+
+<details>
+<summary>Zahlung fehlgeschlagen.</summary>
+
+Die Karte oder die Zahlung wurde abgelehnt. Drücken Sie **Terminalzahlung starten**, um es erneut zu versuchen, oder verwenden Sie eine andere Zahlungsart.
+
+</details>
+
+<details>
+<summary>Die Zahlung auf dem Terminal ist abgelaufen.</summary>
+
+Fünf Minuten sind vergangen. Drücken Sie erneut **Terminalzahlung starten**.
+
+</details>
+
+<details>
+<summary>Zeitüberschreitung beim Warten auf das Terminal.</summary>
+
+Sechs Minuten sind ohne Ergebnis vergangen, und die Kasse fordert Mercado Pago auf, die Zahlung abzubrechen. Prüfen Sie das Terminal, bevor Sie erneut beginnen.
+
+</details>
+
+<details>
+<summary>Mercado Pago hat eine Zahlung gemeldet, die nicht zu dieser Bestellung passt.</summary>
+
+Die Zahlung passte nicht zu dieser Bestellung, etwa weil sich der Betrag oder die Währung geändert hat. Belasten Sie die Karte nicht erneut. Prüfen Sie die Bestellnotizen und die Zahlung in Ihrem Mercado Pago-Konto und ziehen Sie Ihre Filialleitung hinzu.
+
+</details>
+
+<details>
+<summary>Meldungen während der Einrichtung</summary>
+
+**Zugriffstoken von Mercado Pago abgelehnt (HTTP 401).** Das Token ist falsch oder nicht mehr gültig. Kopieren Sie ein neues Token aus **Ihre Integrationen** → **Zugangsdaten** in Mercado Pago und speichern Sie es unter **Zugriffstoken**.
+
+**Zugriffstoken ist nicht zur Nutzung von Point berechtigt (HTTP 403).** Die Anwendung, zu der das Token gehört, kann Point nicht verwenden. Prüfen Sie die Anwendung unter **Ihre Integrationen**.
+
+**Mercado Pago konnte nicht erreicht werden.** Der Shop konnte keine Verbindung herstellen. Prüfen Sie das Token und laden Sie anschließend die Einstellungsseite neu.
+
+**Mit diesem Mercado Pago-Konto sind noch keine Point-Terminals verknüpft.** Melden Sie sich am Terminal mit diesem Mercado Pago-Konto an, schalten Sie es dann auf PDV um und starten Sie es neu.
+
+**Standardterminal ist ein Textfeld statt einer Liste.** Die Terminalliste konnte nicht geladen werden. Prüfen Sie das Token und die Diagnose und laden Sie anschließend die Einstellungsseite neu.
+
+**Der Live-Modus ist ausgewählt, aber das Zugriffstoken ist ein Test-Token (TEST-…).** Zahlungen würden an die Sandbox von Mercado Pago gesendet. Fügen Sie Ihr Produktionstoken ein oder stellen Sie **Modus** wieder auf **Test**.
+
+**Letzter verifizierter Webhook: nie.** Mercado Pago hat noch keine signierte Benachrichtigung gesendet. Prüfen Sie die Webhook-URL und das **Webhook-Geheimnis**. Solange der Zahlungsbereich geöffnet bleibt, schließt er Zahlungen weiterhin ab.
+
+**Mercado Pago hat die Rückerstattung abgelehnt.** Einige Akquirer erlauben Rückerstattungen nur am Terminal. Führen Sie die Rückerstattung dort durch und erfassen Sie sie anschließend mit **Manuell zurückerstatten**.
+
+**Die Aktivierung wird verweigert.** Der Server benötigt **PHP 7.4** oder neuer.
+
+</details>
+
+## Einrichtung {#setup}
+
+Dieser Teil richtet sich an die Person, die WP Admin für den Shop verwaltet. Prüfen Sie vor Schritt 1 die [Voraussetzungen](#requirements).
+
+### Voraussetzungen {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Mercado Pago-Konto">Ein Verkäuferkonto in Argentinien, Brasilien, Mexiko, Uruguay, Kolumbien, Chile oder Peru mit einer Anwendung und dem zugehörigen Zugriffstoken</RequirementItem>
+  <RequirementItem label="Terminal">Ein Mercado Pago Point Smart 1 oder 2 im PDV-Modus</RequirementItem>
+  <RequirementItem label="Verbindung">Nur online. Der Shop sendet jede Zahlung über das Internet an das Terminal. Daher kann jede Kasse jedes Terminal verwenden und beim Checkout eines auswählen</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
+  <RequirementItem label="Server">WordPress 5.2 oder neuer, WooCommerce und PHP 7.4 oder neuer</RequirementItem>
+  <RequirementItem label="Währung">Dieselbe Währung wie in Ihrem Mercado Pago-Konto</RequirementItem>
+</RequirementsList>
+
+### 1. Erweiterung installieren {#install}
+
+Öffnen Sie `WP Admin > POS > Einstellungen > Erweiterungen`, suchen Sie **Mercado Pago Terminal for WooCommerce** und klicken Sie auf **Installieren**. WCPOS lädt die Erweiterung herunter, installiert und aktiviert sie in einem Schritt. Siehe [Eine Erweiterung installieren](../../extensions/index.mdx#installing-an-extension).
+
+Wenn Sie das Verzeichnis nicht verwenden, laden Sie die **Plugin-ZIP-Datei** (nicht die Quellcode-ZIP-Datei) von der [GitHub-Releases-Seite](https://github.com/wcpos/mercadopago-terminal-for-woocommerce/releases) herunter. Laden Sie sie unter `Plugins > Add Plugin` mit **Plugin hochladen** hoch und aktivieren Sie sie anschließend. WooCommerce muss aktiv sein.
+
+### 2. Vorbereitungen in Mercado Pago {#mercado-pago-account}
+
+1. Erstellen Sie unter **Ihre Integrationen** eine Anwendung und aktivieren Sie deren Produktionszugangsdaten. Mercado Pago fragt nach Ihrer Branche und Website. Außerdem müssen Sie den Bedingungen zustimmen und ein reCAPTCHA lösen.
+2. Erstellen Sie in Mercado Pago eine **Filiale** und einen **POS**. Die Erweiterung legt diese nicht für Sie an.
+3. Verknüpfen Sie Ihr Point Smart-Terminal: Melden Sie sich am Terminal mit demselben Mercado Pago-Konto an.
+
+### 3. Einstellungen des Zahlungsgateways ausfüllen {#gateway-settings}
+
+1. Gehen Sie zu `WP Admin > WooCommerce > Einstellungen > Zahlungen` und öffnen Sie **Mercado Pago Terminal**.
+2. Wählen Sie den **Modus**: **Test** (Standard) steuert das virtuelle Terminal in der Sandbox von Mercado Pago, **Live** steuert echte Terminals.
+3. Fügen Sie das **Zugriffstoken** (`APP_USR-…`) Ihrer Anwendung aus **Ihre Integrationen** → **Zugangsdaten** ein. Verwenden Sie das zum **Modus** passende Token.
+4. Wenn Ihre Währung keine Cent-Beträge verwendet, etwa der chilenische Peso, setzen Sie **Anzahl der Dezimalstellen** unter `WooCommerce > Einstellungen > General` auf **0**. Mercado Pago lehnt bei diesen Konten Beträge mit Dezimalstellen ab. Die Erweiterung sendet nur dann ganze Beträge, wenn diese Einstellung 0 ist.
+5. Speichern Sie die Einstellungen.
+
+### 4. Webhook hinzufügen (empfohlen) {#webhook}
+
+Über den Webhook kann Mercado Pago Ihrem Shop mitteilen, dass eine Zahlung abgeschlossen ist. Damit soll eine bezahlte Bestellung auch dann abgeschlossen werden, wenn die Kassenansicht geschlossen wurde. Dies wurde jedoch noch nicht im Live-Betrieb getestet: [Prüfen Sie die Bestellung](#payment-controls), bevor Sie erneut kassieren. Ohne Webhook schließt der Zahlungsbereich Zahlungen weiterhin ab, solange er geöffnet bleibt.
+
+1. Öffnen Sie in Mercado Pago **Ihre Integrationen** → Ihre Anwendung → **Webhooks**.
+2. Fügen Sie die Webhook-URL hinzu, die in den Einstellungen des Zahlungsgateways unter **Webhook-Geheimnis** angezeigt wird. Sie endet auf `admin-ajax.php?action=mptfwc_webhook`.
+3. Wählen Sie das Ereignis **Bestellung (Mercado Pago)** und speichern Sie.
+4. Kopieren Sie die **geheime Signatur** in **Webhook-Geheimnis** und speichern Sie. Sobald das Geheimnis gespeichert ist, lehnt der Shop jede Benachrichtigung ab, die nicht damit signiert wurde. Ohne Geheimnis verarbeitet der Shop die Benachrichtigungen von Mercado Pago weiterhin, kann aber nicht prüfen, ob sie tatsächlich von Mercado Pago stammen. **Letzter verifizierter Webhook** bleibt dann auf **nie**.
+
+### 5. Terminals einrichten {#terminals}
+
+1. Laden Sie die Einstellungsseite neu. Die Liste **Standardterminal** und die Tabelle **Terminals** zeigen jetzt die Terminals Ihres Kontos.
+2. Terminals werden im Modus **STANDALONE** ausgeliefert. Klicken Sie bei jedem Terminal auf **Auf PDV umstellen** und **starten Sie das Terminal anschließend neu**. Mercado Pago benötigt diesen Neustart.
+3. Wählen Sie ein **Standardterminal**.
+4. Optional: Beschränken Sie **Aktivierte Terminals** auf die Terminals, die Kassierer auswählen dürfen. Lassen Sie das Feld leer, um alle zuzulassen. Das Standardterminal ist immer zugelassen.
+5. Optional: Aktivieren Sie **Terminalauswahl sperren**, damit Kassierer immer das Standardterminal verwenden.
+6. Speichern Sie die Einstellungen.
+
+### 6. Für den POS aktivieren {#turn-on}
+
+Gehen Sie zu `WP Admin > POS > Einstellungen > Kasse`, suchen Sie **Mercado Pago Terminal** und schalten Sie **Aktiviert** ein. Siehe [Ein Zahlungsgateway aktivieren](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+Lassen Sie **Aktivieren/Deaktivieren** in den WooCommerce-Einstellungen ausgeschaltet, sofern Sie das Zahlungsgateway nicht auch online anbieten möchten. Sobald es hier aktiviert ist, verwendet der POS das Zahlungsgateway unabhängig davon, ob dieses Kontrollkästchen aktiviert ist.
+
+## Einstellungsreferenz {#settings}
+
+Unter `WP Admin > WooCommerce > Einstellungen > Zahlungen > Mercado Pago Terminal`. Die Schritte oben behandeln die benötigten Einstellungen. Öffnen Sie die Liste, um alle Einstellungen und ihre Standardwerte zu sehen.
+
+<details>
+<summary>Alle 11 Einstellungen und die Diagnose</summary>
+
+| Einstellung | Funktion |
+|---|---|
+| **Aktivieren/Deaktivieren** | Bietet das Zahlungsgateway auch im Onlineshop an. Standardmäßig deaktiviert. Der POS hat einen eigenen Schalter unter `POS > Einstellungen > Kasse` |
+| **Titel** | Der Name, den Kassierer auf der Zahlungsseite auswählen. Standard: `Mercado Pago Terminal` |
+| **Beschreibung** | Die Zeile unter dem Titel. Standard: `Pay in person on a Mercado Pago Point terminal.` |
+| **Modus** | **Test** (Standard) steuert das virtuelle Sandbox-Terminal, **Live** steuert echte Terminals |
+| **Zugriffstoken** | Aus Ihrer Anwendung unter Ihre Integrationen → Zugangsdaten. Nach dem Speichern werden nur noch die letzten vier Zeichen angezeigt. Lassen Sie das Feld leer, um das Token beizubehalten |
+| **Webhook-Geheimnis** | Die geheime Signatur aus den Webhook-Einstellungen von Mercado Pago. Wird wie das Token gespeichert und angezeigt |
+| **Standardterminal** | Das zu Beginn ausgewählte Terminal. Eine aus Ihrem Konto abgerufene Liste oder ein Textfeld, wenn die Liste nicht geladen werden kann |
+| **Aktivierte Terminals** | Die Terminals, die Kassierer auswählen dürfen. Leer erlaubt alle; das Standardterminal ist immer zugelassen. Wird ausgeblendet, wenn die Liste nicht geladen werden kann |
+| **Terminalauswahl sperren** | Kassierer können das Terminal nicht ändern: Es wird immer das Standardterminal verwendet. Erfordert ein Standardterminal |
+| **Checkout-Debug-Protokolle** | Zeigt **Protokolle anzeigen**, **Kopieren** und **Leeren** im Zahlungsbereich an. Standardmäßig deaktiviert. Aktivieren Sie dies, wenn Sie Protokolle für den Support sammeln. Zahlungen werden in jedem Fall protokolliert |
+| **Protokollierungsstufe** | **Aus**, **Nur Fehler** oder **Debug** (Standard) |
+
+Unterhalb der Einstellungen zeigt **Mercado Pago Terminal-Diagnose** die API-Prüfung mit der Anzahl der Terminals und der Anzahl im PDV-Modus, den letzten verifizierten Webhook, die aktive Umgebung, ob Token und Geheimnis gesetzt sind, das Standardterminal, die Webhook-URL und einen Link zu den Protokollen. Die Tabelle **Terminals** listet ID, Bezeichnung und Betriebsmodus jedes Terminals auf und zeigt bei Bedarf **Auf PDV umstellen** an.
+
+</details>
+
+## Protokolle und Support-Paket {#logs-and-support-bundle}
+
+Die Protokolle befinden sich unter `WP Admin > WooCommerce > Status > Protokolle` bei der Quelle `mercadopago-terminal`. Die **Protokollierungsstufe** ist anfangs auf **Debug** gesetzt. Dabei werden jede Anfrage an Mercado Pago und jede Antwort, jeder Webhook und jede Änderung des Zahlungsstatus aufgezeichnet. Token, Signaturen und Kartennummern werden entfernt.
+
+Wenn eine Zahlung fehlschlägt, klicken Sie auf der Einstellungsseite des Zahlungsgateways auf **Support-Paket herunterladen** und senden Sie die `.txt`-Datei zusammen mit der **Bestellnummer** an den Support. Nichts darin kann verwendet werden, um Zahlungen einzuziehen.
+
+<details>
+<summary>Inhalt des Support-Pakets</summary>
+
+- Die Konfiguration Ihres Shops: die Versionen der Erweiterung, von WordPress, WooCommerce, PHP und WCPOS sowie die Angabe, ob HPOS aktiviert ist.
+- Die Einstellungen des Zahlungsgateways mit maskiertem Zugriffstoken und Webhook-Geheimnis.
+- Ihre Terminals und deren Betriebsmodi.
+- Zahlungsversuche der 10 letzten Bestellungen, bei denen das Terminal verwendet wurde.
+- Die letzten 500 Zeilen des Protokolls `mercadopago-terminal`.
+
+</details>
+
+## Was nicht unterstützt wird {#scope-and-limitations}
+
+- Teilzahlungen: Über das Terminal wird immer die gesamte Bestellung abgerechnet.
+- Trinkgeld.
+- Ein Shop mit Preisen in einer anderen Währung als der des Mercado Pago-Kontos: Die Bestellung wird nicht abgeschlossen.
+- Drucken eines Belegs am Terminal.
+- Der blockbasierte Checkout des Onlineshops.
+- HPOS (die Bestelltabellen von WooCommerce): Die Erweiterung deklariert dafür noch keine Unterstützung.
+
+<details>
+<summary>Funktionsweise für Entwickler</summary>
+
+Das Zahlungsgateway verwendet die **Orders API** von Mercado Pago für Point (`POST /v1/orders` mit `type: point`). Beim Start einer Zahlung werden ein Idempotenzschlüssel und eine externe Referenz in der Bestellung gespeichert. Anschließend wird auf dem ausgewählten Terminal eine Mercado Pago-Bestellung über den Bestellbetrag mit einer Ablaufzeit von 5 Minuten erstellt (Filter `mptfwc_order_expiration_time`). Bei einem erneuten Versuch nach einer Zeitüberschreitung wird derselbe Schlüssel verwendet, sodass keine doppelte Belastung erfolgen kann.
+
+Der Zahlungsbereich fragt den Status alle 2 Sekunden ab (Filter `mptfwc_poll_interval_ms`) und beendet die Abfragen nach 6 Minuten. Der Webhook (`x-signature`, HMAC-SHA256) und eine geplante Prüfung alle 5 Minuten können die Bestellung ebenfalls abschließen. Dem Webhook-Inhalt wird nie vertraut; die Bestellung wird immer erneut von Mercado Pago abgerufen.
+
+Die Bestellung wird nur abgeschlossen, wenn die Mercado Pago-Bestellung sie referenziert, von diesem Shop für sie erstellt wurde, eine `point`-Bestellung ist, mit ihrem Betrag und ihrer Währung übereinstimmt und das Terminal des Zahlungsversuchs verwendet hat. Der Abschluss wird einmalig unter einer Sperre pro Bestellung ausgeführt. Die Transaktions-ID ist die Bestell-ID von Mercado Pago.
+
+</details>
+
+## Weiterführende Dokumentation {#related-documentation}
+
+- [Der Tab Legacy](../../pos/checkout/legacy-tab.mdx)
+- [Kasse](../../pos/checkout/index.mdx)
+- [Checkout-Einstellungen](../../settings/wp-admin/checkout.mdx)
+- [Erweiterungen](../../extensions/index.mdx)
+- [Ein Problem auf GitHub melden](https://github.com/wcpos/mercadopago-terminal-for-woocommerce/issues). Bei Fragen zu Ihrem Konto, Ihren Zugangsdaten und Terminals wenden Sie sich an Mercado Pago.
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="Der Tab Legacy" description="Zahlungsgateways, die Zahlungen auf der eigenen Zahlungsseite des Shops abwickeln" />
+  <LinkCard to="/settings/checkout" title="Checkout-Einstellungen" description="Zahlungsgateways für den POS aktivieren" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Alle Zahlungsgateways" description="Weitere Kartenterminals, mit denen WCPOS funktioniert" />
+</LinkCards>
