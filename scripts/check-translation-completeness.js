@@ -140,6 +140,8 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'WCPOS WPML',
   'WCPOS WP Multilang',
   'WCPOS StoreApps Smart Coupons',
+  // The paid product's name, used verbatim as a RequirementItem label on 2.x payment/gateways/square-terminal and reference/gateway-template.
+  'WCPOS Pro',
   "Cannot read properties of undefined (reading 'data')",
   // Third-party WooCommerce plugin/extension names — listed verbatim (e.g. on
   // settings/wp-admin/customer-tax-ids) because they are the exact names a user
