@@ -1,0 +1,205 @@
+---
+title: Linux에서 USB 프린터 사용
+slug: /hardware/receipt-printers/usb-printers-linux
+sidebar_label: Linux에서 USB 프린터 사용
+sidebar_position: 6
+description: "Linux에서 데스크톱 앱이 USB 영수증 프린터를 사용하려면 권한이 필요합니다. udev 규칙 하나로 권한을 부여하면 프린터로 인쇄할 수 있습니다."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
+
+Linux에서는 사용자가 허용해야 데스크톱 앱이 USB 영수증 프린터를 사용할 수 있습니다. 규칙 파일에 한 줄을 추가하면 되며, 한 번만 설정하면 됩니다.
+
+Linux의 데스크톱 앱에서 **테스트 페이지 인쇄**를 실행했을 때 **인쇄되지 않음**과 함께 **앱의 프린터 접근이 허용되지 않았습니다. 시스템 설정에서 허용한 후 다시 시도하세요.** 메시지가 표시된다면 이 페이지를 참고하세요. Linux에는 이를 위한 설정 화면이 없으며, 아래 규칙이 그 설정에 해당합니다.
+
+<details id="other-signs">
+<summary>이 문제가 나타나는 다른 징후</summary>
+
+- 해당 메시지 아래의 **지원 세부 정보**에 `LIBUSB_ERROR_ACCESS`가 표시됩니다.
+- 검색 결과의 프린터 카드에 프린터 고유 이름 대신 **USB 프린터**와 일련의 숫자가 표시됩니다. 대개 앱이 프린터에 접근하여 이름을 읽지 못했다는 뜻입니다.
+
+</details>
+
+:::note 시작하기 전에
+아래 명령을 터미널에 복사할 수 있도록 계산대 기기에서 이 페이지를 열고 작업하세요. **터미널** 앱을 여세요(Ubuntu와 Linux Mint에서는 **Ctrl+Alt+T**를 누르세요). 계산대의 관리자 비밀번호도 필요합니다. 비밀번호를 모르면 계산대를 설정한 담당자에게 이 페이지를 보내세요.
+:::
+
+## 앱에 프린터 사용 권한 부여하기 {#do-this}
+
+아래 명령은 각각 회색 상자 안에 있습니다. 명령을 실행하려면 상자에 포인터를 올리고 오른쪽 위의 복사 버튼을 누르세요. 그런 다음 터미널 안을 클릭하고 **Ctrl+Shift+V**로 붙여 넣은 뒤 **Enter**를 누르세요.
+
+명령이 비밀번호를 요청하면 입력한 뒤 Enter를 누르세요. 입력하는 동안 화면에 아무것도 표시되지 않거나 별표만 표시되는 것은 정상입니다.
+
+### 프린터의 ID 찾기 {#find-ids}
+
+1. 프린터를 연결하고 전원을 켜세요.
+2. 프린터의 두 ID를 찾으세요. 터미널에서 다음을 실행하세요.
+
+   ```bash
+   lsusb
+   ```
+
+   `command not found`가 표시되면 먼저 [lsusb를 설치하세요](#command-not-found). 각 줄은 USB 기기 하나를 나타냅니다. 프린터에 해당하는 줄을 찾으세요. 예: `Bus 001 Device 007: ID 04b8:0e28 Seiko Epson Corp.`
+
+   해당 줄에서:
+
+   - 제조사 ID: `ID` 바로 뒤의 코드인 `04b8`입니다.
+   - 모델 ID: 콜론 뒤의 코드인 `0e28`입니다.
+   - 제조사 이름: 맨 끝의 `Seiko Epson Corp.`입니다. 해당 줄을 찾는 데 도움이 됩니다.
+
+   어느 줄이 프린터인지 모르겠다면 연결을 분리하고 `lsusb`를 다시 실행하여 어떤 줄이 사라졌는지 확인하세요.
+
+### 규칙 만들기 및 불러오기 {#create-rule}
+
+3. nano 텍스트 편집기에서 새 규칙 파일을 여세요.
+
+   ```bash
+   sudo nano /etc/udev/rules.d/99-receipt-printer.rules
+   ```
+
+   터미널 안에서 nano가 열리고 빈 페이지와 하단의 키 목록이 표시됩니다. `command not found`가 표시되면 먼저 [nano를 설치하세요](#command-not-found).
+
+4. 파일에 규칙을 입력하세요. 이 규칙은 이 계산대의 모든 계정이 해당 두 ID를 가진 프린터를 사용할 수 있게 합니다. 앞서 했던 것처럼 상자의 복사 버튼으로 이 줄을 복사하세요. 줄이 상자보다 깁니다. 전체를 읽으려면 상자에 포인터를 올리고(휴대전화에서는 탭하고) 복사 버튼 왼쪽의 줄 바꿈 버튼을 누르세요.
+
+   ```text
+   SUBSYSTEM=="usb", ATTRS{idVendor}=="04b8", ATTRS{idProduct}=="0e28", MODE="0666"
+   ```
+
+   그런 다음 nano에서 다음과 같이 진행하세요.
+   1. **Ctrl+Shift+V**로 **규칙을 붙여 넣으세요**.
+   2. **두 ID를 교체하세요.** 방향키로 `04b8`과 `0e28`로 이동하세요. 이 두 코드만 프린터의 두 ID로 바꾸되, `lsusb`에 표시된 그대로 입력하세요. 코드를 둘러싼 따옴표는 유지하세요.
+   3. 저장하기 전에 **입력한 줄을 확인하세요**. `SUBSYSTEM=="usb",`로 시작하여 `MODE="0666"`으로 끝나는 한 줄이어야 하며, `04b8`과 `0e28`이 있던 자리에 프린터의 두 ID가 따옴표로 둘러싸여 있어야 합니다.
+   4. **Ctrl+O**를 누른 다음 **Enter**를 눌러 **저장하세요**.
+   5. **Ctrl+X**로 **nano를 종료하세요**. 터미널 프롬프트로 돌아옵니다.
+
+   <details id="rule-parts">
+   <summary>규칙의 각 부분이 뜻하는 것</summary>
+
+   규칙은 네 부분으로 구성되며, 마지막 부분을 제외한 각 부분은 쉼표로 끝납니다.
+
+   - `SUBSYSTEM=="usb",`: USB 기기에 적용되는 규칙입니다.
+   - `ATTRS{idVendor}=="04b8",`: 제조사 ID입니다.
+   - `ATTRS{idProduct}=="0e28",`: 모델 ID입니다.
+   - `MODE="0666"`: 이 컴퓨터의 모든 계정이 프린터를 사용할 수 있습니다. 계산대에 필요한 설정입니다.
+
+   </details>
+
+5. 규칙을 불러오세요.
+
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+
+   비밀번호를 요청하면 다시 입력하세요. 성공하면 아무것도 출력되지 않고 프롬프트가 다시 나타납니다. 오류가 출력되면 여기서 중단하고 [아직 해결되지 않았나요?](#still-stuck)를 참고하세요.
+
+6. 프린터 연결을 분리했다가 다시 연결하세요.
+
+### 프린터 추가 및 테스트 {#add-and-test}
+
+7. 이전에 **테스트 없이 저장**으로 이 프린터를 저장했다면 먼저 삭제하세요. **설정 → 인쇄**에서 해당 프린터 행의 **⋮** 메뉴를 열고 **삭제**를 선택하세요.
+8. 데스크톱 앱에서 **설정 → 인쇄**로 이동하고 **프린터 추가**를 누르세요. USB 프린터 검색이 자동으로 시작됩니다. **USB** 표시가 있는 프린터 카드를 선택하세요. 이제 앱이 프린터에 접근할 수 있으므로 카드에 프린터가 제공하는 고유 이름이 표시됩니다.
+9. **테스트 페이지 인쇄**를 누르세요. 패널에 **테스트 페이지가 인쇄되었나요?** 라는 질문이 표시됩니다. 다음 중에서 답하세요.
+   - **예, 올바르게 인쇄되었습니다**: 프린터가 저장되고 패널에 프린터 이름과 **설정 완료**가 표시됩니다. **완료**를 누르세요. 프린터를 사용할 준비가 되었습니다.
+   - **인쇄되었지만 눈금자가 맞지 않습니다**: 프린터에 들어 있는 용지를 선택하면 테스트 페이지가 다시 인쇄됩니다. [인쇄되었지만 눈금자가 맞지 않습니다](./setup-wizard.mdx#test-page-ruler)를 참고하세요.
+   - **아무것도 나오지 않았습니다**: 패널에 **인쇄되지 않음**이 표시됩니다. 앱의 프린터 접근이 허용되지 않았다는 메시지가 계속 나오면 [규칙을 추가해도 접근이 허용되지 않음](#still-not-allowed)을 참고하세요. 다른 메시지가 나오면 [아무것도 나오지 않았습니다](./setup-wizard.mdx#test-page-nothing)를 참고하세요.
+
+:::tip 본인 계정으로 앱 실행하기
+데스크톱 앱을 평소처럼 여세요. `sudo`로 실행하지 마세요. 이 규칙 덕분에 앱이 본인 계정으로 프린터를 사용할 수 있습니다.
+:::
+
+## 문제가 생긴 경우 {#goes-wrong}
+
+해당하는 증상을 찾으세요.
+
+- [규칙을 추가해도 접근이 허용되지 않음](#still-not-allowed)
+- [`lsusb` 또는 `nano`: 명령을 찾을 수 없음](#command-not-found)
+- [카드 이름이 `ttyUSB0`, `ttyACM0` 또는 `rfcomm0`임](#serial-port)
+- [프린터를 찾을 수 없음](#no-printer-found)
+- [테스트 페이지는 인쇄되지만 이후 영수증은 인쇄되지 않음](#prints-then-stops)
+
+### 규칙을 추가해도 접근이 허용되지 않음 {#still-not-allowed}
+
+다음 순서대로 확인하세요.
+
+- 규칙의 두 ID가 소문자까지 `lsusb`와 정확히 일치하는지 확인하세요.
+- 규칙 파일에 입력한 줄이 있는지 확인하세요. `cat /etc/udev/rules.d/99-receipt-printer.rules`로 내용을 표시할 수 있습니다.
+- 5단계 후 프린터 연결을 분리했다가 다시 연결했는지 확인하세요.
+
+세 가지 모두 맞다면 [아직 해결되지 않았나요?](#still-stuck)를 참고하세요. Linux가 규칙을 적용했는지 직접 확인하려면 먼저 아래 확인 절차를 펼치세요.
+
+<details id="device-file">
+<summary>Linux가 규칙을 적용했는지 확인하기</summary>
+
+1. 프린터를 연결할 때마다 `Device` 번호가 바뀌므로 `lsusb`를 다시 실행하세요. 프린터에 해당하는 줄의 `Bus`와 `Device` 번호를 기록하세요. 예를 들어 `Bus 001`과 `Device 007`입니다.
+2. 버스 번호를 먼저 넣어 다음 명령에 두 번호를 입력하고 실행하세요.
+
+   ```bash
+   ls -l /dev/bus/usb/001/007
+   ```
+
+3. 출력된 줄의 시작 부분을 확인하세요.
+   - `crw-rw-rw-`: 규칙이 적용되었습니다. **테스트 페이지 인쇄**를 다시 누르세요. 패널에 앱의 프린터 접근이 허용되지 않았다는 메시지가 계속 표시되면 [아직 해결되지 않았나요?](#still-stuck)를 참고하세요.
+   - `crw-rw-r--` 또는 `crw-------`: 규칙이 적용되지 않았습니다. 위의 점검 항목을 다시 확인하고 설정 5단계의 불러오기 명령을 다시 실행하세요. 그런 다음 프린터 연결을 분리했다가 다시 연결하고 여기의 1~3단계를 반복하세요. 여전히 줄이 이렇게 시작하면 [아직 해결되지 않았나요?](#still-stuck)를 참고하세요.
+
+</details>
+
+<details id="command-not-found">
+<summary>`lsusb` 또는 `nano`: 명령을 찾을 수 없음</summary>
+
+누락된 프로그램을 설치한 후 해당 단계를 다시 실행하세요.
+
+- `lsusb`: Ubuntu 또는 Debian에서는 `sudo apt install usbutils`, Fedora에서는 `sudo dnf install usbutils`를 실행하세요.
+- `nano`: Ubuntu 또는 Debian에서는 `sudo apt install nano`, Fedora에서는 `sudo dnf install nano`를 실행하세요.
+
+</details>
+
+<details id="serial-port">
+<summary>카드에 표시된 이름: `ttyUSB0`, `ttyACM0` 또는 `rfcomm0`</summary>
+
+해당 프린터는 USB 프린터가 아닌 직렬 포트로 연결되며, Linux에서는 `dialout` 그룹에 직렬 포트 사용 권한을 부여합니다. 본인 계정을 이 그룹에 추가한 후 로그아웃했다가 다시 로그인하세요.
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+Arch Linux에서는 그룹 이름이 `uucp`입니다.
+
+</details>
+
+<details id="no-printer-found">
+<summary>프린터를 찾을 수 없음</summary>
+
+앱은 자신을 프린터로 식별하는 USB 기기만 표시합니다. 케이블과 프린터 전원이 켜져 있는지 확인한 뒤 **다시 검색**을 누르세요. [프린터를 찾을 수 없음](./setup-wizard.mdx#not-found)을 참고하세요.
+
+</details>
+
+<details id="prints-then-stops">
+<summary>테스트 페이지는 인쇄되지만 이후 영수증은 인쇄되지 않음</summary>
+
+이 경우는 권한 문제가 아닙니다. [여전히 인쇄되지 않나요?](./setup-wizard.mdx#troubleshoot)부터 확인하세요.
+
+</details>
+
+## 아직 해결되지 않았나요? {#still-stuck}
+
+**인쇄되지 않음** 패널 또는 **설정 → 인쇄**의 해당 프린터 행에 있는 **⋮** 메뉴에서 **설정 보고서 복사**를 누르세요. 프린터의 `lsusb` 출력 줄과 함께 메시지에 붙여 넣으세요. [확인 절차](#device-file)를 실행했다면 `ls -l` 출력 줄도 포함하세요.
+
+<SupportContact />
+
+## 앱에 이 설정이 필요한 이유 {#why-it-happens}
+
+대부분의 프로그램은 Linux 자체 인쇄 시스템을 통해 인쇄합니다. 영수증 프린터는 용지 자르기, 서랍 열기 같은 명령을 직접 받아야 하므로 데스크톱 앱이 프린터에 직접 접근합니다.
+
+Linux에서는 별도의 규칙이 없으면 관리자 계정(`root`)만 USB 기기를 사용하도록 제한합니다. 앱은 `root`가 아닌 본인 계정으로 실행되므로 규칙이 없으면 프린터에 접근할 수 없습니다. 추가한 규칙은 이 프린터 모델 하나에 예외를 허용합니다.
+
+Linux에는 자체 USB 프린터 드라이버도 있으며, 프린터를 연결하면 이 드라이버가 프린터를 제어합니다. 앱이 인쇄할 때마다 자동으로 해당 드라이버의 제어를 해제하므로 드라이버를 제거하거나 차단할 필요가 없습니다. 다만 제어를 해제하려면 인쇄할 때와 같은 권한이 필요하므로 규칙 하나로 두 가지가 모두 해결됩니다.
+
+## 관련 문서 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/receipt-printers/printer-setup-wizard" title="프린터 설정 마법사" description="프린터를 추가하고 테스트 페이지를 인쇄한 뒤 질문에 답합니다" />
+  <LinkCard to="/hardware/receipt-printers" title="영수증 프린터" description="각 앱에서 연결할 수 있는 프린터와 모든 프린터 안내" />
+  <LinkCard to="/hardware/receipt-printers/supported-printers" title="지원되는 영수증 프린터" description="작동하는 프린터와 지원 수준" />
+</LinkCards>

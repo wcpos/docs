@@ -1,0 +1,947 @@
+---
+title: Bongegevens
+slug: /settings/receipt-templates/receipt-data
+sidebar_label: Bongegevens
+sidebar_position: 5
+toc_max_heading_level: 2
+description: "Alle velden die een bonsjabloon kan afdrukken, van de winkelnaam tot de totalen, met direct te gebruiken codefragmenten voor HTML- en thermische sjablonen."
+---
+
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
+
+**WP admin:** je bewerkt sjablonen via `WP Admin → POS → Templates`; op deze pagina staan de velden die ze kunnen afdrukken.
+
+Zie [Bonnen en het scherm Betaald](./at-checkout.mdx) om een bon af te drukken of te e-mailen. Zie [Je bon aanpassen](./customise.mdx) om een sjabloon te kiezen of door AI te laten aanpassen.
+
+Deze pagina is bedoeld voor het handmatig bewerken van de code van een sjabloon. Elk sjabloon, zowel HTML als thermisch, gebruikt dezelfde bongegevens: de winkel, de bestelling, de artikelen, de totalen en de betalingen. Je leest hier hoe je een veld afdrukt, vindt drie veelgebruikte voorbeelden en krijgt een overzicht van alle velden.
+
+**Ga naar:** [Een veld zoeken](#field-reference) · [Veelgebruikte voorbeelden](#common-recipes) · [Als er iets misgaat](#if-something-goes-wrong)
+
+## Een veld afdrukken {#print-a-field}
+
+1. Open het sjabloon via **WP Admin → POS → Sjablonen** (zie [Handmatig bewerken](./customise.mdx#option-3--edit-it-by-hand) voor meer informatie).
+2. Typ op de plek waar het veld moet worden afgedrukt het pad tussen dubbele accolades, zoals `{{store.name}}`, `{{order.number}}` of `{{totals.total_display}}`, of voeg het in vanuit de veldenlijst naast de code.
+3. Controleer het voorbeeld onder de code en klik op **Bijwerken** om op te slaan.
+
+Zet bij een lijst, zoals de artikelen, de regel in een sectie. De regel wordt dan voor elk artikel herhaald:
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} —
+  {{line_total_display}}
+{{/lines}}
+```
+
+Een sectie laat de inhoud ook weg als het veld leeg, nul of false is. Zo drukt `{{#customer.id}}…{{/customer.id}}` alleen iets af voor een klant met een naam. Gebruik voor geldbedragen het veld dat eindigt op `_display`; zie [Valutavelden](#currency-fields).
+
+Je kunt bonnen ook offline afdrukken: de app maakt een kopie van de bongegevens op basis van de bestelling op het apparaat.
+
+<Accordion>
+  <AccordionItem question="Waarom bonnen kunnen verschillen">
+
+### Waar de gegevens vandaan komen {#where-the-data-comes-from}
+
+De server van je winkel stelt de bongegevens voor elke bestelling samen. De app maakt een beperktere kopie op basis van de bestelling op het apparaat: deze bevat geen `cashier`, openingstijden, opmerkingen of voorwaarden van de winkel, en geen `totals.paid_total` of `totals.change_total`. Een HTML- of thermisch sjabloon wordt direct geopend met de kopie op het apparaat en schakelt over op de serverkopie zodra die binnenkomt. Offline wordt de apparaatkopie afgedrukt en blijven die velden dus leeg. Met WCPOS Pro bevat de apparaatkopie ook het winkellogo; zonder Pro komt het logo met de serverkopie mee. Een verouderd PHP-sjabloon wordt altijd door de server gerenderd. Daarom gebruikt een sjabloon de onderstaande velden en nooit PHP-methoden voor bestellingen. Sommige velden worden alleen afgedrukt wanneer de server het sjabloon rendert, zoals bij een PDF-download; je vindt ze onder [Als er iets misgaat](#if-something-goes-wrong).
+
+  </AccordionItem>
+</Accordion>
+
+## De bon in kaart gebracht {#receipt-map}
+
+Elk onderdeel van een afgedrukte bon komt uit een sectie van de bongegevens. Wijs een onderdeel van de bon of de bijbehorende kaart aan om beide te markeren. Klik of tik op een van beide om naar de velden van die sectie te gaan. Op een telefoon volgen de kaarten dezelfde volgorde als de bon, van boven naar beneden.
+
+De bon hieronder, de eerste twee voorbeelden en de prijsuitsplitsing gebruiken dezelfde voorbeeldbestelling. De artikelbedragen zijn vóór toepassing van de coupon (`line_subtotal_display`); de bonsjablonen in de galerij drukken ze erna af (`line_total_display`, 26.10 voor de espresso).
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "Btw: US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "Bon #1042", right: "13 jul 2026" },
+        { left: "Kassamedewerker: Ada", right: "Klant: Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Espressobonen", right: "29.00" },
+        { left: "~34.00~ · Besparing −5.00", sub: true },
+        { left: "1 × Keramische mok", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+        { left: "Artikelbedragen vóór coupon: `line_subtotal_display`", sub: true },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "Subtotaal", right: "52.75" },
+        { left: "Coupon SUMMER10", right: "−5.28" },
+        { left: "Cadeauverpakking", right: "2.50" },
+        { left: "Verzending", right: "10.00" },
+        { left: "TOTAAL", right: "59.97", bold: true },
+        { left: "Totaal bespaard", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "Kaart", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "Bedankt voor je aankoop!", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## Veelgebruikte voorbeelden {#common-recipes}
+
+De meeste handmatige aanpassingen vallen onder een van deze twee voorbeelden voor een HTML-sjabloon. Een derde voorbeeld daaronder gaat over het opnieuw afdrukken van oudere bestellingen. Elke kaart toont de nieuwe regels op een bon, daarna de code en vervolgens waar je deze in je sjabloon toevoegt. De artikelnaam, het bedrag en TOTAAL komen uit de rest van je sjabloon.
+
+<Accordion>
+  <AccordionItem question="Deze voorbeelden gebruiken in een thermisch sjabloon">
+
+Dezelfde velden en secties werken ongewijzigd: zet elke af te drukken regel in een `<text>` -element en laat `<s>` weg, want thermische XML ondersteunt geen doorhalen en drukt de prijs gewoon af ([Thermische sjablonen](./thermal-templates.mdx#text-and-formatting)).
+
+  </AccordionItem>
+</Accordion>
+
+<Recipes>
+  <Recipe
+    title="De normale prijs doorhalen"
+    why="Voeg binnen de bestaande sectie `{{#lines}}` van je sjabloon het blok `{{#line_savings}}` toe na de artikelregel. 34.00 normale prijs − 5.00 besparing door aanbieding − 2.90 coupon = 26.10 betaald. Het blok laat beide regels weg bij bestellingen zonder vastgelegde prijshistorie."
+    preview={[
+      { left: "2 × Espressobonen", right: "26.10" },
+      { left: "~34.00~ · Besparing −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}:
+    -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="Een regel Totaal bespaard toevoegen"
+    why="Voeg deze regels toe na je regel TOTAAL. Er zijn twee secties: de regel wordt weggelaten als de prijshistorie onvolledig is of als er niets is bespaard."
+    preview={[
+      { left: "TOTAAL", right: "59.97", bold: true },
+      { left: "Totaal bespaard", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+</Recipes>
+
+<Accordion>
+  <AccordionItem question="Een bestelling van vóór WCPOS 1.9.0 opnieuw afdrukken">
+
+<Recipes>
+  <Recipe
+    title="Een bestelling van vóór v1.9 veilig opnieuw afdrukken"
+    why="Voor een bestelling van vóór WCPOS 1.9.0, niet voor de voorbeeldbestelling. Voeg binnen de bestaande sectie `{{#lines}}` van je sjabloon de blokken `{{#line_savings}}` en `{{#discounts}}` toe na de artikelregel. De besparing zit al in de korting, dus hiermee wordt de korting afgedrukt en de besparing weggelaten."
+    preview={[
+      { left: "1 × Espressobonen", right: "14.50" },
+      { left: "~17.00~  Korting −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{^savings_in_discounts}}
+      {{i18n.savings}}:
+      -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    {{i18n.discount}}:
+    -{{discounts_display}}
+  {{/discounts}}
+{{/lines}}`}
+  />
+</Recipes>
+
+  </AccordionItem>
+</Accordion>
+
+## Veldenoverzicht {#field-reference}
+
+Klap een sectie open om de velden te bekijken. Het eerste onderdeel geeft een overzicht van alle secties en hun type.
+
+<Accordion>
+  <AccordionItem question="Alle secties en hun typen">
+
+### Secties op het hoogste niveau {#top-level-sections}
+
+| Sectie | Inhoud |
+|---------|---------------|
+| `order` (object) | Identificatie, status, datums, opmerking en informatie over de betaal-URL van de bestelling |
+| `store` (object) | Identificatie, adres, contactgegevens, belastingnummers, logo, openingstijden en voettekst van de winkel |
+| `cashier` (object) | Gebruiker die de bestelling heeft verwerkt |
+| `customer` (object) | Weergavenaam, adressen en belastingnummers van de klant |
+| `lines` (array) | Productregels |
+| `fees` (array) | Toeslagregels |
+| `shipping` (array) | Verzendregels |
+| `discounts` (array) | Coupon- en kortingsregels |
+| `totals` (object) | Besteltotalen, betalingstotalen, terugbetalingsoverzicht en aantallen artikelen |
+| `tax` (object) | Vlaggen voor de belastingweergave, te gebruiken als sectievoorwaarden |
+| `tax_summary` (array) | Regels met een belastingoverzicht per tarief |
+| `has_tax_summary` (boolean) | Handige voorwaarde voor `tax_summary` |
+| `payments` (array) | Betalingsregels |
+| `refunds` (array) | Terugbetalingen die op de bestelling zijn toegepast |
+| `fiscal` (object) | Velden van de fiscale momentopname, ingevuld door fiscale integraties |
+| `register` (object) | De kassa waar de verkoop plaatsvond: `id` en `name`. Lege strings als deze onbekend zijn |
+| `software` (object) | De software die de bon heeft uitgegeven: `name` (`WCPOS`), `plugin_version`, `app_version`, `app_build`, `platform` |
+| `presentation_hints` (object) | Aanwijzingen voor opmaak en rendering |
+| `i18n` (object) | Vertaalde labels voor meegeleverde en aangepaste sjablonen |
+
+  </AccordionItem>
+  <AccordionItem question="Bestelnummer, status en datums — order">
+
+### order {#order}
+
+| Veld | Type | Voorbeeld / beschrijving |
+|-------|------|-----------------------|
+| `order.id` | number | `1042` |
+| `order.number` | string | Bestelnummer voor weergave, bijv. `"1042"` |
+| `order.currency` | string | ISO-valutacode, bijv. `"USD"` |
+| `order.customer_note` | string | Klant- of bestelopmerking |
+| `order.wc_status` | string | Onbewerkte WooCommerce-statusslug, bijv. `"processing"` |
+| `order.status_label` | string | Gelokaliseerd statuslabel, inclusief aangepaste statussen |
+| `order.created_via` | string | Bron/kanaal, bijv. `"woocommerce-pos"` |
+| `order.needs_payment` | boolean | Of er een betalingssectie moet worden getoond |
+| `order.payment_url` | string | Betaal-URL van de bestelling, indien beschikbaar |
+| `order.created` | datumobject | Aanmaakdatum van de bestelling |
+| `order.paid` | datumobject | Betaaldatum; lege strings als er niet is betaald |
+| `order.completed` | datumobject | Datum van afronding; lege strings als de bestelling niet is afgerond |
+| `order.printed` | datumobject | Tijdstempel voor afdrukken/herdrukken op het moment van renderen |
+
+  </AccordionItem>
+
+  <AccordionItem question="Winkelnaam, adres, contactgegevens en openingstijden — store">
+
+### store {#store}
+
+| Veld | Type | Voorbeeld / beschrijving |
+|-------|------|-----------------------|
+| `store.id` | number | Winkel-ID, of historische ID voor verwijderde winkels |
+| `store.name` | string | Weergavenaam van de winkel |
+| `store.address.address_1` | string | Adresregel 1 |
+| `store.address.address_2` | string | Aanvullende adresregel voor appartement of unit |
+| `store.address.city` | string | Stad/plaats |
+| `store.address.state` | string | Staat/regio |
+| `store.address.postcode` | string | Postcode |
+| `store.address.country` | string | ISO-landcode |
+| `store.address_lines` | array | Vooraf opgemaakte adresregels; aanbevolen voor de meeste sjablonen |
+| `store.tax_ids` | array | Gestructureerde belastingnummers van het bedrijf; doorloop deze met een lus in plaats van één belastingnummer te gebruiken |
+| `store.phone` | string | Telefoonnummer van de winkel |
+| `store.email` | string | E-mailadres van de winkel |
+| `store.logo` | string/null | URL of data-URI van het winkellogo: het eigen logo van de winkel, of anders het WordPress-sitelogo, tenzij de winkel dat uitschakelt. `null` als geen van beide beschikbaar is |
+| `store.opening_hours` | string/null | Beknopte tekst met openingstijden |
+| `store.opening_hours_vertical` | string/null | Blok met openingstijden op meerdere regels |
+| `store.opening_hours_inline` | string/null | Tekst met openingstijden, gescheiden door komma's |
+| `store.opening_hours_notes` | string/null | Vrije tekst met opmerkingen over de openingstijden |
+| `store.personal_notes` | string/null | Voettekst van de bon/persoonlijke opmerking |
+| `store.policies_and_conditions` | string/null | Tekst over terugbetalingen, retouren of voorwaarden |
+| `store.footer_imprint` | string/null | Wettelijke bedrijfsvermelding in de voettekst |
+
+### Objecten voor belastingnummers {#tax-id-objects}
+
+`store.tax_ids` en `customer.tax_ids` bevatten objecten met dezelfde structuur:
+
+| Veld | Type | Beschrijving |
+|-------|------|-------------|
+| `type` | string | Identificatie zoals `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein` of `other` |
+| `value` | string | Belastingnummer dat moet worden afgedrukt |
+| `country` | string/null | ISO-landcode; null voor `eu_vat` en `other` |
+| `label` | string | Gelokaliseerd weergavelabel, bepaald vóór het renderen |
+
+Voorbeeld:
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="Wie de klant heeft geholpen — cashier">
+
+### cashier {#cashier}
+
+| Veld | Type | Voorbeeld / beschrijving |
+|-------|------|-----------------------|
+| `cashier.id` | number | WordPress-gebruikers-ID, `0` als deze onbekend is |
+| `cashier.name` | string | Weergavenaam van de kassamedewerker |
+
+  </AccordionItem>
+
+  <AccordionItem question="Klantnaam, adressen en belastingnummers — customer">
+
+### customer {#customer}
+
+| Veld | Type | Voorbeeld / beschrijving |
+|-------|------|-----------------------|
+| `customer.id` | number/null | Klant-ID, of `null` voor gasten |
+| `customer.name` | string | Weergavenaam van de klant, of een gastlabel |
+| `customer.first_name` | string | De voornaam uit het factuuradres, voor een begroeting zoals ‘Bedankt, Nia’. Leeg voor gasten zonder voornaam |
+| `customer.billing_address.*` | object | WooCommerce-velden voor het factuuradres |
+| `customer.shipping_address.*` | object | WooCommerce-velden voor het verzendadres |
+| `customer.tax_ids` | array | Gestructureerde belastingnummers van de klant, vastgelegd als momentopname van de bestelling |
+
+Veelgebruikte adressleutels zijn `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email` en `phone`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Verkochte artikelen — lines">
+
+### lines {#lines}
+
+Doorloop de regels met `{{#lines}}...{{/lines}}`. De voorbeeldwaarden komen uit de espressoregel van [de voorbeeldbestelling](#receipt-map).
+
+<FieldIndex
+  note="Elk geldveld heeft twee vormen: het getal, voor een sectie `{{#…}}` (nul en `null` verbergen deze, en een veld met `null` heeft helemaal geen `_display`-veld), en de tekst in `_display`, om af te drukken. Velden met de aanduiding incl/excl hebben ook versies met `_incl` en `_excl`, elk met een eigen `_display`."
+  emptyText="Geen overeenkomende velden — wis het filter om alle velden van `lines[]` te zien."
+  fields={[
+    { name: 'key', type: 'string', desc: "Vaste regelsleutel / bestelartikel-ID.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "SKU van het product.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Weergavenaam van het product of de regel.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Verkocht aantal.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Terugbetaald aantal voor deze regel.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Vastgelegde normale stukprijs. `null` bij bestellingen zonder POS-prijshistorie — zet het veld in een sectie.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Verkoopprijs per stuk vóór toepassing van coupons — de vastgelegde POS-prijs indien beschikbaar, anders afgeleid van het opgeslagen subtotaal van de regel.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Normale prijs min verkoopprijs, met nul als ondergrens. Nul geldt als onwaar, dus regels met deze voorwaarde worden dan verborgen.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Vastgelegde normale prijs vermenigvuldigd met het aantal.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Verkoopprijs vóór toepassing van coupons, vermenigvuldigd met het aantal.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Totale besparing op deze regel door het verschil tussen de normale prijs en de verkoopprijs.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "Waar als de besparing van de regel al in `discounts` zit, zoals bij bestellingen van vóór v1.9.0. Gebruik dit veld om te voorkomen dat een besparing twee keer wordt afgedrukt.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "WooCommerce-stukbedrag vóór korting. Gebruik dit niet als normale prijs.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Uiteindelijk stukbedrag na WooCommerce-kortingen.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Vóór coupon: het subtotaal van de regel vóór korting in WooCommerce, het bedrag naast elk artikel op de voorbeeldbon hierboven.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "De eigen regelkorting van WooCommerce als positief bedrag — bij huidige bestellingen alleen coupons.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Na coupon: het uiteindelijke regeltotaal, dat de bonsjablonen uit de galerij naast elk artikel afdrukken.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Totaal terugbetaald voor deze regel als positief bedrag.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '""', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Belastingregels per tarief voor deze regel." },
+    { name: 'meta', type: 'array', desc: "Metagegevens van het bestelartikel als paren `{key, value}`." },
+    { name: 'attributes', type: 'array', desc: "Product- of variatie-eigenschappen als paren `{key, value}`." },
+  ]}
+/>
+
+### Normale prijs en besparingen weergeven {#displaying-regular-price-and-savings}
+
+Bij een indeling met stukprijzen geef je de vastgelegde normale prijs, verkoopprijs en besparing zo weer:
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+Gebruik de velden voor regeltotalen wanneer het aantal van belang is:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` is de prijs vóór toepassing van coupons. Gebruik `unit_price` of `line_total` voor het uiteindelijke bedrag na WooCommerce-kortingen.
+
+:::note Bestellingen van vóór v1.9.0 opnieuw afdrukken
+Bij oudere WCPOS-bestellingen kan de verlaging van de normale prijs naar de verkoopprijs al in `discounts` zitten. Als je aangepaste sjabloon zowel besparingen als kortingen per regel afdrukt, gebruik dan `savings_in_discounts` om te voorkomen dat dezelfde verlaging twee keer wordt getoond:
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+Als het sjabloon geen `discounts`-regel per artikel afdrukt, blijf dan `line_savings` tonen, ook als `savings_in_discounts` waar is. De meegeleverde sjablonen houden hier automatisch rekening mee.
+:::
+
+  </AccordionItem>
+
+  <AccordionItem question="Toeslagen en verzending — fees, shipping">
+
+### fees en shipping {#fees-and-shipping}
+
+Doorloop de regels met `{{#fees}}...{{/fees}}` en `{{#shipping}}...{{/shipping}}`.
+
+| Veld | Type | Beschrijving |
+|-------|------|-------------|
+| `label` | string | Label van de toeslag of naam van de verzendmethode |
+| `method_id` | string | ID van de verzendmethode (alleen bij verzending) |
+| `total` / `_incl` / `_excl` | number | Totalen volgens de weergave-instelling, inclusief belasting en exclusief belasting |
+| `taxes` | array | Belastingregels per tarief |
+| `meta` | array | Metagegevens als paren `{key, value}` |
+
+Opgemaakte varianten: `total_display`, `total_incl_display` en `total_excl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Coupons en kortingen — discounts">
+
+### discounts {#discounts}
+
+Doorloop de regels met `{{#discounts}}...{{/discounts}}`.
+
+| Veld | Type | Beschrijving |
+|-------|------|-------------|
+| `label` | string | Couponomschrijving, of anders de code. Een korting die in de POS-winkelwagen is toegevoegd, heet `Discount`, of `Discount (10%)` bij een percentage |
+| `code` | string | Couponcode |
+| `discount_type` | string | Slug van het WooCommerce-coupontype, bijvoorbeeld `fixed_cart`, `percent` of `fixed_product`. Leeg als de coupon niet meer bestaat. |
+| `total` / `_incl` / `_excl` | number | Kortingsbedrag als positieve waarde |
+
+Opgemaakte varianten: `total_display`, `total_incl_display` en `total_excl_display`. Voeg zelf een minteken toe in het sjabloon als je kortingen als negatieve regels wilt weergeven.
+
+`discount_type` is toegevoegd in Bongegevens v1.2. Fiscale momentopnamen van bonnen die vóór die versie zijn vastgelegd, bevatten dit veld niet. {/* pending: monorepo#3363 */}
+
+  </AccordionItem>
+
+  <AccordionItem question="Totalen, betaalde bedragen, terugbetalingen en aantallen artikelen — totals">
+
+### totals {#totals}
+
+De voorbeeldwaarden komen uit [de voorbeeldbestelling](#receipt-map), waarvoor later een gedeeltelijke terugbetaling van $7.25 is gedaan.
+
+<FieldIndex
+  note="Geldvelden hebben dezelfde twee vormen als bij artikelregels: een getal voor voorwaarden en een `_display`-string om af te drukken, met varianten `_incl`/`_excl` waar aangegeven."
+  emptyText="Geen overeenkomende velden — wis het filter om alle velden van `totals` te zien."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Subtotaal van de bestelling vóór kortingen.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Totale korting op de bestelling als positief bedrag — bij huidige bestellingen alleen coupons.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Totale vastgelegde besparing door het verschil tussen de normale prijs en de verkoopprijs over alle productregels, inclusief aanbiedingen in de catalogus en prijswijzigingen aan de kassa.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "WooCommerce-kortingen en besparingen op de normale prijs samen, zonder de overlap uit oudere versies. Eén bedrag dat de klant de volledige besparing laat zien.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Of de bon voldoende vastgelegde prijsgegevens bevat om de volledige besparingstotalen te berekenen.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Totaal belastingbedrag.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Eindtotaal van de bestelling volgens de instelling voor belastingweergave: als prijzen exclusief belasting worden getoond, is dit het totaal min de belasting. `total_incl` is altijd het in rekening gebrachte bedrag.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Betaald / toegepast bedrag.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "Wisselgeld dat aan de klant is teruggegeven.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '""', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Totaal terugbetaald als positief bedrag.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Totaal min terugbetalingen, met nul als ondergrens. `0` als er niets is terugbetaald, dus gebruik `refund_total` als voorwaarde.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Som van de aantallen op de artikelregels.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Aantal productregels.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+Gebruik `total_saved` als je de klant één bedrag voor de volledige besparing wilt tonen. Bereken dit niet door `discount_total` en `sale_savings_total` in het sjabloon op te tellen: bij bestellingen van vóór v1.9.0 kan de POS-prijsbesparing al in het kortingstotaal van WooCommerce zitten. Het canonieke veld `total_saved` herkent en verwijdert die overlap.
+
+De besparingstotalen zijn `null` en `total_saved_complete` is onwaar als een productregel niet genoeg vastgelegde prijsgegevens heeft voor een betrouwbaar totaal. Gebruik `total_saved_complete` als voorwaarde voor de regel en vervolgens `total_saved` om een nulwaarde te verbergen:
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+De meegeleverde sjablonen drukken **Totaal bespaard** af met de variant inclusief belasting, `totals.total_saved_incl_display`, binnen één voorwaardelijke sectie `{{#totals.total_saved_incl}}`. Die ene voorwaarde volstaat, omdat de waarde `null` is bij een onvolledige prijshistorie en nul als er niets is bespaard.
+
+  </AccordionItem>
+
+  <AccordionItem question="Belastingregels — tax, tax_summary">
+
+### tax en tax_summary {#tax-and-tax_summary}
+
+Gebruik `tax` voor voorwaarden op basis van de weergavemodus en `tax_summary` voor uitgesplitste tariefregels.
+
+| Belastingveld | Type | Beschrijving |
+|-----------|------|-------------|
+| `tax.display` | string | `incl` of `excl` |
+| `tax.display_incl` | boolean | Waar als prijzen inclusief belasting worden weergegeven |
+| `tax.display_excl` | boolean | Waar als prijzen exclusief belasting worden weergegeven |
+| `tax.breakdown` | string | `hidden`, `single` of `itemized` |
+| `tax.breakdown_hidden` | boolean | Waar als belastingregels verborgen moeten worden |
+| `tax.breakdown_single` | boolean | Waar als één belastingtotaal de voorkeur heeft |
+| `tax.breakdown_itemized` | boolean | Waar als regels per tarief de voorkeur hebben |
+| `has_tax_summary` | boolean | Waar als `tax_summary` regels bevat |
+
+Doorloop `tax_summary` met `{{#tax_summary}}...{{/tax_summary}}`.
+
+| Veld | Type | Beschrijving |
+|-------|------|-------------|
+| `code` | string | ID/code van het belastingtarief |
+| `rate` | number/null | Tariefpercentage, indien bepaald |
+| `label` | string | Label van het belastingtarief |
+| `compound` | boolean | Of het tarief samengesteld is |
+| `taxable_amount_excl` | number/null | Belastbare grondslag exclusief belasting |
+| `tax_amount` | number | Geïnde belasting |
+| `taxable_amount_incl` | number/null | Belastbare grondslag inclusief belasting |
+
+Opgemaakte varianten: `taxable_amount_excl_display`, `tax_amount_display` en `taxable_amount_incl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Ontvangen betalingen — payments">
+
+### payments {#payments}
+
+Doorloop de regels met `{{#payments}}...{{/payments}}`.
+
+| Veld | Type | Beschrijving |
+|-------|------|-------------|
+| `method_id` | string | Identificatie van de betaalmethode |
+| `method_title` | string | Weergavetitel van de betaalmethode |
+| `amount` | number | Bedrag dat op de bestelling is toegepast |
+| `transaction_id` | string | Transactie-ID van de betaalgateway |
+| `tendered` | number | Ontvangen contant bedrag, indien aanwezig |
+| `change` | number | Teruggegeven contant wisselgeld, indien aanwezig |
+
+Opgemaakte varianten: `amount_display`, `tendered_display` en `change_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Terugbetalingen — refunds">
+
+### refunds {#refunds}
+
+Doorloop de regels met `{{#refunds}}...{{/refunds}}`. Terugbetalingsbedragen zijn positieve getallen: het sjabloon voegt een minteken toe of drukt ze af in een apart blok voor geretourneerde artikelen.
+
+| Veld | Type | Beschrijving |
+|-------|------|-------------|
+| `id` | number | ID van de terugbetaling |
+| `date` | datumobject | Aanmaakdatum van de terugbetaling |
+| `amount` | number | Totaal van de terugbetaling |
+| `subtotal` | number | Terugbetaald subtotaal van de regels |
+| `tax_total` | number | Terugbetaalde belasting |
+| `shipping_total` | number | Terugbetaalde verzendkosten |
+| `shipping_tax` | number | Terugbetaalde belasting over verzendkosten |
+| `reason` | string | Reden voor de terugbetaling |
+| `refunded_by_id` | number/null | ID van de gebruiker die de terugbetaling heeft gedaan |
+| `refunded_by_name` | string | Weergavenaam van de gebruiker die de terugbetaling heeft gedaan |
+| `refunded_payment` | boolean | Of de betaling via de betaalgateway is terugbetaald |
+| `destination` | string | Waar het geld naartoe is teruggestort: `original_method`, `cash` of `manual` bij een terugbetaling in de POS; anders leeg |
+| `gateway_id` | string | ID van de betaalgateway die voor de terugbetaling is gebruikt |
+| `gateway_title` | string | Weergavetitel van de betaalgateway |
+| `processing_mode` | string | Verwerkingsmodus: via de aanbieder of handmatig |
+| `lines` | array | Terugbetaalde productregels |
+| `fees` | array | Terugbetaalde toeslagregels |
+| `shipping` | array | Terugbetaalde verzendregels |
+
+Velden voor terugbetalingsregels zijn onder andere `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl` en `taxes`; sjablonen die in de POS-app worden gerenderd, krijgen ook `line_total` en `unit_total`. Toeslag- en verzendregels van terugbetalingen gebruiken `label`, `total`, `total_incl`, `total_excl` en `taxes`, en verzendregels bevatten daarnaast `method_id`. Voor totalen en belastingbedragen worden weergavevarianten toegevoegd.
+
+  </AccordionItem>
+
+  <AccordionItem question="Fiscale gegevens — fiscal">
+
+### fiscal {#fiscal}
+
+Fiscale integraties en WCPOS Pro vullen de identificatievelden in, zoals het bonnummer, de hash en de QR-inhoud. De documentvelden geven aan welk soort document wordt afgedrukt, zodat een sjabloon een terugbetaling of kassarapport anders kan afdrukken dan een verkoop.
+
+| Veld | Type | Beschrijving |
+|-------|------|-------------|
+| `fiscal.document_type` | string | Standaard `sale`; ook `refund`, `void`, `cancellation`, `closure`, `xreport` of `handover` |
+| `fiscal.is_sale_document` | boolean | Waar bij een verkoop. Gebruik de vlaggen `is_…` als sectievoorwaarden |
+| `fiscal.is_refund_document` | boolean | Waar bij een terugbetaling |
+| `fiscal.is_void_document` | boolean | Waar bij het ongeldig maken: een verkoop die vóór afronding is geannuleerd |
+| `fiscal.is_cancellation_document` | boolean | Waar bij een annulering: een afgeronde verkoop die later is geannuleerd |
+| `fiscal.is_closure_document` | boolean | Waar bij een kassa-afsluiting |
+| `fiscal.is_x_report` | boolean | Waar bij een X-rapport |
+| `fiscal.is_handover` | boolean | Waar bij een overdrachtsbon |
+| `fiscal.corrects` | string | Bij een terugbetaling: de identificatie van de verkoop die wordt gecorrigeerd |
+| `fiscal.sale_time` | datumobject/null | Wanneer de kassa de verkoop heeft vastgelegd, in de tijdzone van de kassa |
+| `fiscal.sale_tz` | string | Tijdzone van de kassa, bijv. `"Europe/Berlin"` |
+| `fiscal.received_at` | datumobject/null | Wanneer de server van de winkel de verkoop heeft ontvangen |
+| `fiscal.sale_counter` | number/null | Eigen verkoopteller van de kassa |
+| `fiscal.immutable_id` | string | Onveranderlijke fiscale identificatie |
+| `fiscal.receipt_number` | string | Fiscaal bonnummer |
+| `fiscal.sequence` | number/null | Volgnummer |
+| `fiscal.hash` | string | Hash-/handtekeningwaarde |
+| `fiscal.qr_payload` | string | QR-inhoud voor fiscale verificatie |
+| `fiscal.tax_agency_code` | string | Code van de belastingdienst |
+| `fiscal.signed_at` | string | Tijdstempel van fiscale ondertekening |
+| `fiscal.signature_excerpt` | string | Verkorte handtekening voor weergave |
+| `fiscal.document_label` | string | Documentlabel, bijv. Btw-factuur |
+| `fiscal.is_reprint` | boolean | Of deze weergave een herdruk is |
+| `fiscal.reprint_count` | number | Aantal herdrukken |
+| `fiscal.extra_fields` | array/object | Waarden die specifiek zijn voor het rechtsgebied, meestal een lijst met regels `{label, value}` |
+
+Druk de extra velden af met een lus:
+
+```mustache
+{{#fiscal.extra_fields}}
+  {{label}}: {{value}}
+{{/fiscal.extra_fields}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="Opmaak — presentation_hints">
+
+### presentation_hints {#presentation_hints}
+
+Deze velden zijn vooral bedoeld voor de app en de server, die ze gebruiken om de bon op te maken. Sjablonen die door de server worden gerenderd, kunnen ze allemaal afdrukken; sjablonen die in de POS-app worden gerenderd, krijgen alleen `display_tax`, `prices_entered_with_tax`, `rounding_mode`, `locale` en `order_barcode_type`.
+
+| Veld | Type | Beschrijving |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | string | `incl` of `excl`. Ingevuld door de app; de server laat dit weg |
+| `presentation_hints.hour12` | boolean/null | Waar als de tijdnotatie van de winkel een 12-uursklok gebruikt |
+| `presentation_hints.hour_token` | string/null | Het uurpatroon uit de tijdnotatie van de winkel: `h`, `hh`, `H` of `HH` |
+| `presentation_hints.prices_entered_with_tax` | boolean | Of catalogusprijzen inclusief belasting zijn |
+| `presentation_hints.rounding_mode` | string | WooCommerce-instelling voor het afronden van belasting |
+| `presentation_hints.locale` | string | Taal- en regio-instelling voor de opmaak |
+| `presentation_hints.timezone` | string | Tijdzone van de bon |
+| `presentation_hints.currency_position` | string | Positie van het valutasymbool |
+| `presentation_hints.currency_symbol` | string | Valutasymbool |
+| `presentation_hints.price_thousand_separator` | string | Scheidingsteken voor duizendtallen |
+| `presentation_hints.price_decimal_separator` | string | Decimaalteken |
+| `presentation_hints.price_num_decimals` | number | Aantal decimalen |
+| `presentation_hints.price_display_suffix` | string | Achtervoegsel voor prijsweergave in WooCommerce |
+| `presentation_hints.order_barcode_type` | string | Barcodetype voor een sjabloon dat dit uitleest: `code128` (standaard), `qrcode`, `ean13`, `ean8` of `upca`. Ingevuld door de app; de server laat dit weg en de galerijsjablonen stellen hun barcodetype in het sjabloon in |
+
+De vooraf opgemaakte geldvelden (de waarden `*_display`, zoals `totals.total_display`) geven bedragen weer met het **valutasymbool** in de valuta van de bestelling, met de positie en scheidingstekens hierboven. Bonnen tonen dus `$12.00`, niet `USD 12.00`. Het onbewerkte veld `order.currency` blijft de ISO-code voor eventuele logica in je sjabloon.
+
+  </AccordionItem>
+
+  <AccordionItem question="Tekst op de bon — i18n">
+
+### i18n {#i18n}
+
+Gebruik waar mogelijk `i18n`-labels in plaats van vaste tekst in de code:
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+Veelgebruikte sleutels zijn `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, de fiscale labels `copy` (drukt KOPIE af), `reprint`, `register`, `sale_time`, `software`, `document_refund`, `document_void` en `document_cancellation`, en de sleutels voor belastingnummerlabels, zoals `store_tax_id_label_eu_vat` en `customer_tax_id_label_other`. Extensies kunnen extra sleutels toevoegen.
+
+  </AccordionItem>
+</Accordion>
+
+## Hoe de prijzen samenhangen {#price-model}
+
+Bij één artikel op de bon horen meerdere prijzen. De namen zijn het makkelijkst te begrijpen aan de hand van de bedragen zelf. Dit is de espressoregel uit de voorbeeldbestelling: een product van $17.00, in de aanbieding voor $14.50, met daarbovenop een coupon van 10%:
+
+<PriceFlow
+  caption="Espressobonen — één stuk (de bestelling bevat er twee)"
+  scaleLabel="normale prijs 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 betaald" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  summary={[
+    { label: "Besparingen door aanbiedingen over de hele bestelling", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Alle couponkortingen over de hele bestelling", value: '`totals.discount_total` = 5.28' },
+    { label: "Besparingen + kortingen, zonder overlap uit oudere versies", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Een besparing door een aanbieding is het verschil tussen de normale prijs en de verkoopprijs. Een korting is het bedrag dat een coupon eraf haalt, zoals WooCommerce dat berekent. De besteltotalen en rapporten van WooCommerce bevatten alleen de kortingen. Daarom telt `total_saved` beide op tot één bedrag voor de klant.
+
+## Weergaveregels {#rendering-rules}
+
+Hoe geldbedragen, prijzen met of zonder belasting en datums worden afgedrukt. Open het onderdeel dat je nodig hebt.
+
+<Accordion>
+  <AccordionItem question="Geldbedragen afdrukken en nulbedragen verbergen">
+
+### Valutavelden {#currency-fields}
+
+Geldvelden blijven getallen en krijgen elk een `_display`-veld dat is opgemaakt in de taal en valuta van de winkel:
+
+| Numeriek veld | Weergaveveld |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+Druk het `_display`-veld af. Gebruik het getal alleen voor een sectie of voor machineleesbare uitvoer: `{{#totals.change_total}}…{{/totals.change_total}}` laat de regel weg als het bedrag nul is.
+
+  </AccordionItem>
+
+  <AccordionItem question="Prijzen met of zonder belasting afdrukken">
+
+### Velden die rekening houden met de belastingweergave {#tax-display-aware-fields}
+
+Verschillende velden hebben drie versies: inclusief belasting (`_incl`), exclusief belasting (`_excl`) en een versie zonder achtervoegsel die de winkelinstelling volgt voor het weergeven van prijzen in de winkelwagen met of zonder belasting.
+
+| Veld volgens winkelinstelling | Veld inclusief belasting | Veld exclusief belasting |
+|-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+  </AccordionItem>
+
+  <AccordionItem question="Datums en tijden afdrukken">
+
+### Datumobjecten {#date-objects}
+
+Elke datum is al op verschillende manieren opgemaakt, zodat een sjabloon nooit zelf een datum hoeft op te maken.
+
+| Veld | Beschrijving |
+|-------|-------------|
+| `datetime`, `date`, `time` | Standaardstrings voor datum/tijd |
+| `datetime_short`, `datetime_long`, `datetime_full` | Gecombineerde notaties volgens de taal- en regio-instelling |
+| `date_short`, `date_long`, `date_full` | Notaties met alleen de datum volgens de taal- en regio-instelling |
+| `date_ymd`, `date_dmy`, `date_mdy` | Datumnotaties met een vaste volgorde |
+| `weekday_short`, `weekday_long` | Namen van de weekdagen |
+| `day`, `month`, `month_short`, `month_long`, `year` | Afzonderlijke datumonderdelen |
+
+Beschikbare datumobjecten: `order.created`, `order.paid`, `order.completed`, `order.printed`, `refunds[].date`, `fiscal.sale_time` en `fiscal.received_at`. `order.printed` wordt bij het renderen vernieuwd, wat handig is voor herdrukken. De twee datums onder `fiscal` zijn `null` als de bon geen fiscale registratie heeft, dus zet ze in een sectie.
+
+  </AccordionItem>
+
+</Accordion>
+
+## Bongegevens uitbreiden {#extending}
+
+Een plugin kan via het filter `wcpos_receipt_data` eigen velden aan de bongegevens toevoegen.
+
+<Accordion>
+  <AccordionItem question="Het filter — argumenten, de zes modi en een voorbeeld">
+
+WCPOS houdt de bovenstaande velden vrij van gegevens die bij één specifieke plugin horen. Als een plugin gegevens op de bon nodig heeft die WooCommerce niet modelleert, voegt de plugin die zelf toe via het filter `wcpos_receipt_data`, net zoals plugins de eigen besteltotalen van WooCommerce filteren. Het filter wordt uitgevoerd voor elke bon die de server samenstelt: live bonnen, fiscale momentopnamen bij betaling, PDF-downloads en verouderde PHP-sjablonen. Vóór WCPOS 2.0 heette dit filter `woocommerce_pos_receipt_data`; die naam werkt nog, maar is sinds 2.0 verouderd en wordt op zijn vroegst in 2.2 verwijderd (zie [Naamgeving van hooks](../extensions/index.mdx#hook-naming)).
+
+Het derde argument, `$mode`, geeft aan welk document wordt samengesteld: `live`, `fiscal`, `refund`, `preview` (voorbeeldbonnen in de sjablooneditor en galerij), `closure` of `xreport` (documenten voor kassa-afsluitingen en X-rapporten). Bij `preview`, `closure` en `xreport` is de bestelling niet opgeslagen en heeft deze ID `0`; een plugin die een opgeslagen bestelling nodig heeft, moet `$data` ongewijzigd teruggeven als `$order->get_id()` gelijk is aan `0`.
+
+```php
+add_filter( 'wcpos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+Een sjabloon kan de nieuwe sleutel dan als voorwaarde gebruiken, net als bij elke andere sectie:
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+Sleutels die in het schema zijn gedefinieerd, moeten hun gedocumenteerde typen behouden. Toegevoegde sleutels maken geen deel uit van het schema en verschijnen dus niet in de veldkiezer van de sjablooneditor. Fiscale momentopnamen bevatten alleen wat het filter toevoegde op het moment dat de bestelling werd betaald. Het filter is beschikbaar vanaf WCPOS 1.10.8.
+
+  </AccordionItem>
+
+  <AccordionItem question="Welke bonnen een toegevoegde sleutel afdrukken">
+
+Elke toegevoegde sleutel komt terecht in de bonnen die de server zelf rendert: PDF-downloads en verouderde PHP-sjablonen. HTML- en thermische sjablonen die in de POS-app worden gerenderd, bouwen de gegevens eerst opnieuw op: een sleutel die is toegevoegd binnen `order`, `store`, `cashier` of `customer` komt mee, maar een sleutel op een andere plek, zoals op de kortingsregel hierboven, wordt weggelaten. {/* pending: monorepo#3363 */} Bij een live bon met een fiscale momentopname worden de fiscale identificatie, `register` en `software` uit de momentopname gekopieerd nadat het filter is uitgevoerd. Ze in dit filter wijzigen heeft dus geen effect; breid in plaats daarvan de momentopname uit.
+
+  </AccordionItem>
+</Accordion>
+
+## Als er iets misgaat {#if-something-goes-wrong}
+
+**Een regel drukt op de ene bon `$0.00` af en op de andere niets.** Sommige `_display`-velden, zoals `totals.change_total_display`, `totals.refund_total_display` en `payments[].tendered_display`, zijn bij nul leeg als de server de bon rendert en bevatten `$0.00` als de app dat doet. Zet de regel in plaats daarvan in een sectie op basis van het getal, zodat deze in beide gevallen wordt weggelaten: `{{#totals.change_total}}…{{/totals.change_total}}`.
+
+**De regel Totaal bespaard ontbreekt.** `totals.total_saved_complete` is onwaar: voor minstens één artikel is geen normale prijs vastgelegd, waardoor de besparing niet kan worden berekend. Dit komt meestal voor bij bestellingen die vóór WCPOS 1.9.0 zijn afgerekend.
+
+**Het totaal is lager dan wat de klant heeft betaald.** De winkel toont prijzen exclusief belasting, dus `totals.total` is het totaal vóór belasting. Druk `totals.total_incl_display` af voor het in rekening gebrachte bedrag. De verouderde PHP-bon die met WCPOS wordt meegeleverd, drukt dat bedrag af.
+
+**Een veld wordt wel in de PDF-download afgedrukt, maar niet in de POS.** Sjablonen die in de app worden gerenderd, bouwen de gegevens eerst opnieuw op en laten enkele velden weg. Deze worden alleen in PDF-downloads en verouderde PHP-sjablonen afgedrukt. Druk een veld uit de onderstaande lijst alleen daarin af, of zet het in een voorwaardelijke sectie zodat de POS-bon het weglaat. {/* pending: monorepo#3363 */}
+
+<Accordion>
+  <AccordionItem question="Velden die verschillen tussen PDF- en POS-bonnen">
+
+- `lines[].attributes`, `lines[].total_refunded_display` en `lines[].unit_subtotal_display` (met de bijbehorende varianten `_incl` en `_excl`)
+- `software.platform`
+- `presentation_hints` behalve `display_tax`, `prices_entered_with_tax`, `rounding_mode`, `locale` en `order_barcode_type`
+- belastingnummers van klanten van de Duitse, Nederlandse, Franse en Zwitserse typen, en van het type voor Britse bedrijven
+- sleutels die een plugin toevoegt buiten `order`, `store`, `cashier` en `customer`; zie [Bongegevens uitbreiden](#extending)
+
+</AccordionItem>
+</Accordion>
+
+## Versies {#versions}
+
+De bongegevens hebben een eigen versienummer, los van dat van de plugin. Nieuwere velden ontbreken in oudere bonnen, zoals een fiscale momentopname die is gemaakt voordat het veld bestond. Zet ze daarom in een voorwaardelijke sectie.
+
+| Versie | Toegevoegd |
+|---------|-------|
+| 1.1 | Normale prijs, verkoopprijs en besparingen per artikel, en de besparingstotalen van de bestelling, inclusief **Totaal bespaard**. Geen van deze velden verandert de besteltotalen of WooCommerce-rapporten |
+| 1.2 | `discounts[].discount_type` |
+| 1.3 | `customer.first_name` en de weergavelabels voor klanten in `i18n` |
+| 1.4 | `register`, `software`, de fiscale documentvelden (`fiscal.document_type`, de vlaggen `is_…`, `sale_time`, `received_at`, `sale_tz`, `sale_counter`, `corrects`) en hun `i18n`-labels |
+
+## Gerelateerde documentatie {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/settings/receipt-templates/html-templates" title="HTML-sjablonen" description="Schrijf een bonsjabloon in HTML en Mustache." />
+  <LinkCard to="/settings/receipt-templates/thermal-templates" title="Thermische sjablonen" description="Schrijf een sjabloon voor een bonprinter." />
+  <LinkCard to="/settings/receipt-templates/customise-receipt" title="Je bon aanpassen" description="Kies een sjabloon of laat er een door AI aanpassen." />
+</LinkCards>

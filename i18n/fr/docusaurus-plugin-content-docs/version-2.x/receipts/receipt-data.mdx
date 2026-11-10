@@ -1,0 +1,947 @@
+---
+title: Données du reçu
+slug: /settings/receipt-templates/receipt-data
+sidebar_label: Données du reçu
+sidebar_position: 5
+toc_max_heading_level: 2
+description: "Tous les champs qu’un modèle de reçu peut imprimer, du nom de la boutique aux totaux, avec des extraits prêts à copier pour les modèles HTML et thermiques."
+---
+
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import { ReceiptAnatomy, PriceFlow, FieldIndex, Recipes, Recipe } from '@site/src/components/ReceiptData';
+
+**Administration WP :** les modèles se modifient dans `WP Admin → POS → Templates` ; cette page répertorie les champs qu’ils peuvent imprimer.
+
+Pour imprimer un reçu ou l’envoyer par e-mail, consultez [Reçus et écran de paiement effectué](./at-checkout.mdx) ; pour choisir un modèle ou le faire modifier par l’IA, consultez [Personnaliser votre reçu](./customise.mdx).
+
+Cette page explique comment modifier manuellement le code d’un modèle. Tous les modèles, HTML ou thermiques, utilisent les mêmes données de reçu pour l’impression : la boutique, la commande, les articles, les totaux et les paiements. Vous y trouverez comment imprimer un champ, trois exemples courants et la liste de tous les champs.
+
+**Accès rapide :** [Trouver un champ](#field-reference) · [Exemples courants](#common-recipes) · [En cas de problème](#if-something-goes-wrong)
+
+## Imprimer un champ {#print-a-field}
+
+1. Ouvrez le modèle dans **WP Admin → PDV → Modèles** (consultez [Modifier manuellement](./customise.mdx#option-3--edit-it-by-hand) pour les détails).
+2. À l’endroit où le champ doit être imprimé, saisissez son chemin entre doubles accolades, par exemple `{{store.name}}`, `{{order.number}}` ou `{{totals.total_display}}`, ou insérez-le depuis la liste des champs à côté du code.
+3. Vérifiez l’aperçu sous le code, puis cliquez sur **Mettre à jour** pour enregistrer.
+
+Pour une liste, comme celle des articles, placez la ligne dans une section : elle se répétera une fois par article :
+
+```mustache
+{{#lines}}
+  {{name}} x {{qty}} —
+  {{line_total_display}}
+{{/lines}}
+```
+
+Une section omet aussi son contenu lorsque le champ est vide, nul ou faux. Ainsi, `{{#customer.id}}…{{/customer.id}}` ne s’imprime que pour un client identifié. Pour imprimer un montant, utilisez le champ se terminant par `_display` ; consultez [Champs monétaires](#currency-fields).
+
+Les reçus s’impriment aussi hors ligne : l’application crée une copie des données du reçu à partir de la commande présente sur l’appareil.
+
+<Accordion>
+  <AccordionItem question="Pourquoi les reçus peuvent différer">
+
+### D’où viennent les données {#where-the-data-comes-from}
+
+Le serveur de votre boutique crée les données du reçu pour chaque commande, et l’application en crée une version réduite à partir de la commande présente sur l’appareil : celle-ci ne contient ni `cashier`, ni horaires d’ouverture, notes ou conditions de la boutique, ni `totals.paid_total` ou `totals.change_total`. Un modèle HTML ou thermique s’ouvre immédiatement à partir de la copie de l’appareil, puis utilise celle du serveur dès qu’elle arrive ; hors ligne, c’est la copie de l’appareil qui s’imprime, et ces champs restent donc vides. Avec WCPOS Pro, la copie de l’appareil contient aussi le logo de la boutique ; sans Pro, le logo arrive avec la copie du serveur. Le rendu d’un ancien modèle PHP est toujours effectué par le serveur. C’est pourquoi un modèle utilise les champs ci-dessous et jamais les méthodes PHP des commandes. Certains champs ne s’impriment que lorsque le serveur effectue le rendu du modèle, comme pour un téléchargement PDF ; ils sont répertoriés dans [En cas de problème](#if-something-goes-wrong).
+
+  </AccordionItem>
+</Accordion>
+
+## Le reçu en détail {#receipt-map}
+
+Chaque partie d’un reçu imprimé provient d’une section des données du reçu. Pointez sur une partie du reçu ou sur sa fiche pour mettre les deux en surbrillance ; cliquez ou appuyez sur l’une ou l’autre pour accéder aux champs de cette section. Sur un téléphone, les fiches suivent le reçu dans le même ordre, de haut en bas.
+
+Le reçu ci-dessous, les deux premiers exemples et la décomposition des prix utilisent la même commande d’exemple. Les montants de ses articles sont ceux d’avant application du coupon (`line_subtotal_display`) ; les modèles de reçu de la galerie les impriment après son application (`line_total_display`, 26.10 pour l’espresso).
+
+<ReceiptAnatomy
+  facsimile={[
+    {
+      id: 'store',
+      rows: [
+        { left: "COFFEE MONSTER", center: true, bold: true, store: true },
+        { left: "12 Roast Lane, Portland OR", center: true, sub: true },
+        { left: "TVA : US-998877", center: true, sub: true },
+      ],
+    },
+    {
+      id: 'order',
+      rows: [
+        { left: "Reçu #1042", right: "13 juil. 2026" },
+        { left: "Caissier : Ada", right: "Client : Nia", sub: true },
+      ],
+    },
+    {
+      id: 'lines',
+      rows: [
+        { left: "2 × Café en grains espresso", right: "29.00" },
+        { left: "~34.00~ · Économies −5.00", sub: true },
+        { left: "1 × Tasse en céramique", right: "18.00" },
+        { left: "1 × Croissant", right: "5.75" },
+        { left: "Montants des articles avant coupon : `line_subtotal_display`", sub: true },
+      ],
+    },
+    {
+      id: 'totals',
+      rows: [
+        { left: "Sous-total", right: "52.75" },
+        { left: "Coupon SUMMER10", right: "−5.28" },
+        { left: "Emballage cadeau", right: "2.50" },
+        { left: "Livraison", right: "10.00" },
+        { left: "TOTAL", right: "59.97", bold: true },
+        { left: "Total économisé", right: "10.28", sub: true },
+      ],
+    },
+    {
+      id: 'payments',
+      rows: [{ left: "Carte", right: "59.97" }],
+    },
+    {
+      id: 'footer',
+      rows: [{ left: "Merci pour votre achat !", center: true, sub: true }],
+    },
+  ]}
+  zones={[
+    {
+      id: 'store',
+      anchor: '#store',
+      fields: ['store.name', 'store.address_lines', 'store.tax_ids', 'store.logo'],
+    },
+    {
+      id: 'order',
+      anchor: '#order',
+      fields: ['order.number', 'order.created', 'cashier.name', 'customer.name'],
+    },
+    {
+      id: 'lines',
+      anchor: '#lines',
+      fields: ['lines[]', 'line_savings', 'savings_in_discounts'],
+    },
+    {
+      id: 'totals',
+      anchor: '#totals',
+      fields: ['totals.*', 'discounts[]', 'fees[]', 'shipping[]', 'totals.total_saved'],
+    },
+    {
+      id: 'payments',
+      anchor: '#payments',
+      fields: ['payments[]'],
+    },
+    {
+      id: 'footer',
+      anchor: '#store',
+      fields: ['store.personal_notes', 'store.policies_and_conditions', 'i18n.thank_you_purchase'],
+    },
+  ]}
+/>
+
+## Exemples courants {#common-recipes}
+
+La plupart des modifications manuelles correspondent à l’un de ces deux exemples, présentés pour un modèle HTML. Un troisième exemple, plus bas, traite de la réimpression d’anciennes commandes. Chaque fiche présente les nouvelles lignes sur un reçu, puis leur code et l’endroit où l’ajouter dans votre modèle. Le nom de l’article, le montant et le TOTAL proviennent du reste de votre modèle.
+
+<Accordion>
+  <AccordionItem question="Utiliser ces exemples dans un modèle thermique">
+
+Les mêmes champs et sections fonctionnent sans modification : placez chaque ligne à imprimer dans un élément `<text>` et omettez `<s>`, car le XML thermique ne permet pas de barrer le texte et imprime le prix normalement ([Modèles thermiques](./thermal-templates.mdx#text-and-formatting)).
+
+  </AccordionItem>
+</Accordion>
+
+<Recipes>
+  <Recipe
+    title="Barrer le prix normal"
+    why="Dans la section `{{#lines}}` existante de votre modèle, ajoutez le bloc `{{#line_savings}}` après la ligne de l’article. 34.00 de prix normal − 5.00 d’économie promotionnelle − 2.90 de coupon = 26.10 payés. Le bloc omet les deux lignes pour les commandes sans historique des prix enregistré."
+    preview={[
+      { left: "2 × Café en grains espresso", right: "26.10" },
+      { left: "~34.00~ · Économies −5.00", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{i18n.savings}}:
+    -{{line_savings_display}}
+  {{/line_savings}}
+{{/lines}}`}
+  />
+  <Recipe
+    title="Ajouter une ligne Total économisé"
+    why="Ajoutez ces lignes après votre ligne TOTAL. Deux sections : la ligne est omise lorsque l’historique des prix est incomplet ou qu’aucune économie n’a été réalisée."
+    preview={[
+      { left: "TOTAL", right: "59.97", bold: true },
+      { left: "Total économisé", right: "10.28", sub: true },
+    ]}
+    snippet={`{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    {{i18n.total_saved}}:
+    {{totals.total_saved_display}}
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}`}
+  />
+</Recipes>
+
+<Accordion>
+  <AccordionItem question="Réimprimer une commande passée avant WCPOS 1.9.0">
+
+<Recipes>
+  <Recipe
+    title="Réimprimer correctement une commande antérieure à la v1.9"
+    why="Pour une commande passée avant WCPOS 1.9.0, et non pour la commande d’exemple. Dans la section `{{#lines}}` existante de votre modèle, ajoutez les blocs `{{#line_savings}}` et `{{#discounts}}` après la ligne de l’article. L’économie est déjà incluse dans la remise : ce code imprime donc la remise et omet l’économie."
+    preview={[
+      { left: "1 × Café en grains espresso", right: "14.50" },
+      { left: "~17.00~  Remise −2.50", sub: true },
+    ]}
+    snippet={`{{#lines}}
+  {{#line_savings}}
+    <s>{{line_regular_total_display}}</s>
+    {{^savings_in_discounts}}
+      {{i18n.savings}}:
+      -{{line_savings_display}}
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    {{i18n.discount}}:
+    -{{discounts_display}}
+  {{/discounts}}
+{{/lines}}`}
+  />
+</Recipes>
+
+  </AccordionItem>
+</Accordion>
+
+## Référence des champs {#field-reference}
+
+Dépliez une section pour voir ses champs. La première entrée répertorie toutes les sections et leur type.
+
+<Accordion>
+  <AccordionItem question="Toutes les sections et leurs types">
+
+### Sections de premier niveau {#top-level-sections}
+
+| Section | Contenu |
+|---------|---------------|
+| `order` (objet) | Identité, statut, dates, note de la commande et informations sur l’URL de paiement |
+| `store` (objet) | Identité, adresse, coordonnées, identifiants fiscaux, logo, horaires et texte de pied de page de la boutique |
+| `cashier` (objet) | Utilisateur ayant traité la commande |
+| `customer` (objet) | Nom d’affichage, adresses et identifiants fiscaux du client |
+| `lines` (tableau) | Lignes de produits |
+| `fees` (tableau) | Lignes de frais |
+| `shipping` (tableau) | Lignes de livraison |
+| `discounts` (tableau) | Lignes de coupons/remises |
+| `totals` (objet) | Totaux de la commande, totaux des paiements, récapitulatif des remboursements et nombre d’articles |
+| `tax` (objet) | Indicateurs du mode d’affichage des taxes pour conditionner les sections |
+| `tax_summary` (tableau) | Lignes récapitulatives des taxes par taux |
+| `has_tax_summary` (booléen) | Condition pratique pour `tax_summary` |
+| `payments` (tableau) | Lignes de paiements |
+| `refunds` (tableau) | Enregistrements des remboursements appliqués à la commande |
+| `fiscal` (objet) | Champs de l’instantané fiscal renseignés par les intégrations fiscales |
+| `register` (objet) | Caisse ayant enregistré la vente : `id` et `name`. Chaînes vides si elle est inconnue |
+| `software` (objet) | Logiciel ayant émis le reçu : `name` (`WCPOS`), `plugin_version`, `app_version`, `app_build`, `platform` |
+| `presentation_hints` (objet) | Indications de mise en forme et de rendu |
+| `i18n` (objet) | Libellés traduits pour les modèles fournis et personnalisés |
+
+  </AccordionItem>
+  <AccordionItem question="Numéro, statut et dates de la commande — order">
+
+### order {#order}
+
+| Champ | Type | Exemple / description |
+|-------|------|-----------------------|
+| `order.id` | nombre | `1042` |
+| `order.number` | chaîne | Numéro de commande destiné à l’utilisateur, par ex. `"1042"` |
+| `order.currency` | chaîne | Code ISO de la devise, par ex. `"USD"` |
+| `order.customer_note` | chaîne | Note du client/de la commande |
+| `order.wc_status` | chaîne | Identifiant brut du statut WooCommerce, par ex. `"processing"` |
+| `order.status_label` | chaîne | Libellé localisé du statut, y compris pour les statuts personnalisés |
+| `order.created_via` | chaîne | Source/canal, par ex. `"woocommerce-pos"` |
+| `order.needs_payment` | booléen | Indique si une section de paiement doit être affichée |
+| `order.payment_url` | chaîne | URL de paiement de la commande, si disponible |
+| `order.created` | objet date | Date de création de la commande |
+| `order.paid` | objet date | Date du paiement, chaînes vides si la commande n’est pas payée |
+| `order.completed` | objet date | Date de fin, chaînes vides si la commande n’est pas terminée |
+| `order.printed` | objet date | Horodatage d’impression/réimpression au moment du rendu |
+
+  </AccordionItem>
+
+  <AccordionItem question="Nom, adresse, coordonnées et horaires de la boutique — store">
+
+### store {#store}
+
+| Champ | Type | Exemple / description |
+|-------|------|-----------------------|
+| `store.id` | nombre | ID de la boutique, ou ID historique pour les boutiques supprimées |
+| `store.name` | chaîne | Nom d’affichage de la boutique |
+| `store.address.address_1` | chaîne | Ligne 1 de l’adresse postale |
+| `store.address.address_2` | chaîne | Complément d’adresse (bureau/appartement) |
+| `store.address.city` | chaîne | Ville/localité |
+| `store.address.state` | chaîne | État/région |
+| `store.address.postcode` | chaîne | Code postal |
+| `store.address.country` | chaîne | Code ISO du pays |
+| `store.address_lines` | tableau | Lignes d’adresse préformatées ; recommandées pour la plupart des modèles |
+| `store.tax_ids` | tableau | Identifiants fiscaux structurés de l’entreprise ; parcourez ce tableau en boucle plutôt que d’utiliser un seul identifiant fiscal |
+| `store.phone` | chaîne | Téléphone de la boutique |
+| `store.email` | chaîne | E-mail de la boutique |
+| `store.logo` | chaîne/null | URL ou URI de données du logo de la boutique : son propre logo ou, à défaut, celui du site WordPress, sauf si la boutique désactive cette option. `null` si aucun des deux n’existe |
+| `store.opening_hours` | chaîne/null | Texte compact des horaires d’ouverture |
+| `store.opening_hours_vertical` | chaîne/null | Bloc des horaires d’ouverture sur plusieurs lignes |
+| `store.opening_hours_inline` | chaîne/null | Horaires d’ouverture séparés par des virgules |
+| `store.opening_hours_notes` | chaîne/null | Notes libres sur les horaires d’ouverture |
+| `store.personal_notes` | chaîne/null | Pied de page du reçu/note personnelle |
+| `store.policies_and_conditions` | chaîne/null | Texte sur les remboursements, les retours ou les conditions |
+| `store.footer_imprint` | chaîne/null | Mentions légales en pied de page |
+
+### Objets d’identifiants fiscaux {#tax-id-objects}
+
+`store.tax_ids` et `customer.tax_ids` contiennent des objets de même structure :
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `type` | chaîne | Identifiant tel que `eu_vat`, `de_steuernummer`, `au_abn`, `br_cpf`, `us_ein` ou `other` |
+| `value` | chaîne | Valeur de l’identifiant fiscal à imprimer |
+| `country` | chaîne/null | Code ISO du pays ; null pour `eu_vat` et `other` |
+| `label` | chaîne | Libellé d’affichage localisé, déterminé avant le rendu |
+
+Exemple :
+
+```mustache
+{{#store.tax_ids}}
+  {{label}}: {{value}}
+{{/store.tax_ids}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="Qui a servi le client — cashier">
+
+### cashier {#cashier}
+
+| Champ | Type | Exemple / description |
+|-------|------|-----------------------|
+| `cashier.id` | nombre | ID de l’utilisateur WordPress, `0` s’il est inconnu |
+| `cashier.name` | chaîne | Nom d’affichage du caissier |
+
+  </AccordionItem>
+
+  <AccordionItem question="Nom, adresses et identifiants fiscaux du client — customer">
+
+### customer {#customer}
+
+| Champ | Type | Exemple / description |
+|-------|------|-----------------------|
+| `customer.id` | nombre/null | ID du client, ou `null` pour les invités |
+| `customer.name` | chaîne | Nom d’affichage du client, ou libellé pour les invités |
+| `customer.first_name` | chaîne | Prénom de facturation, pour un message comme « Merci, Nia ». Vide pour les invités qui n’en ont pas renseigné |
+| `customer.billing_address.*` | objet | Champs de l’adresse de facturation WooCommerce |
+| `customer.shipping_address.*` | objet | Champs de l’adresse de livraison WooCommerce |
+| `customer.tax_ids` | tableau | Identifiants fiscaux structurés du client, enregistrés dans un instantané à partir de la commande |
+
+Les clés d’adresse courantes comprennent `first_name`, `last_name`, `company`, `address_1`, `address_2`, `city`, `state`, `postcode`, `country`, `email` et `phone`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Articles vendus — lines">
+
+### lines {#lines}
+
+Parcourez les lignes avec `{{#lines}}...{{/lines}}`. Les valeurs d’exemple correspondent à la ligne de café espresso de [la commande d’exemple](#receipt-map).
+
+<FieldIndex
+  note="Chaque champ monétaire se décline en deux versions : le nombre, pour une section `{{#…}}` (zéro et `null` la masquent, et un champ `null` n’a aucun champ `_display`), et le texte `_display`, pour l’impression. Les champs marqués incl/excl existent aussi en versions `_incl` et `_excl`, chacune avec son propre `_display`."
+  emptyText="Aucun champ ne correspond — effacez le filtre pour voir tous les champs de `lines[]`."
+  fields={[
+    { name: 'key', type: 'string', desc: "Clé stable de la ligne / ID de l’article de commande.", sample: [{ k: 'key', v: '"412"', str: true }] },
+    { name: 'sku', type: 'string', desc: "SKU du produit.", sample: [{ k: 'sku', v: '"ESP-500"', str: true }] },
+    { name: 'name', type: 'string', desc: "Nom d’affichage du produit ou de la ligne.", sample: [{ k: 'name', v: '"Espresso Beans"', str: true }] },
+    { name: 'qty', type: 'number', desc: "Quantité vendue.", sample: [{ k: 'qty', v: '2' }] },
+    { name: 'qty_refunded', type: 'number', desc: "Quantité remboursée pour cette ligne.", sample: [{ k: 'qty_refunded', v: '0' }] },
+    {
+      name: 'regular_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix unitaire normal enregistré. `null` pour les commandes sans historique des prix du PDV — placez-le dans une section.",
+      sample: [{ k: 'regular_price', v: '17' }, { k: 'regular_price_display', v: '"$17.00"', str: true }],
+    },
+    {
+      name: 'selling_price', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix de vente unitaire avant coupon : prix du PDV enregistré s’il est disponible, sinon calculé à partir du sous-total de ligne stocké.",
+      sample: [{ k: 'selling_price', v: '14.5' }, { k: 'selling_price_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix normal moins prix de vente, avec un minimum de zéro. Zéro est évalué comme faux : les lignes conditionnelles se masquent donc d’elles-mêmes.",
+      sample: [{ k: 'unit_savings', v: '2.5' }, { k: 'unit_savings_display', v: '"$2.50"', str: true }],
+    },
+    {
+      name: 'line_regular_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix normal enregistré multiplié par la quantité.",
+      sample: [{ k: 'line_regular_total', v: '34' }, { k: 'line_regular_total_display', v: '"$34.00"', str: true }],
+    },
+    {
+      name: 'line_selling_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Prix de vente avant coupon multiplié par la quantité.",
+      sample: [{ k: 'line_selling_total', v: '29' }, { k: 'line_selling_total_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'line_savings', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Total des économies entre le prix normal et le prix de vente pour cette ligne.",
+      sample: [{ k: 'line_savings', v: '5' }, { k: 'line_savings_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'savings_in_discounts', type: 'boolean',
+      desc: "Vrai lorsque l’économie de la ligne est déjà incluse dans `discounts`, comme pour les commandes passées avant la v1.9.0. Utilisez ce champ pour ne pas imprimer une économie deux fois.",
+      sample: [{ k: 'savings_in_discounts', v: 'false' }],
+    },
+    {
+      name: 'unit_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Valeur unitaire WooCommerce avant remise. Ne l’utilisez pas comme prix normal.",
+      sample: [{ k: 'unit_subtotal', v: '14.5' }, { k: 'unit_subtotal_display', v: '"$14.50"', str: true }],
+    },
+    {
+      name: 'unit_price', type: 'number', badges: ['money', 'variants'],
+      desc: "Valeur unitaire finale après les remises WooCommerce.",
+      sample: [{ k: 'unit_price', v: '13.05' }, { k: 'unit_price_display', v: '"$13.05"', str: true }],
+    },
+    {
+      name: 'line_subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Avant coupon : sous-total de la ligne WooCommerce avant remise, soit le montant à côté de chaque article sur le reçu d’exemple ci-dessus.",
+      sample: [{ k: 'line_subtotal', v: '29' }, { k: 'line_subtotal_display', v: '"$29.00"', str: true }],
+    },
+    {
+      name: 'discounts', type: 'number', badges: ['money', 'variants'],
+      desc: "Remise native WooCommerce de la ligne, exprimée en valeur positive — uniquement les coupons pour les commandes actuelles.",
+      sample: [{ k: 'discounts', v: '2.9' }, { k: 'discounts_display', v: '"$2.90"', str: true }],
+    },
+    {
+      name: 'line_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Après coupon : total final de la ligne, que les modèles de reçu de la galerie impriment à côté de chaque article.",
+      sample: [{ k: 'line_total', v: '26.1' }, { k: 'line_total_display', v: '"$26.10"', str: true }],
+    },
+    {
+      name: 'total_refunded', type: 'number', badges: ['money'],
+      desc: "Total remboursé pour cette ligne, exprimé en valeur positive.",
+      sample: [{ k: 'total_refunded', v: '0' }, { k: 'total_refunded_display', v: '""', str: true }],
+    },
+    { name: 'taxes', type: 'array', desc: "Lignes de taxes par taux pour cette ligne." },
+    { name: 'meta', type: 'array', desc: "Métadonnées de l’article de commande sous forme de paires `{key, value}`." },
+    { name: 'attributes', type: 'array', desc: "Attributs du produit/de la variation sous forme de paires `{key, value}`." },
+  ]}
+/>
+
+### Afficher le prix normal et les économies {#displaying-regular-price-and-savings}
+
+Pour une mise en page avec prix unitaires, affichez le prix normal enregistré, le prix de vente et l’économie ainsi :
+
+```mustache
+{{#lines}}
+  {{#unit_savings}}
+    <span style="text-decoration: line-through;">{{regular_price_display}}</span>
+    <span>{{selling_price_display}}</span>
+    <span>{{i18n.savings}}: -{{unit_savings_display}}</span>
+  {{/unit_savings}}
+{{/lines}}
+```
+
+Utilisez les champs de total de ligne lorsque la quantité compte :
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+  {{/line_savings}}
+{{/lines}}
+```
+
+`selling_price` est le prix avant les coupons. Utilisez `unit_price` ou `line_total` pour le montant final après les remises WooCommerce.
+
+:::note Réimpression des commandes créées avant la v1.9.0
+Les anciennes commandes WCPOS peuvent déjà inclure la réduction entre le prix normal et le prix de vente dans `discounts`. Si votre modèle personnalisé imprime à la fois les économies et les remises de chaque ligne, utilisez `savings_in_discounts` pour éviter d’afficher deux fois la même réduction :
+
+```mustache
+{{#lines}}
+  {{#line_savings}}
+    <span style="text-decoration: line-through;">{{line_regular_total_display}}</span>
+    {{^savings_in_discounts}}
+      <span>{{i18n.savings}}: -{{line_savings_display}}</span>
+    {{/savings_in_discounts}}
+  {{/line_savings}}
+  {{#discounts}}
+    <span>{{i18n.discount}}: -{{discounts_display}}</span>
+  {{/discounts}}
+{{/lines}}
+```
+
+Si le modèle n’imprime pas de ligne `discounts` pour chaque article, continuez à afficher `line_savings` même lorsque `savings_in_discounts` est vrai. Les modèles fournis gèrent automatiquement cette distinction.
+:::
+
+  </AccordionItem>
+
+  <AccordionItem question="Frais et livraison — fees, shipping">
+
+### fees et shipping {#fees-and-shipping}
+
+Parcourez les éléments avec `{{#fees}}...{{/fees}}` et `{{#shipping}}...{{/shipping}}`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `label` | chaîne | Libellé des frais ou nom du mode de livraison |
+| `method_id` | chaîne | ID du mode de livraison (livraison uniquement) |
+| `total` / `_incl` / `_excl` | nombre | Totaux selon le mode d’affichage, toutes taxes comprises et hors taxes |
+| `taxes` | tableau | Lignes de taxes par taux |
+| `meta` | tableau | Paires de métadonnées `{key, value}` |
+
+Variantes formatées : `total_display`, `total_incl_display` et `total_excl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Coupons et remises — discounts">
+
+### discounts {#discounts}
+
+Parcourez les éléments avec `{{#discounts}}...{{/discounts}}`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `label` | chaîne | Description du coupon ou, à défaut, son code. Une remise ajoutée dans le panier du PDV porte le libellé `Discount`, ou `Discount (10%)` pour un pourcentage |
+| `code` | chaîne | Code du coupon |
+| `discount_type` | chaîne | Identifiant du type de coupon WooCommerce, par exemple `fixed_cart`, `percent` ou `fixed_product`. Vide si le coupon n’existe plus. |
+| `total` / `_incl` / `_excl` | nombre | Montant de la remise exprimé en valeur positive |
+
+Variantes formatées : `total_display`, `total_incl_display` et `total_excl_display`. Ajoutez vous-même un signe moins dans le modèle si vous souhaitez afficher les remises sur des lignes négatives.
+
+`discount_type` a été ajouté dans la v1.2 des données du reçu. Les instantanés de reçus fiscaux créés auparavant ne le contiennent pas. {/* pending: monorepo#3363 */}
+
+  </AccordionItem>
+
+  <AccordionItem question="Totaux, montants payés, remboursements et nombre d’articles — totals">
+
+### totals {#totals}
+
+Les valeurs d’exemple proviennent de [la commande d’exemple](#receipt-map), qui a ensuite fait l’objet d’un remboursement partiel de $7.25.
+
+<FieldIndex
+  note="Les champs monétaires suivent le même principe que les lignes d’articles : un nombre brut pour les conditions et une chaîne `_display` pour l’impression, avec des variantes `_incl`/`_excl` là où elles sont indiquées."
+  emptyText="Aucun champ ne correspond — effacez le filtre pour voir tous les champs de `totals`."
+  fields={[
+    {
+      name: 'subtotal', type: 'number', badges: ['money', 'variants'],
+      desc: "Sous-total de la commande avant remises.",
+      sample: [{ k: 'subtotal', v: '52.75' }, { k: 'subtotal_display', v: '"$52.75"', str: true }],
+    },
+    {
+      name: 'discount_total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total des remises de la commande exprimé en valeur positive — uniquement les coupons pour les commandes actuelles.",
+      sample: [{ k: 'discount_total', v: '5.28' }, { k: 'discount_total_display', v: '"$5.28"', str: true }],
+    },
+    {
+      name: 'sale_savings_total', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Total enregistré des économies entre prix normaux et prix de vente sur les lignes de produits, y compris les promotions du catalogue et les modifications de prix en caisse.",
+      sample: [{ k: 'sale_savings_total', v: '5' }, { k: 'sale_savings_total_display', v: '"$5.00"', str: true }],
+    },
+    {
+      name: 'total_saved', type: 'number', badges: ['money', 'nullable', 'variants'],
+      desc: "Cumul des remises WooCommerce et des économies sur les prix normaux, sans les doublons des anciennes commandes. Un seul montant destiné au client pour toutes les économies réalisées.",
+      sample: [{ k: 'total_saved', v: '10.28' }, { k: 'total_saved_display', v: '"$10.28"', str: true }],
+    },
+    {
+      name: 'total_saved_complete', type: 'boolean',
+      desc: "Indique si le reçu dispose de suffisamment de données de prix enregistrées pour calculer la totalité des économies.",
+      sample: [{ k: 'total_saved_complete', v: 'true' }],
+    },
+    {
+      name: 'tax_total', type: 'number', badges: ['money'],
+      desc: "Montant total des taxes.",
+      sample: [{ k: 'tax_total', v: '0' }, { k: 'tax_total_display', v: '"$0.00"', str: true }],
+    },
+    {
+      name: 'total', type: 'number', badges: ['money', 'variants'],
+      desc: "Total général de la commande, selon le réglage d’affichage des taxes : lorsque les prix sont affichés hors taxes, il s’agit du total moins les taxes. `total_incl` correspond toujours au montant facturé.",
+      sample: [{ k: 'total', v: '59.97' }, { k: 'total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'paid_total', type: 'number', badges: ['money'],
+      desc: "Montant payé / appliqué.",
+      sample: [{ k: 'paid_total', v: '59.97' }, { k: 'paid_total_display', v: '"$59.97"', str: true }],
+    },
+    {
+      name: 'change_total', type: 'number', badges: ['money'],
+      desc: "Monnaie rendue au client.",
+      sample: [{ k: 'change_total', v: '0' }, { k: 'change_total_display', v: '""', str: true }],
+    },
+    {
+      name: 'refund_total', type: 'number', badges: ['money'],
+      desc: "Total remboursé exprimé en valeur positive.",
+      sample: [{ k: 'refund_total', v: '7.25' }, { k: 'refund_total_display', v: '"$7.25"', str: true }],
+    },
+    {
+      name: 'net_total', type: 'number', badges: ['money'],
+      desc: "Total moins les remboursements, avec un minimum de zéro. `0` si aucun remboursement n’a eu lieu : conditionnez donc son affichage avec `refund_total`.",
+      sample: [{ k: 'net_total', v: '52.72' }, { k: 'net_total_display', v: '"$52.72"', str: true }],
+    },
+    { name: 'total_qty', type: 'number', desc: "Somme des quantités des lignes d’articles.", sample: [{ k: 'total_qty', v: '4' }] },
+    { name: 'line_count', type: 'number', desc: "Nombre de lignes de produits.", sample: [{ k: 'line_count', v: '3' }] },
+  ]}
+/>
+
+Utilisez `total_saved` pour présenter au client un seul montant pour toutes ses économies. Ne le calculez pas en additionnant `discount_total` et `sale_savings_total` dans le modèle : les commandes créées avant la v1.9.0 peuvent déjà inclure leur économie sur le prix du PDV dans le total des remises WooCommerce. Le champ de référence `total_saved` détecte et élimine ce doublon.
+
+Les totaux d’économies valent `null` et `total_saved_complete` est faux lorsqu’une ligne de produit ne dispose pas de suffisamment de données de prix enregistrées pour calculer un total fiable. Conditionnez l’affichage de la ligne avec `total_saved_complete`, puis utilisez `total_saved` pour masquer une valeur nulle :
+
+```mustache
+{{#totals.total_saved_complete}}
+  {{#totals.total_saved}}
+    <span>{{i18n.total_saved}}: {{totals.total_saved_display}}</span>
+  {{/totals.total_saved}}
+{{/totals.total_saved_complete}}
+```
+
+Les modèles fournis impriment **Total économisé** à partir de la variante toutes taxes comprises, `totals.total_saved_incl_display`, dans une seule section conditionnelle `{{#totals.total_saved_incl}}`. Cette seule condition suffit, car la valeur est `null` lorsque l’historique des prix est incomplet et zéro lorsqu’aucune économie n’a été réalisée.
+
+  </AccordionItem>
+
+  <AccordionItem question="Lignes de taxes — tax, tax_summary">
+
+### tax et tax_summary {#tax-and-tax_summary}
+
+Utilisez `tax` pour les conditions liées au mode d’affichage et `tax_summary` pour les lignes détaillées par taux.
+
+| Champ de taxe | Type | Description |
+|-----------|------|-------------|
+| `tax.display` | chaîne | `incl` ou `excl` |
+| `tax.display_incl` | booléen | Vrai lorsque les prix sont affichés toutes taxes comprises |
+| `tax.display_excl` | booléen | Vrai lorsque les prix sont affichés hors taxes |
+| `tax.breakdown` | chaîne | `hidden`, `single` ou `itemized` |
+| `tax.breakdown_hidden` | booléen | Vrai lorsque les lignes de taxes doivent être masquées |
+| `tax.breakdown_single` | booléen | Vrai lorsqu’un total unique des taxes est souhaité |
+| `tax.breakdown_itemized` | booléen | Vrai lorsque des lignes par taux sont souhaitées |
+| `has_tax_summary` | booléen | Vrai lorsque `tax_summary` contient des lignes |
+
+Parcourez `tax_summary` avec `{{#tax_summary}}...{{/tax_summary}}`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `code` | chaîne | ID/code du taux de taxe |
+| `rate` | nombre/null | Pourcentage du taux lorsqu’il est déterminé |
+| `label` | chaîne | Libellé du taux de taxe |
+| `compound` | booléen | Indique si le taux est composé |
+| `taxable_amount_excl` | nombre/null | Base imposable hors taxes |
+| `tax_amount` | nombre | Taxe collectée |
+| `taxable_amount_incl` | nombre/null | Base imposable toutes taxes comprises |
+
+Variantes formatées : `taxable_amount_excl_display`, `tax_amount_display` et `taxable_amount_incl_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Paiements encaissés — payments">
+
+### payments {#payments}
+
+Parcourez les éléments avec `{{#payments}}...{{/payments}}`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `method_id` | chaîne | Identifiant du moyen de paiement |
+| `method_title` | chaîne | Libellé d’affichage du moyen de paiement |
+| `amount` | nombre | Montant appliqué à la commande |
+| `transaction_id` | chaîne | ID de transaction de la passerelle de paiement |
+| `tendered` | nombre | Montant remis en espèces, s’il est présent |
+| `change` | nombre | Monnaie rendue en espèces, si elle est présente |
+
+Variantes formatées : `amount_display`, `tendered_display` et `change_display`.
+
+  </AccordionItem>
+
+  <AccordionItem question="Remboursements — refunds">
+
+### refunds {#refunds}
+
+Parcourez les éléments avec `{{#refunds}}...{{/refunds}}`. Les montants des remboursements sont des nombres positifs : le modèle ajoute un signe moins ou les imprime dans un bloc distinct d’articles retournés.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `id` | nombre | ID de l’enregistrement du remboursement |
+| `date` | objet date | Date de création du remboursement |
+| `amount` | nombre | Total du remboursement |
+| `subtotal` | nombre | Sous-total des lignes remboursées |
+| `tax_total` | nombre | Taxes remboursées |
+| `shipping_total` | nombre | Montant de livraison remboursé |
+| `shipping_tax` | nombre | Taxes sur la livraison remboursées |
+| `reason` | chaîne | Motif du remboursement |
+| `refunded_by_id` | nombre/null | ID de l’utilisateur ayant effectué le remboursement |
+| `refunded_by_name` | chaîne | Nom d’affichage de l’utilisateur ayant effectué le remboursement |
+| `refunded_payment` | booléen | Indique si le paiement a été remboursé via la passerelle de paiement |
+| `destination` | chaîne | Destination des fonds remboursés : `original_method`, `cash` ou `manual` pour un remboursement effectué dans le PDV ; vide dans les autres cas |
+| `gateway_id` | chaîne | ID de la passerelle de paiement utilisée pour le remboursement |
+| `gateway_title` | chaîne | Libellé d’affichage de la passerelle de paiement |
+| `processing_mode` | chaîne | Mode de traitement par le prestataire/manuel |
+| `lines` | tableau | Lignes de produits remboursés |
+| `fees` | tableau | Lignes de frais remboursés |
+| `shipping` | tableau | Lignes de livraison remboursées |
+
+Les champs des lignes de remboursement comprennent `name`, `sku`, `qty`, `total`, `total_incl`, `total_excl` et `taxes` ; les modèles dont le rendu est effectué dans l’application PDV reçoivent aussi `line_total` et `unit_total`. Les lignes de frais et de livraison remboursés utilisent `label`, `total`, `total_incl`, `total_excl` et `taxes`, et les lignes de livraison ajoutent `method_id`. Des variantes d’affichage sont ajoutées pour les totaux et les montants des taxes.
+
+  </AccordionItem>
+
+  <AccordionItem question="Enregistrements fiscaux — fiscal">
+
+### fiscal {#fiscal}
+
+Les intégrations fiscales et WCPOS Pro renseignent les champs d’identité, tels que le numéro du reçu, l’empreinte et les données du code QR. Les champs du document indiquent le type de document à imprimer : un modèle peut ainsi imprimer un remboursement ou un rapport de caisse différemment d’une vente.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `fiscal.document_type` | chaîne | `sale` par défaut ; également `refund`, `void`, `cancellation`, `closure`, `xreport` ou `handover` |
+| `fiscal.is_sale_document` | booléen | Vrai pour une vente. Utilisez les indicateurs `is_…` pour conditionner les sections |
+| `fiscal.is_refund_document` | booléen | Vrai pour un remboursement |
+| `fiscal.is_void_document` | booléen | Vrai pour une annulation avant finalisation : une vente annulée avant d’être terminée |
+| `fiscal.is_cancellation_document` | booléen | Vrai pour une annulation après finalisation : une vente terminée puis annulée ultérieurement |
+| `fiscal.is_closure_document` | booléen | Vrai pour une clôture de caisse |
+| `fiscal.is_x_report` | booléen | Vrai pour un rapport X |
+| `fiscal.is_handover` | booléen | Vrai pour un bordereau de passation |
+| `fiscal.corrects` | chaîne | Pour un remboursement, identité de la vente qu’il corrige |
+| `fiscal.sale_time` | objet date/null | Moment où la caisse a enregistré la vente, dans son fuseau horaire |
+| `fiscal.sale_tz` | chaîne | Fuseau horaire de la caisse, par ex. `"Europe/Berlin"` |
+| `fiscal.received_at` | objet date/null | Moment où le serveur de la boutique a reçu la vente |
+| `fiscal.sale_counter` | nombre/null | Compteur de ventes propre à la caisse |
+| `fiscal.immutable_id` | chaîne | Identifiant fiscal immuable |
+| `fiscal.receipt_number` | chaîne | Numéro du reçu fiscal |
+| `fiscal.sequence` | nombre/null | Compteur de séquence |
+| `fiscal.hash` | chaîne | Valeur d’empreinte/de signature |
+| `fiscal.qr_payload` | chaîne | Données du code QR pour la vérification fiscale |
+| `fiscal.tax_agency_code` | chaîne | Code de l’administration fiscale |
+| `fiscal.signed_at` | chaîne | Horodatage de la signature fiscale |
+| `fiscal.signature_excerpt` | chaîne | Signature tronquée pour l’affichage |
+| `fiscal.document_label` | chaîne | Libellé du document, par ex. Facture fiscale |
+| `fiscal.is_reprint` | booléen | Indique si ce rendu est une réimpression |
+| `fiscal.reprint_count` | nombre | Nombre de réimpressions |
+| `fiscal.extra_fields` | tableau/objet | Valeurs propres à la juridiction, généralement une liste de lignes `{label, value}` |
+
+Imprimez les champs supplémentaires avec une boucle :
+
+```mustache
+{{#fiscal.extra_fields}}
+  {{label}}: {{value}}
+{{/fiscal.extra_fields}}
+```
+
+  </AccordionItem>
+
+  <AccordionItem question="Mise en forme — presentation_hints">
+
+### presentation_hints {#presentation_hints}
+
+Ces champs sont surtout destinés à l’application et au serveur, qui les utilisent pour mettre en forme le reçu. Les modèles dont le rendu est effectué par le serveur peuvent tous les imprimer ; ceux dont le rendu est effectué dans l’application PDV ne reçoivent que `display_tax`, `prices_entered_with_tax`, `rounding_mode`, `locale` et `order_barcode_type`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `presentation_hints.display_tax` | chaîne | `incl` ou `excl`. Renseigné par l’application ; le serveur l’omet |
+| `presentation_hints.hour12` | booléen/null | Vrai lorsque le format horaire de la boutique utilise une horloge sur 12 heures |
+| `presentation_hints.hour_token` | chaîne/null | Motif des heures dans le format horaire de la boutique : `h`, `hh`, `H` ou `HH` |
+| `presentation_hints.prices_entered_with_tax` | booléen | Indique si les prix du catalogue incluent les taxes |
+| `presentation_hints.rounding_mode` | chaîne | Réglage d’arrondi des taxes WooCommerce |
+| `presentation_hints.locale` | chaîne | Paramètre régional utilisé pour la mise en forme |
+| `presentation_hints.timezone` | chaîne | Fuseau horaire du reçu |
+| `presentation_hints.currency_position` | chaîne | Position du symbole monétaire |
+| `presentation_hints.currency_symbol` | chaîne | Symbole monétaire |
+| `presentation_hints.price_thousand_separator` | chaîne | Séparateur des milliers |
+| `presentation_hints.price_decimal_separator` | chaîne | Séparateur décimal |
+| `presentation_hints.price_num_decimals` | nombre | Nombre de décimales |
+| `presentation_hints.price_display_suffix` | chaîne | Suffixe d’affichage des prix WooCommerce |
+| `presentation_hints.order_barcode_type` | chaîne | Type de code-barres pour un modèle qui lit ce champ : `code128` (par défaut), `qrcode`, `ean13`, `ean8` ou `upca`. Renseigné par l’application ; le serveur l’omet, et les modèles de la galerie définissent leur type de code-barres dans le modèle |
+
+Les champs monétaires préformatés (les valeurs `*_display` telles que `totals.total_display`) affichent les montants avec le **symbole monétaire** de la devise de la commande, en utilisant la position et les séparateurs ci-dessus : les reçus affichent donc `$12.00`, et non `USD 12.00`. Le champ brut `order.currency` conserve le code ISO pour les traitements logiques dans votre modèle.
+
+  </AccordionItem>
+
+  <AccordionItem question="Libellés du reçu — i18n">
+
+### i18n {#i18n}
+
+Utilisez les libellés `i18n` plutôt que du texte écrit en dur lorsque c’est possible :
+
+```mustache
+{{i18n.order}} #{{order.number}}
+{{i18n.cashier}}: {{cashier.name}}
+{{i18n.total}}: {{totals.total_display}}
+```
+
+Les clés courantes comprennent `order`, `date`, `cashier`, `customer`, `item`, `sku`, `qty`, `unit_price`, `regular_price`, `selling_price`, `savings`, `discount`, `subtotal`, `total_saved`, `total`, `tax`, `paid`, `tendered`, `change`, `tax_summary`, `refunded`, `net_total`, `customer_note`, `thank_you_purchase`, `opening_hours`, les libellés fiscaux `copy` (imprime COPIE), `reprint`, `register`, `sale_time`, `software`, `document_refund`, `document_void` et `document_cancellation`, ainsi que les clés de libellés d’identifiants fiscaux telles que `store_tax_id_label_eu_vat` et `customer_tax_id_label_other`. Les extensions peuvent ajouter d’autres clés.
+
+  </AccordionItem>
+</Accordion>
+
+## Les relations entre les prix {#price-model}
+
+Un article sur le reçu comporte plusieurs prix ; leurs noms sont plus faciles à comprendre en regardant les montants eux-mêmes. Voici la ligne de café espresso de la commande d’exemple : un produit à $17.00 en promotion à $14.50, avec un coupon de 10% supplémentaire :
+
+<PriceFlow
+  caption="Café en grains espresso — une unité (la commande en contient deux)"
+  scaleLabel="prix normal 17.00"
+  segments={[
+    { kind: 'paid', amount: 13.05, label: "13.05 payés" },
+    { kind: 'coupon', amount: 1.45, label: "1.45" },
+    { kind: 'savings', amount: 2.5, label: "2.50" },
+  ]}
+  summary={[
+    { label: "Économies promotionnelles sur toute la commande", value: '`totals.sale_savings_total` = 5.00' },
+    { label: "Toutes les remises par coupon sur la commande", value: '`totals.discount_total` = 5.28' },
+    { label: "Économies + remises, doublons des anciennes commandes éliminés", value: '`totals.total_saved` = 10.28' },
+  ]}
+/>
+
+Une économie promotionnelle est l’écart entre le prix normal et le prix de vente. Une remise est le montant déduit par un coupon, tel que WooCommerce le calcule. Les totaux de commande et les rapports WooCommerce ne contiennent que les remises : `total_saved` additionne donc les deux pour présenter un seul montant au client.
+
+## Règles de rendu {#rendering-rules}
+
+Comment s’impriment les montants, les prix avec ou sans taxes et les dates. Ouvrez la rubrique dont vous avez besoin.
+
+<Accordion>
+  <AccordionItem question="Imprimer les montants et masquer les montants nuls">
+
+### Champs monétaires {#currency-fields}
+
+Les champs monétaires restent des nombres, et chacun possède un champ `_display` formaté selon la langue et la devise de la boutique :
+
+| Champ numérique | Champ d’affichage |
+|---------------|---------------|
+| `totals.total` | `totals.total_display` |
+| `lines[].line_total` | `lines[].line_total_display` |
+| `payments[].amount` | `payments[].amount_display` |
+| `tax_summary[].tax_amount` | `tax_summary[].tax_amount_display` |
+
+Imprimez le champ `_display`. N’utilisez le nombre que pour une section ou pour une sortie lisible par une machine : `{{#totals.change_total}}…{{/totals.change_total}}` omet sa ligne lorsque le montant est nul.
+
+  </AccordionItem>
+
+  <AccordionItem question="Imprimer les prix avec ou sans taxes">
+
+### Champs tenant compte de l’affichage des taxes {#tax-display-aware-fields}
+
+Plusieurs champs existent en trois versions : toutes taxes comprises (`_incl`), hors taxes (`_excl`) et une version sans suffixe qui suit le réglage de la boutique pour l’affichage des prix du panier avec ou sans taxes.
+
+| Champ pratique | Champ toutes taxes comprises | Champ hors taxes |
+|-------------------|-----------------|-----------------|
+| `lines[].regular_price` | `lines[].regular_price_incl` | `lines[].regular_price_excl` |
+| `lines[].selling_price` | `lines[].selling_price_incl` | `lines[].selling_price_excl` |
+| `lines[].unit_savings` | `lines[].unit_savings_incl` | `lines[].unit_savings_excl` |
+| `lines[].line_regular_total` | `lines[].line_regular_total_incl` | `lines[].line_regular_total_excl` |
+| `lines[].line_selling_total` | `lines[].line_selling_total_incl` | `lines[].line_selling_total_excl` |
+| `lines[].line_savings` | `lines[].line_savings_incl` | `lines[].line_savings_excl` |
+| `lines[].unit_price` | `lines[].unit_price_incl` | `lines[].unit_price_excl` |
+| `lines[].unit_subtotal` | `lines[].unit_subtotal_incl` | `lines[].unit_subtotal_excl` |
+| `lines[].line_subtotal` | `lines[].line_subtotal_incl` | `lines[].line_subtotal_excl` |
+| `lines[].discounts` | `lines[].discounts_incl` | `lines[].discounts_excl` |
+| `lines[].line_total` | `lines[].line_total_incl` | `lines[].line_total_excl` |
+| `fees[].total` | `fees[].total_incl` | `fees[].total_excl` |
+| `shipping[].total` | `shipping[].total_incl` | `shipping[].total_excl` |
+| `discounts[].total` | `discounts[].total_incl` | `discounts[].total_excl` |
+| `totals.subtotal` | `totals.subtotal_incl` | `totals.subtotal_excl` |
+| `totals.discount_total` | `totals.discount_total_incl` | `totals.discount_total_excl` |
+| `totals.sale_savings_total` | `totals.sale_savings_total_incl` | `totals.sale_savings_total_excl` |
+| `totals.total_saved` | `totals.total_saved_incl` | `totals.total_saved_excl` |
+| `totals.total` | `totals.total_incl` | `totals.total_excl` |
+
+  </AccordionItem>
+
+  <AccordionItem question="Imprimer les dates et les heures">
+
+### Objets date {#date-objects}
+
+Chaque date est fournie dans plusieurs formats prêts à l’emploi : le modèle n’a donc jamais à la formater lui-même.
+
+| Champ | Description |
+|-------|-------------|
+| `datetime`, `date`, `time` | Chaînes de date/heure par défaut |
+| `datetime_short`, `datetime_long`, `datetime_full` | Formats combinés adaptés aux paramètres régionaux |
+| `date_short`, `date_long`, `date_full` | Formats de date seule adaptés aux paramètres régionaux |
+| `date_ymd`, `date_dmy`, `date_mdy` | Formats de date à ordre fixe |
+| `weekday_short`, `weekday_long` | Noms des jours |
+| `day`, `month`, `month_short`, `month_long`, `year` | Éléments individuels de la date |
+
+Objets date disponibles : `order.created`, `order.paid`, `order.completed`, `order.printed`, `refunds[].date`, `fiscal.sale_time` et `fiscal.received_at`. `order.printed` est actualisé au moment du rendu, ce qui est utile pour les réimpressions. Les deux dates de `fiscal` valent `null` lorsque le reçu n’a pas d’enregistrement fiscal : placez-les donc dans une section.
+
+  </AccordionItem>
+
+</Accordion>
+
+## Étendre les données du reçu {#extending}
+
+Une extension peut ajouter ses propres champs aux données du reçu grâce au filtre `wcpos_receipt_data`.
+
+<Accordion>
+  <AccordionItem question="Le filtre — ses arguments, les six modes et un exemple">
+
+WCPOS ne place aucune donnée propre à une extension dans les champs ci-dessus. Lorsqu’une extension a besoin que le reçu contienne une information que WooCommerce ne modélise pas, elle l’ajoute elle-même via le filtre `wcpos_receipt_data`, de la même manière que les extensions filtrent les totaux de commande de WooCommerce. Le filtre s’exécute pour chaque reçu créé par le serveur : reçus en direct, instantanés fiscaux au moment du paiement, téléchargements PDF et anciens modèles PHP. Avant WCPOS 2.0, ce filtre s’appelait `woocommerce_pos_receipt_data` ; ce nom fonctionne encore, mais il est obsolète depuis la version 2.0 et sera supprimé au plus tôt dans la version 2.2 (voir [Nommage des hooks](../extensions/index.mdx#hook-naming)).
+
+Le troisième argument, `$mode`, indique le document en cours de création : `live`, `fiscal`, `refund`, `preview` (reçus d’exemple dans l’éditeur de modèles et la galerie), `closure` ou `xreport` (documents de clôture de caisse et rapports X). En mode `preview`, `closure` et `xreport`, la commande n’est pas enregistrée et son ID est `0` ; une extension qui nécessite une commande enregistrée doit renvoyer `$data` sans modification lorsque `$order->get_id()` vaut `0`.
+
+```php
+add_filter( 'wcpos_receipt_data', function ( array $data, WC_Abstract_Order $order, string $mode ) {
+    foreach ( $data['discounts'] as &$row ) {
+        if ( 'smart_coupon' === $row['discount_type'] ) {
+            $row['gift_card'] = true;
+        }
+    }
+    return $data;
+}, 10, 3 );
+```
+
+Un modèle peut alors utiliser la nouvelle clé comme condition, comme pour toute autre section :
+
+```
+{{#discounts}}
+  {{#gift_card}}Gift Card{{/gift_card}}{{^gift_card}}{{i18n.discount}}{{/gift_card}}{{#label}}: {{label}}{{/label}}
+{{/discounts}}
+```
+
+Les clés définies dans le schéma doivent conserver leurs types documentés. Les clés ajoutées ne font pas partie du schéma : elles n’apparaissent donc pas dans le sélecteur de champs de l’éditeur de modèles, et les instantanés fiscaux ne contiennent que ce que le filtre a ajouté au moment du paiement de la commande. Le filtre est disponible depuis WCPOS 1.10.8.
+
+  </AccordionItem>
+
+  <AccordionItem question="Quels reçus impriment une clé ajoutée">
+
+Toutes les clés ajoutées parviennent aux reçus dont le serveur effectue lui-même le rendu : téléchargements PDF et anciens modèles PHP. Les modèles HTML et thermiques dont le rendu est effectué dans l’application PDV reconstruisent d’abord les données : une clé ajoutée dans `order`, `store`, `cashier` ou `customer` est transmise, mais une clé ajoutée ailleurs, comme sur la ligne de remises ci-dessus, est omise. {/* pending: monorepo#3363 */} Sur un reçu en direct disposant d’un instantané fiscal, l’identité fiscale, `register` et `software` sont copiés depuis l’instantané après l’exécution du filtre ; les modifier dans ce filtre n’a donc aucun effet. Enrichissez plutôt l’instantané.
+
+  </AccordionItem>
+</Accordion>
+
+## En cas de problème {#if-something-goes-wrong}
+
+**Une ligne imprime `$0.00` sur un reçu et rien sur un autre.** Certains champs `_display`, tels que `totals.change_total_display`, `totals.refund_total_display` et `payments[].tendered_display`, sont vides lorsque le montant est nul si le serveur effectue le rendu du reçu, et valent `$0.00` si c’est l’application qui s’en charge. Placez plutôt la ligne dans une section conditionnée par le nombre, afin de l’omettre dans les deux cas : `{{#totals.change_total}}…{{/totals.change_total}}`.
+
+**La ligne Total économisé est absente.** `totals.total_saved_complete` est faux : au moins un article n’a pas de prix normal enregistré, ce qui empêche de calculer l’économie. C’est généralement le cas des commandes encaissées avant WCPOS 1.9.0.
+
+**Le total est inférieur au montant payé par le client.** La boutique affiche les prix hors taxes : `totals.total` correspond donc au total avant taxes. Imprimez `totals.total_incl_display` pour obtenir le montant facturé. L’ancien reçu PHP fourni avec WCPOS imprime ce montant.
+
+**Un champ s’imprime dans le PDF téléchargé, mais pas dans le PDV.** Les modèles dont le rendu est effectué dans l’application reconstruisent d’abord les données et omettent certains champs, qui ne s’impriment que dans les téléchargements PDF et les anciens modèles PHP. N’imprimez un champ de la liste ci-dessous que dans ces derniers, ou conditionnez-le avec une section pour que le reçu du PDV l’omette. {/* pending: monorepo#3363 */}
+
+<Accordion>
+  <AccordionItem question="Champs qui diffèrent entre les reçus PDF et ceux du PDV">
+
+- `lines[].attributes`, `lines[].total_refunded_display` et `lines[].unit_subtotal_display` (avec ses variantes `_incl` et `_excl`)
+- `software.platform`
+- `presentation_hints` autres que `display_tax`, `prices_entered_with_tax`, `rounding_mode`, `locale` et `order_barcode_type`
+- identifiants fiscaux des clients de types allemand, néerlandais, français, entreprise britannique et suisse
+- clés qu’une extension ajoute en dehors de `order`, `store`, `cashier` et `customer` ; voir [Étendre les données du reçu](#extending)
+
+</AccordionItem>
+</Accordion>
+
+## Versions {#versions}
+
+Les données du reçu ont leur propre numéro de version, distinct de celui de l’extension. Les champs récents sont absents des anciens reçus, par exemple d’un instantané fiscal créé avant leur existence : conditionnez-les donc avec une section.
+
+| Version | Ajouts |
+|---------|-------|
+| 1.1 | Prix normal, prix de vente et économies pour chaque article, ainsi que les totaux d’économies de la commande, dont **Total économisé**. Aucun de ces champs ne modifie les totaux de commande ni les rapports WooCommerce |
+| 1.2 | `discounts[].discount_type` |
+| 1.3 | `customer.first_name` et les libellés d’affichage du client dans `i18n` |
+| 1.4 | `register`, `software`, les champs du document fiscal (`fiscal.document_type`, les indicateurs `is_…`, `sale_time`, `received_at`, `sale_tz`, `sale_counter`, `corrects`) et leurs libellés `i18n` |
+
+## Documentation associée {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/settings/receipt-templates/html-templates" title="Modèles HTML" description="Rédigez un modèle de reçu en HTML et Mustache." />
+  <LinkCard to="/settings/receipt-templates/thermal-templates" title="Modèles thermiques" description="Rédigez un modèle pour une imprimante de reçus." />
+  <LinkCard to="/settings/receipt-templates/customise-receipt" title="Personnaliser votre reçu" description="Choisissez un modèle ou faites-le modifier par l’IA." />
+</LinkCards>

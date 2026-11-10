@@ -1,0 +1,205 @@
+---
+title: Impresoras USB en Linux
+slug: /hardware/receipt-printers/usb-printers-linux
+sidebar_label: Impresoras USB en Linux
+sidebar_position: 6
+description: "En Linux, la aplicación de escritorio necesita su permiso para utilizar una impresora USB de recibos. Una regla de udev concede ese permiso y permite imprimir."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
+
+En Linux, la aplicación de escritorio no puede utilizar una impresora USB de recibos hasta que usted lo permita. Solo tiene que hacerlo una vez, añadiendo una línea a un archivo de reglas.
+
+Esta página le será útil si, en Linux, **Imprimir una página de prueba** en la aplicación de escritorio termina en **No se ha impreso nada** con el mensaje **La aplicación no tenía permiso para acceder a la impresora. Permítalo en los ajustes del sistema y vuelva a intentarlo.** Linux no tiene una pantalla de ajustes para esto: el ajuste es la regla que se indica a continuación.
+
+<details id="other-signs">
+<summary>Otras señales de este problema</summary>
+
+- **Detalles de soporte**, debajo de ese mensaje, muestra `LIBUSB_ERROR_ACCESS`.
+- En la búsqueda, la tarjeta de su impresora tiene el nombre **Impresora USB** seguido de una serie de números, en lugar del nombre de la propia impresora. Esto suele indicar que la aplicación no ha podido abrir la conexión con la impresora para leer su nombre.
+
+</details>
+
+:::note Antes de empezar
+Hágalo en el propio equipo de caja, con esta página abierta en él, para poder copiar las líneas siguientes en su terminal. Abra la aplicación **Terminal** (en Ubuntu y Linux Mint, pulse **Ctrl+Alt+T**). También necesitará la contraseña de administrador del equipo de caja. Si no la tiene, envíe esta página a quien haya configurado el equipo.
+:::
+
+## Permita que la aplicación acceda a la impresora {#do-this}
+
+Cada comando siguiente aparece en un recuadro gris. Para ejecutarlo, sitúe el puntero sobre el recuadro y pulse el botón de copiar de la esquina superior derecha. Después, haga clic en el terminal, pegue con **Ctrl+Shift+V** y pulse **Intro**.
+
+Cuando un comando solicite la contraseña, escríbala y pulse Intro. Mientras escribe, la pantalla no muestra nada o solo asteriscos: es normal.
+
+### Busque los identificadores de su impresora {#find-ids}
+
+1. Conecte la impresora y enciéndala.
+2. Busque los dos identificadores de la impresora. En el terminal, ejecute:
+
+   ```bash
+   lsusb
+   ```
+
+   Si aparece `command not found`, primero [instale lsusb](#command-not-found). Cada línea corresponde a un dispositivo USB. Busque la línea de su impresora, por ejemplo `Bus 001 Device 007: ID 04b8:0e28 Seiko Epson Corp.`
+
+   En esa línea:
+
+   - Identificador del fabricante: `04b8`, el código justo después de `ID`.
+   - Identificador del modelo: `0e28`, el código después de los dos puntos.
+   - Nombre del fabricante: `Seiko Epson Corp.`, al final. Le ayuda a encontrar la línea.
+
+   Si no sabe qué línea corresponde a la impresora, desconéctela, vuelva a ejecutar `lsusb` y compruebe qué línea ha desaparecido.
+
+### Cree y cargue la regla {#create-rule}
+
+3. Abra un archivo de reglas nuevo en el editor de texto nano:
+
+   ```bash
+   sudo nano /etc/udev/rules.d/99-receipt-printer.rules
+   ```
+
+   nano se abre dentro del terminal, con una página vacía y una lista de teclas en la parte inferior. Si aparece `command not found`, primero [instale nano](#command-not-found).
+
+4. Introduzca la regla en el archivo. La regla permite que todas las cuentas de este equipo de caja utilicen cualquier impresora con estos dos identificadores. Copie esta línea con el botón de copiar del recuadro, como antes. Es más larga que el recuadro: para leerla entera, sitúe el puntero sobre él (en un teléfono, tóquelo) y pulse el botón de ajuste de línea situado a la izquierda del botón de copiar.
+
+   ```text
+   SUBSYSTEM=="usb", ATTRS{idVendor}=="04b8", ATTRS{idProduct}=="0e28", MODE="0666"
+   ```
+
+   Después, en nano:
+   1. **Pegue la regla** con **Ctrl+Shift+V**.
+   2. **Sustituya los dos identificadores.** Con las teclas de flecha, desplácese hasta `04b8` y `0e28`. Sustituya únicamente esos dos códigos por los dos identificadores de su impresora, escritos exactamente como aparecen en `lsusb`. Mantenga las comillas que los rodean.
+   3. **Compruebe la línea** antes de guardar: una sola línea, que empiece por `SUBSYSTEM=="usb",` y termine en `MODE="0666"`, con sus dos identificadores entre comillas en el lugar de `04b8` y `0e28`.
+   4. **Guarde** con **Ctrl+O** y después **Intro**.
+   5. **Salga de nano** con **Ctrl+X**. Volverá al indicador de comandos del terminal.
+
+   <details id="rule-parts">
+   <summary>Qué significa cada parte de la regla</summary>
+
+   La regla tiene cuatro partes; todas terminan en coma excepto la última:
+
+   - `SUBSYSTEM=="usb",`: la regla es para un dispositivo USB.
+   - `ATTRS{idVendor}=="04b8",`: el identificador del fabricante.
+   - `ATTRS{idProduct}=="0e28",`: el identificador del modelo.
+   - `MODE="0666"`: todas las cuentas de este ordenador pueden utilizar la impresora, que es lo que necesita un equipo de caja.
+
+   </details>
+
+5. Cargue la regla:
+
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+
+   Si solicita la contraseña, vuelva a escribirla. Cuando funciona, no muestra nada y vuelve a aparecer el indicador de comandos. Si, en cambio, muestra un error, deténgase aquí y consulte [¿Sigue sin resolverlo?](#still-stuck)
+
+6. Desconecte la impresora y vuelva a conectarla.
+
+### Añada la impresora y haga una prueba {#add-and-test}
+
+7. Si antes guardó esta impresora con **Guardar sin probar**, elimínela primero: en **Ajustes → Impresión**, abra el menú **⋮** de su fila y elija **Eliminar**.
+8. En la aplicación de escritorio, vaya a **Ajustes → Impresión** y pulse **Añadir impresora**. La búsqueda de impresoras USB se inicia automáticamente. Seleccione la tarjeta de su impresora, marcada como **USB**. Ahora que la aplicación puede abrir la conexión con la impresora, la tarjeta muestra el nombre que la propia impresora proporciona.
+9. Pulse **Imprimir una página de prueba**. El panel pregunta **¿Se ha impreso la página de prueba?** Responda:
+   - **Sí, y se ve bien**: la impresora se guarda y el panel muestra el nombre de su impresora seguido de **está configurada**. Pulse **Listo**. La impresora está preparada.
+   - **Se ha impreso, pero la regla no coincide**: seleccione el papel de su impresora y la página de prueba se imprimirá de nuevo. Consulte [Se ha impreso, pero la regla no coincide](./setup-wizard.mdx#test-page-ruler).
+   - **No ha salido nada**: el panel muestra **No se ha impreso nada**. Si sigue indicando que la aplicación no tenía permiso para acceder a la impresora, consulte [Sigue sin tener permiso después de añadir la regla](#still-not-allowed). Para cualquier otro mensaje, consulte [No ha salido nada](./setup-wizard.mdx#test-page-nothing).
+
+:::tip Inicie la aplicación con su propia cuenta
+Abra la aplicación de escritorio de la forma habitual, nunca con `sudo`. La regla es lo que permite a la aplicación utilizar la impresora con su cuenta.
+:::
+
+## Si algo sale mal {#goes-wrong}
+
+Busque el síntoma que observa:
+
+- [Sigue sin tener permiso después de añadir la regla](#still-not-allowed)
+- [`lsusb` o `nano`: comando no encontrado](#command-not-found)
+- [La tarjeta se llama `ttyUSB0`, `ttyACM0` o `rfcomm0`](#serial-port)
+- [No se ha encontrado ninguna impresora](#no-printer-found)
+- [La página de prueba se imprime, pero después los recibos no](#prints-then-stops)
+
+### Sigue sin tener permiso después de añadir la regla {#still-not-allowed}
+
+Compruebe, por este orden:
+
+- Los dos identificadores de la regla coinciden exactamente con los de `lsusb`, incluidas las minúsculas.
+- El archivo de reglas contiene su línea. Muéstrelo con `cat /etc/udev/rules.d/99-receipt-printer.rules`.
+- Ha desconectado la impresora y la ha vuelto a conectar después del paso 5.
+
+Si las tres comprobaciones son correctas, consulte [¿Sigue sin resolverlo?](#still-stuck). Para comprobar por su cuenta si Linux ha aplicado la regla, abra primero la comprobación siguiente.
+
+<details id="device-file">
+<summary>Compruebe si Linux ha aplicado la regla</summary>
+
+1. Vuelva a ejecutar `lsusb`, porque el número de `Device` cambia cada vez que se conecta la impresora. Anote los números de `Bus` y `Device` en la línea de la impresora, por ejemplo `Bus 001` y `Device 007`.
+2. Introdúzcalos en este comando, primero el bus, y ejecútelo:
+
+   ```bash
+   ls -l /dev/bus/usb/001/007
+   ```
+
+3. Lea el principio de la línea que muestra:
+   - `crw-rw-rw-`: la regla ha surtido efecto. Pulse **Imprimir una página de prueba** de nuevo. Si el panel sigue indicando que la aplicación no tenía permiso para acceder a la impresora, consulte [¿Sigue sin resolverlo?](#still-stuck)
+   - `crw-rw-r--` o `crw-------`: la regla no ha surtido efecto. Repase las comprobaciones anteriores, vuelva a ejecutar el comando de carga del paso 5 de la configuración, desconecte la impresora, vuelva a conectarla y repita los pasos 1 a 3 de esta sección. Si la línea sigue empezando así, consulte [¿Sigue sin resolverlo?](#still-stuck)
+
+</details>
+
+<details id="command-not-found">
+<summary>`lsusb` o `nano`: comando no encontrado</summary>
+
+Instale el programa que falta y repita el paso:
+
+- `lsusb`: `sudo apt install usbutils` en Ubuntu o Debian, `sudo dnf install usbutils` en Fedora.
+- `nano`: `sudo apt install nano` en Ubuntu o Debian, `sudo dnf install nano` en Fedora.
+
+</details>
+
+<details id="serial-port">
+<summary>La tarjeta se llama `ttyUSB0`, `ttyACM0` o `rfcomm0`</summary>
+
+Esa impresora se conecta a través de un puerto serie, no como impresora USB, y Linux asigna los puertos serie al grupo `dialout`. Añada su cuenta a ese grupo y después cierre la sesión y vuelva a iniciarla:
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+En Arch Linux, el grupo es `uucp`.
+
+</details>
+
+<details id="no-printer-found">
+<summary>No se ha encontrado ninguna impresora</summary>
+
+La aplicación solo muestra los dispositivos USB que se identifican como impresoras. Compruebe el cable y que la impresora esté encendida, y después pulse **Volver a buscar**. Consulte [No se ha encontrado ninguna impresora](./setup-wizard.mdx#not-found).
+
+</details>
+
+<details id="prints-then-stops">
+<summary>La página de prueba se imprime, pero después los recibos no</summary>
+
+Eso no es un problema de permisos. Empiece por [¿Sigue sin imprimir?](./setup-wizard.mdx#troubleshoot)
+
+</details>
+
+## ¿Sigue sin resolverlo? {#still-stuck}
+
+Pulse **Copiar informe de configuración** en el panel **No se ha impreso nada**, o en el menú **⋮** de la fila de la impresora en **Ajustes → Impresión**. Péguelo en su mensaje junto con la línea de `lsusb` de su impresora y, si ha ejecutado el comando, la línea de `ls -l` de [la comprobación](#device-file).
+
+<SupportContact />
+
+## Por qué la aplicación necesita esto {#why-it-happens}
+
+La mayoría de los programas imprimen a través del sistema de impresión de Linux. Una impresora de recibos necesita recibir comandos directamente (cortar el papel, abrir el cajón), por lo que la aplicación de escritorio abre ella misma la conexión con la impresora.
+
+Linux reserva los dispositivos USB para su cuenta de administrador (`root`), a menos que una regla indique lo contrario. La aplicación se ejecuta con su cuenta, no como `root`, así que, sin una regla, no tiene permiso para abrir la conexión con la impresora. La regla que ha añadido hace una excepción para este modelo de impresora.
+
+Linux también tiene su propio controlador para impresoras USB, que toma el control de la impresora al conectarla. La aplicación la libera de ese controlador automáticamente antes de cada impresión, por lo que no es necesario eliminarlo ni bloquearlo. Pero liberarla requiere el mismo permiso que imprimir, y por eso una sola regla resuelve ambas cosas.
+
+## Documentación relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/hardware/receipt-printers/printer-setup-wizard" title="Asistente de configuración de impresoras" description="Añada una impresora, imprima la página de prueba y responda a sus preguntas" />
+  <LinkCard to="/hardware/receipt-printers" title="Impresoras de recibos" description="A qué puede conectarse cada aplicación y todas las guías de impresoras" />
+  <LinkCard to="/hardware/receipt-printers/supported-printers" title="Impresoras de recibos compatibles" description="Qué impresoras funcionan y cómo de bien lo hacen" />
+</LinkCards>
