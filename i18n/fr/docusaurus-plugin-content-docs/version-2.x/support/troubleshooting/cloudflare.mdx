@@ -1,0 +1,178 @@
+---
+title: Cloudflare
+slug: /troubleshooting/common-problems/cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Empêchez les vérifications de sécurité de Cloudflare de bloquer la connexion de l’application WCPOS à votre boutique."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+Cloudflare sert d’intermédiaire pour certaines boutiques et peut demander aux visiteurs de passer une vérification de sécurité. L’application WCPOS ne peut pas toujours la passer et ne peut alors ni se connecter à votre boutique ni se synchroniser. Pour résoudre le problème, le propriétaire de la boutique ou la personne qui gère le compte Cloudflare du site doit modifier un réglage dans Cloudflare. Cette page explique quel réglage modifier et comment procéder.
+
+- **Caissier :** consultez [À la caisse](#at-the-till).
+- **Propriétaire de la boutique :** consultez [Identifier la fonctionnalité Cloudflare qui bloque l’application](#which-feature).
+
+## À la caisse {#at-the-till}
+
+- **Fenêtre de vérification de sécurité dans l’application de bureau :** cochez la case dans les deux minutes. L’application reprend son fonctionnement. Cloudflare redemande cette vérification après 30 minutes, ou après le délai défini par le propriétaire de la boutique.
+- **HOST121 dans l’application iPad, iPhone ou Android :** ces applications ne peuvent pas passer la vérification de Cloudflare. Elles restent bloquées jusqu’à ce que le propriétaire de la boutique effectue la modification ci-dessous.
+- **Dans les deux cas,** envoyez cette page au propriétaire de la boutique. Dans l’application de bureau, passer la vérification permet à l’application de se connecter temporairement, mais la vérification revient plus tard.
+
+**Propriétaire de la boutique :** commencez par [Identifier la fonctionnalité Cloudflare qui bloque l’application](#which-feature).
+
+## Signes que Cloudflare bloque l’application {#how-to-recognise-it}
+
+- **« La configuration de l’hébergement de cette boutique bloque l’application »** sur l’écran de connexion, avec le code d’erreur [HOST121](../../error-codes/HOST121.mdx).
+- Une petite fenêtre intitulée **Vérification de sécurité pour your-store.com** s’ouvre dans l’application de bureau pendant la connexion ou la synchronisation.
+
+<details>
+<summary>Autres signes que le propriétaire de la boutique peut constater</summary>
+
+- **« Votre boutique est derrière Cloudflare »** en haut de **WP Admin > PDV > Réglages > Général**. L’extension affiche ce message sur tout site qui passe par Cloudflare, avant même qu’un problème survienne.
+- L’impression cloud s’arrête et la fiche de l’imprimante sous **WP Admin > PDV > Réglages > Impression cloud** indique **« Un service de sécurité (comme Cloudflare ou une extension de pare-feu) bloque WCPOS Cloud Print »**. Le [relais](../../receipts/cloud-printing.mdx#relay) accède à votre boutique de la même manière que l’application : la solution ci-dessous rétablit donc aussi l’impression.
+- Les anciennes versions de l’application affichaient **« Le site ne semble pas être un site WordPress »** ou **« Le site a mis trop de temps à répondre »** pour une boutique qui s’ouvre normalement dans un navigateur.
+
+</details>
+
+## Identifier la fonctionnalité Cloudflare qui bloque l’application {#which-feature}
+
+La suite de cette page s’adresse au propriétaire de la boutique. Ouvrez votre site dans le tableau de bord Cloudflare, puis :
+
+1. Accédez à **Sécurité > Analyse** et sélectionnez l’onglet **Événements**. Recherchez les requêtes vers `/wp-json/` à l’heure où l’application a été bloquée. Leur champ **Service** indique la fonctionnalité qui les a arrêtées, par exemple **Mode de lutte contre les bots** ou **Règles gérées**.
+2. Ouvrez la section correspondant à cette fonctionnalité ci-dessous. Elle indique où se trouve le réglage et comment résoudre le problème.
+3. Aucun événement correspondant ? Avec l’offre gratuite, le journal ne conserve qu’un échantillon des requêtes : celles de l’application peuvent donc manquer. Vérifiez alors lesquelles des quatre fonctionnalités ci-dessous sont activées.
+
+Pour confirmer d’abord que Cloudflare est en cause, effectuez la [vérification dans un terminal](#check), qui est facultative.
+
+<details>
+<summary>Mode de lutte contre les bots (offre gratuite) : désactivez-le</summary>
+
+- Emplacement : **Sécurité > Paramètres**, filtre **Trafic des bots**.
+- Solution : désactivez-le. Une règle Ignorer ne peut pas en exempter l’application ([pourquoi](#bot-fight-mode)).
+
+</details>
+
+<details>
+<summary>Super mode de lutte contre les bots (offre Pro et supérieures) : ajoutez une règle Ignorer</summary>
+
+- Emplacement : **Sécurité > Paramètres**, filtre **Trafic des bots**.
+- Solution : [ajoutez une règle Ignorer](#add-a-skip-rule).
+
+</details>
+
+<details>
+<summary>Règles personnalisées ou gérées qui imposent une vérification aux visiteurs : ajoutez une règle Ignorer</summary>
+
+- Emplacement : **Règles de sécurité**.
+- Solution : [ajoutez une règle Ignorer](#add-a-skip-rule).
+
+</details>
+
+<Anchor id="under-attack" />
+
+<details>
+<summary>Mode En cas d’attaque : désactivez-le ou ajoutez une règle de configuration</summary>
+
+- Emplacement : **Actions rapides** dans la vue d’ensemble du site, ou le paramètre **Niveau de sécurité** sous **Sécurité > Paramètres**.
+- Solution : désactivez-le une fois l’attaque terminée. Pour le conserver sur le reste du site, ajoutez une **Règle de configuration** (**Règles > Vue d’ensemble > Créer une règle > Règle de configuration**) avec l’[expression de la règle Ignorer](#add-a-skip-rule), puis désactivez **Je suis attaqué**.
+
+</details>
+
+L’extension Cloudflare pour WordPress ne permet pas d’ajouter les règles présentées sur cette page. Effectuez ces modifications dans le tableau de bord Cloudflare.
+
+## Ajouter une règle Ignorer pour l’API REST {#add-a-skip-rule}
+
+Une règle Ignorer exempte les requêtes vers l’API REST de votre boutique des vérifications Cloudflare que vous cochez ci-dessous, et uniquement de celles-ci. WordPress continue de vérifier chaque connexion et chaque autorisation.
+
+:::note
+Le mode de lutte contre les bots de l’offre gratuite ignore cette règle. Si c’est cette fonctionnalité qui bloque l’application, [désactivez-la](#bot-fight-mode) à la place.
+:::
+
+1. Dans le tableau de bord Cloudflare, ouvrez votre site, accédez à **Règles de sécurité** et choisissez **Créer une règle > Règles personnalisées**.
+2. Sous **Nom de la règle**, saisissez `WCPOS REST API`.
+3. Sous **Lorsque les requêtes entrantes correspondent**, choisissez **Modifier l’expression** et collez :
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   Si WordPress est installé dans un sous-dossier, comme `https://example.com/shop`, utilisez `/shop/wp-json/` et `/shop/` à la place de `/wp-json/` et `/`.
+
+   <details>
+   <summary>Ce que cible l’expression</summary>
+
+   La première moitié cible l’adresse habituelle de l’API, `/wp-json/`. La seconde cible l’adresse de remplacement, `/?rest_route=/`, uniquement à l’adresse d’accueil du site. Ainsi, une page dont le lien contient simplement `rest_route=` conserve sa protection.
+
+   </details>
+
+4. Sous **Exécuter ensuite l’action**, choisissez **Ignorer**.
+5. Choisissez ce que la règle ignore. Cochez toujours les éléments suivants :
+   - **Toutes les règles personnalisées restantes**, pour que vos autres règles personnalisées n’imposent pas de vérification à l’application et ne la bloquent pas.
+   - **Niveau de sécurité**. Si le mode En cas d’attaque est activé, ajoutez aussi sa [règle de configuration](#under-attack).
+
+   Ne cochez les éléments suivants que s’ils s’appliquent :
+   - **Toutes les règles du super mode de lutte contre les bots**, si le super mode de lutte contre les bots est activé.
+   - **Toutes les règles gérées**, si le journal Événements affiche **Règles gérées** dans le champ **Service** pour les requêtes de l’application. Si vous n’avez trouvé aucun événement correspondant, laissez cette case décochée et consultez [Toujours bloqué ?](#still-blocked).
+
+   Laissez décochées les entrées marquées **(Version précédente)**.
+6. Choisissez **Déployer**. Si d’autres règles personnalisées imposent une vérification aux visiteurs ou les bloquent, faites glisser cette règle au-dessus d’elles dans la liste **Règles de sécurité**. Les règles gérées s’exécutent toujours après les règles personnalisées : leur ordre n’a donc pas d’importance.
+
+Connectez-vous ou lancez une synchronisation dans l’application pour confirmer qu’elle peut accéder à la boutique. Pour le vérifier depuis un ordinateur, effectuez la [vérification dans un terminal](#check) : la réponse doit être `200` avec `content-type: application/json`, sans ligne `cf-mitigated`.
+
+### Si le mode de lutte contre les bots est activé {#bot-fight-mode}
+
+Le mode de lutte contre les bots de l’offre gratuite ignore les règles Ignorer et Autoriser. La documentation de Cloudflare précise que les règles personnalisées et les règles de page ne permettent pas de le contourner. Si le **Mode de lutte contre les bots** est activé et que l’application reste bloquée après l’ajout de la règle Ignorer, désactivez-le sous **Sécurité > Paramètres**, filtre **Trafic des bots**. Réessayez ensuite dans l’application ou effectuez à nouveau la [vérification](#check). Pour conserver une protection contre les bots, passez à l’offre Pro et utilisez le **Super mode de lutte contre les bots** : la règle Ignorer ci-dessus permet bien d’en exempter l’application. Si le mode de lutte contre les bots est déjà désactivé, consultez [Toujours bloqué ?](#still-blocked).
+
+## Vérifier depuis un ordinateur {#check}
+
+Cette vérification est facultative. Elle permet de voir, depuis votre ordinateur, si Cloudflare répond à la place de votre boutique, avant ou après la correction.
+
+<details>
+<summary>Vérifier dans un terminal</summary>
+
+Ouvrez un terminal (Terminal sur Mac, PowerShell sur Windows) et exécutez cette commande en remplaçant `your-store.com` par l’adresse de votre boutique. Sur Windows, saisissez `curl.exe` à la place de `curl`.
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+Lisez les premières lignes de la réponse :
+
+- **`403` et `cf-mitigated: challenge` :** Cloudflare bloque l’application. [Identifiez la fonctionnalité](#which-feature) en cause.
+- **`200` et `content-type: application/json` :** cet ordinateur a pu accéder à la boutique. Essayez de vous connecter ou de lancer une synchronisation dans l’application. Si elle reste bloquée, Cloudflare la traite peut-être différemment de votre ordinateur : vérifiez les fonctionnalités ci-dessus, puis consultez [Conflits d’extensions](./plugin-conflicts.mdx).
+- **`404` :** l’API REST ne se trouve pas à cette adresse. Les sites sans permaliens lisibles utilisent une autre adresse. Recommencez la vérification avec `'https://your-store.com/?rest_route=/'` (conservez les guillemets).
+
+Si WordPress est installé dans un sous-dossier, incluez-le : `https://example.com/shop/wp-json/`.
+
+</details>
+
+<details>
+<summary>Comment l’application de bureau passe la vérification</summary>
+
+L’application communique avec l’API REST de votre boutique, la partie de WordPress qui fournit des données aux applications. Un navigateur web passe la vérification de Cloudflare sans que vous le remarquiez ; une application n’y parvient généralement pas. Lorsque Cloudflare répond par une vérification au lieu de données, l’application de bureau ouvre une fenêtre de navigateur masquée et tente de passer la vérification seule. Si Cloudflare demande de cocher une case, la fenêtre apparaît et attend deux minutes. Cloudflare autorise ensuite l’application à passer pendant la durée définie dans **Validité de la vérification** (30 minutes par défaut), puis la vérification revient. Les applications iPad, iPhone et Android ne disposent pas de cette fenêtre.
+
+</details>
+
+## Empêcher Cloudflare de mettre l’API en cache {#caching}
+
+Cloudflare peut aussi conserver des copies des réponses de l’API REST. L’application affiche alors des produits, des prix et des commandes obsolètes. La règle Ignorer n’y change rien : elle ne désactive que les vérifications de sécurité. Si vous mettez des pages HTML en cache ou utilisez Automatic Platform Optimization (APO), ajoutez une **Règle de cache** avec la même expression et réglez-la sur **Contourner le cache**.
+
+## Toujours bloqué ? {#still-blocked}
+
+- Ouvrez la règle Ignorer et vérifiez qu’elle est déployée, et non enregistrée comme brouillon (**Enregistrer comme brouillon**).
+- Vérifiez qu’aucune **Règle d’accès IP** ne bloque la connexion Internet de la boutique ni ne lui impose une vérification.
+- Aucun événement pour l’application dans le journal **Événements** ? Avant d’ignorer les règles gérées, contactez l’assistance (ci-dessous) en joignant le résultat de la [vérification dans un terminal](#check).
+- D’autres services placés en amont de votre site peuvent bloquer l’application de la même façon. Consultez [Conflits d’extensions](./plugin-conflicts.mdx#server-level-conflicts) pour les extensions de sécurité et les pare-feu, ainsi que les [remarques sur l’hébergement](../performance/server.mdx#hosting-specific-notes) pour GoDaddy, WP Engine et d’autres hébergeurs.
+
+## Documentation associée {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="HOST121" to="/error-codes/HOST121" description="L’erreur affichée par l’application lorsqu’une vérification de sécurité répond à la place de votre boutique." />
+  <LinkCard title="Conflits d’extensions" to="/troubleshooting/common-problems/plugin-conflicts" description="Extensions de sécurité et pare-feu qui bloquent l’application." />
+  <LinkCard title="Serveur" to="/troubleshooting/performance/slow-server" description="Remarques sur l’hébergement et prérequis du serveur." />
+</LinkCards>
+
+<SupportContact />

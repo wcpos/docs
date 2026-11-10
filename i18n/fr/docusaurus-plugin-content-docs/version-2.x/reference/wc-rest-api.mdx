@@ -1,0 +1,230 @@
+---
+title: API REST WooCommerce
+slug: /developers/woocommerce-rest-api
+sidebar_label: "API REST WooCommerce"
+sidebar_position: 1
+description: "Comment WCPOS lit les données de votre boutique via l’API REST WooCommerce, comment consulter les données du PDV dans l’onglet JSON et pourquoi les extensions qui modifient les prix ou les produits à la volée n’ont pas d’effet en caisse."
+---
+
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/wc-rest-api/en/manifest.json';
+
+Consultez cette page lorsqu’un élément en caisse ne correspond pas à votre boutique. Commencez par ce qui vous semble incorrect :
+
+- **Le prix, la quantité en stock ou un champ personnalisé d’un produit :** [Vérifier un produit](#check-a-product). Nécessite [WCPOS Pro](../getting-started/pro-license.mdx), tout comme les écrans **Produits**, **Commandes**, **Clients** et **Coupons**.
+- **La commande dans le panier :** [Vérifier la commande dans le panier](#check-the-order). Fonctionne sans Pro.
+- **Les champs personnalisés d’une ligne, comme une gravure :** [Vérifier une ligne](#check-a-line). Fonctionne sans Pro.
+- **La modification d’une extension n’apparaît jamais dans le PDV :** [Pourquoi certaines extensions ne modifient pas le PDV](#why-dont-some-plugins-work-in-the-pos).
+
+<details>
+<summary>Comment le PDV communique avec votre boutique</summary>
+
+Le PDV obtient toutes ses données via l’**API REST WooCommerce**, qui permet aux autres applications de communiquer avec votre boutique. Le PDV de votre caisse demande à votre boutique les produits et les clients ; votre boutique répond en **JSON** (du texte brut qui répertorie chaque champ par son nom), puis le PDV renvoie chaque vente sous forme de commande WooCommerce.
+
+<LocalizedSVG svgName="wc-rest-api" />
+
+Dans le schéma, **Votre boutique** représente votre boutique avec sa caisse, et **Centre de données** représente le serveur qui héberge votre site WooCommerce. Les requêtes partent de la caisse vers votre site, qui renvoie les réponses JSON.
+
+</details>
+
+## Ce que le PDV récupère de votre boutique {#what-the-pos-gets}
+
+- **L’API doit être disponible.** Lorsque vous connectez une boutique, le PDV vérifie que votre site propose l’API REST WooCommerce. Si ce n’est pas le cas, la connexion s’arrête avec l’erreur [AUTH321 : WooCommerce absent](../error-codes/AUTH321.mdx).
+- **Une copie sur l’appareil.** Le PDV télécharge les produits et leurs variations, les catégories, les étiquettes et les marques, les clients, les taux de taxe, les coupons et les commandes, puis en conserve une copie sur l’appareil. Les recherches et les ventes utilisent cette copie : la caisse reste donc rapide et continue de fonctionner en cas de coupure Internet.
+- **Les ventes sont renvoyées sous forme de commandes.** Une vente, un nouveau client ou une modification de produit effectués en caisse sont renvoyés à votre boutique, où WooCommerce les enregistre. Chaque vente devient une commande WooCommerce classique que vous pouvez ouvrir dans **WooCommerce > Commandes**.
+- **Les modifications arrivent en arrière-plan.** Pendant son fonctionnement, le PDV recherche les modifications dans votre boutique : une modification effectuée dans WP Admin arrive donc en caisse sans redémarrage. La page [Fonctionnement du moteur de synchronisation](./sync-engine.mdx) explique ce mécanisme.
+
+<details>
+<summary>Pour les développeurs : les routes appelées par le PDV</summary>
+
+L’API REST attribue à chaque type de données de la boutique sa propre adresse sous `/wp-json/` : produits, commandes, clients, coupons, etc. Les routes propres à WooCommerce se trouvent sous `wc/v3`.
+
+L’extension WCPOS ajoute ses propres routes `wcpos/v2` à votre boutique. Ces routes transmettent les lectures et les modifications de la caisse à l’API `wc/v3` de WooCommerce au sein de votre site : le PDV reçoit ainsi les mêmes champs que toute application WooCommerce, et WooCommerce enregistre chaque commande. Les [prix par boutique](../stores/setup.mdx#per-store-pricing) de Pro, ainsi que certaines extensions, modifient les valeurs reçues par le PDV. Les paiements, la clôture d’une vente, les caisses et les sessions utilisent les routes propres à l’extension : consultez [L’API REST](./architecture.mdx#api-extensions).
+
+</details>
+
+## Consulter les données détenues par le PDV {#viewing-the-json-data-in-the-pos}
+
+Chaque panneau affichant un enregistrement possède un onglet **JSON** à côté de **Formulaire** : produit, variation, client, coupon, commande, **Détails de la commande** dans le panier et boîte de dialogue **Modifier** d’une ligne du panier. Il affiche l’enregistrement tel qu’il est conservé sur cet appareil, au format JSON de WooCommerce. Vous n’en avez pas besoin pour effectuer une vente.
+
+La vérification d’un produit nécessite [WCPOS Pro](../getting-started/pro-license.mdx). Le panier et ses lignes disposent d’un onglet **JSON** sur chaque caisse.
+
+### Vérifier un produit {#check-a-product}
+
+Ouvrez l’onglet **JSON** du produit, puis consultez [un prix](#read-price), [une quantité en stock](#read-stock) ou [un champ personnalisé](#read-meta-data) et comparez-le au produit dans WP Admin, le tableau de bord WordPress de votre boutique. Si vous ne pouvez pas vous connecter à WP Admin, notez la valeur et demandez à la personne qui gère votre boutique de la comparer.
+
+1. Ouvrez **Produits** dans le menu et recherchez le produit.
+2. Appuyez sur la flèche d’ouverture (›) à la fin de sa ligne. Le panneau s’ouvre sur l’onglet **Formulaire**.
+3. Appuyez sur **JSON**.
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[0, 0], [0, 0], [0, -34], [0, -34]]} alt="L’écran Produits après une recherche d’Aim Analog Watch, avec son panneau ouvert sur l’onglet Formulaire : Nom, Prix normal, SKU, Code-barres, Stock et les autres champs, avec Synchroniser et Fermer en bas">
+
+1. **Formulaire** — les champs que vous pouvez modifier en caisse. Le panneau s’ouvre ici.
+2. **JSON** — le produit tel que le PDV le conserve.
+3. **Synchroniser** — récupère à nouveau ce produit depuis votre boutique. Disponible uniquement dans l’onglet **Formulaire**.
+4. **Fermer** — ferme le panneau. Le bouton **✕** en haut fait de même.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[140, 0], [100, 0]]} maxWidth={360} alt="Le début du JSON d’Aim Analog Watch : 73 éléments, puis id 67038, name et slug">
+
+1. **73 éléments** — le nombre de champs envoyés par votre boutique pour ce produit.
+2. **id** — l’ID du produit dans WooCommerce.
+
+</JourneyShot>
+
+Les champs contenant d’autres champs, comme `categories` ou `meta_data`, sont repliés par défaut : appuyez dessus pour les déplier. Faites défiler pour voir la suite.
+
+#### Un prix {#read-price}
+
+Faites défiler jusqu’à `price`. Comparez ce champ, ainsi que `regular_price` et `sale_price`, aux valeurs dans **Données produit > Général** pour ce produit dans WP Admin. Si le produit possède un prix propre à cette boutique ([prix par boutique](../stores/setup.mdx#per-store-pricing)), comparez-le au prix de cette boutique dans le même onglet.
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[93, 0], [165, 0], [121, 0]]} maxWidth={360} alt="Le JSON d’Aim Analog Watch cadré sur ses champs de prix : price 45, regular_price 45 et sale_price vide">
+
+1. **price** — le prix de vente actuel du produit : le prix promotionnel pendant une promotion, sinon le prix normal.
+2. **regular_price** — le prix hors promotion.
+3. **sale_price** — vide lorsque le produit n’a pas de prix promotionnel.
+
+</JourneyShot>
+
+#### Une quantité en stock {#read-stock}
+
+Faites défiler jusqu’à `stock_quantity`. Ce champ ne contient un nombre que si `manage_stock` vaut `true` ; sinon, il vaut `null` (vide). Comparez-le aux valeurs dans **Données produit > Inventaire**.
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[195, 0], [160, 0]]} maxWidth={360} alt="Le JSON d’Aim Analog Watch cadré sur ses champs de stock : manage_stock true et stock_quantity 85">
+
+1. **manage_stock** — `true` : WooCommerce comptabilise le stock de ce produit.
+2. **stock_quantity** — la quantité conservée par le PDV : `85`, comme dans l’onglet **Formulaire**.
+
+</JourneyShot>
+
+#### Un champ personnalisé ou les données d’une extension {#read-meta-data}
+
+Faites défiler jusqu’à `meta_data` et appuyez dessus, puis sur une entrée. Ce gros plan provient d’un téléphone, où une valeur longue passe sur une deuxième ligne.
+
+<JourneyShot manifest={manifest} device="phone" step={5} offsets={[[168, 0], [254, 0], [97, 18]]} maxWidth={360} alt="Le JSON d’Aim Analog Watch sur un téléphone, avec meta_data déplié, 1 élément et sa première entrée dépliée pour afficher sa clé, _woocommerce_pos_uuid, et sa valeur répartie sur deux lignes">
+
+1. **meta_data** — les champs personnalisés du produit, avec une entrée par champ.
+2. **key** — le nom du champ.
+3. **value** — le contenu du champ.
+
+</JourneyShot>
+
+#### Si une valeur ne correspond pas à WP Admin {#value-differs}
+
+Appuyez sur **Formulaire**, puis sur **Synchroniser**, pour récupérer à nouveau le produit.
+
+- **Si le message Impossible d’actualiser s’affiche :** l’appareil a conservé son ancienne copie. Vérifiez votre connexion et réessayez.
+- **Si aucune erreur ne s’affiche mais que la valeur diffère toujours :** le PDV contient désormais ce que l’API de votre boutique envoie. Une extension modifie peut-être la valeur uniquement sur votre site web : consultez [Pourquoi certaines extensions ne modifient pas le PDV](#why-dont-some-plugins-work-in-the-pos).
+
+### Vérifier la commande dans le panier {#check-the-order}
+
+1. Appuyez sur **⋮** à côté de **Paiement**. Le panneau **Détails de la commande** s’ouvre.
+2. Appuyez sur **JSON**.
+
+<JourneyShot manifest={manifest} device="tablet" step={6} offsets={[[190, 0], [-22, 0]]} alt="Le PDV avec une Aim Analog Watch dans le panier, le sous-total et les taxes, et le bouton ⋮ à côté de Paiement $45.00">
+
+1. **Une ligne du panier** — la boîte de dialogue **Modifier** de chaque ligne possède son propre onglet **JSON**. Consultez [Vérifier une ligne](#check-a-line).
+2. **⋮** — ouvre les **Détails de la commande** pour l’ensemble de la commande.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={7} offsets={[[0, 0], [250, 0], [235, 0], [140, 0], [0, -34], [0, -34], [0, -34]]} maxWidth={520} alt="Les détails de la commande de ce panier dans l’onglet JSON : status pos-open, created_via woocommerce-pos, line_items avec 1 élément, total 45 et les autres champs de la commande, avec Annuler, Fermer, Imprimer et Synchroniser la commande en bas">
+
+1. **JSON** — à côté de **Formulaire**, comme dans chaque panneau.
+2. **status** — `pos-open` tant que la commande est ouverte en caisse. Cet état provient de l’extension WCPOS ; WooCommerce l’affiche sous le nom **PDV - Ouverte**.
+3. **line_items** — les produits du panier. Appuyez dessus pour déplier chaque ligne.
+4. **total** — le total de la commande, taxes comprises.
+5. **Synchroniser la commande** — envoie immédiatement la commande à votre boutique. Une nouvelle commande n’a pas d’`id` dans son JSON tant que votre boutique ne l’a pas enregistrée. Consultez [Synchroniser la commande](../pos/cart/order-actions.mdx#sync-order).
+6. **Imprimer** — imprime la commande.
+7. **Annuler** — supprime la commande et vide le panier. Consultez [Annuler la commande](../pos/cart/order-actions.mdx#void).
+
+</JourneyShot>
+
+Les mêmes champs, vus de plus près, dans un autre panier contenant une montre :
+
+<JourneyShot manifest={manifest} device="tablet" step={9} offsets={[[142, 0], [200, 0], [91, 0]]} maxWidth={360} alt="Gros plan du JSON de la commande d’un autre panier contenant une Aim Analog Watch : status pos-open, created_via woocommerce-pos, line_items avec 1 élément et total 45">
+
+1. **status** — indique `pos-open` : la commande est toujours ouverte en caisse.
+2. **line_items** — `1 item` : la seule montre du panier.
+3. **total** — `45` : une montre à $45.00, taxes comprises.
+
+</JourneyShot>
+
+### Vérifier une ligne {#check-a-line}
+
+L’onglet **JSON** d’une ligne affiche cette ligne telle qu’elle sera enregistrée dans la commande WooCommerce, et non la fiche produit de votre boutique. Utilisez-le pour vérifier les champs personnalisés d’une ligne, comme une gravure.
+
+1. Appuyez sur le total de la ligne pour afficher **Modifier** et **Supprimer**. Consultez [Modifier ou supprimer une ligne](../pos/cart/line-items.mdx#remove-item) pour connaître les autres méthodes.
+2. Appuyez sur **Modifier**, puis sur **JSON**.
+3. Appuyez sur `meta_data` pour déplier les champs personnalisés de la ligne, puis sur une entrée pour voir sa `key` et sa `value`.
+
+<JourneyShot manifest={manifest} device="tablet" step={8} offsets={[[0, 0], [196, 0], [175, 0], [262, -2], [166, 8], [168, 0]]} maxWidth={520} alt="La boîte de dialogue Modifier Aim Analog Watch pour une ligne du panier dans l’onglet JSON : 13 éléments, product_id 67038, name, quantity 1, sku et meta_data déplié avec 2 entrées, la première dépliée sur key _woocommerce_pos_data et sa valeur, puis price, total et les taxes">
+
+1. **JSON** — à côté de **Formulaire** dans la boîte de dialogue **Modifier** de la ligne.
+2. **name** — le nom du produit tel qu’il est enregistré sur cette ligne. Avec `quantity` et `price` en dessous, il décrit cette vente, et non la fiche produit.
+3. **meta_data** — les champs personnalisés de la ligne : 2 entrées ici.
+4. **key** — le nom du champ. WCPOS conserve le prix, le prix normal et l’état fiscal de la ligne dans `_woocommerce_pos_data`.
+5. **value** — le contenu du champ. Appuyez sur une valeur repliée pour la déplier.
+6. **price** — le prix d’un article hors taxes : `40.106952` ici. Ajoutez la taxe de la ligne, `total_tax` `4.893048`, et vous obtenez les $45.00 du panier.
+
+</JourneyShot>
+
+<details>
+<summary>Observer les requêtes dans le navigateur</summary>
+
+Dans l’application web, vous pouvez observer les échanges entre le PDV et votre boutique à l’aide des outils de développement de votre navigateur :
+
+1. Ouvrez le PDV dans Chrome, Edge ou Firefox.
+2. Appuyez sur **F12** (sur un Mac, **Option + Command + I**) et choisissez l’onglet **Réseau**.
+3. Saisissez `wcpos` dans le champ de filtre.
+4. Utilisez le PDV : effectuez une recherche, ajoutez un produit, encaissez. Chaque requête à laquelle votre boutique répond apparaît dans la liste. Sélectionnez-en une et choisissez **Réponse** pour lire le JSON.
+
+</details>
+
+## Pourquoi certaines extensions ne modifient pas le PDV {#why-dont-some-plugins-work-in-the-pos}
+
+Le PDV fonctionne à partir de sa copie des données de votre boutique. Une extension qui modifie uniquement l’affichage d’une page web, ou effectue un calcul pendant qu’un client parcourt votre site, n’a jamais d’effet sur cette copie. Le PDV ne voit que ce que l’API REST envoie. Trois types d’extensions rencontrent particulièrement cette limite.
+
+### Tarification dynamique {#dynamic-pricing}
+
+Les extensions qui définissent un prix par client, par rôle ou par quantité.
+
+- **En caisse :** le PDV affiche le prix normal du produit. La plupart de ces extensions calculent le prix pendant que le client parcourt votre site web ; l’API ne l’envoie donc jamais.
+- **Que faire :** utilisez les [remises en caisse](../pos/cart/discounts.mdx) ou un coupon.
+
+### Options supplémentaires de produit {#product-add-ons}
+
+Les extensions qui ajoutent des options à un produit, comme un emballage cadeau ou une gravure.
+
+- **En caisse :** les options n’apparaissent pas. La plupart de ces extensions les créent sur la page du produit ; elles ne font donc pas partie du produit envoyé par l’API.
+- **Que faire :** ajoutez des [frais](../pos/cart/index.mdx#fees) pour le coût supplémentaire et un [champ personnalisé](../pos/cart/line-items.mdx#meta-data) sur la ligne pour les détails.
+
+### Extensions qui modifient l’API {#api-changing-plugins}
+
+Les extensions qui modifient ce que votre boutique envoie via l’API REST.
+
+- **En caisse :** le PDV peut cesser de fonctionner. wePOS modifie la façon dont votre boutique envoie les produits variables ; WCPOS se désactive donc tant que wePOS est actif.
+- **Que faire :** consultez [wePOS](../integrations/index.mdx#wepos).
+
+Les données d’une extension qui les enregistre sur le produit, le client ou la commande (sous forme de champs personnalisés) parviennent généralement au PDV. Ouvrez l’onglet **JSON** et regardez dans `meta_data` pour le vérifier.
+
+## En cas de problème {#goes-wrong}
+
+- **La connexion échoue avec AUTH321** — votre site ne propose pas l’API REST WooCommerce. Consultez [AUTH321 : WooCommerce absent](../error-codes/AUTH321.mdx).
+- **Un prix ou un champ en caisse ne correspond pas à WP Admin** — consultez [Si une valeur ne correspond pas à WP Admin](#value-differs).
+- **La modification d’une extension n’apparaît jamais dans le PDV** — consultez [Pourquoi certaines extensions ne modifient pas le PDV](#why-dont-some-plugins-work-in-the-pos).
+- **Un élément a cessé de fonctionner après l’installation d’une extension** — consultez [Conflits d’extensions](../support/troubleshooting/plugin-conflicts.mdx).
+
+## Documentation associée {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/developers/architecture" title="Architecture" description="L’extension, l’application et leur articulation" />
+  <LinkCard to="/developers/sync-engine" title="Fonctionnement du moteur de synchronisation" description="Comment le PDV maintient à jour sa copie de votre boutique" />
+  <LinkCard to="/manage-store/compatible-plugins" title="Intégrations" description="Les extensions qui fonctionnent avec WCPOS, et deux qui ne fonctionnent pas" />
+</LinkCards>
+
+Pour les développeurs, WooCommerce décrit chaque point de terminaison et chaque champ dans la [documentation de l’API REST WooCommerce](https://woocommerce.github.io/woocommerce-rest-api-docs/).

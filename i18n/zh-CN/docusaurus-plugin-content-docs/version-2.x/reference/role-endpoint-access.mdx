@@ -1,0 +1,262 @@
+---
+title: 角色端点访问权限
+slug: /developers/role-endpoint-access
+sidebar_label: 角色端点访问权限
+sidebar_position: 3
+description: "开发者参考：administrator、shop_manager 和 cashier 角色可以访问哪些 WCPOS REST 端点、请求被拒绝时会收到什么响应，以及如何区分角色问题与登录问题。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+如果无法登录、操作被阻止，或 POS 提示更新，请找到应用消息中的错误代码，并[在此查看解决方法](#diagnosing-failures)：
+
+- [AUTH101：重新登录](#sign-in-again)
+- [AUTH201：请管理员检查角色](#check-the-role)
+- [SYNC341：更新应用](#update-the-app)
+
+## 故障诊断 {#diagnosing-failures}
+
+### 重新登录（AUTH101） {#sign-in-again}
+
+应用提示 **“刷新令牌后请求仍未获授权，请重新登录”**。
+
+1. WCPOS 会自动打开 WordPress 登录窗口。请在该窗口中使用同一收银员账号登录。
+2. 如果关闭了窗口，应用会提示 **“请登录以继续”**。点击该消息中的 **登录**，即可重新打开窗口。
+3. 重新登录后，等待发送的销售记录会自动发送。
+
+如果消息立即再次出现，请联系网站管理员寻求帮助，并将 [AUTH101](../error-codes/AUTH101.mdx) 页面发给他们。
+
+<details>
+<summary>登录失败详情</summary>
+
+应用收到 `401` 后刷新了令牌，但重试仍返回 `401`。这是登录层的问题，而不是角色问题：`403` 从不会触发令牌刷新。应用与 WordPress 之间的某个环节正在丢弃或拒绝令牌，通常是安全或身份验证插件（[AUTH301](../error-codes/AUTH301.mdx)）。
+
+</details>
+
+### 请管理员检查角色（AUTH201） {#check-the-role}
+
+你已登录，但你的角色不允许执行此操作。请网站管理员在[员工访问权限](../settings/wp-admin/access.mdx)中检查你的访问权限。他们可以按照 [AUTH201](../error-codes/AUTH201.mdx) 中的说明查找原因。
+
+<details>
+<summary>角色权限详情</summary>
+
+服务器向已登录的用户返回了 `403`。可能是用户缺少 `access_woocommerce_pos`，也可能是该路由需要 `manage_woocommerce_pos` 或 `install_plugins`。请在下方列表中查找该端点。如果列表表明用户的角色应当可以访问，那么该角色很可能已被修改，不再使用默认权限：可能是在访问权限页面修改的，此时页面会显示 **已更改 WCPOS 默认设置**，也可能是通过角色编辑插件或自定义代码修改的。用户拥有的额外角色也可能拒绝某项权限。
+
+如果端点不在列表中，说明这些列表所依据的测试未覆盖该端点，请查看该路由自身的权限检查。WCPOS Pro 也会拒绝用户访问未获授权的店铺，例如返回 `403` `wcpos_display_store_forbidden`（“你无权访问此店铺。”）。
+
+</details>
+
+### 更新应用（SYNC341） {#update-the-app}
+
+应用提示 **“请更新此设备上的 POS 应用。”** 网站上的插件比应用更新。请更新应用，然后重新打开：
+
+- **网页版：** 重新加载浏览器标签页。如果消息再次出现：在电脑上，按住 **Shift** 键重新加载；在手机或平板电脑上，请网站管理员协助，并将 [SYNC341](../error-codes/SYNC341.mdx) 页面发给他们。
+- **桌面版：** 安装应用提示的更新，然后重新打开应用。如果没有更新提示，请[下载最新桌面版本](../getting-started/installation.mdx#app-requirements)，支持 Windows、Mac（Intel 或 Apple 芯片）及 Linux。
+- **iPhone 和 iPad：** 通过 [TestFlight 测试版](https://testflight.apple.com/join/JGBdVRrW)更新 WCPOS。
+- **Android：** 通过 [Google Play 测试版](https://play.google.com/apps/testing/com.wcpos.main)更新 WCPOS。
+
+其余说明见 [SYNC341](../error-codes/SYNC341.mdx)，其中也介绍了尚无新版应用时网站管理员可以采取的措施。
+
+<details>
+<summary>应用版本详情</summary>
+
+服务器在 v2 路由上返回了 `426`，因为应用版本早于插件的同步协议版本。
+
+</details>
+
+### 权限失败与令牌失败的区别 {#permission-failure-vs-token-failure}
+
+AUTH201 表示用户已登录但没有权限：请管理员检查角色。AUTH101 表示登录本身失败：请重新登录。
+
+<details>
+<summary>如何区分</summary>
+
+- **`403`（AUTH201）**：用户已登录，但无权执行此操作。请检查角色的权限，以及下方列表中该端点所需的权限。
+- **`401`（AUTH101，“刷新令牌后请求仍未获授权”）**：服务器无法验证应用请求的身份，且没有用户登录。请重新登录；如果问题反复出现，请检查令牌，以及应用与 WordPress 之间是否有环节移除或拒绝令牌。
+
+在浏览器的网络面板或服务器端日志中查看请求被拒绝时的响应。**WP Admin > 收银台 > 设置 > 工具 > 日志** 也会记录因令牌格式错误或过期以外的原因被拒绝的每个 `401`。状态和错误代码位于响应正文中，但已登录用户的信息不在其中：请在服务器上读取，例如在请求执行期间通过 `get_current_user_id()` 将其写入调试日志。
+
+**角色或权限失败：**
+
+- 状态：`403`
+- 代码：`woocommerce_pos_rest_forbidden`，或路由自身的代码，例如 `rest_forbidden`
+- 已登录用户（服务器端）：收银员的 WordPress 用户 ID
+
+**令牌或登录失败：**
+
+- 状态：`401`
+- 代码：`woocommerce_pos_rest_unauthorized`
+- `data.reason`：令牌错误，例如 `woocommerce_pos_auth_token_expired`
+- 已登录用户（服务器端）：`0`（没有用户登录）
+
+用户 ID 非零说明问题与权限有关。用户 ID 为 `0` 则说明问题与令牌或应用与 WordPress 之间的某个环节有关。
+
+</details>
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="员工访问权限" to="/manage-store/staff-permissions" description="授予或移除各角色的操作权限。" />
+  <LinkCard title="会话" to="/settings/sessions" description="查看已登录的设备及结束会话。" />
+  <LinkCard title="错误代码" to="/error-codes" description="应用可能显示的所有代码及其解决方法。" />
+</LinkCards>
+
+## 面向管理员和开发者 {#summary}
+
+收银员阅读到这里即可。本页其余内容面向需要判断问题出在登录、用户角色还是应用版本的网站管理员和开发者。下文列出各默认角色可访问的 WCPOS REST 端点，以及服务器拒绝请求时的响应。要更改角色的操作权限，请使用[员工访问权限](../settings/wp-admin/access.mdx)。
+
+### 各默认角色可访问的端点 {#what-each-role-can-reach}
+
+收银员可以执行销售所需的所有操作，包括退款，还可以读取云打印的打印机信息以发送收据。其他所有设置、日志和店铺管理都需要管理员或店铺经理权限。
+
+<details>
+<summary>各默认角色的访问范围</summary>
+
+- **`administrator`**：本页中的所有端点。
+- **`shop_manager`**：除 Pro 的扩展安装和更新操作外的所有端点；这些操作需要 WordPress 的 `install_plugins` 权限。
+- **`cashier`**：销售流程所用的所有操作，包括退款。无法访问设置页面、日志、扩展或店铺管理。唯一可读取的设置是云打印的打印机信息，以便 POS 向打印机发送收据。
+
+</details>
+
+<details>
+<summary>这些列表如何验证</summary>
+
+这些列表来自插件的集成测试。每个测试都会像应用一样使用 WCPOS 访问令牌登录，并以各个角色调用端点。在免费版测试中，允许访问的端点必须返回低于 `400` 的状态码。Pro 测试也接受 `400` 或 `404`，因为测试数据仅包含最少内容：这两种响应仍能证明用户已通过权限检查。拒绝访问的端点必须返回 `403`，同时用户仍保持登录状态。
+
+</details>
+
+### 服务器如何检查请求 {#how-the-server-checks}
+
+发往 POS 的每个请求最多经过四项检查：应用版本、登录状态、POS 访问权限，最后是路由自身的规则。首先失败的检查决定响应结果。
+
+<details>
+<summary>四项检查的执行顺序</summary>
+
+发往 `/wcpos/v1/` 或 `/wcpos/v2/` 的请求依次经过这些检查。公开登录路由和打印机轮询会跳过第 2 项和第 3 项检查。对于拥有 WooCommerce `manage_woocommerce` 权限的用户，三个同步维护路由会跳过第 3 项检查，改为要求该权限。
+
+1. **应用协议**（大多数 v2 路由）。检查失败时返回 `426`，代码为 `wcpos_update_required`。应用显示 [SYNC341](../error-codes/SYNC341.mdx)：更新应用。
+2. **访问令牌。** 检查失败时返回 `401`，代码为 `woocommerce_pos_rest_unauthorized`，没有用户登录。应用刷新令牌一次并重试；如果重试也失败，则显示 [AUTH101](../error-codes/AUTH101.mdx)：会话已过期。
+3. **POS 访问权限。** 已登录但没有 `access_woocommerce_pos` 权限的用户会收到 `403`，代码为 `woocommerce_pos_rest_forbidden`。应用显示 [AUTH201](../error-codes/AUTH201.mdx)：角色权限不足。
+4. **路由自身的检查。** 检查失败时返回 `403`，例如 `rest_forbidden`。应用同样显示 [AUTH201](../error-codes/AUTH201.mdx)。
+
+</details>
+
+<details>
+<summary>三项权限及拥有这些权限的角色</summary>
+
+插件激活时会向默认角色授予自身的两项权限。更新时只授予该版本新增的权限，因此在访问权限页面移除的权限不会恢复。`install_plugins` 是 WordPress 自身的权限。
+
+- **`access_woocommerce_pos`**：管理员、店铺经理和收银员。除公开登录路由、打印机轮询和三个同步维护路由（`/wcpos/v2/uuid/backfill`、`/orders/index/backfill`、`/integrity/rebuild`）外，所有 POS 端点都需要此权限；这些例外改为需要 WooCommerce 的 `manage_woocommerce` 权限。部分端点还需要以下两项权限之一。
+- **`manage_woocommerce_pos`**：管理员和店铺经理。可访问设置、日志、扩展列表和 Pro 店铺管理。
+- **`install_plugins`**（WordPress）：仅管理员。可执行 Pro 的扩展安装和更新。
+
+</details>
+
+### 同步端点（v2） {#sync-endpoints}
+
+2.0 应用通过 `/wcpos/v2/` 同步。每个默认角色都能访问应用使用的所有同步路由。
+
+<details>
+<summary>所有角色：v2 同步路由</summary>
+
+- **状态**：`GET /wcpos/v2/status`
+- **商品目录**：`GET /wcpos/v2/products`、`/variations`、`/products/categories`、`/products/tags`、`/products/brands`
+- **客户、优惠券、税费**：`GET /wcpos/v2/customers`、`/coupons`、`/taxes`
+- **订单**：`GET /wcpos/v2/orders`、`/orders/pull`
+- **变更流**：`GET /wcpos/v2/changes/sequence-log`、`/changes/revision-hash`、`/changes/range-checksum`、`/changes/config-fingerprint`、`/changes/tick`
+- **完整性检查**：`GET /wcpos/v2/digests`、`/integrity/scan`、`/integrity/bucket`
+- **条形码查询**：`GET /wcpos/v2/resolve/barcode`
+- **发送新订单**：`POST /wcpos/v2/push/orders`
+
+</details>
+
+### 免费版插件端点访问矩阵 {#free-plugin-endpoint-access-matrix}
+
+这些 `/wcpos/v1/` 路由用于登录、结账、收据和设置页面。每个角色都能访问销售所用的路由。设置页面、日志和扩展列表需要管理员或店铺经理权限。
+
+<details>
+<summary>所有角色（管理员、店铺经理、收银员）：27 个端点</summary>
+
+- `GET /wcpos/v1/stores`：应用可打开的店铺
+- `GET /wcpos/v1/cashier/{id}`：已登录的收银员
+- `GET /wcpos/v1/cashier/{id}/stores`：该收银员可使用的店铺
+- `GET /wcpos/v1/products`、`/products/variations`：商品目录
+- `GET /wcpos/v1/products/categories`、`/tags`、`/brands`：商品目录筛选条件
+- `GET /wcpos/v1/coupons`：优惠券查询
+- `GET /wcpos/v1/orders`：订单历史
+- `POST /wcpos/v1/orders`：销售
+- `PATCH /wcpos/v1/orders/{id}`：完成订单
+- `GET` 和 `POST /wcpos/v1/orders/{id}/checkout`：收款
+- `GET /wcpos/v1/receipts/{order_id}`：收据渲染
+- `GET /wcpos/v1/data/order_statuses`：状态名称
+- `GET /wcpos/v1/customers`：客户搜索
+- `POST /wcpos/v1/customers`：添加客户
+- `PATCH /wcpos/v1/customers/{id}`：编辑客户
+- `GET /wcpos/v1/taxes`、`/taxes/classes`：税率和税类
+- `GET /wcpos/v1/shipping_methods`：配送项目
+- `GET /wcpos/v1/payment-gateways`：支付选项
+- `POST /wcpos/v1/payment-gateways/{id}/bootstrap`：支付设置
+- `GET /wcpos/v1/templates`、`/templates/active`、`/templates/gallery`：收据模板
+
+每个角色还可以读取 `GET /wcpos/v1/settings/cloud-print`，获取云打印的打印机信息，以便 POS 向打印机发送收据。它仅需要 `access_woocommerce_pos` 权限。此端点不在上述 27 个端点中：它有独立测试，验证拥有该权限但无权访问设置的用户能否读取。
+
+</details>
+
+<details>
+<summary>仅管理员和店铺经理：6 个端点</summary>
+
+这些端点需要 `manage_woocommerce_pos`；收银员访问时会收到 `403`。
+
+- `GET /wcpos/v1/settings/general`：常规设置页面
+- `GET /wcpos/v1/settings/checkout`：收银台设置页面
+- `GET /wcpos/v1/settings/tax_ids`：税号设置页面
+- `GET /wcpos/v1/settings/payment-gateways`：支付网关设置页面
+- `GET /wcpos/v1/extensions`：扩展列表
+- `GET /wcpos/v1/logs`：日志页面
+
+`/wcpos/v1/settings` 本身没有可读取的索引，请改为读取 `/settings/general` 等具体部分。
+
+</details>
+
+### Pro 插件端点访问矩阵 {#pro-plugin-endpoint-access-matrix}
+
+WCPOS Pro 新增了以下路由。每个角色都可以为订单退款。店铺管理和许可证密钥需要管理员或店铺经理权限，安装扩展则需要管理员权限。
+
+<details>
+<summary>按角色划分的 Pro 路由</summary>
+
+**所有角色：**
+
+- `POST /wcpos/v1/orders/{id}/refunds`：为订单退款
+
+**仅管理员和店铺经理**（需要 `manage_woocommerce_pos`）：
+
+- `GET /wcpos/v1/stores/{id}/edit`：打开店铺进行编辑
+- `POST /wcpos/v1/stores`：添加店铺
+- `PATCH /wcpos/v1/stores/{id}`：保存店铺
+- `POST /wcpos/v1/settings/license`：保存许可证密钥
+
+**仅管理员**（需要 WordPress 的 `install_plugins` 权限）：
+
+- `POST /wcpos/v1/extensions/action`：安装或更新扩展
+
+</details>
+
+### 令牌过期测试覆盖范围 {#token-expiry-coverage}
+
+默认情况下，应用的登录状态持续 30 分钟，并可自动续期，最长至收银员登录后的 30 天。之后，收银员需要重新登录（[AUTH101](../error-codes/AUTH101.mdx)）。令牌过期始终返回 `401`，绝不会返回 `403`，因此不会被误认为角色问题。
+
+<details>
+<summary>令牌有效期及各情形的返回结果</summary>
+
+应用使用有效期为 30 分钟的访问令牌和有效期为 30 天的刷新令牌登录。可以通过代码使用 `wcpos_jwt_access_token_expire` 和 `wcpos_jwt_refresh_token_expire` 过滤器修改这两个有效期。同一组测试针对全部三个角色，覆盖两种令牌分别过期时的行为：
+
+- **有效的访问令牌**：端点正常响应。
+- **访问令牌过期、缺失或格式错误**：返回 `401`，代码为 `woocommerce_pos_rest_unauthorized`，没有用户登录。应用刷新令牌一次并重试。
+- **访问令牌过期，刷新令牌有效**：刷新操作返回新的访问令牌，重试成功。
+- **刷新令牌过期**：刷新请求被拒绝，返回 `woocommerce_pos_auth_token_expired`，收银员需要重新登录（[AUTH101](../error-codes/AUTH101.mdx)）。
+
+过期的访问令牌无法让用户登录，因此不会进入角色检查：始终返回 `401`，绝不会返回 `403`。测试证明，收银员角色在 v2 路由上也遵循同样的行为。
+
+</details>

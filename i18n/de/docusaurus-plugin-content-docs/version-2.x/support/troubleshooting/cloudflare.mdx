@@ -1,0 +1,178 @@
+---
+title: Cloudflare
+slug: /troubleshooting/common-problems/cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Verhindern Sie, dass die Sicherheitsprüfungen von Cloudflare die Verbindung der WCPOS-App zu Ihrem Shop blockieren."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+Manchen Shops ist Cloudflare vorgeschaltet und kann Besucher zu einer Sicherheitsprüfung auffordern. Die WCPOS-App kann diese nicht immer bestehen und sich dann weder mit Ihrem Shop verbinden noch synchronisieren. Zur Behebung muss der Shopbetreiber oder die Person, die das Cloudflare-Konto der Website verwaltet, eine Einstellung in Cloudflare ändern. Diese Seite zeigt, welche Einstellung das ist und wie Sie sie ändern.
+
+- **Kassierer:** siehe [An der Kasse](#at-the-till).
+- **Shopbetreiber:** siehe [Die blockierende Cloudflare-Funktion ermitteln](#which-feature).
+
+## An der Kasse {#at-the-till}
+
+- **Fenster zur Sicherheitsprüfung in der Desktop-App:** Aktivieren Sie das Kontrollkästchen innerhalb von zwei Minuten. Die App fährt dann fort. Cloudflare fragt nach 30 Minuten erneut nach oder nach dem vom Shopbetreiber festgelegten Zeitraum.
+- **HOST121 in der iPad-, iPhone- oder Android-App:** Diese Apps können die Prüfung von Cloudflare nicht bestehen. Sie bleiben blockiert, bis der Shopbetreiber die unten beschriebene Änderung vornimmt.
+- **In beiden Fällen** senden Sie diese Seite an den Shopbetreiber. In der Desktop-App ermöglicht die bestandene Prüfung vorerst die Verbindung, die Prüfung erscheint jedoch später erneut.
+
+**Shopbetreiber:** Beginnen Sie mit [Die blockierende Cloudflare-Funktion ermitteln](#which-feature).
+
+## Anzeichen dafür, dass Cloudflare die App blockiert {#how-to-recognise-it}
+
+- **„Die Hosting-Konfiguration dieses Shops blockiert die App“** auf dem Verbindungsbildschirm mit dem Fehlercode [HOST121](../../error-codes/HOST121.mdx).
+- In der Desktop-App öffnet sich beim Verbinden oder Synchronisieren ein kleines Fenster mit dem Titel **Sicherheitsprüfung für your-store.com**.
+
+<details>
+<summary>Weitere Anzeichen, die der Shopbetreiber sehen kann</summary>
+
+- **„Ihr Shop befindet sich hinter Cloudflare“** oben unter **WP Admin > POS > Einstellungen > Allgemein**. Das Plugin zeigt diesen Hinweis auf jeder Website an, die Cloudflare verwendet, noch bevor ein Problem auftritt.
+- Der Cloud-Druck funktioniert nicht mehr, und auf der Druckerkarte unter **WP Admin > POS > Einstellungen > Cloud-Druck** steht **„Ein Sicherheitsdienst (wie Cloudflare oder ein Firewall-Plugin) blockiert WCPOS Cloud Print“**. Das [Relay](../../receipts/cloud-printing.mdx#relay) erreicht Ihren Shop auf demselben Weg wie die App. Daher behebt die unten beschriebene Lösung auch das Druckproblem.
+- Ältere App-Versionen meldeten **„Die Website scheint keine WordPress-Website zu sein“** oder **„Die Website hat zu lange zum Antworten gebraucht“**, obwohl sich der Shop im Browser problemlos öffnen ließ.
+
+</details>
+
+## Die blockierende Cloudflare-Funktion ermitteln {#which-feature}
+
+Der Rest dieser Seite richtet sich an den Shopbetreiber. Öffnen Sie Ihre Website im Cloudflare-Dashboard und gehen Sie dann wie folgt vor:
+
+1. Gehen Sie zu **Sicherheit > Analysen** und wählen Sie den Tab **Ereignisse**. Suchen Sie nach Anfragen an `/wp-json/` aus dem Zeitraum, in dem die App blockiert wurde. Im Feld **Dienst** steht die Funktion, die die Anfragen aufgehalten hat, zum Beispiel **Bot Fight Mode** oder **Verwaltete Regeln**.
+2. Öffnen Sie unten den Abschnitt zur entsprechenden Funktion. Dort erfahren Sie, wo sich die Einstellung befindet und wie Sie das Problem beheben.
+3. Kein passendes Ereignis? Im Free-Tarif speichert das Protokoll nur eine Stichprobe der Anfragen. Die Anfragen der App können deshalb fehlen. Prüfen Sie stattdessen, welche der vier folgenden Funktionen aktiviert ist.
+
+Um zunächst zu bestätigen, dass Cloudflare die Ursache ist, können Sie die optionale [Prüfung im Terminal](#check) durchführen.
+
+<details>
+<summary>Bot Fight Mode (Free-Tarif): deaktivieren</summary>
+
+- Wo: **Sicherheit > Einstellungen**, nach **Bot-Datenverkehr** filtern.
+- Lösung: Deaktivieren Sie die Funktion. Eine Überspringen-Regel kann die App nicht davon ausnehmen ([warum](#bot-fight-mode)).
+
+</details>
+
+<details>
+<summary>Super Bot Fight Mode (ab dem Pro-Tarif): eine Überspringen-Regel hinzufügen</summary>
+
+- Wo: **Sicherheit > Einstellungen**, nach **Bot-Datenverkehr** filtern.
+- Lösung: [Eine Überspringen-Regel hinzufügen](#add-a-skip-rule).
+
+</details>
+
+<details>
+<summary>Benutzerdefinierte oder verwaltete Regeln, die Besucher zu einer Prüfung auffordern: eine Überspringen-Regel hinzufügen</summary>
+
+- Wo: **Sicherheitsregeln**.
+- Lösung: [Eine Überspringen-Regel hinzufügen](#add-a-skip-rule).
+
+</details>
+
+<Anchor id="under-attack" />
+
+<details>
+<summary>Angriffsmodus: deaktivieren oder eine Konfigurationsregel hinzufügen</summary>
+
+- Wo: **Schnellaktionen** in der Website-Übersicht oder die Einstellung **Sicherheitsstufe** unter **Sicherheit > Einstellungen**.
+- Lösung: Deaktivieren Sie den Modus, sobald der Angriff vorüber ist. Um ihn für den Rest der Website aktiviert zu lassen, fügen Sie eine **Konfigurationsregel** (**Regeln > Übersicht > Regel erstellen > Konfigurationsregel**) mit dem [Ausdruck der Überspringen-Regel](#add-a-skip-rule) hinzu und deaktivieren Sie **Ich werde angegriffen**.
+
+</details>
+
+Das Cloudflare-Plugin für WordPress kann die Regeln auf dieser Seite nicht hinzufügen. Nehmen Sie diese Änderungen im Cloudflare-Dashboard vor.
+
+## Eine Überspringen-Regel für die REST API hinzufügen {#add-a-skip-rule}
+
+Eine Überspringen-Regel nimmt Anfragen an die REST API Ihres Shops ausschließlich von den Cloudflare-Prüfungen aus, die Sie unten auswählen. WordPress prüft weiterhin jede Anmeldung und Berechtigung.
+
+:::note
+Bot Fight Mode im Free-Tarif ignoriert diese Regel. Wenn Bot Fight Mode die App blockiert, [deaktivieren Sie ihn](#bot-fight-mode) stattdessen.
+:::
+
+1. Öffnen Sie Ihre Website im Cloudflare-Dashboard, gehen Sie zu **Sicherheitsregeln** und wählen Sie **Regel erstellen > Benutzerdefinierte Regeln**.
+2. Geben Sie unter **Regelname** den Wert `WCPOS REST API` ein.
+3. Wählen Sie unter **Wenn eingehende Anfragen übereinstimmen** die Option **Ausdruck bearbeiten** und fügen Sie Folgendes ein:
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   Wenn WordPress in einem Unterordner liegt, etwa `https://example.com/shop`, verwenden Sie `/shop/wp-json/` und `/shop/` anstelle von `/wp-json/` und `/`.
+
+   <details>
+   <summary>Welche Anfragen der Ausdruck erfasst</summary>
+
+   Die erste Hälfte erfasst die normale Adresse der API, `/wp-json/`. Die zweite Hälfte erfasst die Ausweichadresse `/?rest_route=/`, und zwar nur unter der Startadresse der Website. So bleibt eine Seite geschützt, deren Link zufällig `rest_route=` enthält.
+
+   </details>
+
+4. Wählen Sie unter **Dann folgende Aktion ausführen** die Option **Überspringen**.
+5. Wählen Sie aus, was die Regel überspringt. Aktivieren Sie immer diese Optionen:
+   - **Alle verbleibenden benutzerdefinierten Regeln**, damit Ihre anderen benutzerdefinierten Regeln die App weder zu einer Prüfung auffordern noch blockieren.
+   - **Sicherheitsstufe**. Wenn der Angriffsmodus aktiviert ist, fügen Sie auch die zugehörige [Konfigurationsregel](#under-attack) hinzu.
+
+   Aktivieren Sie diese Optionen nur, wenn sie zutreffen:
+   - **Alle Super Bot Fight Mode-Regeln**, wenn Super Bot Fight Mode aktiviert ist.
+   - **Alle verwalteten Regeln**, wenn das Ereignisprotokoll bei den Anfragen der App im Feld **Dienst** den Wert **Verwaltete Regeln** anzeigt. Wenn Sie kein passendes Ereignis gefunden haben, lassen Sie die Option deaktiviert und lesen Sie [Weiterhin blockiert?](#still-blocked).
+
+   Lassen Sie die mit **(Vorherige Version)** gekennzeichneten Einträge deaktiviert.
+6. Wählen Sie **Bereitstellen**. Wenn andere benutzerdefinierte Regeln Besucher zu einer Prüfung auffordern oder blockieren, ziehen Sie diese Regel in der Liste **Sicherheitsregeln** darüber. Verwaltete Regeln werden immer nach benutzerdefinierten Regeln ausgeführt, ihre Reihenfolge spielt hier also keine Rolle.
+
+Verbinden oder synchronisieren Sie die App, um zu prüfen, ob sie jetzt durchkommt. Zur Prüfung am Computer führen Sie die [Prüfung im Terminal](#check) aus: Die Antwort sollte `200` mit `content-type: application/json` lauten und keine Zeile mit `cf-mitigated` enthalten.
+
+### Wenn Bot Fight Mode aktiviert ist {#bot-fight-mode}
+
+Bot Fight Mode im Free-Tarif ignoriert Überspringen- und Zulassen-Regeln. Laut Cloudflares eigener Dokumentation können benutzerdefinierte Regeln und Seitenregeln ihn nicht umgehen. Wenn **Bot Fight Mode** aktiviert ist und die App nach dem Hinzufügen der Überspringen-Regel weiterhin blockiert wird, deaktivieren Sie Bot Fight Mode unter **Sicherheit > Einstellungen** mit dem Filter **Bot-Datenverkehr**. Testen Sie dann die App oder führen Sie die [Prüfung](#check) erneut aus. Um den Bot-Schutz beizubehalten, wechseln Sie zum Pro-Tarif und verwenden Sie **Super Bot Fight Mode**: Die obige Überspringen-Regel nimmt die App davon aus. Wenn Bot Fight Mode bereits deaktiviert ist, lesen Sie [Weiterhin blockiert?](#still-blocked).
+
+## Am Computer prüfen {#check}
+
+Diese Prüfung ist optional. Sie zeigt von Ihrem eigenen Computer aus, ob Cloudflare anstelle Ihres Shops antwortet – vor oder nach der Behebung.
+
+<details>
+<summary>Mit einem Terminal prüfen</summary>
+
+Öffnen Sie ein Terminal (Terminal auf dem Mac, PowerShell unter Windows) und führen Sie den folgenden Befehl aus. Ersetzen Sie dabei `your-store.com` durch die Adresse Ihres Shops. Geben Sie unter Windows `curl.exe` anstelle von `curl` ein.
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+Lesen Sie die ersten Zeilen der Antwort:
+
+- **`403` und `cf-mitigated: challenge`:** Cloudflare blockiert die App. [Ermitteln Sie die Funktion](#which-feature), die dafür verantwortlich ist.
+- **`200` und `content-type: application/json`:** Dieser Computer ist durchgekommen. Versuchen Sie, die App zu verbinden oder zu synchronisieren. Wenn die App weiterhin blockiert wird, behandelt Cloudflare sie möglicherweise anders als Ihren Computer. Prüfen Sie die oben genannten Funktionen und lesen Sie anschließend [Plugin-Konflikte](./plugin-conflicts.mdx).
+- **`404`:** Die REST API ist nicht unter dieser Adresse erreichbar. Websites ohne sprechende Permalinks verwenden eine andere Adresse. Führen Sie die Prüfung erneut mit `'https://your-store.com/?rest_route=/'` aus (behalten Sie die Anführungszeichen bei).
+
+Wenn WordPress in einem Unterordner liegt, geben Sie diesen mit an: `https://example.com/shop/wp-json/`.
+
+</details>
+
+<details>
+<summary>Wie die Desktop-App die Prüfung besteht</summary>
+
+Die App kommuniziert mit der REST API Ihres Shops, dem Teil von WordPress, der Apps mit Daten antwortet. Ein Webbrowser besteht die Cloudflare-Prüfung, ohne dass Sie etwas davon bemerken; eine App kann das normalerweise nicht. Wenn Cloudflare mit einer Prüfung statt mit Daten antwortet, öffnet die Desktop-App ein verborgenes Browserfenster und versucht, die Prüfung selbstständig zu bestehen. Wenn Cloudflare ein Kontrollkästchen verlangt, wird das Fenster sichtbar und wartet zwei Minuten. Cloudflare lässt die App dann für die unter **Gültigkeitsdauer der bestandenen Prüfung** festgelegte Zeit durch (standardmäßig 30 Minuten). Danach erscheint die Prüfung erneut. Die iPad-, iPhone- und Android-Apps haben kein solches Fenster.
+
+</details>
+
+## Das Caching der API durch Cloudflare verhindern {#caching}
+
+Cloudflare kann auch Kopien der Antworten der REST API speichern. Die App zeigt dann veraltete Produkte, Preise und Bestellungen an. Die Überspringen-Regel ändert daran nichts: Sie deaktiviert nur Sicherheitsprüfungen. Wenn Sie HTML-Seiten zwischenspeichern oder Automatic Platform Optimization (APO) verwenden, fügen Sie eine **Cache-Regel** mit demselben Ausdruck hinzu und setzen Sie sie auf **Cache umgehen**.
+
+## Weiterhin blockiert? {#still-blocked}
+
+- Öffnen Sie die Überspringen-Regel und prüfen Sie, ob sie bereitgestellt wurde und nicht nur als Entwurf gespeichert ist (**Als Entwurf speichern**).
+- Prüfen Sie, ob eine **IP-Zugriffsregel** die Internetverbindung der Filiale blockiert oder zu einer Prüfung auffordert.
+- Kein Ereignis für die App im Protokoll **Ereignisse**? Bevor Sie verwaltete Regeln überspringen, wenden Sie sich mit dem Ergebnis der [Prüfung im Terminal](#check) an den unten genannten Support.
+- Andere Dienste, die Ihrer Website vorgeschaltet sind, können die App auf dieselbe Weise blockieren. Informationen zu Sicherheits-Plugins und Firewalls finden Sie unter [Plugin-Konflikte](./plugin-conflicts.mdx#server-level-conflicts), Hinweise zu GoDaddy, WP Engine und anderen Hosting-Anbietern in den [Hosting-Hinweisen](../performance/server.mdx#hosting-specific-notes).
+
+## Weiterführende Dokumentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="HOST121" to="/error-codes/HOST121" description="Der Fehler, den die App anzeigt, wenn eine Sicherheitsprüfung anstelle Ihres Shops antwortet." />
+  <LinkCard title="Plugin-Konflikte" to="/troubleshooting/common-problems/plugin-conflicts" description="Sicherheits-Plugins und Firewalls, die die App blockieren." />
+  <LinkCard title="Server" to="/troubleshooting/performance/slow-server" description="Hosting-Hinweise und Anforderungen an Ihren Server." />
+</LinkCards>
+
+<SupportContact />

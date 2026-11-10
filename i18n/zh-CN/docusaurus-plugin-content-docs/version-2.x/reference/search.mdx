@@ -1,0 +1,166 @@
+---
+title: 搜索匹配
+slug: /developers/search-matching
+sidebar_label: 搜索匹配
+sidebar_position: 8
+description: "了解 WCPOS 各搜索框搜索的字段、输入词的匹配方式、电话号码搜索，以及用于店铺自定义字段的 wcpos_search_fields 过滤器。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/search/en/manifest.json';
+
+输入你记得的每个词中的几个字母，顺序不限：列表只保留包含所有这些内容的结果。本页介绍各搜索框搜索的内容、店铺搜索与设备搜索的区别，以及开发者如何添加自定义字段。找不到内容？请参阅[搜索没有结果时](#goes-wrong)。
+
+各搜索框搜索的内容：[商品](#products) · [订单](#orders) · [客户](#customers) · [优惠券](#coupons) · [分类、标签和品牌](#category-tag-brand) · [电话号码](#phone-numbers)
+
+## 输入词的匹配方式 {#how-a-search-is-matched}
+
+- **每个词都必须匹配。** 空格将搜索内容分隔为多个词。每个词都必须出现在[下方列出的](#what-each-screen-searches)商品、订单或客户信息中，词的顺序不限。`shirt lovelace` 可以找到 Ada Lovelace 的一笔包含衬衫的订单。
+- **可以匹配词的任意部分。** `saippua` 可以找到 `Kuorintasaippua`，`jo` 可以找到 `Bjorn`。除日志页面外，没有最短长度限制。
+- **不区分大小写或重音符号。** `creme` 可以找到 `Crème`。
+- **保留词内的标点符号。** `0.4`、`K-2`、`3/4` 和完整的电子邮箱地址各自都视为一个词，不会在点号或连字符处拆分。
+
+例如：
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[170, 0], [0, 0], [-60, 0]]} alt="商品面板的搜索框中输入了 wat aim，显示一个 Aim Analog Watch 商品卡片，下方的计数为 1 件商品">
+
+1. **搜索商品** — `wat aim` 是两个词。每个词都是商品名称中某个词的一部分，且输入顺序与名称中的顺序相反。
+2. **Aim 指针式手表** — 唯一包含这两个词的商品。
+3. **… 件商品** — 匹配的商品数量。**有货** 选项启用时，不计入缺货商品；请参阅[搜索与筛选](../pos/product-panel/search-filtering.mdx#no-match)。
+
+</JourneyShot>
+
+停止输入片刻后，列表就会更新。清空搜索框即可恢复显示全部内容。来自店铺的结果也遵循这些规则，但有[少许区别](#device-and-store)。
+
+<details>
+<summary>例外：日志搜索和词前后的标点符号</summary>
+
+- **日志。** 在[日志](../support/logs.mdx)页面，少于三个字母的词不会参与搜索。
+- **词前后的标点符号。** 请省略这些符号：括号、引号、订单号前的 `#`，以及词后的逗号或句号。设备会忽略这些符号（`(shirt)` 可以找到 `shirt`，`#4120` 可以找到订单 4120），但店铺会按输入的原样搜索，因此在店铺端，`#4120` 无法找到订单 4120。
+
+</details>
+
+## 电话号码 {#phone-numbers}
+
+输入电话号码时仅输入数字，不要包含空格、括号或连字符。无论已保存的号码采用何种格式，搜索都会将输入的数字与其中的数字进行比较：
+
+- `0412` 可以找到 `(04) 1234 5678`。
+- `412345` 可以找到 `+61 412-345-678`。
+- `0412` **无法** 找到 `+61 412 345 678`。
+
+国家代码和开头的 `0` 不会相互转换：`0412` 和 `+61 412` 的数字不同。
+
+## 各搜索框搜索的内容 {#what-each-screen-searches}
+
+### 商品 {#products}
+
+在商品面板和商品页面中：
+
+- 名称、SKU 和条形码。
+- 当可变商品的某个变体通过 SKU 或条形码匹配时，该商品也会显示。
+
+条形码取自店铺用于存储条形码的字段；请参阅[条形码字段](../settings/wp-admin/general.mdx#barcode-field)。条形码 **扫描** 不是搜索：它会查找完全相同的条形码，并将商品添加到购物车。请参阅[条形码扫描](../pos/product-panel/barcode-scanning.mdx)。
+
+### 订单 {#orders}
+
+在订单页面中：
+
+- **订单：** 订单号。
+- **账单：** 名、姓、公司、电子邮箱、电话。
+- **配送：** 名、姓、公司、电话。
+- **商品：** 每个订单项的名称和 SKU。
+
+订单项按 **售出时的名称** 匹配，因此即使商品重命名，仍能找到订单。搜索范围包含收货人的姓名，因为配送或线上下单到店自提的订单经常按取货人查找，而取货人并不总是付款人。
+
+### 客户 {#customers}
+
+在客户页面和购物车的客户搜索中：
+
+- **客户：** 名、姓、电子邮箱、用户名、税号。
+- **账单：** 名、姓、公司、电子邮箱、电话。
+- **配送：** 名、姓、公司、电话。
+
+### 优惠券 {#coupons}
+
+在优惠券页面和购物车的优惠券搜索中：
+
+- 代码和描述。
+
+### 分类、标签和品牌 {#category-tag-brand}
+
+在分类、标签和品牌筛选列表中：
+
+- 名称。
+
+## 设备端与店铺端的搜索 {#device-and-store}
+
+搜索会先查找设备上已有的数据，因此结果会立即显示。对于 **商品**、**客户** 和 **订单**，搜索还会查询店铺，所以尚未下载到此设备的记录也能找到。**优惠券** 以及 **分类**、**标签** 和 **品牌** 列表仅在设备上搜索。离线时，所有搜索都只能找到设备上已有的数据。
+
+店铺按照相同规则匹配相同字段，但有少许区别。
+
+<details>
+<summary>订单号、客户姓名、订单项 SKU 和较长搜索内容的区别</summary>
+
+- **订单号。** 店铺会查找号码完全一致的订单，也会匹配连续订单号插件分配的号码。设备还会查找包含所输入数字的号码：在设备上，`412` 可以找到订单 4120。
+- **客户显示名称。** 店铺还会匹配 WordPress 为客户显示的名称。
+- **订单项 SKU。** 店铺匹配商品当前的 SKU；设备匹配上次下载订单时该订单项的 SKU。
+- **较长的搜索内容。** 店铺最多逐一匹配十个词。建议每次搜索只输入几个词。
+
+</details>
+
+## 搜索没有结果时 {#goes-wrong}
+
+- **没有返回任何结果** — 检查每个词是否拼写有误：只要有一个词没有匹配项，所有结果都会被隐藏。删除一个词后重试。
+- **找不到电话号码** — 按号码保存时的数字输入，仅输入数字。如果保存的号码不含国家代码，搜索时也不要输入；反之则应输入。
+- **处于离线状态** — 只能找到设备上已有的记录。请参阅[店铺健康状况 → 数据库](../support/store-health.mdx#coverage)，了解此设备上已有多少数据。
+- **在[日志](../support/logs.mdx)页面** — 少于三个字母的词不会参与搜索。
+- **商品列表仍然很短** — 仍有筛选条件处于启用状态。请参阅[搜索与筛选](../pos/product-panel/search-filtering.mdx#no-match)。
+
+## 面向开发者：更改可搜索字段 {#developers}
+
+<details>
+<summary>为何没有相关设置，以及如何添加自定义字段</summary>
+
+### 为何没有搜索字段设置 {#why-there-is-no-setting}
+
+上述字段在 POS 和 WP Admin 中都是固定的。只有当输入的词出现在记录的某个字段中时，该字段才会匹配，因此搜索更多字段不会返回错误结果，而固定的字段列表能确保设备和店铺搜索相同的字段。店铺添加的字段（例如会员编号）可由开发者通过一个过滤器加入搜索范围。
+
+### 店铺如何匹配 {#store-matching}
+
+- **订单号** 会与 WooCommerce 订单 ID，以及连续订单号插件写入的 `_order_number` 和 `_order_number_formatted` 元数据进行匹配。
+- **大小写和重音符号** 由数据库排序规则处理。WordPress 的默认排序规则会忽略两者，因此 `creme` 仍能找到 `Crème`。
+
+### 添加自定义字段 {#adding-a-custom-field}
+
+`wcpos_search_fields` 接收集合的搜索声明和集合标识。在 WCPOS 2.0 之前，此过滤器名为 `woocommerce_pos_search_fields`；该名称仍可使用，但从 2.0 起已弃用，最早将在 2.2 中移除（请参阅[钩子命名](../extensions/index.mdx#hook-naming)）。要通过存储在用户元数据中的会员编号找到客户：
+
+```php
+add_filter( 'wcpos_search_fields', function ( array $search, string $collection ) {
+	if ( 'customers' === $collection ) {
+		$search['meta'][] = 'loyalty_number';
+	}
+	return $search;
+}, 10, 2 );
+```
+
+对于订单，请将字段追加到 `$search['posts']['meta']`；使用旧版存储时会在文章元数据中搜索该键，使用 HPOS 时则在订单元数据表中搜索。
+
+为 **客户** 或 **订单** 添加的键会同时在两端搜索：店铺会在查询中匹配它，POS 也会将其纳入设备上的搜索，因为 `wcpos/v2/site` 会发布店铺添加的键。有三项限制：
+
+- 只有 **不以下划线开头** 的键才会传到设备。`_private` 这样的键仅在店铺端搜索。
+- 之后添加的键会在 POS 下次启动时传入：即重新加载浏览器页面或重新打开应用时。
+- 为 **商品** 或 **变体** 添加的键(`$search['posts']['meta']`)仅在店铺端搜索。
+
+请按收银员输入时的形式保存字段值，号码则保存为数字：过滤器只是将字段添加到列表中，不会改变词的匹配方式。
+
+</details>
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/find-products/search-products" title="搜索与筛选" description="查找商品并缩小列表范围" />
+  <LinkCard to="/manage-store/customers" title="客户" description="查找和编辑客户" />
+  <LinkCard to="/manage-store/orders" title="订单" description="查找订单并执行操作" />
+</LinkCards>

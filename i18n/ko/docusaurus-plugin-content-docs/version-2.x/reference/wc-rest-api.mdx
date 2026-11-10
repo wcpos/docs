@@ -1,0 +1,230 @@
+---
+title: WooCommerce REST API
+slug: /developers/woocommerce-rest-api
+sidebar_label: "WooCommerce REST API"
+sidebar_position: 1
+description: "WCPOS가 WooCommerce REST API를 통해 매장 데이터를 읽는 방식, JSON 탭에서 POS에 저장된 데이터를 확인하는 방법, 가격이나 상품을 실시간으로 변경하는 플러그인의 변경 사항이 POS에 반영되지 않는 이유를 알아봅니다."
+---
+
+import LocalizedSVG from '@site/src/components/LocalizedSVG';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/reference/wc-rest-api/en/manifest.json';
+
+POS의 정보가 매장과 일치하지 않을 때 이 페이지를 참고하세요. 문제가 있는 항목부터 확인하세요:
+
+- **상품의 가격, 재고 수량 또는 사용자 정의 필드:** [상품 확인](#check-a-product)을 참고하세요. **상품**, **주문**, **고객**, **쿠폰** 화면과 마찬가지로 [WCPOS Pro](../getting-started/pro-license.mdx)가 필요합니다.
+- **장바구니의 주문:** [장바구니의 주문 확인](#check-the-order)을 참고하세요. Pro 없이도 사용할 수 있습니다.
+- **각인 등 개별 항목의 사용자 정의 필드:** [개별 항목 확인](#check-a-line)을 참고하세요. Pro 없이도 사용할 수 있습니다.
+- **플러그인의 변경 사항이 POS에 전혀 표시되지 않는 경우:** [일부 플러그인이 POS에 영향을 주지 않는 이유](#why-dont-some-plugins-work-in-the-pos)를 참고하세요.
+
+<details>
+<summary>POS가 매장과 통신하는 방식</summary>
+
+POS는 다른 앱이 매장과 통신하는 것과 같은 방식으로 **WooCommerce REST API**를 통해 모든 정보를 가져옵니다. 계산대의 POS가 매장에 상품과 고객 정보를 요청하면 매장은 **JSON**(각 필드를 이름별로 나열하는 일반 텍스트)으로 응답하고, POS는 각 판매를 WooCommerce 주문으로 매장에 다시 전송합니다.
+
+<LocalizedSVG svgName="wc-rest-api" />
+
+그림에서 **내 매장**은 계산대가 있는 실제 매장이며, **데이터 센터**는 WooCommerce 사이트가 실행되는 서버입니다. 계산대에서 사이트로 요청을 보내면 JSON 응답이 돌아옵니다.
+
+</details>
+
+## POS가 매장에서 가져오는 정보 {#what-the-pos-gets}
+
+- **API가 제공되어야 합니다.** 매장을 연결할 때 POS는 사이트에서 WooCommerce REST API를 제공하는지 확인합니다. 제공하지 않으면 [AUTH321: WooCommerce 없음](../error-codes/AUTH321.mdx) 오류와 함께 연결이 중단됩니다.
+- **기기에 저장하는 사본.** POS는 상품과 상품 변형, 카테고리, 태그와 브랜드, 고객, 세율, 쿠폰, 주문을 다운로드하고 기기에 사본을 저장합니다. 검색과 판매 시 이 사본을 읽으므로 POS가 빠르게 작동하며 인터넷 연결이 끊겨도 계속 사용할 수 있습니다.
+- **판매는 주문으로 전송됩니다.** POS에서 처리한 판매, 새 고객 등록, 상품 수정은 매장으로 전송되어 WooCommerce에 저장됩니다. 각 판매는 **WooCommerce > 주문**에서 열어 볼 수 있는 일반 WooCommerce 주문이 됩니다.
+- **변경 사항은 백그라운드에서 반영됩니다.** POS는 실행 중에 매장의 변경 사항을 확인하므로 WP Admin에서 수정한 내용이 재시작 없이 POS에 반영됩니다. 자세한 방식은 [동기화 엔진의 작동 방식](./sync-engine.mdx)을 참고하세요.
+
+<details>
+<summary>개발자용: POS가 호출하는 경로</summary>
+
+REST API는 상품, 주문, 고객, 쿠폰 등 매장 데이터의 각 유형에 `/wp-json/` 아래의 고유 주소를 부여합니다. WooCommerce 자체 경로는 `wc/v3` 아래에 있습니다.
+
+WCPOS 플러그인은 매장에 자체 `wcpos/v2` 경로를 추가합니다. 이 경로는 사이트 내부에서 읽기 요청과 POS의 변경 사항을 WooCommerce의 `wc/v3` API에 전달하므로 POS는 다른 WooCommerce 앱과 동일한 필드를 받고 WooCommerce는 각 주문을 저장합니다. Pro의 [매장별 가격](../stores/setup.mdx#per-store-pricing)과 일부 확장 기능은 POS가 받는 값을 변경합니다. 결제, 판매 완료, 계산대, 세션에는 플러그인 자체 경로를 사용합니다. [REST API](./architecture.mdx#api-extensions)를 참고하세요.
+
+</details>
+
+## POS에 저장된 데이터 보기 {#viewing-the-json-data-in-the-pos}
+
+개별 레코드를 보여 주는 모든 패널에는 **양식** 옆에 **JSON** 탭이 있습니다. 상품, 상품 변형, 고객, 쿠폰, 주문, 장바구니의 **주문 상세 정보**, 장바구니 항목의 **편집** 대화 상자가 이에 해당합니다. 이 탭에는 기기에 저장된 레코드가 WooCommerce의 JSON 형식으로 표시됩니다. 판매할 때 꼭 사용할 필요는 없습니다.
+
+상품을 확인하려면 [WCPOS Pro](../getting-started/pro-license.mdx)가 필요합니다. 장바구니와 개별 항목의 **JSON** 탭은 모든 POS에서 사용할 수 있습니다.
+
+### 상품 확인 {#check-a-product}
+
+상품의 **JSON** 탭을 열고 [가격](#read-price), [재고 수량](#read-stock) 또는 [사용자 정의 필드](#read-meta-data)를 읽어 매장의 WordPress 알림판인 WP Admin의 상품과 비교하세요. WP Admin에 로그인할 수 없다면 값을 기록한 뒤 매장 운영자에게 비교를 요청하세요.
+
+1. 메뉴에서 **상품**을 열고 상품을 검색하세요.
+2. 해당 행 끝의 열기 화살표(›)를 누르세요. **양식** 탭이 선택된 패널이 열립니다.
+3. **JSON**을 누르세요.
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[0, 0], [0, 0], [0, -34], [0, -34]]} alt="Aim Analog Watch를 검색한 상품 화면에서 양식 탭으로 열린 패널: 이름, 정상 가격, SKU, 바코드, 재고 및 기타 필드가 표시되고 하단에 동기화와 닫기가 있음">
+
+1. **양식** — POS에서 변경할 수 있는 필드입니다. 패널을 열면 이 탭이 표시됩니다.
+2. **JSON** — POS에 저장된 상품 정보입니다.
+3. **동기화** — 매장에서 이 상품을 다시 가져옵니다. **양식** 탭에만 있습니다.
+4. **닫기** — 패널을 닫습니다. 상단의 **✕** 도 같은 기능을 합니다.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={2} offsets={[[140, 0], [100, 0]]} maxWidth={360} alt="Aim Analog Watch JSON의 상단: 73개 항목 다음에 id 67038, name, slug가 표시됨">
+
+1. **73개 항목** — 매장이 이 상품에 대해 전송한 필드 수입니다.
+2. **id** — WooCommerce에서 사용하는 상품 ID입니다.
+
+</JourneyShot>
+
+`categories`나 `meta_data`처럼 다른 필드를 포함하는 필드는 처음에는 접혀 있습니다. 눌러서 펼치세요. 나머지는 스크롤하여 확인하세요.
+
+#### 가격 {#read-price}
+
+`price`까지 아래로 스크롤하세요. 이 값과 `regular_price`, `sale_price`를 WP Admin의 해당 상품에 있는 **상품 데이터 > 일반**과 비교하세요. 상품에 이 매장만의 가격이 설정되어 있다면([매장별 가격](../stores/setup.mdx#per-store-pricing)) 같은 탭에 있는 해당 매장 가격과 비교하세요.
+
+<JourneyShot manifest={manifest} device="tablet" step={3} offsets={[[93, 0], [165, 0], [121, 0]]} maxWidth={360} alt="Aim Analog Watch JSON의 가격 필드 부분: price 45, regular_price 45, 비어 있는 sale_price">
+
+1. **price** — 현재 상품 판매 가격입니다. 할인 기간에는 할인 가격이며, 그 외에는 정상 가격입니다.
+2. **regular_price** — 할인을 적용하지 않은 가격입니다.
+3. **sale_price** — 상품에 할인 가격이 없으면 비어 있습니다.
+
+</JourneyShot>
+
+#### 재고 수량 {#read-stock}
+
+`stock_quantity`까지 아래로 스크롤하세요. `manage_stock`이 `true`일 때만 숫자가 들어 있으며, 그 외에는 `null`(비어 있음)입니다. **상품 데이터 > 재고**와 비교하세요.
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[195, 0], [160, 0]]} maxWidth={360} alt="Aim Analog Watch JSON의 재고 필드 부분: manage_stock true와 stock_quantity 85">
+
+1. **manage_stock** — `true`: WooCommerce가 이 상품의 재고 수량을 관리합니다.
+2. **stock_quantity** — POS에 저장된 수량입니다. **양식** 탭과 동일하게 `85`입니다.
+
+</JourneyShot>
+
+#### 사용자 정의 필드 또는 플러그인 데이터 {#read-meta-data}
+
+`meta_data`까지 아래로 스크롤하여 누른 뒤 항목을 누르세요. 이 확대 화면은 휴대전화에서 촬영한 것으로, 긴 값은 두 번째 줄로 이어집니다.
+
+<JourneyShot manifest={manifest} device="phone" step={5} offsets={[[168, 0], [254, 0], [97, 18]]} maxWidth={360} alt="휴대전화에서 본 Aim Analog Watch JSON: meta_data가 펼쳐져 1개 항목이 표시되고, 첫 번째 항목이 펼쳐져 key인 _woocommerce_pos_uuid와 두 줄로 표시된 value가 보임">
+
+1. **meta_data** — 상품의 사용자 정의 필드로, 필드마다 항목이 하나씩 있습니다.
+2. **key** — 필드의 이름입니다.
+3. **value** — 필드에 저장된 값입니다.
+
+</JourneyShot>
+
+#### 값이 WP Admin과 일치하지 않는 경우 {#value-differs}
+
+**양식**을 누른 다음 **동기화**를 눌러 상품을 다시 가져오세요.
+
+- **새로 고칠 수 없음이 표시되는 경우:** 기기가 기존 사본을 유지한 상태입니다. 연결을 확인하고 다시 시도하세요.
+- **오류가 표시되지 않는데 값이 여전히 다른 경우:** 현재 POS에는 매장 API가 전송한 값이 저장되어 있습니다. 플러그인이 웹사이트에서만 값을 변경하고 있을 수 있습니다. [일부 플러그인이 POS에 영향을 주지 않는 이유](#why-dont-some-plugins-work-in-the-pos)를 참고하세요.
+
+### 장바구니의 주문 확인 {#check-the-order}
+
+1. **결제** 옆의 **⋮** 를 누르세요. **주문 상세 정보**가 열립니다.
+2. **JSON**을 누르세요.
+
+<JourneyShot manifest={manifest} device="tablet" step={6} offsets={[[190, 0], [-22, 0]]} alt="장바구니에 Aim Analog Watch 하나가 담긴 POS: 소계와 세금, 결제 $45.00 옆의 ⋮ 버튼이 표시됨">
+
+1. **장바구니 항목** — 각 항목의 **편집** 대화 상자에는 별도의 **JSON** 탭이 있습니다. [개별 항목 확인](#check-a-line)을 참고하세요.
+2. **⋮** — 전체 주문의 **주문 상세 정보**를 엽니다.
+
+</JourneyShot>
+
+<JourneyShot manifest={manifest} device="tablet" step={7} offsets={[[0, 0], [250, 0], [235, 0], [140, 0], [0, -34], [0, -34], [0, -34]]} maxWidth={520} alt="JSON 탭에서 본 해당 장바구니의 주문 상세 정보: status pos-open, created_via woocommerce-pos, 1개 항목이 있는 line_items, total 45 및 기타 주문 필드가 표시되고 하단에 무효화, 닫기, 인쇄, 주문 동기화가 있음">
+
+1. **JSON** — 모든 패널에서와 마찬가지로 **양식** 옆에 있습니다.
+2. **status** — POS에서 주문이 열려 있는 동안에는 `pos-open`입니다. 이 상태는 WCPOS 플러그인이 제공하며, WooCommerce에서는 **POS - 열림**으로 표시됩니다.
+3. **line_items** — 장바구니에 담긴 상품입니다. 눌러서 각 항목을 펼치세요.
+4. **total** — 세금을 포함한 주문 합계입니다.
+5. **주문 동기화** — 주문을 지금 매장으로 전송합니다. 새 주문은 매장에 저장되기 전까지 JSON에 `id`가 없습니다. [주문 동기화](../pos/cart/order-actions.mdx#sync-order)를 참고하세요.
+6. **인쇄** — 주문을 인쇄합니다.
+7. **무효화** — 주문을 삭제하고 장바구니를 비웁니다. [주문 무효화](../pos/cart/order-actions.mdx#void)를 참고하세요.
+
+</JourneyShot>
+
+시계 하나가 담긴 다른 장바구니에서 같은 필드를 확대한 화면입니다:
+
+<JourneyShot manifest={manifest} device="tablet" step={9} offsets={[[142, 0], [200, 0], [91, 0]]} maxWidth={360} alt="Aim Analog Watch 하나가 담긴 다른 장바구니의 주문 JSON 확대 화면: status pos-open, created_via woocommerce-pos, 1개 항목이 있는 line_items, total 45">
+
+1. **status** — `pos-open`으로 표시됩니다. POS에서 주문이 아직 열려 있다는 뜻입니다.
+2. **line_items** — `1 item`: 장바구니에 담긴 시계 하나입니다.
+3. **total** — `45`: 세금을 포함하여 $45.00인 시계 하나입니다.
+
+</JourneyShot>
+
+### 개별 항목 확인 {#check-a-line}
+
+항목의 **JSON** 탭은 매장의 상품 레코드가 아니라 WooCommerce 주문에 저장될 항목 정보를 보여 줍니다. 각인 등 항목의 사용자 정의 필드를 확인할 때 사용하세요.
+
+1. 항목의 합계를 누르면 **편집**과 **제거**가 표시됩니다. 다른 방법은 [항목 편집 또는 제거](../pos/cart/line-items.mdx#remove-item)를 참고하세요.
+2. **편집**을 누른 다음 **JSON**을 누르세요.
+3. `meta_data`를 눌러 항목의 사용자 정의 필드를 펼친 뒤, 항목을 눌러 `key`와 `value`를 확인하세요.
+
+<JourneyShot manifest={manifest} device="tablet" step={8} offsets={[[0, 0], [196, 0], [175, 0], [262, -2], [166, 8], [168, 0]]} maxWidth={520} alt="장바구니 항목의 Aim Analog Watch 편집 대화 상자에 있는 JSON 탭: 13개 항목, product_id 67038, name, quantity 1, sku가 표시되고 meta_data에는 2개 항목이 펼쳐져 있으며, 첫 번째 항목의 key _woocommerce_pos_data와 value가 펼쳐져 있고 그 아래에 price, total, taxes가 있음">
+
+1. **JSON** — 항목의 **편집** 대화 상자에서 **양식** 옆에 있습니다.
+2. **name** — 이 항목에 저장된 상품 이름입니다. 아래의 `quantity`, `price`와 함께 상품 레코드가 아닌 이번 판매의 정보를 나타냅니다.
+3. **meta_data** — 항목의 사용자 정의 필드입니다. 여기에는 2개 항목이 있습니다.
+4. **key** — 필드의 이름입니다. `_woocommerce_pos_data`는 WCPOS가 항목의 가격, 정상 가격, 세금 상태를 저장하는 곳입니다.
+5. **value** — 필드에 저장된 값입니다. 접힌 값을 눌러 펼치세요.
+6. **price** — 상품 하나의 세전 가격으로, 여기서는 `40.106952`입니다. 항목의 세금인 `total_tax` `4.893048`을 더하면 장바구니에 표시된 $45.00가 됩니다.
+
+</JourneyShot>
+
+<details>
+<summary>브라우저에서 요청 확인</summary>
+
+웹 앱에서는 브라우저 개발자 도구로 POS와 매장 사이의 통신을 확인할 수 있습니다:
+
+1. Chrome, Edge 또는 Firefox에서 POS를 여세요.
+2. **F12**(Mac에서는 **Option + Command + I**)를 누르고 **네트워크** 탭을 선택하세요.
+3. 필터 상자에 `wcpos`를 입력하세요.
+4. POS에서 검색, 상품 추가, 결제를 해 보세요. 매장이 응답하는 각 요청이 목록에 표시됩니다. 하나를 선택하고 **응답**을 선택하여 JSON을 읽으세요.
+
+</details>
+
+## 일부 플러그인이 POS에 영향을 주지 않는 이유 {#why-dont-some-plugins-work-in-the-pos}
+
+POS는 매장 데이터의 사본을 바탕으로 작동합니다. 웹 페이지에 표시되는 내용만 바꾸거나 고객이 웹사이트를 둘러보는 동안 값을 계산하는 플러그인의 변경 사항은 이 사본에 반영되지 않습니다. POS는 REST API가 전송하는 정보만 볼 수 있습니다. 주로 다음 세 유형의 플러그인에서 이런 문제가 발생합니다.
+
+### 동적 가격 책정 {#dynamic-pricing}
+
+고객별, 역할별 또는 수량별로 가격을 설정하는 플러그인입니다.
+
+- **POS에서의 동작:** POS에는 상품의 정상 가격이 표시됩니다. 이러한 플러그인 대부분은 고객이 웹사이트를 둘러보는 동안 가격을 계산하므로 API가 해당 가격을 전송하지 않습니다.
+- **대처 방법:** [POS 할인](../pos/cart/discounts.mdx)이나 쿠폰을 사용하세요.
+
+### 상품 추가 옵션 {#product-add-ons}
+
+선물 포장이나 각인 같은 옵션을 상품에 추가하는 플러그인입니다.
+
+- **POS에서의 동작:** 옵션이 표시되지 않습니다. 이러한 플러그인 대부분은 상품 페이지에서 옵션을 생성하므로 API가 전송하는 상품 정보에 포함되지 않습니다.
+- **대처 방법:** 추가 비용은 [수수료](../pos/cart/index.mdx#fees)로 추가하고, 세부 내용은 항목의 [사용자 정의 필드](../pos/cart/line-items.mdx#meta-data)에 추가하세요.
+
+### API를 변경하는 플러그인 {#api-changing-plugins}
+
+매장이 REST API를 통해 전송하는 내용을 변경하는 플러그인입니다.
+
+- **POS에서의 동작:** POS가 제대로 작동하지 않을 수 있습니다. wePOS는 매장에서 옵션 상품을 전송하는 방식을 변경하므로 wePOS가 활성화되어 있는 동안 WCPOS는 자체적으로 비활성화됩니다.
+- **대처 방법:** [wePOS](../integrations/index.mdx#wepos)를 참고하세요.
+
+상품, 고객 또는 주문에 사용자 정의 필드로 데이터를 저장하는 플러그인의 정보는 일반적으로 POS에도 전달됩니다. **JSON** 탭을 열고 `meta_data`에서 확인하세요.
+
+## 문제가 발생한 경우 {#goes-wrong}
+
+- **AUTH321 오류로 연결 실패** — 사이트에서 WooCommerce REST API를 제공하지 않고 있습니다. [AUTH321: WooCommerce 없음](../error-codes/AUTH321.mdx)을 참고하세요.
+- **POS의 가격이나 필드가 WP Admin과 일치하지 않음** — [값이 WP Admin과 일치하지 않는 경우](#value-differs)를 참고하세요.
+- **플러그인의 변경 사항이 POS에 전혀 표시되지 않음** — [일부 플러그인이 POS에 영향을 주지 않는 이유](#why-dont-some-plugins-work-in-the-pos)를 참고하세요.
+- **플러그인을 설치한 뒤 일부 기능이 작동하지 않음** — [플러그인 충돌](../support/troubleshooting/plugin-conflicts.mdx)을 참고하세요.
+
+## 관련 문서 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/developers/architecture" title="아키텍처" description="플러그인과 앱의 구성 및 연동 방식" />
+  <LinkCard to="/developers/sync-engine" title="동기화 엔진의 작동 방식" description="POS가 매장 데이터 사본을 최신 상태로 유지하는 방식" />
+  <LinkCard to="/manage-store/compatible-plugins" title="연동" description="WCPOS와 함께 사용할 수 있는 플러그인과 사용할 수 없는 두 가지 플러그인" />
+</LinkCards>
+
+개발자를 위해 WooCommerce는 [WooCommerce REST API 문서](https://woocommerce.github.io/woocommerce-rest-api-docs/)에서 모든 엔드포인트와 필드를 설명합니다.

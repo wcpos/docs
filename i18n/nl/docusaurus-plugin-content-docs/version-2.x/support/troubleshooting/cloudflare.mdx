@@ -1,0 +1,178 @@
+---
+title: Cloudflare
+slug: /troubleshooting/common-problems/cloudflare
+sidebar_label: Cloudflare
+sidebar_position: 4
+description: "Voorkom dat de beveiligingscontroles van Cloudflare de verbinding van de WCPOS-app met je winkel blokkeren."
+---
+
+import SupportContact from '@site/src/components/SupportContact';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+Bij sommige winkels loopt het verkeer via Cloudflare, dat bezoekers kan vragen een beveiligingscontrole te doorlopen. De WCPOS-app kan daar niet altijd aan voldoen en kan dan geen verbinding maken met je winkel of synchroniseren. De oplossing is een wijziging in Cloudflare, uitgevoerd door de winkeleigenaar of degene die het Cloudflare-account van de site beheert. Op deze pagina lees je welke instelling je moet wijzigen en hoe.
+
+- **Kassamedewerker:** zie [Aan de kassa](#at-the-till).
+- **Winkeleigenaar:** ga naar [Zoek de Cloudflare-functie die de app blokkeert](#which-feature).
+
+## Aan de kassa {#at-the-till}
+
+- **Venster met beveiligingscontrole in de desktop-app:** vink het vakje binnen twee minuten aan. De app gaat verder. Cloudflare vraagt dit na 30 minuten opnieuw, of na de tijd die de winkeleigenaar heeft ingesteld.
+- **HOST121 in de app voor iPad, iPhone of Android:** deze apps kunnen de controle van Cloudflare niet doorlopen. Ze blijven geblokkeerd totdat de winkeleigenaar de onderstaande wijziging doorvoert.
+- **Stuur in beide gevallen** deze pagina naar de winkeleigenaar. In de desktop-app kun je na de controle voorlopig verbinding maken, maar de controle komt later terug.
+
+**Winkeleigenaar:** begin bij [Zoek de Cloudflare-functie die de app blokkeert](#which-feature).
+
+## Signalen dat Cloudflare de app blokkeert {#how-to-recognise-it}
+
+- **"De hostingconfiguratie van deze winkel blokkeert de app"** op het verbindingsscherm, met foutcode [HOST121](../../error-codes/HOST121.mdx).
+- In de desktop-app verschijnt tijdens het verbinden of synchroniseren een klein venster met de titel **Beveiligingscontrole voor your-store.com**.
+
+<details>
+<summary>Andere signalen die de winkeleigenaar kan zien</summary>
+
+- **"Je winkel bevindt zich achter Cloudflare"** bovenaan **WP Admin > POS > Instellingen > Algemeen**. De plugin toont dit op elke site die via Cloudflare loopt, nog voordat er iets misgaat.
+- Afdrukken via de cloud stopt en op de printerkaart onder **WP Admin > POS > Instellingen > Afdrukken via de cloud** staat **"Een beveiligingsdienst (zoals Cloudflare of een firewallplugin) blokkeert WCPOS Cloud Print"**. De [relay](../../receipts/cloud-printing.mdx#relay) bereikt je winkel op dezelfde manier als de app, dus de onderstaande oplossing herstelt ook het afdrukken.
+- Oudere appversies meldden **"De site lijkt geen WordPress-site te zijn"** of **"Het duurde te lang voordat de site reageerde"** bij een winkel die in een browser gewoon opent.
+
+</details>
+
+## Zoek de Cloudflare-functie die de app blokkeert {#which-feature}
+
+De rest van deze pagina is bedoeld voor de winkeleigenaar. Open je site in het Cloudflare-dashboard en volg deze stappen:
+
+1. Ga naar **Beveiliging > Analyses** en selecteer het tabblad **Gebeurtenissen**. Zoek naar verzoeken aan `/wp-json/` rond het tijdstip waarop de app werd geblokkeerd. Het veld **Dienst** vermeldt welke functie ze heeft tegengehouden, zoals **Botbestrijdingsmodus** of **Beheerde regels**.
+2. Open hieronder de bijbehorende functie. Daar lees je waar de instelling staat en hoe je het probleem oplost.
+3. Geen bijbehorende gebeurtenis? Bij het gratis abonnement bevat het logboek alleen een steekproef van de verzoeken, dus die van de app kunnen ontbreken. Controleer in dat geval welke van de vier onderstaande functies is ingeschakeld.
+
+Wil je eerst bevestigen dat Cloudflare de oorzaak is? Gebruik dan de optionele [controle via de terminal](#check).
+
+<details>
+<summary>Botbestrijdingsmodus (gratis abonnement): schakel deze uit</summary>
+
+- Waar: **Beveiliging > Instellingen**, filter op **Botverkeer**.
+- Oplossing: schakel deze uit. Een overslaanregel kan de app hiervan niet vrijstellen ([waarom](#bot-fight-mode)).
+
+</details>
+
+<details>
+<summary>Superbotbestrijdingsmodus (Pro-abonnement en hoger): voeg een overslaanregel toe</summary>
+
+- Waar: **Beveiliging > Instellingen**, filter op **Botverkeer**.
+- Oplossing: [voeg een overslaanregel toe](#add-a-skip-rule).
+
+</details>
+
+<details>
+<summary>Aangepaste of beheerde regels die bezoekers een controle laten doorlopen: voeg een overslaanregel toe</summary>
+
+- Waar: **Beveiligingsregels**.
+- Oplossing: [voeg een overslaanregel toe](#add-a-skip-rule).
+
+</details>
+
+<Anchor id="under-attack" />
+
+<details>
+<summary>Aanvalsmodus: schakel deze uit of voeg een configuratieregel toe</summary>
+
+- Waar: **Snelle acties** in het overzicht van de site, of de instelling **Beveiligingsniveau** onder **Beveiliging > Instellingen**.
+- Oplossing: schakel deze uit zodra de aanval voorbij is. Wil je deze voor de rest van de site ingeschakeld houden? Voeg dan een **Configuratieregel** toe (**Regels > Overzicht > Regel maken > Configuratieregel**) met de [expressie van de overslaanregel](#add-a-skip-rule) en schakel **Ik word aangevallen** uit.
+
+</details>
+
+De Cloudflare-plugin voor WordPress kan de regels op deze pagina niet toevoegen. Voer deze wijzigingen door in het Cloudflare-dashboard.
+
+## Voeg een overslaanregel toe voor de REST API {#add-a-skip-rule}
+
+Met een overslaanregel slaan verzoeken aan de REST API van je winkel alleen de Cloudflare-controles over die je hieronder aanvinkt. WordPress blijft elke aanmelding en bevoegdheid controleren.
+
+:::note
+De botbestrijdingsmodus van het gratis abonnement negeert deze regel. Als deze functie de app blokkeert, [schakel deze dan uit](#bot-fight-mode).
+:::
+
+1. Open je site in het Cloudflare-dashboard, ga naar **Beveiligingsregels** en kies **Regel maken > Aangepaste regels**.
+2. Voer bij **Regelnaam** `WCPOS REST API` in.
+3. Kies onder **Wanneer inkomende verzoeken overeenkomen** voor **Expressie bewerken** en plak:
+
+   ```text
+   (starts_with(http.request.uri.path, "/wp-json/")) or (http.request.uri.path eq "/" and (starts_with(http.request.uri.query, "rest_route=") or http.request.uri.query contains "&rest_route="))
+   ```
+
+   Als WordPress in een submap staat, zoals `https://example.com/shop`, gebruik dan `/shop/wp-json/` en `/shop/` in plaats van `/wp-json/` en `/`.
+
+   <details>
+   <summary>Waarop de expressie van toepassing is</summary>
+
+   De eerste helft komt overeen met het normale adres van de API, `/wp-json/`. De tweede helft komt overeen met het alternatieve adres, `/?rest_route=/`, en alleen op het startadres van de site. Zo blijft een pagina waarvan de link toevallig `rest_route=` bevat, beschermd.
+
+   </details>
+
+4. Kies onder **Voer dan deze actie uit** voor **Overslaan**.
+5. Kies wat de regel overslaat. Vink deze opties altijd aan:
+   - **Alle resterende aangepaste regels**, zodat je andere aangepaste regels de app geen controle laten doorlopen en niet blokkeren.
+   - **Beveiligingsniveau**. Als de aanvalsmodus is ingeschakeld, voeg dan ook de bijbehorende [configuratieregel](#under-attack) toe.
+
+   Vink deze opties alleen aan wanneer ze van toepassing zijn:
+   - **Alle regels voor de superbotbestrijdingsmodus**, als de superbotbestrijdingsmodus is ingeschakeld.
+   - **Alle beheerde regels**, als het logboek Gebeurtenissen bij de verzoeken van de app **Beheerde regels** in het veld **Dienst** toont. Heb je geen bijbehorende gebeurtenis gevonden? Laat deze optie dan uitgevinkt en zie [Nog steeds geblokkeerd?](#still-blocked).
+
+   Laat de opties met de aanduiding **(Vorige versie)** uitgevinkt.
+6. Kies **Activeren**. Als andere aangepaste regels bezoekers een controle laten doorlopen of blokkeren, sleep je deze regel erboven in de lijst **Beveiligingsregels**. Beheerde regels worden altijd na aangepaste regels uitgevoerd, dus de volgorde daarvan maakt niet uit.
+
+Maak verbinding of synchroniseer in de app om te controleren of deze toegang krijgt. Voer de [controle via de terminal](#check) uit om dit vanaf een computer te bevestigen: het antwoord moet `200` met `content-type: application/json` zijn, zonder regel met `cf-mitigated`.
+
+### Als de botbestrijdingsmodus is ingeschakeld {#bot-fight-mode}
+
+De botbestrijdingsmodus van het gratis abonnement negeert overslaan- en toestaanregels. Volgens de documentatie van Cloudflare kunnen aangepaste regels en paginaregels deze niet omzeilen. Als **Botbestrijdingsmodus** is ingeschakeld en de app na het toevoegen van de overslaanregel nog steeds wordt geblokkeerd, schakel je de botbestrijdingsmodus uit onder **Beveiliging > Instellingen**, met het filter **Botverkeer**. Probeer de app daarna opnieuw of voer de [controle](#check) nogmaals uit. Wil je de bescherming tegen bots behouden? Stap dan over op het Pro-abonnement en gebruik **Superbotbestrijdingsmodus**: de bovenstaande overslaanregel biedt daar wel een uitzondering voor. Als de botbestrijdingsmodus al uitstaat, zie [Nog steeds geblokkeerd?](#still-blocked).
+
+## Controleer het vanaf een computer {#check}
+
+Deze controle is optioneel. Hiermee zie je vanaf je eigen computer of Cloudflare namens je winkel antwoordt, vóór of na de oplossing.
+
+<details>
+<summary>Controleren via een terminal</summary>
+
+Open een terminal (Terminal op een Mac, PowerShell op Windows) en voer dit uit, met het adres van je winkel in plaats van `your-store.com`. Typ op Windows `curl.exe` in plaats van `curl`.
+
+```bash
+curl -sI https://your-store.com/wp-json/
+```
+
+Lees de eerste regels van het antwoord:
+
+- **`403` en `cf-mitigated: challenge`:** Cloudflare blokkeert de app. [Zoek de functie](#which-feature) die dit veroorzaakt.
+- **`200` en `content-type: application/json`:** deze computer kreeg toegang. Probeer in de app verbinding te maken of te synchroniseren. Als de app nog steeds wordt geblokkeerd, behandelt Cloudflare deze mogelijk anders dan je computer: controleer de bovenstaande functies en bekijk daarna [Pluginconflicten](./plugin-conflicts.mdx).
+- **`404`:** de REST API bevindt zich niet op dit adres. Sites zonder mooie permalinks gebruiken een ander adres. Voer de controle opnieuw uit op `'https://your-store.com/?rest_route=/'` (behoud de aanhalingstekens).
+
+Als WordPress in een submap staat, neem die dan op in het adres: `https://example.com/shop/wp-json/`.
+
+</details>
+
+<details>
+<summary>Hoe de desktop-app de controle doorloopt</summary>
+
+De app communiceert met de REST API van je winkel, het deel van WordPress dat apps antwoord geeft met gegevens. Een webbrowser doorloopt de controle van Cloudflare zonder dat je het merkt; een app kan dat meestal niet. Wanneer Cloudflare een controle terugstuurt in plaats van gegevens, opent de desktop-app een verborgen browservenster en probeert deze de controle zelfstandig te doorlopen. Als Cloudflare vraagt om een vakje aan te vinken, verschijnt het venster en wacht het twee minuten. Cloudflare geeft de app vervolgens toegang gedurende de tijd die is ingesteld bij **Geldigheidsduur van de controle** (standaard 30 minuten). Daarna komt de controle terug. De apps voor iPad, iPhone en Android hebben zo'n venster niet.
+
+</details>
+
+## Voorkom dat Cloudflare de API in de cache opslaat {#caching}
+
+Cloudflare kan ook kopieën van de antwoorden van de REST API bewaren. De app toont dan verouderde producten, prijzen en bestellingen. De overslaanregel verandert hier niets aan: deze schakelt alleen beveiligingscontroles uit. Als je HTML-pagina's in de cache opslaat of Automatic Platform Optimization (APO) gebruikt, voeg dan een **Cacheregel** toe met dezelfde expressie en stel deze in op **Cache omzeilen**.
+
+## Nog steeds geblokkeerd? {#still-blocked}
+
+- Open de overslaanregel en controleer of deze is geactiveerd en niet als concept is opgeslagen (**Opslaan als concept**).
+- Controleer of er geen **IP-toegangsregel** is die de internetverbinding van de winkel blokkeert of een controle oplegt.
+- Geen gebeurtenis voor de app in het logboek **Gebeurtenissen**? Neem voordat je beheerde regels overslaat contact op met support (hieronder) en stuur het resultaat van de [controle via de terminal](#check) mee.
+- Andere diensten waar het verkeer naar je site doorheen gaat, kunnen de app op dezelfde manier blokkeren. Zie [Pluginconflicten](./plugin-conflicts.mdx#server-level-conflicts) voor beveiligingsplugins en firewalls, en de [opmerkingen over hosting](../performance/server.mdx#hosting-specific-notes) voor GoDaddy, WP Engine en andere hostingproviders.
+
+## Gerelateerde documentatie {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="HOST121" to="/error-codes/HOST121" description="De fout die de app toont wanneer een beveiligingscontrole namens je winkel antwoordt." />
+  <LinkCard title="Pluginconflicten" to="/troubleshooting/common-problems/plugin-conflicts" description="Beveiligingsplugins en firewalls die de app blokkeren." />
+  <LinkCard title="Server" to="/troubleshooting/performance/slow-server" description="Opmerkingen over hosting en wat je server nodig heeft." />
+</LinkCards>
+
+<SupportContact />
