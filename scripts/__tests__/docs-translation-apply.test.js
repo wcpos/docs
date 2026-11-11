@@ -336,7 +336,7 @@ describe('applyResults MDX', () => {
     expect(output.writes).toEqual([]);
     expect(output.report.files_incomplete).toEqual([TARGET]);
     expect(output.report).toMatchObject({ applied: 6, missing: 0, rejected: 1 });
-    expect(output.report.rejected_details).toContainEqual({ target: TARGET, unit: null, reason: expect.stringContaining('untranslated_props') });
+    expect(output.report.rejected_details).toContainEqual({ target: TARGET, unit: null, reason: 'untranslated_props (alt="Receipt preview")' });
     expect(output.state[TARGET]?.partial).toBeUndefined();
     expect(output.state[TARGET]?.source).toBe(previous?.source);
     expect(output.state[TARGET].attempts).toEqual(Object.fromEntries(ENTRY.pending.map(index => [mdxHash(index), (previous?.attempts?.[mdxHash(index)] ?? 0) + 1])));
