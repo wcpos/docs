@@ -2,7 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { applyResults, failedAttemptsState, runCli } = require('../docs-translation/apply');
+const { applyResults, asciiUnpairedParens, failedAttemptsState, runCli } = require('../docs-translation/apply');
 const { parseDocsMdxUnits } = require('../docs-translation/mdx-units');
 const { decodeDocsUnitSource, unitKey } = require('../docs-translation/recover');
 const { readState, serializeState, writeState, unitHash, STATE_PATH } = require('../docs-translation/state');
@@ -187,6 +187,33 @@ describe('applyResults MDX', () => {
     const output = apply({ ...ENTRY, target, locale: 'ja', pending: units.map((_text, i) => i) }, [result(texts, target, 'ja')]);
     expect(output.report).toMatchObject({ rejected: 0 });
     expect(output.writes[0].content).toContain('(`48`)');
+  });
+
+  it('uses an ASCII paren where a split unit opens one an English fragment closes', () => {
+    const english = '| Element | Notes |\n| --- | --- |\n| `<image />` | A logo or picture.<br />`src` (required), `width` in printer dots (`200`) |\n';
+    write(SOURCE, english);
+    const units = parseDocsMdxUnits(SOURCE, english).units.map(unit => unit.source);
+    expect(units).toContain('in printer dots (');
+    for (const sibling of LOCALES) write(sourceToTranslatedPath(SOURCE, sibling), GERMAN);
+    const target = sourceToTranslatedPath(SOURCE, 'zh-CN');
+    const texts = units.map(text => ({ '| Element | Notes |': '| 元素 | 说明 |', '| A logo or picture.': '| 徽标或图片。',
+      '(required),': '(必需),', 'in printer dots (': '以打印机点数为单位（' })[text] ?? text);
+    const output = apply({ ...ENTRY, target, locale: 'zh-CN', pending: units.map((_text, i) => i) }, [result(texts, target, 'zh-CN')]);
+    expect(output.report).toMatchObject({ rejected: 0 });
+    expect(output.writes).toHaveLength(1);
+    expect(output.writes[0].content).toContain('(`200`) |');
+    expect(output.writes[0].content).not.toContain('（');
+  });
+
+  it.each([
+    [' in printer dots (', '以打印机点数为单位（', '以打印机点数为单位('],
+    [' (same as ', '（等同于', '(等同于'],
+    ['(required), ', '（必需），', '（必需），'],
+    [') and more', '）以及更多', ')以及更多'],
+    [' in dots (', '以点为单位', '以点为单位'],
+    ['see (a) and (', '见（a）和（', '见（a）和('],
+  ])('asciiUnpairedParens(%j, %j) gives %j', (source, text, expected) => {
+    expect(asciiUnpairedParens(source, text)).toBe(expected);
   });
 
   it('accepts the former product name when the English unit itself carries it', () => {
