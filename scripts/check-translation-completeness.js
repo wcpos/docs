@@ -333,16 +333,26 @@ function findUntranslatedProps(sourceContent, translatedContent) {
 // Prose lines left byte-identical to the English source.
 function findLeftoverProse(sourceContent, translatedContent) {
   const sourceProse = new Set();
-  // Table rows are skipped: identical cells are often correct, and untranslated
-  // cells already raise untranslated_table_cell.
+  const sourceLines = new Set(); // every source line's prose, to tell a translated table
   for (const line of bodyLines(sourceContent)) {
-    if (line.trim().startsWith('|')) continue;
     const p = lineToProse(line);
+    sourceLines.add(p);
     if (isSignificantProse(p) && !UNTRANSLATED_PROP_ALLOWLIST.has(p)) sourceProse.add(p);
   }
+  // Rows of a translated table block (some row, typically the header, differs from every
+  // source line) are skipped: identical cells there are often correct, and untranslated_table_cell
+  // checks partly translated rows. A wholly English table is checked like any other line.
   const hits = [];
-  for (const line of bodyLines(translatedContent)) {
-    if (line.trim().startsWith('|')) continue;
+  const lines = bodyLines(translatedContent);
+  const isRow = (l) => l.trim().startsWith('|');
+  let skipBlock = false;
+  for (const [i, line] of lines.entries()) {
+    if (isRow(line) && (i === 0 || !isRow(lines[i - 1]))) {
+      let end = i;
+      while (end < lines.length && isRow(lines[end])) end++;
+      skipBlock = lines.slice(i, end).some((l) => !sourceLines.has(lineToProse(l)));
+    }
+    if (isRow(line) && skipBlock) continue;
     const p = lineToProse(line);
     if (isSignificantProse(p) && !UNTRANSLATED_PROP_ALLOWLIST.has(p) && sourceProse.has(p)) hits.push(p);
   }

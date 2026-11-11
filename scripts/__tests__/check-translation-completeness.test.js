@@ -345,9 +345,23 @@ Cambia a Twenty Twenty-Four para descartar un conflicto de tema.
       '| Canada GST/HST | Canada | GST/HST | 123456789RT0001 |',
       '| **AR CUIT** | Argentina | CUIT | 20-12345678-9 |',
     ].join('\n');
-    const source = `${rows}\n\nEnter the tax ID your customers give you at checkout.\n`;
-    const translated = `${rows}\n\nGeben Sie die Steuernummer ein, die Ihre Kunden an der Kasse angeben.\n`;
+    const sep = '| --- | --- | --- | --- |';
+    const source = `| Tax ID | Country | Code | Example |\n${sep}\n${rows}\n\nEnter the tax ID your customers give you at checkout.\n`;
+    const translated = `| Steuernummer | Land | Code | Beispiel |\n${sep}\n${rows}\n\nGeben Sie die Steuernummer ein, die Ihre Kunden an der Kasse angeben.\n`;
     expect(findLeftoverProse(source, translated)).toHaveLength(0);
+  });
+
+  it('still flags a wholly untranslated prose table', () => {
+    const table = [
+      '| Step | What to do |',
+      '| --- | --- |',
+      '| Open the register | Tap the till to start a sale |',
+      '| Add the products | Scan each item into the cart |',
+      '| Take the payment | Choose a gateway and confirm |',
+    ].join('\n');
+    const source = `${table}\n\nFollow these steps at the start of every shift.\n`;
+    const translated = `${table}\n\nFolgen Sie diesen Schritten zu Beginn jeder Schicht.\n`;
+    expect(findLeftoverProse(source, translated).length).toBeGreaterThanOrEqual(3);
   });
 
   describe('multi-line MDX comment and export blocks', () => {
