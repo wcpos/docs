@@ -120,7 +120,8 @@ function applyResults({ rootDir, plan, results }) {
           .filter(issue => STRUCTURAL_ISSUE_CODES.has(issue.code)).map(issue => issue.code)));
         if (existing && missingPreservedHeadingAnchors(english, out, existing)
           .filter(anchor => english.includes(anchor)).length) reasons.push('missing_preserved_anchors');
-        if (findUntranslatedProps(english, out).length > 0) reasons.push('untranslated_props');
+        const propHits = findUntranslatedProps(english, out);
+        if (propHits.length > 0) reasons.push(`untranslated_props (${propHits.join(', ')})`);
         if (isStub(english, out, locale)) reasons.push('stub');
         if (findLeftoverProse(english, out).length >= 3) reasons.push('leftover_prose');
         if (findMissingSections(english, out).length >= 1) reasons.push('missing_sections');

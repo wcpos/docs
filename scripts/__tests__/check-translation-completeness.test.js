@@ -168,6 +168,15 @@ describe('findUntranslatedProps', () => {
     ].join('\n');
     expect(findUntranslatedProps(src, src)).toEqual(['title="Email Invoice"']);
   });
+
+  it('does not flag the WCPOS Pro requirement label', () => {
+    const src = [
+      '<RequirementItem label="WCPOS Pro">Version 2.0.0 or newer</RequirementItem>',
+      '<RequirementItem label="Square account">An active Square seller account</RequirementItem>',
+      '',
+    ].join('\n');
+    expect(findUntranslatedProps(src, src)).toEqual(['label="Square account"']);
+  });
 });
 
 describe('findLeftoverProse', () => {
