@@ -203,7 +203,7 @@ it.each(['updated', 'identical', false].flatMap(reexec => [[], [2, 1]].map(count
   assert.equal(result.calls.filter(c => isCall(c, 'git', 'show', 'origin/stack:scripts/translate-docs-local.sh')).length, 1);
   assert.equal(result.calls.filter(c => isCall(c, 'git', 'fetch')).length, 2);
   assert.ok(result.calls.some(c => isCall(c, 'git', 'checkout', 'origin/stack')));
-  assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args, ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--locale', 'de', '--locale', 'fr', '--max-units', '7']);
+  assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args, ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--locale', 'de', '--locale', 'fr', '--hold-rounds', 'stack', '--max-units', '7']);
   assert.equal(models(result).length, 0);
   assert.ok(!result.calls.some(c => isCall(c, 'node', 'scripts/docs-translation/apply.js') || isCall(c, 'git', 'commit') || isCall(c, 'git', 'push')));
   assert.ok(!fs.existsSync(path.join(wt, '.translate/results')));
@@ -497,7 +497,7 @@ it('runs a lane in its own worktree, lock and branch, and opens a lane PR', () =
   const create = result.calls.find(c => isCall(c, 'gh', 'pr', 'create'));
   assert.match(create.args[create.args.indexOf('--title') + 1], / \(lane eu\)$/);
   assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args,
-    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--locale', 'fr', '--locale', 'de', '--max-units', '1500']);
+    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--locale', 'fr', '--locale', 'de', '--hold-rounds', 'main', '--max-units', '1500']);
 });
 
 it('reuses only its own lane PR', () => {
@@ -643,14 +643,28 @@ it('passes repeated --first paths to the worklist on a dry run', () => {
   const result = run({ counts: [] }, ['--dry-run', '--first', 'versioned_docs/version-1.x/error-codes/AUTH131.mdx', '--first', 'versioned_docs/version-1.x/support']);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args,
-    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--first', 'versioned_docs/version-1.x/error-codes/AUTH131.mdx', '--first', 'versioned_docs/version-1.x/support', '--max-units', '1500']);
+    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--first', 'versioned_docs/version-1.x/error-codes/AUTH131.mdx', '--first', 'versioned_docs/version-1.x/support', '--hold-rounds', 'main', '--max-units', '1500']);
+});
+
+it('passes --hold-rounds with the default base to the worklist on a dry run', () => {
+  const result = run({ counts: [] }, ['--dry-run']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args,
+    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--hold-rounds', 'main', '--max-units', '1500']);
+});
+
+it('passes no --hold-rounds to the worklist on a dry run based on an i18n round', () => {
+  const result = run({ counts: [] }, ['--dry-run', '--base', 'i18n-round/2x-r9']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args,
+    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--max-units', '1500']);
 });
 
 it('passes --retry-quarantined to the worklist on a dry run', () => {
   const result = run({ counts: [] }, ['--dry-run', '--retry-quarantined', '--locale', 'ar']);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args,
-    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--retry-quarantined', '--locale', 'ar', '--max-units', '1500']);
+    ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--retry-quarantined', '--locale', 'ar', '--hold-rounds', 'main', '--max-units', '1500']);
 });
 
 it('retries a packet without results once, split in half by files', () => {
@@ -781,7 +795,7 @@ it('adds the first.txt pages after CLI --first paths', () => {
     const result = run({ counts: [] }, ['--dry-run', '--first', 'cli.mdx']);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.calls.find(c => isCall(c, 'node', 'scripts/docs-translation/worklist.js')).args,
-      ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--first', 'cli.mdx', '--first', 'versioned_docs/a.mdx', '--first', 'versioned_docs/b', '--max-units', '1500']);
+      ['scripts/docs-translation/worklist.js', '--out', '.translate/work', '--plan', '.translate/plan.json', '--first', 'cli.mdx', '--first', 'versioned_docs/a.mdx', '--first', 'versioned_docs/b', '--hold-rounds', 'main', '--max-units', '1500']);
   } finally {
     fs.rmSync(file);
   }
