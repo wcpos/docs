@@ -24,7 +24,7 @@ const LOCALE_NAMES = {
   'hi-IN': 'Hindi (India)', 'zh-CN': 'Chinese (Simplified)',
 };
 
-function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packetMaxChars = PACKET_MAX_CHARS, packetMaxFiles = PACKET_MAX_FILES, first = [], retryQuarantined = false }) {
+function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packetMaxChars = PACKET_MAX_CHARS, packetMaxFiles = PACKET_MAX_FILES, first = [], retryQuarantined = false, holdRounds }) {
   // --first: an exact English source path, or a directory prefix.
   const firstRank = source => {
     const index = first.findIndex(p => source === p || source.startsWith(p.endsWith('/') ? p : `${p}/`));
@@ -77,8 +77,25 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
     targets: { translate: 0, refresh: 0, record: 0, unchanged: 0, deferred: 0 },
     deferred_units: 0, locales: {}, quarantined: 0,
   };
+  // An open i18n-round branch owns the pages it translates until it merges, so other runs skip them.
+  // GitHub deletes a round branch on merge and the caller fetches with --prune, so the hold lifts by itself.
+  const held = new Set();
+  if (holdRounds !== undefined) {
+    const changed = new Set();
+    const refs = git(['for-each-ref', '--format=%(refname)', 'refs/remotes/origin/i18n-round/']).split('\n').filter(Boolean);
+    for (const ref of refs) {
+      const mb = git(['merge-base', `origin/${holdRounds}`, ref], true);
+      if (mb === null) continue;
+      for (const file of git(['diff', '--name-only', mb.trim(), ref, '--', 'i18n']).split('\n')) changed.add(file);
+    }
+    for (const source of sources) {
+      if (LOCALES.some(locale => changed.has((source.endsWith('.json') ? jsonSourceToTranslatedPath : sourceToTranslatedPath)(source, locale)))) held.add(source);
+    }
+    summary.held = [...held].sort();
+    if (held.size) process.stderr.write(`holding ${held.size} page(s) for open i18n-round branches\n`);
+  }
 
-  for (const source of sources) {
+  for (const source of sources.filter(file => !held.has(file))) {
     const sourceText = fs.readFileSync(path.join(rootDir, source), 'utf8');
     const currentBlob = git(['hash-object', source]).trim();
     const kind = source.endsWith('.json') ? 'json' : 'mdx';
@@ -237,7 +254,7 @@ function runCli(argv) {
       args.retryQuarantined = true;
       continue;
     }
-    if (!['--out', '--plan', '--locale', '--first', '--max-units', '--root'].includes(option)) {
+    if (!['--out', '--plan', '--locale', '--first', '--max-units', '--root', '--hold-rounds'].includes(option)) {
       throw new Error(`Unknown argument: ${option}`);
     }
     const value = argv[++i];
@@ -246,6 +263,7 @@ function runCli(argv) {
     if (option === '--plan') planFile = path.resolve(value);
     if (option === '--root') args.rootDir = path.resolve(value);
     if (option === '--first') (args.first ??= []).push(value);
+    if (option === '--hold-rounds') args.holdRounds = value;
     if (option === '--locale') {
       if (!LOCALES.includes(value)) throw new Error(`Unknown locale: ${value}`);
       (args.locales ??= []).push(value);

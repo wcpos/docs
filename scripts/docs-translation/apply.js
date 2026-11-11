@@ -22,6 +22,31 @@ const {
 const { canonicalizeDescriptionQuoting, findTrailingBackslashValues, validateFrontmatter } = require('../validate-frontmatter');
 const { findRenderIssues, repairLiteralEmphasis } = require('./render-check');
 
+// A unit split around inline code can open a paren that an English letterless fragment
+// closes (or close one it opened), so the translation must use the same ASCII paren.
+function asciiUnpairedParens(source, text) {
+  const unpaired = (chars, open, close) => {
+    const opens = [];
+    const closes = [];
+    chars.forEach((char, index) => {
+      if (open.includes(char)) opens.push(index);
+      else if (close.includes(char)) { if (opens.length) opens.pop(); else closes.push(index); }
+    });
+    return { opens, closes };
+  };
+  const english = unpaired([...source], '(', ')');
+  if (!english.opens.length && !english.closes.length) return text;
+  const chars = [...text];
+  const found = unpaired(chars, '(（', ')）');
+  const swap = (indices, wide, ascii, count) => {
+    let need = count - indices.filter(index => chars[index] === ascii).length;
+    for (const index of indices) if (need > 0 && chars[index] === wide) [chars[index], need] = [ascii, need - 1];
+  };
+  swap([...found.opens].reverse(), '（', '(', english.opens.length);
+  swap(found.closes, '）', ')', english.closes.length);
+  return chars.join('');
+}
+
 function applyResults({ rootDir, plan, results }) {
   const state = readState(rootDir);
   const previousTargets = new Set(Object.keys(state));
@@ -62,6 +87,7 @@ function applyResults({ rootDir, plan, results }) {
       const reasons = [];
       if (kind === 'mdx') {
         text = text.replace(/（(`[^`\n]+`)）/g, '($1)');
+        text = asciiUnpairedParens(decoded, text);
         text = restoreNonBreadcrumbInlineCodeSpans(decoded, normalizeAdminBreadcrumbInlineCode(decoded, text, locale));
         // The one safe CJK repair is a flanking space; other literal ** is rejected below.
         const emphasisRepaired = repairLiteralEmphasis(decoded, text);
@@ -256,4 +282,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { applyResults, failedAttemptsState, runCli };
+module.exports = { applyResults, asciiUnpairedParens, failedAttemptsState, runCli };
