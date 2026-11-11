@@ -676,6 +676,15 @@ Keep code untouched: ` + '`Default` and `ATUM Inventory`' + `
 
     expect(issues.some((issue) => issue.code === 'protected_term_removed')).toBe(true);
   });
+  it('does not report a protected term repeated in source and folded once in translation', () => {
+    const issues = validateProtectedTermsInText(
+      'On WordPress 6.5 and later, WordPress won\'t activate WCPOS Polylang until Polylang is active.',
+      'Ab WordPress 6.5 lässt sich WCPOS Polylang erst aktivieren, wenn Polylang aktiv ist.',
+      'test.mdx',
+    );
+
+    expect(issues.some((issue) => issue.code === 'protected_term_removed')).toBe(false);
+  });
   it('preserves ATUM Inventory Management as a product name', () => {
     const issues = validateProtectedTermsInText(
       'Install ATUM Inventory Management before configuring stores.',
@@ -805,6 +814,15 @@ describe('validateDocsMdxStructure review hardening', () => {
     const issues = validateDocsMdxStructure(sourceWithEscapedParen, translatedWithEscapedParen, 'escaped-link.mdx');
 
     expect(issues.some((issue) => issue.code === 'link_url_changed')).toBe(true);
+  });
+
+  it('accepts the same link URLs in a different order', () => {
+    const sourceLinks = 'See [Support](#getting-help) with what you noted in [Baseline](#21-create-a-baseline).\n';
+    const translatedLinks = '[ベースライン](#21-create-a-baseline)で記録した内容を添えて[サポート](#getting-help)をご覧ください。\n';
+
+    const issues = validateDocsMdxStructure(sourceLinks, translatedLinks, 'test.mdx', 'ja');
+
+    expect(issues.some((issue) => issue.code === 'link_url_changed')).toBe(false);
   });
 
   it('reports changed multi-backtick inline code spans', () => {

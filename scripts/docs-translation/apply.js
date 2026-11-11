@@ -112,6 +112,8 @@ function applyResults({ rootDir, plan, results }) {
       if (kind === 'json') out = applyJsonTranslations(english, translations);
       else {
         out = applyDocsMdxTranslations(parsed, new Map(units.map((unit, index) => [unit.id, translations.get(index)])));
+        // The unit-level fix above cannot see parens split across units (table cell, <br />).
+        out = out.replace(/（\s*(`[^`\n]+`)\s*）/g, '($1)');
         out = applyStableHeadingAnchorsFromSource(english, out, existing);
         out = canonicalizeDescriptionQuoting(out).content;
         const reasons = [];

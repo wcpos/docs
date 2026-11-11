@@ -151,6 +151,9 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'WooCommerce Germanized / Germanized Pro',
   'Brazilian Market on WooCommerce / Extra Checkout Fields for Brazil',
   'NIF/CIF Spain',
+  // The 2.x plugin names listed on settings/wp-admin/customer-tax-ids.
+  'WPFactory EU/UK VAT Manager',
+  'NIF/CIF Spain for WooCommerce',
   // WooCommerce REST API: a product/feature name, not prose.
   'WooCommerce REST API',
   // WooCommerce Tax: the automated-tax plugin's product name, used verbatim as a
@@ -163,7 +166,13 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'Star Online',
   'Star Document Markup',
   'Epson Server Direct Print',
+  // Epson printer feature names, LinkCard titles on 2.x hardware/printers/printed-once-then-stopped.
+  'Epson Secure Printing',
+  'Server Direct Print',
   'PrintNode',
+  // Receipt template and template engine names, FeatureCard titles on 2.x receipts/index.
+  'Minimal / Modern',
+  'PHP (Legacy)',
   // Default WordPress theme names, referenced in troubleshooting (switch to a
   // stock theme to isolate plugin conflicts).
   'Twenty Twenty-Four',
@@ -324,12 +333,16 @@ function findUntranslatedProps(sourceContent, translatedContent) {
 // Prose lines left byte-identical to the English source.
 function findLeftoverProse(sourceContent, translatedContent) {
   const sourceProse = new Set();
+  // Table rows are skipped: identical cells are often correct, and untranslated
+  // cells already raise untranslated_table_cell.
   for (const line of bodyLines(sourceContent)) {
+    if (line.trim().startsWith('|')) continue;
     const p = lineToProse(line);
     if (isSignificantProse(p) && !UNTRANSLATED_PROP_ALLOWLIST.has(p)) sourceProse.add(p);
   }
   const hits = [];
   for (const line of bodyLines(translatedContent)) {
+    if (line.trim().startsWith('|')) continue;
     const p = lineToProse(line);
     if (isSignificantProse(p) && !UNTRANSLATED_PROP_ALLOWLIST.has(p) && sourceProse.has(p)) hits.push(p);
   }
