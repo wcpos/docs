@@ -1,0 +1,339 @@
+---
+title: Square Terminal
+slug: /hardware/card-readers/square-terminal
+description: "Encaissez les paiements par carte sur un Square Terminal depuis l’écran de paiement du PDV et configurez l’extension Square Terminal dans WP Admin."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+
+# Passerelle de paiement Square Terminal {#square-terminal-gateway}
+
+La caisse envoie le montant à un [Square Terminal](https://squareup.com/hardware/terminal), le client paie sur le terminal et la vente se poursuit automatiquement lorsque Square approuve le paiement. Cette page comporte deux parties : [encaisser un paiement](#take-payment) à la caisse et [configurer l’extension](#setup) dans WP Admin.
+
+:::info Fonctionnalité Pro
+Square Terminal nécessite [WCPOS Pro](../../getting-started/pro-license.mdx) 2.0 ou une version ultérieure.
+:::
+
+{/* Describes Square Terminal for WooCommerce 1.0.0 (wcpos/square-terminal-for-woocommerce promote/2.0 cd12a0b, the target of the draft v1.0.0 release; v1.0.0-beta1 is a4b89cb), the version that runs on the tender pane under WCPOS Pro 2.0. docs#590 (webhook URL under Pro's panel) is covered in #webhooks. */}
+
+## Encaisser un paiement {#take-payment}
+
+:::note Avant de commencer
+- La caisse est en ligne et le terminal est allumé. Si la vignette **Square Terminal** est absente, demandez à la personne qui gère WP Admin de [configurer l’extension](#setup).
+- Si l’option **Ouvrir et fermer la caisse** est activée, la caisse doit être ouverte. Elle n’enregistre aucun paiement tant qu’elle est fermée, et un paiement déjà débité sur le terminal devrait être remboursé. Consultez [Ouvrir la caisse](../../pos/register/index.mdx).
+:::
+
+1. Ajoutez les articles au panier et appuyez sur **Paiement**.
+2. Dans l’onglet **Paiements**, appuyez sur la vignette **Square Terminal**.
+3. Vérifiez la ligne du terminal, qui affiche **Terminal :** et son nom. Si vous avez plusieurs terminaux, appuyez sur **Modifier**, puis sur celui de votre caisse. Tant que vous n’en avez pas sélectionné, le panneau affiche **Choisir un terminal**.
+4. Conservez le solde dû comme montant ou saisissez un montant inférieur pour en encaisser une partie par carte. Consultez [Paiements fractionnés](../../pos/checkout/split-payments.mdx).
+5. Appuyez sur **Envoyer $45.00 à Square Terminal** (le bouton affiche votre montant). Le panneau indique **Démarrage du terminal…**, puis **En attente du client sur le terminal**.
+6. Le client présente sa carte sans contact, l’insère ou la fait glisser dans le terminal.
+7. Lorsque Square approuve le paiement, les étapes passent à **Approuvé**, puis à **Capturé**. Si le solde est réglé, la vente se termine et le reçu s’affiche ; sinon, encaissez le reste avec le même moyen de paiement ou un autre.
+
+Pendant le paiement, le panneau affiche :
+
+- **SUR LE TERMINAL** et le montant envoyé.
+- Une ligne d’état, par exemple **En attente du client sur le terminal**.
+- Le moyen de paiement et le nom du terminal.
+- Quatre étapes : **Envoyé**, **Sur le terminal**, **Approuvé**, **Capturé**.
+- **Détails** : chaque étape signalée par Square, avec l’heure et les ID du **Lecteur**, de l’**Action** et du **Paiement**. **Copier** (**Partager** sur certains appareils) permet de transmettre le journal à la personne qui vous aide.
+
+<details>
+<summary>Messages d’état du paiement et marche à suivre</summary>
+
+- **Approuvé**, puis **Capturé** : l’argent est encaissé. Si le solde est réglé, le reçu s’affiche ; sinon, encaissez le reste.
+- **Paiement annulé** : le terminal a confirmé votre annulation. Appuyez sur **Réessayer** ou **Choisir un autre moyen**.
+- **Délai dépassé — paiement annulé** : personne n’a payé dans les 5 minutes. Appuyez sur **Réessayer** ou **Choisir un autre moyen**.
+- **Annulation — en attente de confirmation du terminal** : le terminal n’a pas répondu à votre demande d’annulation. Patientez ou appuyez sur **Libérer ce paiement**. Consultez [Interrompre un paiement](#stop).
+- **Paiement libéré** : la commande peut être réglée par un autre moyen, mais la carte a peut-être tout de même été débitée sur le terminal. Consultez d’abord l’écran du terminal.
+
+</details>
+
+### Interrompre un paiement {#stop}
+
+**Annuler sur le terminal** demande à Square d’annuler le paiement sur le terminal. Le panneau affiche **Annulation…**, puis **Paiement annulé** lorsque le terminal confirme. Appuyez sur **Réessayer** pour le renvoyer ou sur **Choisir un autre moyen** pour revenir aux vignettes.
+
+Si le terminal ne confirme pas (il est éteint, sans signal ou bloqué), le panneau affiche **Annulation — en attente de confirmation du terminal** et propose **Libérer ce paiement**, avec la mention *Libère la commande pour permettre un paiement par un autre moyen. La boutique continue d’interroger le terminal.*
+
+:::warning Vérifiez le terminal avant d’encaisser à nouveau
+La libération n’annule pas le paiement chez Square. La boutique continue de le vérifier en arrière-plan, environ toutes les 10 minutes. Consultez l’écran du terminal avant d’encaisser par un autre moyen. S’il indique que le paiement a abouti, n’encaissez pas à nouveau : la boutique enregistrera ce paiement sur la commande lors de l’une de ses prochaines vérifications. Consultez [En cas de problème](#goes-wrong).
+:::
+
+**Libérer ce paiement** libère la commande ; cela ne confirme pas l’annulation du paiement. Le panneau affiche **Paiement libéré**. Avant d’appuyer sur **Choisir un autre moyen**, vérifiez le terminal : s’il indique que le paiement a abouti, n’encaissez pas à nouveau et attendez la mise à jour de la commande. S’il indique que le paiement a été annulé, **Choisir un autre moyen** vous ramène aux vignettes pour encaisser autrement. Si vous ne pouvez pas le déterminer (le terminal est éteint, sans signal ou n’affiche rien), le résultat est inconnu : si vous encaissez par un autre moyen et qu’une vérification de la boutique retrouve ensuite le paiement du terminal, elle l’enregistre aussi sur la commande. Vous devrez alors rembourser l’un des deux paiements depuis la commande. Consultez [Remboursements](../../orders/refunds.mdx).
+
+Si personne ne paie sur le terminal dans les 5 minutes, le paiement est annulé et le panneau affiche **Délai dépassé — paiement annulé**.
+
+## En cas de problème {#goes-wrong}
+
+**Aucun terminal configuré pour Square Terminal.** Aucun terminal n’est encore associé à l’extension. Demandez à la personne qui gère WP Admin d’[en associer un](#pairing).
+
+**Utilisé par la commande #…** Ce terminal traite le paiement d’une autre commande. Terminez ou annulez d’abord ce paiement, ou choisissez un autre terminal.
+
+**Échec du paiement**, accompagné d’un motif. Appuyez sur **Réessayer** ou **Choisir un autre moyen**. **Détails** affiche la réponse de Square.
+
+**Annulation — en attente de confirmation du terminal.** Le terminal n’a pas répondu à la demande d’annulation. Patientez ou appuyez sur **Libérer ce paiement**. Consultez [Interrompre un paiement](#stop).
+
+**Le paiement a abouti sur le terminal, mais la caisse attend toujours.** La caisse continue d’interroger Square pendant l’attente et passe à la suite lorsque Square répond ; avec un [webhook](#webhooks), la boutique est informée plus tôt. Si la caisse cesse d’attendre (elle est fermée ou vous libérez le paiement), la vérification en arrière-plan de la boutique, environ toutes les 10 minutes, enregistre le paiement que la caisse a manqué. N’encaissez pas par un autre moyen pendant l’attente : consultez d’abord l’écran du terminal.
+
+**La vignette est absente.** La passerelle de paiement n’est pas activée pour le PDV. Consultez [Activer pour le PDV](#enable).
+
+<details>
+<summary>Problèmes de configuration, pour la personne qui gère WP Admin</summary>
+
+<details>
+<summary>Le terminal ne figure pas dans la liste</summary>
+
+Il doit être associé à cette extension : utilisez **Créer un code d’appareil** et saisissez le code sur le terminal. Un terminal associé depuis le tableau de bord Square ou l’application Square n’apparaît pas tant qu’il n’est pas associé ici. Si **Rechercher des lecteurs** le répertorie sous *Autres appareils visibles par Square dans cet établissement*, il existe, mais appartient à une autre application. Vérifiez aussi que l’**ID de l’établissement** correspond à l’établissement auquel le terminal est connecté.
+
+</details>
+
+<details>
+<summary>Impossible d’associer le terminal</summary>
+
+Le code est valable 5 minutes : créez-en un nouveau. Le terminal doit être en ligne et déconnecté de l’application Square ou de toute autre intégration, car le code le connecte au compte et à l’**ID de l’établissement** définis ici. L’**Environnement** doit correspondre à ce compte.
+
+</details>
+
+<details>
+<summary>La validation des réglages échoue</summary>
+
+Si vous avez établi la connexion, vérifiez que la ligne **Compte Square** indique toujours **Connecté à Square**. Si vous utilisez votre propre jeton d’accès, vérifiez qu’il correspond à l’**Environnement** sélectionné : un jeton de test ne fonctionne pas en **Production**, et inversement. Vérifiez que l’**ID de l’établissement** appartient à ce compte.
+
+</details>
+
+<details>
+<summary>Reconnexion à Square nécessaire</summary>
+
+Les autorisations Square se renouvellent automatiquement. Lorsqu’un renouvellement ne peut pas aboutir, l’extension met fin à l’autorisation et vous demande de vous reconnecter. Appuyez sur **Se reconnecter à Square** ; aucun autre changement n’est nécessaire.
+
+</details>
+
+<details>
+<summary>Où trouver les journaux</summary>
+
+`WooCommerce > Status > Journaux`, source `square-terminal-for-woocommerce`. Les étapes clés sont également consignées dans les notes de la commande, avec le préfixe `Square Terminal:`.
+
+</details>
+
+</details>
+
+## Configurer l’extension {#setup}
+
+Cette partie s’adresse à la personne qui gère WP Admin pour la boutique. Votre boutique envoie chaque paiement à Square, qui le transmet au terminal associé ; la caisse doit donc être connectée à la boutique. Suivez ces quatre étapes dans l’ordre :
+
+1. [Installez l’extension](#install) depuis le répertoire des extensions.
+2. [Connectez-vous à Square](#connect) et choisissez l’établissement.
+3. [Associez votre terminal](#pair-your-terminal) ou utilisez les appareils de test de Square dans l’environnement de test.
+4. [Activez-la pour le PDV](#enable).
+
+### Installer l’extension {#install}
+
+Ouvrez `WP Admin > POS > Réglages > Extensions`, trouvez **Square Terminal**, cliquez sur **Installer**, puis sur **Activer**. Consultez [Installer une extension](../../extensions/index.mdx#installing-an-extension).
+
+Sans passer par le répertoire, téléchargez le **fichier zip de l’extension** (pas celui du code source) depuis la [page des versions sur GitHub](https://github.com/wcpos/square-terminal-for-woocommerce/releases) et téléversez-le depuis `Extensions > Add Plugin`, puis **Téléverser une extension**. Sans WCPOS Pro 2.0, l’extension ne fonctionne pas et indique qu’il est nécessaire.
+
+### Se connecter à Square {#connect}
+
+1. Accédez à `WP Admin > WooCommerce > Réglages > Paiements` et ouvrez **Square Terminal**.
+2. Sous **Compte Square**, choisissez l’**Environnement** : **Mode test (sandbox)** (par défaut) pour faire des essais, ou **Production** pour de vrais paiements. Choisissez-le **avant** de vous connecter : une connexion ne couvre qu’un seul environnement.
+3. Cliquez sur **Se connecter à Square** et accordez les autorisations demandées par Square.
+4. Choisissez l’**ID de l’établissement** : l’établissement Square pour lequel le terminal encaisse les paiements.
+5. Sous **Quel appareil Square utilisez-vous ?**, conservez **Square Terminal**.
+
+Vous utilisez déjà l’extension officielle WooCommerce Square ? Les champs **Environnement** et **ID de l’établissement** sont préremplis à partir de ses réglages. Enregistrez pour les appliquer. Les deux extensions ne partagent aucun identifiant de connexion ; vous devez donc tout de même vous connecter ici.
+
+Vous préférez utiliser votre propre jeton d’accès ? Ouvrez **Réglages avancés** et collez un **Jeton d’accès de test** ou un **Jeton d’accès de production** au lieu de vous connecter.
+
+### Associer votre terminal {#pair-your-terminal}
+
+Sous **Terminal**, cliquez sur **Créer un code d’appareil** et saisissez le code sur le terminal dans les 5 minutes. Cliquez ensuite sur **Rechercher des lecteurs**. Vous trouverez les étapes détaillées, le contenu de la liste et les appareils de test dans [Terminaux associés et appareils de test](#pairing).
+
+### Activer pour le PDV {#enable}
+
+Accédez à `WP Admin > POS > Réglages > Validation de la commande`, trouvez **Square Terminal** et activez l’option **Activé**. Consultez [Activer une passerelle de paiement](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+:::note
+Square Terminal est réservé au personnel à la caisse ; il n’est jamais proposé lors du paiement dans votre boutique en ligne. Le commutateur **Activé** de la liste **Paiements** de WooCommerce n’a aucun effet sur cette passerelle.
+:::
+
+
+## Terminaux associés et appareils de test {#pairing}
+
+Un terminal doit être associé à **cette extension** avant qu’un caissier puisse le sélectionner. L’association génère un *code d’appareil* Square, seul moyen pour l’extension de communiquer avec le terminal.
+
+1. Sous **Terminal**, cliquez sur **Créer un code d’appareil**. L’écran affiche *Code d’association : … — saisissez-le sur le terminal dans les 5 minutes.*
+2. Sur le terminal, ouvrez l’écran de connexion par code d’appareil et saisissez le code. Si le terminal est connecté à l’application Square ou à une autre intégration, déconnectez-le d’abord : l’écran du code d’appareil n’est pas accessible tant qu’il est utilisé ailleurs.
+3. Cliquez sur **Rechercher des lecteurs**. Le terminal apparaît alors sous **Associés à cette extension — sélectionnables lors du paiement**.
+
+**Rechercher des lecteurs** répertorie les appareils visibles par Square en deux groupes :
+
+- **Associés à cette extension — sélectionnables lors du paiement** : les terminaux que les caissiers peuvent sélectionner.
+- **Autres appareils visibles par Square dans cet établissement** : les terminaux configurés par une autre application. Vous ne pouvez pas les sélectionner ici tant que vous ne les avez pas associés avec un nouveau code.
+
+**Valider les réglages** demande à Square de vérifier votre connexion (ou votre jeton d’accès) et l’établissement. Si tout fonctionne, le message *Identifiants Square et établissement vérifiés.* s’affiche.
+
+:::note Une liste vide avant l’association est normale
+Square ne répertorie que les terminaux associés avec un code d’appareil. Un terminal qui utilise l’application Square n’apparaît pas du tout tant qu’un code d’appareil n’y a pas été saisi.
+:::
+
+<details>
+<summary>Mode test : les appareils de test de Square à la place d’un terminal</summary>
+
+En **Mode test (sandbox)**, il n’y a ni code d’appareil ni appareil à associer. La caisse affiche les appareils de test de Square à la place des terminaux associés. Chacun simule un résultat sans matériel :
+
+| Appareil de test | Résultat simulé |
+|---|---|
+| **Sandbox : Réussite (encaisser $25 ou moins)** | Un paiement par carte approuvé. Limitez le montant à $25 ou moins. |
+| **Sandbox : Réussite avec un pourboire de 20%** | Un paiement avec pourboire. Square n’accepte aucun pourboire ici ; le paiement échoue donc avec le message **Le terminal a confirmé un montant différent**. |
+| **Sandbox : Annulation par le client sur le terminal** | Le client annule sur le terminal. |
+| **Sandbox : Délai dépassé immédiatement** | Personne ne paie et le délai de paiement expire immédiatement. |
+| **Sandbox : Terminal hors ligne (reste en attente)** | Un terminal qui ne répond jamais. Utilisez-le pour essayer d’[interrompre un paiement](#stop) sans matériel. |
+
+</details>
+
+## Webhooks {#webhooks}
+
+Un webhook est **facultatif**. Il permet à Square d’informer votre boutique dès qu’un paiement change d’état, pour que la caisse passe plus vite à la suite. Sans webhook, la caisse interroge Square pendant l’attente, et la vérification en arrière-plan de la boutique, effectuée environ toutes les 10 minutes, enregistre tout résultat manqué par la caisse. Dans les deux cas, la boutique n’enregistre un paiement que lorsque Square confirme le paiement lui-même ; une session de paiement marquée comme terminée par Square ne suffit pas à elle seule.
+
+<details>
+<summary>Ajouter un webhook</summary>
+
+Cela ne fonctionne que si vous avez configuré l’extension avec votre propre jeton d’accès, sous **Réglages avancés**. Si vous avez utilisé **Se connecter à Square**, vous avez autorisé l’application WCPOS, et non l’une de vos propres applications. Vous n’avez donc aucune application à laquelle ajouter un abonnement, ni de clé de signature à copier. Les paiements restent confirmés par les vérifications de la caisse et celle en arrière-plan.
+
+Avec votre propre jeton d’accès, utilisez votre application dans le [tableau de bord des développeurs Square](https://developer.squareup.com/apps) :
+
+1. Sur l’écran des réglages, à la ligne **Webhooks** sous **Terminal**, cliquez sur **Copier** pour copier l’URL du webhook.
+2. Dans le tableau de bord des développeurs Square, ouvrez votre application et accédez à **Webhooks**.
+3. Ajoutez un abonnement à l’événement **`terminal.checkout.updated`**, avec cette URL comme URL de notification.
+4. Copiez la **Clé de signature** de l’abonnement dans **Clé de signature du webhook**, sous **Réglages avancés**, puis enregistrez.
+
+La ligne **Webhooks** indique alors **Vérifié il y a …** dès qu’un webhook signé a été reçu.
+
+:::warning L’URL doit correspondre exactement
+Square signe chaque webhook avec l’URL de notification qui lui a été fournie. Si l’URL dans Square diffère de celle de l’écran des réglages, ne serait-ce que d’un caractère, chaque envoi échoue. Utilisez **Copier** plutôt que de la saisir.
+:::
+
+<details>
+<summary>Mise à niveau depuis la version 0.x</summary>
+
+La version 1.0.0 affiche une nouvelle URL de webhook. Si vous avez déjà un abonnement, remplacez son URL de notification dans Square par celle qui apparaît désormais sur l’écran des réglages ; cette modification conserve sa clé de signature. **Remplacement de l’URL du webhook** ne modifie pas cette URL ; ce réglage ne s’applique qu’à la page de paiement propre à l’extension. Si l’adresse publique de votre site diffère de celle affichée, ses webhooks ne seront pas validés : les paiements restent confirmés par les vérifications de la caisse et celle en arrière-plan.
+
+</details>
+
+Les abonnements aux webhooks Square appartiennent à une application Square et ne peuvent pas être ajoutés avec le jeton d’accès d’un vendeur. L’extension ne peut donc pas ajouter l’abonnement pour vous.
+
+</details>
+
+### Si les webhooks ne sont plus validés {#webhook-troubleshooting}
+
+La ligne **Webhooks** indique **Pas encore vérifié** tant qu’aucun webhook n’a été reçu et validé avec les réglages **actuels**.
+
+<details>
+<summary>Des paiements ont eu lieu, mais le message Pas encore vérifié reste affiché</summary>
+
+Vérifiez les points suivants :
+
+1. La **Clé de signature du webhook** correspond à celle de l’abonnement dans Square.
+2. L’URL de notification dans Square correspond exactement à celle de l’écran des réglages.
+3. L’abonnement inclut `terminal.checkout.updated`.
+4. Votre site est accessible depuis Internet en HTTPS. Le tableau de bord Square affiche chaque tentative d’envoi.
+
+Modifier l’environnement, l’URL du webhook ou la clé de signature réinitialise cette ligne jusqu’à la réception du prochain webhook. C’est voulu : un webhook validé avec les anciens réglages ne garantit rien pour les nouveaux.
+
+</details>
+
+## Référence des réglages {#settings}
+
+Dans `WP Admin > WooCommerce > Réglages > Paiements > Square Terminal`, dans l’ordre de configuration. Ouvrez un groupe pour voir ses réglages.
+
+<details>
+<summary>Compte Square</summary>
+
+- **Environnement** : **Mode test (sandbox)** (par défaut) ou **Production**. Une connexion couvre un seul environnement.
+- **Se connecter à Square** : autorise ce site auprès de Square. Une fois la connexion établie, affiche **Connecté à Square**, le commerçant et **Se déconnecter**.
+- **ID de l’établissement** : l’établissement Square pour lequel le terminal encaisse les paiements.
+- **Quel appareil Square utilisez-vous ?** : **Square Terminal** (cette page, par défaut) ou **Square Reader**.
+
+</details>
+
+<details>
+<summary>Terminal</summary>
+
+- **Créer un code d’appareil**, **Rechercher des lecteurs**, **Valider les réglages** : associer un terminal, répertorier les appareils visibles par Square, vérifier la configuration. Consultez [Terminaux associés et appareils de test](#pairing).
+- **Webhooks** : indique si un webhook signé a été reçu et affiche l’URL à **Copier**. Consultez [Webhooks](#webhooks).
+
+</details>
+
+<details>
+<summary>Comportement lors du paiement</summary>
+
+- **Ignorer l’écran du reçu** : le terminal revient à l’état inactif sans afficher son propre écran de reçu.
+- **Recueillir la signature** : demande au client de signer sur le terminal, lorsque le paiement le permet.
+- **Journaux de débogage du paiement** : un panneau de journal dont le contenu peut être copié, sur la page de paiement propre à l’extension. Destiné à l’assistance ; vous pouvez le laisser désactivé.
+
+</details>
+
+<details>
+<summary>Réglages avancés</summary>
+
+- **Jeton d’accès de test**, **Jeton d’accès de production** : nécessaires uniquement si vous n’établissez pas la connexion ci-dessus.
+- **Clé de signature du webhook** : facultative. Permet à la boutique de vérifier les webhooks ; les paiements sont confirmés même sans elle.
+- **Remplacement de l’URL du webhook** : uniquement pour la page de paiement propre à l’extension. Consultez [Webhooks](#webhooks).
+
+La section **Réglages avancés** est également repliée par défaut sur l’écran des réglages.
+
+</details>
+
+## Square Reader à la place d’un terminal {#square-reader}
+
+Réglez **Quel appareil Square utilisez-vous ?** sur **Square Reader** pour encaisser le paiement dans l’application Square Point of Sale, avec un Square Reader associé à ce téléphone ou à cette tablette. L’écran des réglages affiche alors une liste de cinq étapes, **Configurer votre Square Reader**.
+
+<details>
+<summary>Les cinq étapes de configuration de Square Reader</summary>
+
+1. Connectez votre compte Square.
+2. Choisissez votre établissement.
+3. Enregistrez votre boutique auprès de Square : collez votre **ID d’application**.
+4. Fournissez à Square l’adresse de retour de votre boutique.
+5. Configurez le téléphone ou la tablette.
+
+</details>
+
+À la caisse, le paiement s’effectue sur la page de paiement propre à l’extension, dans l’[onglet Hérité](../../pos/checkout/legacy-tab.mdx) : appuyez sur **Ouvrir Square Point of Sale** et terminez le paiement dans l’application Square. Cela fonctionne uniquement :
+
+- en **Production**, pas en mode test ;
+- sur un téléphone ou une tablette Android ou iOS où l’application Square Point of Sale est installée. Partout ailleurs, le bouton est désactivé et en indique la raison.
+
+## Remboursements {#refunds}
+
+Remboursez un paiement Square Terminal depuis la commande : l’argent est reversé sur la carte du client par l’intermédiaire de Square. Les remboursements partiels sont également possibles. Consultez [Remboursements](../../orders/refunds.mdx).
+
+Un paiement encaissé sur la page de paiement propre à l’extension, par exemple avec une version antérieure à 1.0.0, se rembourse en revanche depuis le tableau de bord Square.
+
+## Prérequis {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WCPOS Pro">Version 2.0.0 ou ultérieure</RequirementItem>
+  <RequirementItem label="Compte Square">Un compte vendeur Square actif et un établissement Square</RequirementItem>
+  <RequirementItem label="Square Terminal">En ligne et associé à cette extension par un code d’appareil pour votre compte et votre établissement Square (voir Terminaux associés et appareils de test ci-dessus)</RequirementItem>
+  <RequirementItem label="Connexion">La caisse et la boutique doivent être en ligne. La boutique envoie chaque paiement au terminal associé ; n’importe quelle caisse peut donc utiliser n’importe quel terminal associé</RequirementItem>
+  <RequirementItem label="Site HTTPS public">Uniquement pour les webhooks ; les paiements sont confirmés sans eux</RequirementItem>
+</RequirementsList>
+
+## Documentation associée {#related-documentation}
+
+- [Encaisser un paiement : sur un lecteur de carte](../../pos/checkout/taking-a-payment.mdx#card-reader)
+- [Le panneau de paiement](../../pos/checkout/payment-methods.mdx)
+- [Annuler un paiement](../../pos/checkout/cancelling-a-payment.mdx)
+- [Documentation de l’API Square Terminal](https://developer.squareup.com/docs/terminal-api/overview), pour les questions relatives au matériel et à l’API
+- Signalez un problème avec l’extension sur [GitHub](https://github.com/wcpos/square-terminal-for-woocommerce). L’assistance Square traite les questions relatives au compte et au matériel.
+
+<LinkCards>
+  <LinkCard to="/getting-started/make-sale" title="Paiement" description="Effectuer une vente du début à la fin" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Passerelles de paiement" description="Toutes les passerelles de paiement utilisables à la caisse" />
+  <LinkCard to="/manage-store/orders/refund-rules" title="Remboursements" description="Rembourser une vente terminée" />
+</LinkCards>

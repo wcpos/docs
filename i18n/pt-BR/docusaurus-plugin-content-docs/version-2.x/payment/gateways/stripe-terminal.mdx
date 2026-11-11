@@ -1,0 +1,241 @@
+---
+title: Stripe Terminal
+slug: /hardware/card-readers/stripe-terminal
+sidebar_label: "Stripe Terminal"
+sidebar_position: 1
+description: "Receba pagamentos com cartão em um leitor Stripe no caixa: configure a extensão, conecte um leitor inteligente ou Bluetooth e receba o pagamento."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/stripe-terminal/en/manifest.json';
+
+# Gateway de pagamento Stripe Terminal {#stripe-terminal-gateway}
+
+O Stripe Terminal coloca um leitor de cartões Stripe no seu caixa. O caixa envia o valor ao leitor, o cliente aproxima, insere ou passa o cartão nele, e a venda é concluída quando a Stripe captura o pagamento e não resta nenhum valor a pagar. Esta página mostra como fazer a configuração inicial, conectar um leitor em cada caixa e receber o primeiro pagamento.
+
+Já fez a configuração? [Conecte um leitor neste caixa](#card-readers) ou [receba um pagamento](#processing-payments).
+
+:::info Recurso Pro
+O Stripe Terminal precisa do [WCPOS Pro](../../getting-started/pro-license.mdx) 2.0.0 ou mais recente. Sem ele, a extensão não funciona.
+:::
+
+## Escolha seus leitores {#readers}
+
+A Stripe vende três tipos de leitor. O tipo que cada caixa pode usar depende de onde o WCPOS é executado.
+
+- **Leitor inteligente** — funciona em qualquer caixa: navegador, aplicativo para desktop, iPhone, iPad e Android. Stripe Reader S700 e S710, BBPOS WisePOS E. Ele fica conectado à sua rede, e sua loja envia o pagamento para ele.
+- **Leitor Bluetooth** — somente nos aplicativos para iOS e Android. Stripe Reader M2, BBPOS WisePad 3. Ele é pareado com o celular ou tablet.
+- **Tap to Pay** — chegará aos aplicativos para iOS e Android em uma atualização do aplicativo. Não precisa de leitor: o cliente aproxima o cartão do próprio celular.{/* pending: roadmap#113, front desk 2026-11-09: worded as coming in an app update until Paul confirms Apple's entitlement; restore the shipped wording then */}
+
+O navegador e o aplicativo para desktop não conseguem acessar um leitor Bluetooth nem o chip de pagamento por aproximação de um celular, por isso esses caixas usam um leitor inteligente. Compre leitores na loja do Terminal no seu painel da Stripe.
+
+:::tip Qual leitor Bluetooth escolher
+A Stripe vende o **Stripe Reader M2** nos Estados Unidos e o **BBPOS WisePad 3** fora deles, no Reino Unido, na Europa, no Canadá, na Austrália e em outros países. Consulte a loja do Terminal para encontrar o modelo disponível para você.
+:::
+
+## Configure o gateway de pagamento {#setup}
+
+Um administrador faz isso uma vez por loja, no WP Admin.
+
+1. **Instale a extensão.** Baixe o arquivo zip do plugin, `stripe-terminal-for-woocommerce.zip`, nos arquivos da versão no [GitHub](https://github.com/wcpos/stripe-terminal-for-woocommerce/releases) e envie-o em `Plugins > Add Plugin`, depois em **Enviar plugin**. O zip "Código-fonte" do GitHub não pode ser instalado.
+2. **Adicione suas chaves.** Acesse `WP Admin > WooCommerce > Configurações > Pagamentos`, abra **Stripe Terminal** e cole sua **Chave secreta de produção**, além da **Chave secreta de teste** se quiser testar primeiro. Ambas vêm do seu painel da Stripe. Depois de salva, a chave aparece como pontos com *(salva; deixe em branco para manter)*.
+3. **Escolha um local do Terminal** para leitores Bluetooth e Tap to Pay. Crie um no modo de teste e outro no modo de produção no painel da Stripe em **Terminal → Locais** e selecione-os em **Local do Terminal (teste)** e **Local do Terminal (produção)**.
+4. **Marque os leitores que esta loja permite** em **Conexões do PDV**: **Leitores inteligentes**, **Leitores Bluetooth e Tap to Pay** ou ambos. Para usar leitores Bluetooth ou Tap to Pay nos aplicativos, marque **Leitores Bluetooth e Tap to Pay** e desmarque **Leitores inteligentes**. Consulte [Leitores inteligentes, Bluetooth ou ambos](#connections).
+5. **Salve as configurações** e verifique se a linha do webhook abaixo delas exibe **Segredo de assinatura armazenado.**
+6. **Ative para o PDV.** Acesse `WP Admin > POS > Configurações > Finalização de compra`, ative **Stripe Terminal** e salve. Você não precisa ativá-lo na lista de pagamentos do próprio WooCommerce; consulte [Configurações do caixa](../../settings/wp-admin/checkout.mdx).
+
+:::warning Escolha um local do Terminal antes da primeira conexão
+Sem um local, o leitor Bluetooth ou o Tap to Pay não consegue se conectar, e o caixa exibe *Selecione um local do Terminal nas configurações do Stripe Terminal antes de conectar um leitor móvel.*
+:::
+
+<details>
+<summary>Todas as configurações da página do gateway de pagamento</summary>
+
+- **Título** e **Descrição** — o nome e o texto que os clientes veem. O caixa exibe o título no bloco.
+- **Chave secreta de produção** e **Chave secreta de teste** — obtidas no painel da Stripe.
+- **Terminal padrão** — o leitor inteligente que o caixa usa para receber pagamentos até que outro seja escolhido.
+- **Terminais habilitados** — limita os caixas aos leitores inteligentes que você selecionar. Deixe em branco para permitir todos os leitores da conta.
+- **Bloquear seleção de terminal** — *Os caixas não podem alterar o terminal ao finalizar a compra no PDV.* Requer um **Terminal padrão**.
+- **Conexões do PDV** — quais tipos de leitor os caixas podem usar: *Leitores inteligentes (a loja controla o leitor pela rede)* e *Leitores Bluetooth e Tap to Pay (o aplicativo WCPOS controla o leitor)*. Consulte [Leitores inteligentes, Bluetooth ou ambos](#connections).
+- **Local do Terminal (teste)** e **Local do Terminal (produção)** — onde os leitores Bluetooth e o Tap to Pay são registrados quando o aplicativo os conecta.
+- **Modo de teste** — *Ativar modo de teste*. Um site sem HTTPS permanece no modo de teste: o Stripe Terminal precisa de HTTPS para pagamentos reais.
+- **Pedidos por telefone (MOTO)** — consulte [Receba um pedido por telefone](#phone-orders-moto).
+- **Manter leitor ativo (experimental)** — envia sinais ao leitor para que o primeiro pagamento após um período de inatividade não demore. Não é recomendado quando vários caixas compartilham um leitor.
+
+Abaixo dos campos, a página lista seus **Locais do Stripe Terminal** e a linha do webhook.
+
+</details>
+
+### Leitores inteligentes, Bluetooth ou ambos {#connections}
+
+**Conexões do PDV** é uma configuração da loja: ela determina qual tipo de leitor todos os caixas usam.
+
+- Somente **Leitores inteligentes**: todos os caixas recebem pagamentos com um leitor inteligente.
+- Somente **Leitores Bluetooth e Tap to Pay**: os aplicativos para iOS e Android recebem pagamentos com um leitor Bluetooth ou com o celular. Em um caixa no navegador ou no desktop, o bloco da Stripe fica recolhido em **… indisponível no momento**, com o texto *Somente os leitores do aplicativo são permitidos para esta forma de pagamento. Permita leitores inteligentes na página de configurações dela no WooCommerce para receber pagamentos neste caixa.*
+- **Ambos**: os caixas usam os leitores inteligentes.{/* pending: roadmap#523 — native tills offered both kinds once the app reads the second connection */} Os leitores Bluetooth e o Tap to Pay ficam sem uso até você desmarcar **Leitores inteligentes**.
+
+<details>
+<summary>Alteração de tipos de leitor ou atualização de versão</summary>
+
+Desmarcar um tipo altera apenas o que os caixas usarão nos próximos pagamentos. Cada pagamento é reembolsado pela conexão em que foi recebido, leitor inteligente ou aplicativo, e o webhook da Stripe continua funcionando. Uma atualização de uma versão anterior mantém a conexão salva, ou os leitores inteligentes se apenas um **Terminal padrão** tiver sido salvo. Uma nova instalação vem com ambos marcados, então os aplicativos usam leitores inteligentes até você desmarcar **Leitores inteligentes**.
+
+</details>
+
+## Conecte um leitor neste caixa {#card-readers}
+
+Cada caixa mantém seu próprio leitor. No WCPOS, toque em **Configurações** na parte inferior do menu lateral e depois em **Leitores de cartão**.
+
+<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[596, 0]]} maxWidth={720} alt="Configurações com Leitores de cartão selecionado, em um caixa cuja loja ainda não tem leitores de cartão configurados">
+
+1. **Nenhum leitor de cartão está configurado para esta loja** — é o que a tela exibe até que o gateway de pagamento seja [configurado](#setup) com um tipo de leitor que este caixa possa usar. Depois disso, aparecem aqui as seções de leitores abaixo que este caixa pode usar (em um caixa no navegador ou no desktop, apenas **Leitores inteligentes**).
+
+</JourneyShot>
+
+### Leitores inteligentes {#smart-readers}
+
+Registre cada leitor inteligente no painel da Stripe com o código exibido pelo leitor. Até fazer isso, ele não aparece em **Terminal padrão**, **Terminais habilitados** nem no caixa.
+
+A seção **Leitores inteligentes** tem uma linha para cada leitor permitido pela loja: o nome do leitor com o nome do gateway de pagamento ao lado, o local do Terminal abaixo e **Online** ou **Offline**. O caixa recebe pagamentos pelo leitor da linha marcada como **Selecionado**. Para trocar, toque em **Usar este leitor** em outro leitor online; a finalização da compra passa a usar esse leitor.
+
+<details>
+<summary>Qual leitor é usado automaticamente?</summary>
+
+- **Nenhum escolhido ainda**: o caixa usa o **Terminal padrão** enquanto ele estiver online e livre.
+- **Apenas um leitor inteligente na loja**: não é necessário escolher. Enquanto ele estiver online e não estiver ocupado com outra venda, o caixa recebe pagamentos por ele.
+- **Definido pela loja**: o **Terminal padrão** com **Bloquear seleção de terminal** ativado. Enquanto estiver online, ele aparece como **Selecionado** em todos os caixas, e nenhuma linha oferece **Usar este leitor**.
+
+</details>
+
+### Leitores Bluetooth {#bluetooth-readers}
+
+No aplicativo para iOS ou Android:
+
+1. Ligue o leitor e mantenha-o perto do celular ou tablet.
+2. Em **Configurações → Leitores de cartão**, toque em **Conectar um leitor**. Se a loja tiver mais de um gateway de pagamento para leitores, será solicitado que você escolha um: **Conectar um leitor com** e depois **Stripe Terminal**.
+3. A linha exibe *Procurando leitores… Ligue o leitor e mantenha-o perto deste dispositivo.*, depois *1 leitor encontrado. É o seu?* ou *3 leitores encontrados. Qual é o seu?* Toque em **Conectar** ao lado do seu leitor.
+4. **A primeira conexão instala uma atualização de software do leitor.** A linha exibe **Instalando software do leitor** com uma barra de progresso e *Mantenha o leitor ligado e carregado. A primeira atualização leva cerca de 10 minutos.* Carregue o leitor até mais da metade da bateria antes de começar e permaneça na tela.
+5. A linha exibe **Conectado**, com a bateria do leitor, por exemplo **Conectado · 80%**.
+
+As conexões seguintes levam alguns segundos, e o caixa se reconecta ao mesmo leitor na próxima venda. Enquanto nenhum leitor estiver conectado, a seção **Leitores Bluetooth** exibe *Nenhum leitor conectado ainda. Ligue o leitor e mantenha-o perto deste celular.*
+
+### Tap to Pay {#tap-to-pay}
+
+O Tap to Pay chegará aos aplicativos para iOS e Android em uma atualização do aplicativo; veja como ele funcionará quando estiver disponível no seu aplicativo.{/* pending: roadmap#113, front desk 2026-11-09: worded as coming in an app update until Paul confirms Apple's entitlement; restore the shipped wording then */} Em um celular com o aplicativo para iOS ou Android, a seção **Este celular** tem uma linha **Tap to Pay no iPhone** ou **Tap to Pay no Android**. Um gerente de loja ou administrador toca em **Configurar Tap to Pay**. Os demais usuários veem **Não configurado · peça a um administrador**.
+
+Na primeira vez, o celular solicita que você aceite os termos do provedor: no iPhone, a Apple solicita que você vincule um Apple ID e aceite os termos do Tap to Pay. Após a configuração, a linha exibe **Pronto**. O Tap to Pay precisa de uma conexão para receber pagamentos.
+
+<details>
+<summary>O que a linha de um leitor pode exibir</summary>
+
+Cada linha de leitor mostra o nome do leitor, seu número de série, o local do Terminal e uma linha de status:
+
+- **Conectado · 80%** — pronto para receber pagamentos, com a carga restante da bateria. O Tap to Pay exibe **Pronto**.
+- **Não conectado** — o caixa se lembra deste leitor, mas não está conectado a ele no momento. Toque em **Conectar**.
+- **Conectando a …** — aguarde. O botão exibe **Conectando…**.
+- **Instalando software do leitor** — a atualização; consulte [Leitores Bluetooth](#bluetooth-readers), etapa 4.
+- **Nenhum leitor encontrado. Ligue o leitor e tente novamente.** — toque em **Tentar novamente** ou em **Não encontra seu leitor?** para acessar o guia do leitor.
+- **Não foi possível conectar: …** — o motivo informado pela Stripe aparece em seguida. Toque em **Tentar novamente** ou em **Ajuda**.
+- **Ative o Bluetooth para conectar um leitor.** — o Bluetooth está desativado neste dispositivo.
+- **Permita o acesso ao leitor nas configurações do aplicativo.** — o aplicativo não recebeu permissão para usar o Bluetooth. Conceda a permissão nas configurações do celular.
+
+O menu **⋮** ao lado de uma linha tem a opção **Esquecer**: o caixa deixa de se reconectar àquele leitor na próxima venda. Você pode conectá-lo novamente nesta página. **Desconectar**, o botão em uma linha conectada, libera o leitor por enquanto. Se um leitor ficar preso à conexão com o aplicativo, o menu também oferece **Liberar o leitor**.
+
+</details>
+
+## Teste antes de entrar em produção {#testing}
+
+Marque **Modo de teste** na página de configurações do gateway de pagamento (`WP Admin > WooCommerce > Configurações > Pagamentos > Stripe Terminal`) e salve. Os pagamentos passam a ir para a conta de teste da Stripe, sem movimentar dinheiro. Faça uma venda de teste seguindo as etapas em [Receba um pagamento](#processing-payments).
+
+- **Leitores inteligentes**: um leitor simulado registrado na sua conta de teste da Stripe aparece junto com os leitores reais, permitindo fazer uma venda sem equipamento físico.
+- **Leitores Bluetooth** e leitores inteligentes reais: pague com o cartão físico de teste da Stripe, solicitado na loja do Terminal no seu painel da Stripe. Os dois últimos dígitos do valor determinam o resultado: `.00` aprova, `.05` recusa e `.02` solicita o PIN `1234`.
+
+Quando terminar, desmarque **Modo de teste** e salve antes de receber um pagamento real.
+
+## Receba um pagamento {#processing-payments}
+
+:::note Abra o caixa primeiro
+Com **Abrir e fechar o caixa** ativado, o caixa não registra pagamentos enquanto estiver fechado, e um pagamento com cartão já recebido teria que ser reembolsado. Consulte [Abra o caixa](../../pos/register/index.mdx).
+:::
+
+1. Monte o carrinho e pressione **Finalizar Compra**.
+2. Toque no bloco **Stripe Terminal** no painel de pagamento.
+3. Verifique o leitor. Um leitor inteligente exibe **Terminal: …**, com **Alterar** para escolher outro quando a loja permitir. Um leitor Bluetooth exibe **Conectado · 80%** ou **Nenhum leitor conectado** com um link para **Configurações → Leitores de cartão**.
+4. Pressione **Enviar … para Stripe Terminal** e deixe o cliente pagar:
+   - **Leitor inteligente**: o caixa exibe **Aguardando o cliente no terminal** enquanto o cliente aproxima, insere ou passa o cartão no leitor.
+   - **Leitor Bluetooth**: o caixa exibe **Apresente o cartão no leitor**.
+   - **Tap to Pay**: o celular mostra sua própria tela do Tap to Pay, e o cliente aproxima o cartão ou o celular dele do seu.
+
+   O caixa marca as etapas **Enviado**, **No terminal**, **Aprovado** e **Capturado**.
+5. Quando não há mais nada a pagar, a tela do recibo é aberta: imprima ou envie o recibo por e-mail e pressione **Nova venda**. Consulte [Confira o pagamento](../../pos/checkout/index.mdx#paid). Se ainda restar parte do total, receba o restante de outra forma; consulte [Pagamentos divididos](../../pos/checkout/split-payments.mdx).
+
+Para interromper, pressione **Cancelar no terminal**. Se o cartão for recusado, aparece **Falha no pagamento: …** com **Tentar novamente** e **Escolher outra forma**. Consulte [Em um leitor de cartão](../../pos/checkout/taking-a-payment.mdx#card-reader).
+
+{/* SHOT: tender pane with Stripe tile — reshoot */}
+
+As gorjetas que os clientes adicionam no leitor entram no pedido como uma taxa de **Gorjeta**. O WisePad 3, o WisePOS E, o S700 e o S710 podem solicitar uma gorjeta; o M2 não. Ative as gorjetas para seus leitores no painel da Stripe.
+
+## Receba um pedido por telefone (MOTO) {#phone-orders-moto}
+
+O MOTO (pedido por correio ou telefone) permite receber um pagamento com cartão de um cliente que não está presente: você digita o número do cartão na tela do leitor em vez de aproximar um cartão. Funciona somente em leitores inteligentes, depois que a Stripe o ativa para sua conta.
+
+<details>
+<summary>Configure e receba um pedido por telefone</summary>
+
+1. Peça ao [suporte da Stripe](https://support.stripe.com/contact) para ativar o MOTO na sua conta. Ele não vem ativado por padrão.
+2. Marque **Pedidos por telefone (MOTO)** na página de configurações do gateway de pagamento e salve.
+3. Use um leitor inteligente S700, S710 ou WisePOS E. Outros leitores e leitores simulados não oferecem esse recurso.
+
+Na aba [**Legado**](../../pos/checkout/legacy-tab.mdx) da finalização da compra, o Stripe Terminal normalmente mostra um seletor de **Terminal** com **Enviar para o terminal**, **Cancelar** e **Tentar novamente**, com o pagamento registrado da mesma forma que no painel de pagamento. Enquanto **Pedidos por telefone (MOTO)** estiver marcado, a página de pagamento do próprio gateway de pagamento substitui esse painel em todos os pagamentos do Stripe Terminal na aba Legado, não apenas nos pedidos por telefone.
+
+O pedido por telefone é feito nessa página de pagamento:
+
+<JourneyShot manifest={manifest} device="tablet" step={2} maxWidth={720} alt="A aba Legado da finalização da compra com Stripe Terminal selecionado na página de pagamento do gateway de pagamento, a lista Leitores disponíveis começando abaixo e Processar pagamento">
+
+1. **Legado** — a aba que exibe a página de pagamento da própria loja dentro do caixa.
+2. **A página de pagamento da loja** — escolha **Stripe Terminal** aqui e role para baixo até **Leitores disponíveis**, **Conectar** e **Pedido por telefone**.
+3. **Processar pagamento** — o botão do caixa abaixo da página, como em qualquer pagamento na aba [Legado](../../pos/checkout/legacy-tab.mdx). Um pedido por telefone começa com **Pagar com o terminal** na página.
+
+</JourneyShot>
+
+1. Na aba **Legado**, escolha **Stripe Terminal**.
+2. Em **Leitores disponíveis**, pressione **Conectar** no seu leitor.
+3. Ative **Pedido por telefone**.
+4. Pressione **Pagar com o terminal**. O leitor mostra uma tela para digitar os dados do cartão em vez de solicitar a aproximação.
+5. Digite o número do cartão, a data de validade e o código de segurança no leitor.
+
+:::tip
+A Stripe trata um pedido por telefone como um pagamento sem a presença do cartão, portanto as tarifas de pagamentos presenciais com cartão e a transferência de responsabilidade por fraude não se aplicam.
+:::
+
+</details>
+
+## Se algo der errado {#common-issues}
+
+**O leitor não conecta.** Um leitor inteligente precisa estar conectado por Wi-Fi ou Ethernet, online no seu painel da Stripe e registrado nele. Um leitor Bluetooth precisa do aplicativo para iOS ou Android, do Bluetooth ativado e da permissão para o aplicativo usar o Bluetooth.
+
+**"Selecione um local do Terminal…".** O gateway de pagamento não tem um local do Terminal para o modo em que está, teste ou produção. Consulte [Configure o gateway de pagamento](#setup), etapa 3.
+
+**A primeira conexão está demorando muito.** É a atualização de software do leitor, que leva cerca de 10 minutos. Mantenha o leitor ligado e carregado e permaneça na tela. A próxima conexão leva segundos.
+
+**O bloco da Stripe informa que está indisponível.** Em um caixa no navegador ou no desktop, a loja permite apenas os leitores do aplicativo. Consulte [Leitores inteligentes, Bluetooth ou ambos](#connections). Offline, os leitores de cartão aguardam a conexão; consulte [Modo offline](../../getting-started/offline.mdx).
+
+**Leitores de cartão exibe *Somente os leitores do aplicativo são permitidos para esta loja.*** A causa é a mesma, em um caixa no navegador ou no desktop: permita **Leitores inteligentes** em **Conexões do PDV** ou use o aplicativo para iOS ou Android. Consulte [Leitores inteligentes, Bluetooth ou ambos](#connections).
+
+**O cartão é recusado.** Peça outro cartão ou outra forma de pagamento. No modo de teste, confira os dois últimos dígitos do valor.
+
+**A opção Pedido por telefone não aparece.** Verifique se **Pedidos por telefone (MOTO)** está marcado, se você está conectado a um S700, S710 ou WisePOS E e se não é um leitor simulado.
+
+**Um pedido por telefone falha.** A Stripe ainda não ativou o MOTO na sua conta ou os dados do cartão foram digitados incorretamente.
+
+**Ainda precisa de ajuda?** Relate um bug no [GitHub](https://github.com/wcpos/stripe-terminal-for-woocommerce/issues), consulte a [documentação do Terminal da Stripe](https://docs.stripe.com/terminal) sobre o leitor ou entre em contato com o suporte da Stripe para questões sobre sua conta.
+
+## Documentação relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment" title="Recebendo um pagamento" description="Como funciona um pagamento com leitor de cartão no painel de pagamento" />
+  <LinkCard to="/hardware/card-readers" title="Leitores de cartão" description="Escolha, conecte, esqueça ou libere o leitor neste caixa" />
+  <LinkCard to="/sell/take-payment/legacy-tab" title="A aba Legado" description="Gateways de pagamento que usam sua própria página de pagamento" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Gateways de pagamento" description="Todos os gateways de pagamento com os quais o WCPOS funciona" />
+</LinkCards>

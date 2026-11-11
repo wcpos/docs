@@ -1,0 +1,274 @@
+---
+title: Modèle de passerelle de paiement
+slug: /developers/gateway-template
+sidebar_label: Modèle de passerelle de paiement
+sidebar_position: 9
+description: "Créez votre propre passerelle de paiement réservée au PDV pour WCPOS à partir du modèle : un fichier PHP, un script de configuration et des publications automatiques sur GitHub."
+---
+
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+- **Vous encaissez le paiement d’un client ?** Consultez [Encaisser un paiement dans l’onglet Hérité](../pos/checkout/legacy-tab.mdx).
+- **Votre passerelle de paiement est déjà configurée ?** [Essayez un paiement de test en caisse](#at-the-till).
+- **Vous créez une passerelle de paiement ?** Cette page s’adresse aux développeurs. Elle explique comment [créer votre propre passerelle de paiement pour le PDV](#build), l’installer et l’activer.
+
+:::info Fonctionnalité Pro
+Les passerelles de paiement autres que Espèces et Carte nécessitent [WCPOS Pro](../getting-started/pro-license.mdx). Sans cette extension, votre passerelle figure dans les réglages de la caisse du PDV, mais ne peut pas être activée.
+:::
+
+Le modèle de passerelle de paiement sert de point de départ pour créer votre propre moyen de paiement en caisse : une extension WordPress composée d’un seul fichier PHP. Un script de configuration renseigne le nom de votre passerelle et génère l’extension pour vous. La passerelle reste désactivée sur la page de paiement de votre boutique en ligne et apparaît dans le PDV une fois activée dans les réglages du PDV.
+
+En caisse, votre passerelle se trouve dans l’[onglet Hérité](../pos/checkout/legacy-tab.mdx) de l’écran de paiement. Cet onglet ouvre la page de paiement WooCommerce de votre passerelle dans le PDV. Le caissier y sélectionne la passerelle et appuie sur **Traiter le paiement** en bas de l’onglet.
+
+## Essayer un paiement en caisse {#at-the-till}
+
+Une fois votre passerelle [créée et activée](#build), voici comment se déroule un paiement. Un développeur crée et installe la passerelle ; le caissier encaisse le paiement.
+
+L’onglet Hérité nécessite que votre boutique soit accessible et encaisse la totalité de la commande. Il ne peut donc plus être utilisé dès qu’un paiement a été encaissé sur la commande. Consultez [L’onglet Hérité](../pos/checkout/legacy-tab.mdx).
+
+:::warning Utilisez une commande de test
+Le modèle non modifié n’encaisse aucun montant. Il marque simplement la commande comme payée : essayez-le donc sur une commande de test, pas sur la vente d’un vrai client. Votre propre logique de paiement doit être ajoutée dans `process_payment()`.
+:::
+
+1. Si votre boutique utilise des sessions de caisse, ouvrez la caisse. Ajoutez un produit au panier et appuyez sur **Paiement**.
+2. Ouvrez l’onglet **Hérité**, à côté de **Paiements**, en haut de l’écran de paiement.
+3. Sélectionnez votre passerelle sur la page de paiement, puis appuyez sur **Traiter le paiement** en bas de l’onglet.
+4. La vente se termine et le reçu s’affiche, comme sur l’[écran de confirmation du paiement](../pos/checkout/index.mdx#paid). La commande prend le **Statut de commande** défini pour la passerelle. Une [passerelle de paiement différé](#pay-later), configurée comme indiqué ci-dessous, termine également la vente, mais la commande reste **En attente de paiement**.
+
+<details>
+<summary>Pour les développeurs : comment le PDV sait que le paiement est terminé</summary>
+
+Le bouton **Traiter le paiement** soumet la page de paiement, puis WooCommerce exécute la méthode `process_payment()` de votre passerelle. Lorsque celle-ci renvoie l’adresse de confirmation de commande, `get_return_url( $order )`, le PDV vérifie le statut de la commande :
+
+- **Payée (En cours ou Terminée), ou le Statut de commande de la passerelle** défini dans les réglages de la caisse du PDV — le PDV termine la vente.
+- **Tout autre statut** — le PDV continue d’attendre et la vente reste ouverte.
+
+</details>
+
+## Prérequis {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WCPOS Pro">Pour activer la passerelle dans le PDV</RequirementItem>
+  <RequirementItem label="WooCommerce">Installé et activé</RequirementItem>
+  <RequirementItem label="Bash">Pour exécuter le script de configuration</RequirementItem>
+  <RequirementItem label="PHP">Quelques connaissances en PHP pour personnaliser la logique de paiement</RequirementItem>
+</RequirementsList>
+
+## Créer votre passerelle de paiement {#build}
+
+### Récupérer le modèle {#get-template}
+
+```bash
+git clone https://github.com/wcpos/woocommerce-gateway-template.git
+cd woocommerce-gateway-template
+```
+
+Vous pouvez aussi appuyer sur **Utiliser ce modèle** dans le [dépôt GitHub](https://github.com/wcpos/woocommerce-gateway-template) pour créer votre propre copie, puis la cloner.
+
+### Exécuter le script de configuration {#setup-script}
+
+```bash
+./create-gateway.sh
+```
+
+Il s’agit d’un script Bash. Il vous demande les informations suivantes :
+
+- **Nom de la passerelle de paiement** — la seule réponse obligatoire, par exemple `Cash Payment`.
+- **Slug de la passerelle de paiement** — appuyez sur Entrée pour utiliser celui généré à partir du nom (`cash-payment`). Uniquement des lettres minuscules, des chiffres et des traits d’union.
+- **Description de la passerelle de paiement** et **description par défaut au passage en caisse** — facultatives.
+- **Nom d’utilisateur GitHub**, **nom du dépôt** et **nom de l’auteur** — facultatifs. Par défaut, le nom du dépôt correspond au slug suivi de `-gateway`.
+- **Répertoire cible** — l’emplacement de l’extension. Par défaut, il s’agit du dossier contenant le modèle.
+
+L’extension est générée dans un dossier portant le nom du dépôt, par exemple `cash-payment-gateway/`, qui contient le fichier `wcpos-cash-payment.php`.
+
+### Installer l’extension {#install}
+
+Copiez le dossier généré dans le répertoire `wp-content/plugins/` de votre site, ou compressez-le au format zip, puis, dans l’administration WordPress, ouvrez **Extensions > Ajouter une extension**, appuyez sur **Téléverser une extension**, choisissez le fichier zip et appuyez sur **Installer maintenant**.
+
+Activez ensuite l’extension. WooCommerce doit également être activé : sans lui, l’extension ne charge rien.
+
+### L’activer pour le PDV {#enable}
+
+1. Ouvrez **WP Admin > PDV > Réglages > Caisse**.
+2. Repérez votre passerelle dans la liste **Passerelles de paiement**, sous le nom que vous lui avez donné. Son **ID de la passerelle de paiement** est composé de `wcpos_` suivi de votre slug avec des traits de soulignement, par exemple `wcpos_cash_payment`.
+3. Basculez l’interrupteur **Activé**, puis choisissez le **Statut de commande** à attribuer à une vente réglée de cette façon. Consultez [Réglages de la caisse](../settings/wp-admin/checkout.mdx#payment-gateways).
+
+La passerelle apparaîtra dans l’onglet Hérité du PDV au prochain chargement du PDV. Pour la tester, [essayez un paiement en caisse](#at-the-till).
+
+## Contenu du fichier de l’extension {#how-it-works}
+
+L’extension enregistre une seule classe de passerelle de paiement WooCommerce. Elle reste désactivée sur la page de paiement de votre boutique en ligne, marque la commande comme payée (avec le **Statut de commande** de la passerelle pour une vente au PDV) et redirige le PDV vers la page de confirmation de commande.
+
+<details>
+<summary>Les lignes essentielles</summary>
+
+- **`$this->enabled = 'no';`** dans le constructeur — maintient la passerelle désactivée sur la page de paiement de votre boutique en ligne, même si elle est activée dans les réglages de paiement de WooCommerce. WCPOS ne l’active que pour les requêtes du PDV, et uniquement lorsqu’elle est activée dans les réglages de la caisse du PDV.
+- **`process_payment()`** — appelle `$order->payment_complete()`, qui marque la commande comme payée et réduit le stock. Pour une commande du PDV, WCPOS lui attribue le **Statut de commande** défini pour la passerelle dans les réglages de la caisse du PDV (**Terminée**, sauf si vous en avez choisi un autre). La méthode renvoie `get_return_url( $order )`, l’adresse de confirmation de commande attendue par le PDV.
+- **`init_form_fields()`** — les champs **Titre** et **Description** dans les réglages de paiement de WooCommerce. Le PDV peut attribuer son propre titre à la passerelle depuis **Réglages du PDV** dans le menu de la passerelle.
+
+L’extension charge également son propre domaine de traduction, `woocommerce-pos-<your-slug>-gateway`, avec un fichier `.pot` dans `languages/`.
+
+</details>
+
+## Personnaliser votre passerelle de paiement {#customise}
+
+### Demander une saisie au caissier {#payment-fields}
+
+Si votre passerelle nécessite une saisie du caissier, comme un numéro de référence, définissez `$this->has_fields = true;` dans le constructeur et ajoutez une méthode `payment_fields()`. Ses champs s’affichent sur la page de paiement de la passerelle dans l’onglet Hérité. Dans `process_payment()`, récupérez la valeur de `$_POST['my_gateway_reference']` et nettoyez-la avec `sanitize_text_field( wp_unslash( ... ) )`.
+
+<details>
+<summary>Afficher le code de payment_fields()</summary>
+
+```php
+public function payment_fields() {
+    if ( $this->description ) {
+        echo wpautop( wptexturize( $this->description ) );
+    }
+
+    woocommerce_form_field( 'my_gateway_reference', array(
+        'type'     => 'text',
+        'label'    => __( 'Reference Number', 'your-text-domain' ),
+        'required' => true,
+    ) );
+}
+```
+
+</details>
+
+### Permettre au client de payer plus tard {#pay-later}
+
+Le modèle marque immédiatement la commande comme payée. Pour une passerelle où l’argent arrive plus tard, par exemple avec une facture, attribuez à la commande le statut **En attente de paiement** dans `process_payment()` et réduisez vous-même le stock, puisque `payment_complete()` n’est pas appelée.
+
+<details>
+<summary>Afficher le code de process_payment()</summary>
+
+```php
+public function process_payment( $order_id ) {
+    $order = wc_get_order( $order_id );
+
+    if ( ! $order ) {
+        return array( 'result' => 'failure' );
+    }
+
+    // The customer pays later.
+    $order->update_status( 'pending', __( 'Awaiting payment', 'your-text-domain' ) );
+
+    // payment_complete() is not called, so reduce stock here.
+    wc_reduce_stock_levels( $order_id );
+
+    return array(
+        'result'   => 'success',
+        'redirect' => $this->get_return_url( $order ),
+    );
+}
+```
+
+</details>
+
+Définissez ensuite le **Statut de commande** de la passerelle sur **En attente de paiement** dans **WP Admin > PDV > Réglages > Caisse**. Le statut **En attente de paiement** n’indique pas que la commande est payée : sans ce réglage, le PDV continue donc d’attendre et la vente reste ouverte. Consultez [Comment la caisse interprète le statut](../settings/wp-admin/checkout.mdx#order-status-at-the-till).
+
+<details>
+<summary>Remplacer les paramètres fictifs manuellement</summary>
+
+Si vous préférez ne pas exécuter le script, cliquez sur **Utiliser ce modèle** sur GitHub, puis recherchez et remplacez ces paramètres fictifs dans chaque fichier :
+
+| Paramètre fictif | Valeur à saisir | Exemple |
+|---|---|---|
+| `{{GATEWAY_NAME}}` | Le nom de votre passerelle de paiement | Paiement en espèces |
+| `{{GATEWAY_SLUG}}` | En minuscules, avec des traits d’union | cash-payment |
+| `{{GATEWAY_DESCRIPTION}}` | Une brève description de la passerelle de paiement | Accepter les paiements en espèces dans WCPOS |
+| `{{GATEWAY_DEFAULT_DESCRIPTION}}` | La description affichée sur la page de paiement | Payer en espèces au point de vente |
+| `{{GITHUB_USERNAME}}` | Votre nom d’utilisateur GitHub | kilbot |
+| `{{REPO_NAME}}` | Le nom de votre dépôt | cash-payment-gateway |
+| `{{AUTHOR_NAME}}` | Votre nom | kilbot |
+| `{{GATEWAY_ID}}` | Le slug, avec des traits de soulignement à la place des traits d’union | cash_payment |
+| `{{GATEWAY_CLASS_NAME}}` | Les mots du nom avec une majuscule initiale, reliés par des traits de soulignement | Cash_Payment |
+| `{{GATEWAY_FUNCTION_PREFIX}}` | Identique à l’ID de la passerelle de paiement | cash_payment |
+
+Renommez ensuite `wcpos-{{GATEWAY_SLUG}}.php` pour qu’il corresponde à votre slug, par exemple `wcpos-cash-payment.php`. Le script déduit les trois dernières valeurs du nom et du slug pour vous.
+
+</details>
+
+## Publier une mise à jour {#updates}
+
+Modifiez `wcpos-<your-slug>.php`, augmentez le numéro `Version:` dans l’en-tête de l’extension (par exemple de `0.1.0` à `0.2.0`), puis réinstallez-la : remplacez le dossier dans `wp-content/plugins/`, ou téléversez un nouveau fichier zip. WordPress vous demande confirmation avant de remplacer l’extension installée ; choisissez **Remplacer l’extension actuelle par celle téléversée**.
+
+### Publications automatiques sur GitHub {#github-releases}
+
+L’extension générée comprend deux workflows GitHub Actions. Si vous la poussez vers un dépôt GitHub :
+
+1. Augmentez le numéro `Version:` dans l’en-tête de l’extension.
+2. Créez un commit et poussez-le sur `main`.
+3. Le workflow de publication détecte une version qui n’a pas encore d’étiquette `v<version>` et publie une version avec le fichier `woocommerce-pos-<your-slug>-gateway.zip` en pièce jointe.
+
+Chacun peut alors télécharger ce fichier zip depuis la page **Versions** du dépôt et l’installer comme n’importe quelle extension WordPress. Le second workflow régénère le fichier de traduction `.pot` chaque fois qu’un fichier PHP est modifié sur `main`.
+
+## En cas de problème {#troubleshooting}
+
+<details>
+<summary>La passerelle n’apparaît pas dans les réglages de la caisse du PDV</summary>
+
+Dans **WP Admin > Extensions**, vérifiez que l’extension de votre passerelle de paiement est activée et que WooCommerce l’est également.
+
+</details>
+
+<details>
+<summary>La passerelle figure dans la liste, mais son interrupteur Activé est grisé</summary>
+
+L’extension gratuite permet uniquement d’activer **Espèces** et **Carte**. Activez [WCPOS Pro](../getting-started/pro-license.mdx).
+
+</details>
+
+<details>
+<summary>Elle n’apparaît pas dans l’onglet Hérité</summary>
+
+En caisse : si un paiement a déjà été encaissé sur la commande, l’onglet Hérité ne peut pas être utilisé tant que ce paiement n’a pas été [annulé](../pos/checkout/cancelling-a-payment.mdx).
+
+Dans WP Admin : basculez l’interrupteur **Activé** dans **WP Admin > PDV > Réglages > Caisse**, puis rechargez le PDV.
+
+</details>
+
+<details>
+<summary>La vente ne se termine pas après le paiement</summary>
+
+La commande n’est ni payée ni au **Statut de commande** défini pour la passerelle.
+
+Dans WP Admin : définissez le **Statut de commande** de la passerelle dans **WP Admin > PDV > Réglages > Caisse** sur le statut attribué par votre méthode `process_payment()`.
+
+Dans le code : assurez-vous que `process_payment()` renvoie `get_return_url( $order )`.
+
+</details>
+
+<details>
+<summary>La commande se termine avec un statut inattendu</summary>
+
+Pour les ventes au PDV, c’est le **Statut de commande** défini pour la passerelle dans les réglages de la caisse du PDV qui détermine le statut, et non les produits de la commande. Consultez [Statut de commande](../settings/wp-admin/checkout.mdx#order-status).
+
+</details>
+
+<details>
+<summary>Elle apparaît sur la page de paiement de la boutique en ligne</summary>
+
+Dans le code : vérifiez que `$this->enabled = 'no';` figure toujours dans le constructeur, après `init_settings()`.
+
+</details>
+
+## Exemples et ressources {#resources}
+
+Deux passerelles de paiement WCPOS sont construites de la même façon, avec un fichier PHP chacune, et constituent des exemples utiles à consulter en parallèle du modèle :
+
+- **[Facture par e-mail](../payment/gateways/email-invoice.mdx)** — attribue à la commande le statut **En attente de paiement**, réduit le stock et envoie au client un lien de paiement par e-mail ([code source](https://github.com/wcpos/email-invoice-gateway)).
+- **[Paiement en ligne](../payment/gateways/web-checkout.mdx)** — redirige le client vers la page de paiement de votre boutique en ligne pour régler sa commande ([code source](https://github.com/wcpos/web-checkout-gateway)).
+
+Le modèle est disponible sur [GitHub](https://github.com/wcpos/woocommerce-gateway-template). Pour connaître toutes les possibilités d’une classe de passerelle de paiement, consultez la [référence WC_Payment_Gateway](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html) de WooCommerce.
+
+## Documentation associée {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="L’onglet Hérité" description="L’endroit où s’ouvre la page de paiement de votre passerelle en caisse" />
+  <LinkCard to="/settings/checkout" title="Réglages de la caisse" description="Activez la passerelle de paiement et choisissez son statut de commande" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Passerelles de paiement" description="Les passerelles de paiement déjà disponibles dans WCPOS" />
+</LinkCards>
