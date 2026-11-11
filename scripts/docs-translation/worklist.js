@@ -89,7 +89,7 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
       for (const file of git(['diff', '--name-only', mb.trim(), ref, '--', 'i18n']).split('\n')) changed.add(file);
     }
     for (const source of sources) {
-      if (LOCALES.some(locale => changed.has(sourceToTranslatedPath(source, locale)))) held.add(source);
+      if (LOCALES.some(locale => changed.has((source.endsWith('.json') ? jsonSourceToTranslatedPath : sourceToTranslatedPath)(source, locale)))) held.add(source);
     }
     summary.held = [...held].sort();
     if (held.size) process.stderr.write(`holding ${held.size} page(s) for open i18n-round branches\n`);

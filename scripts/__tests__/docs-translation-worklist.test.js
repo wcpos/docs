@@ -542,6 +542,21 @@ describe('open i18n-round holds', () => {
     expect(stderr).toHaveBeenCalledWith('holding 1 page(s) for open i18n-round branches\n');
   });
 
+  it('holds a JSON source whose translation an open round changes', () => {
+    write(JSON_SOURCE, { save: 'Save' });
+    commitFixtures();
+    git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+    git('checkout', '-q', '-b', 'round');
+    write(JSON_TARGET, { save: 'Speichern' });
+    commitFixtures();
+    git('update-ref', 'refs/remotes/origin/i18n-round/x', 'HEAD');
+    git('checkout', '-q', '-');
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const held = buildWorklist({ rootDir, holdRounds: 'main' });
+    expect(held.summary.held).toContain(JSON_SOURCE);
+    expect(held.plan.targets.filter(entry => entry.source === JSON_SOURCE)).toEqual([]);
+  });
+
   it('plans the page as before without holdRounds', () => {
     roundFixture();
     const plain = buildWorklist({ rootDir });
