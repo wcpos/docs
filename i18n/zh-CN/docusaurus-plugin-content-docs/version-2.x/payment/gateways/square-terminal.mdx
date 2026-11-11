@@ -1,0 +1,339 @@
+---
+title: Square Terminal
+slug: /hardware/card-readers/square-terminal
+description: "从 POS 结账界面通过 Square Terminal 收取银行卡付款，并在 WP Admin 中设置 Square Terminal 扩展。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+
+# Square Terminal 支付网关 {#square-terminal-gateway}
+
+收银机会将金额发送到 [Square Terminal](https://squareup.com/hardware/terminal)，顾客在终端上付款，Square 批准后，销售流程便会自动继续。本页分为两部分：在收银机上[收款](#take-payment)，以及在 WP Admin 中[进行设置](#setup)。
+
+:::info Pro 功能
+Square Terminal 需要 [WCPOS Pro](../../getting-started/pro-license.mdx) 2.0 或更高版本。
+:::
+
+{/* Describes Square Terminal for WooCommerce 1.0.0 (wcpos/square-terminal-for-woocommerce promote/2.0 cd12a0b, the target of the draft v1.0.0 release; v1.0.0-beta1 is a4b89cb), the version that runs on the tender pane under WCPOS Pro 2.0. docs#590 (webhook URL under Pro's panel) is covered in #webhooks. */}
+
+## 收款 {#take-payment}
+
+:::note 开始之前
+- 确保收银机已联网，终端已开机。如果没有 **Square Terminal** 选项，请让 WP Admin 管理人员[进行设置](#setup)。
+- 如果启用了 **开启和关闭收银台**，请确保收银台已开启。收银台关闭时不会记录付款；如果终端已从银行卡扣款，就必须退款。请参阅[开启收银台](../../pos/register/index.mdx)。
+:::
+
+1. 将商品加入购物车，然后按 **结账**。
+2. 在 **付款** 选项卡上，轻点 **Square Terminal** 选项。
+3. 查看终端信息行中的 **终端：** 及终端名称。如果有多台终端，请按 **更改**，然后轻点收银机旁的那一台。选择终端前，面板会显示 **选择终端**。
+4. 金额可保留为待付余额，也可输入较小的金额，仅通过银行卡收取其中一部分。请参阅[拆分付款](../../pos/checkout/split-payments.mdx)。
+5. 按 **向 Square Terminal 发送 $45.00**（按钮显示的是实际金额）。面板会先显示 **正在启动终端…**，然后显示 **正在等待顾客在终端上操作**。
+6. 顾客在终端上感应、插入或刷过银行卡。
+7. Square 批准后，流程会依次进入 **已批准** 和 **已扣款**。如果余额已付清，销售便会完成并显示收据；否则，请用相同或其他方式收取剩余款项。
+
+付款过程中，面板会显示：
+
+- **终端处理中** 以及已发送的金额。
+- 一行状态信息，例如 **正在等待顾客在终端上操作**。
+- 付款方式和终端名称。
+- 四个步骤：**已发送**、**终端处理中**、**已批准**、**已扣款**。
+- **详情**：Square 报告的每个步骤及时间，以及 **读卡器**、**操作** 和 **付款** 的 ID。使用 **复制**（部分设备上为 **共享**）将日志交给为您提供帮助的人员。
+
+<details>
+<summary>付款状态提示及处理方法</summary>
+
+- **已批准**，随后显示 **已扣款**：款项已收取。如果余额已付清，就会显示收据；否则，请收取剩余款项。
+- **付款已取消**：终端已确认取消。请按 **重试** 或 **选择其他方式**。
+- **已超时 — 付款已取消**：5 分钟内无人付款。请按 **重试** 或 **选择其他方式**。
+- **正在取消 — 等待终端确认**：终端尚未回应取消请求。请稍候，或按 **解除此付款占用**。请参阅[停止付款](#stop)。
+- **付款占用已解除**：订单已可使用其他方式付款，但终端可能仍已从银行卡扣款。请先查看终端屏幕。
+
+</details>
+
+### 停止付款 {#stop}
+
+**在终端上取消** 会请求 Square 取消终端上的付款。面板会显示 **正在取消…**，终端确认后显示 **付款已取消**。按 **重试** 可重新发送付款，按 **选择其他方式** 可返回付款方式选项。
+
+如果终端未确认（已关机、无信号或卡住），面板会显示 **正在取消 — 等待终端确认**，并提供 **解除此付款占用**，同时提示 *解除订单占用，以便使用其他方式付款。店铺会继续检查终端。*
+
+:::warning 再次收款前请检查终端
+解除占用不会取消 Square 上的付款。店铺会继续在后台检查，频率约为每 10 分钟一次。使用其他方式收款前，请先查看终端屏幕。如果屏幕显示付款成功，请勿再次收款：店铺会在后续某次检查时将这笔付款记录到订单中。请参阅[遇到问题时](#goes-wrong)。
+:::
+
+**解除此付款占用** 只会解除订单占用，并不代表付款已确认取消。面板会显示 **付款占用已解除**。按 **选择其他方式** 之前，请先检查终端：如果显示付款成功，请勿再次收款，等待订单更新即可。如果显示付款已取消，按 **选择其他方式** 可返回付款方式选项，改用其他方式收款。如果无法判断（终端已关机、无信号或没有显示内容），则付款结果未知：若您使用其他方式收款，而店铺在后续检查中发现终端已收款，这笔付款也会记录到订单中，届时需从订单中退还其中一笔款项。请参阅[退款](../../orders/refunds.mdx)。
+
+如果 5 分钟内无人在终端上付款，付款会被取消，面板会显示 **已超时 — 付款已取消**。
+
+## 遇到问题时 {#goes-wrong}
+
+**尚未为 Square Terminal 设置任何终端。** 尚未有终端与此扩展配对。请让 WP Admin 管理人员[配对一台终端](#pairing)。
+
+**正由订单 #… 使用** 该终端正在处理另一个订单的付款。请先完成或取消那笔付款，或选择其他终端。
+
+**付款失败** 及失败原因。请按 **重试** 或 **选择其他方式**。**详情** 中会显示 Square 返回的信息。
+
+**正在取消 — 等待终端确认。** 终端尚未回应取消请求。请稍候，或按 **解除此付款占用**。请参阅[停止付款](#stop)。
+
+**终端已收款，但收银机仍在等待。** 收银机会在等待期间持续向 Square 查询，并在收到回应后继续；使用 [webhook](#webhooks) 可让店铺更快获知结果。如果收银机停止等待（收银机已关闭，或您解除了付款占用），店铺约每 10 分钟执行一次的后台检查会记录收银机遗漏的付款。等待期间不要改用其他方式收款：请先查看终端屏幕。
+
+**没有显示付款方式选项。** 尚未为 POS 启用该支付网关。请参阅[为 POS 启用](#enable)。
+
+<details>
+<summary>设置问题，供 WP Admin 管理人员参考</summary>
+
+<details>
+<summary>终端未出现在列表中</summary>
+
+终端必须与此扩展配对：使用 **创建设备代码**，然后在终端上输入代码。通过 Square 管理面板或 Square 应用配对的终端，只有在此处配对后才会显示。如果 **检查读卡器** 将其列在 *Square 在此地点可见的其他设备* 下，说明该终端存在，但属于另一个应用。还需检查 **地点 ID** 是否与终端登录的地点一致。
+
+</details>
+
+<details>
+<summary>终端无法配对</summary>
+
+代码的有效期为 5 分钟，请创建新代码。终端必须联网，并退出 Square 应用或其他集成的登录，因为此代码会将终端登录到此处设置的账户和 **地点 ID**。**环境** 必须与该账户匹配。
+
+</details>
+
+<details>
+<summary>验证设置失败</summary>
+
+如果已连接，请检查 **Square 账户** 一行是否仍显示 **已连接到 Square**。如果使用自己的访问令牌，请确认令牌适用于所选的 **环境**：沙盒令牌不能用于 **正式环境**，反之亦然。请检查 **地点 ID** 是否属于该账户。
+
+</details>
+
+<details>
+<summary>需要重新连接到 Square</summary>
+
+Square 授权会自动续期。如果无法完成续期，扩展会终止授权，并要求重新连接。按 **重新连接到 Square** 即可，无需更改其他设置。
+
+</details>
+
+<details>
+<summary>在哪里查找日志</summary>
+
+前往 `WooCommerce > Status > 日志`，选择来源 `square-terminal-for-woocommerce`。关键步骤也会写入订单备注，以 `Square Terminal:` 开头。
+
+</details>
+
+</details>
+
+## 进行设置 {#setup}
+
+本部分供店铺的 WP Admin 管理人员参考。店铺会将每笔付款发送给 Square，再由 Square 发送到已配对的终端，因此收银机需要连接到店铺。请依次完成以下四项操作：
+
+1. 从扩展目录[安装扩展](#install)。
+2. [连接到 Square](#connect) 并选择地点。
+3. [配对终端](#pair-your-terminal)，或在沙盒中使用 Square 的测试设备。
+4. [为 POS 启用](#enable)。
+
+### 安装扩展 {#install}
+
+打开 `WP Admin > POS > 设置 > 扩展`，找到 **Square Terminal**，点击 **安装**，然后点击 **启用**。请参阅[安装扩展](../../extensions/index.mdx#installing-an-extension)。
+
+如果无法使用扩展目录，请从 [GitHub 发布页面](https://github.com/wcpos/square-terminal-for-woocommerce/releases)下载 **插件 zip 包**（不是源代码 zip 包），前往 `插件 > Add Plugin`，再点击 **上传插件** 进行上传。如果没有 WCPOS Pro 2.0，此扩展不会运行，并会提示需要该版本。
+
+### 连接到 Square {#connect}
+
+1. 前往 `WP Admin > WooCommerce > 设置 > 支付`，打开 **Square Terminal**。
+2. 在 **Square 账户** 下选择 **环境**：试用时选择 **测试模式（沙盒）**（默认），实际收款时选择 **正式环境**。请在连接 **之前** 选择：一次连接仅适用于一个环境。
+3. 点击 **连接到 Square**，并批准 Square 请求的权限。
+4. 选择 **地点 ID**：即终端为之收款的 Square 地点。
+5. 在 **您使用哪种 Square 设备？** 下，保留 **Square Terminal**。
+
+已经在使用官方 WooCommerce Square 插件？**环境** 和 **地点 ID** 会根据该插件的设置预填，保存后即可应用。两个插件之间不会共享凭据，因此仍需在此处连接。
+
+希望使用自己的访问令牌？请打开 **高级设置**，粘贴 **沙盒访问令牌** 或 **生产环境访问令牌**，以此代替连接操作。
+
+### 配对终端 {#pair-your-terminal}
+
+在 **终端** 下，点击 **创建设备代码**，并在 5 分钟内将代码输入终端。然后点击 **检查读卡器**。完整步骤、列表内容说明以及沙盒测试设备的介绍，请参阅[已配对的终端和测试设备](#pairing)。
+
+### 为 POS 启用 {#enable}
+
+前往 `WP Admin > POS > 设置 > 结账`，找到 **Square Terminal**，打开 **已启用** 开关。请参阅[启用支付网关](../../settings/wp-admin/checkout.mdx#enabling-a-gateway)。
+
+:::note
+Square Terminal 仅供收银机前的员工使用，不会出现在网店的结账页面上。WooCommerce **付款** 列表中的 **已启用** 开关对它没有影响。
+:::
+
+
+## 已配对的终端和测试设备 {#pairing}
+
+终端必须与 **此扩展** 配对，收银员才能选择它。配对会生成一个 Square *设备代码*，扩展只能通过这种方式与终端通信。
+
+1. 在 **终端** 下，点击 **创建设备代码**。屏幕会显示 *配对代码：… — 请在 5 分钟内将其输入终端。*
+2. 在终端上打开设备代码登录界面并输入代码。如果终端已登录 Square 应用或其他集成，请先退出登录：终端用于其他应用时，无法进入设备代码界面。
+3. 点击 **检查读卡器**。终端现在会显示在 **已与此插件配对 — 可在结账时选择** 下。
+
+**检查读卡器** 会将 Square 可见的设备分为两组列出：
+
+- **已与此插件配对 — 可在结账时选择**：收银员可以选择的终端。
+- **Square 在此地点可见的其他设备**：由其他应用设置的终端。必须使用新代码配对后，才能在此处选择它们。
+
+**验证设置** 会向 Square 确认连接（或访问令牌）和地点是否有效。如果均有效，就会显示 *Square 凭据和地点已验证。*
+
+:::note 配对前列表为空是正常现象
+Square 只会列出通过设备代码配对的终端。运行 Square 应用的终端在输入设备代码之前不会出现在列表中。
+:::
+
+<details>
+<summary>测试模式：使用 Square 测试设备代替终端</summary>
+
+在 **测试模式（沙盒）** 中，没有设备代码，也无需配对。收银机会在原本显示已配对终端的位置列出 Square 测试设备。每台测试设备都能在不使用硬件的情况下模拟一种结果：
+
+| 测试设备 | 模拟结果 |
+|---|---|
+| **沙盒：成功（收款不超过 $25）** | 银行卡付款获批。金额需保持在 $25 或以下。 |
+| **沙盒：成功并含 20% 小费** | 含小费的付款。Square 在此处不收取小费，因此付款最终会失败：**终端确认的金额不一致**。 |
+| **沙盒：买家在终端上取消** | 顾客在终端上取消付款。 |
+| **沙盒：立即超时** | 无人付款，付款立即超时。 |
+| **沙盒：终端离线（保持待处理状态）** | 终端始终不回应。可在没有硬件的情况下使用它尝试[停止付款](#stop)。 |
+
+</details>
+
+## Webhook {#webhooks}
+
+Webhook 是 **可选的**。它让 Square 能在付款状态变化时立即通知店铺，使收银流程更快继续。如果没有 webhook，收银机会在等待期间向 Square 查询结果，店铺约每 10 分钟执行一次的后台检查也会记录收银机遗漏的结果。无论是否使用 webhook，只有在 Square 确认付款本身后，店铺才会记录付款；仅凭 Square 将结账标记为完成还不够。
+
+<details>
+<summary>添加 webhook</summary>
+
+此操作仅适用于在 **高级设置** 中使用自己的访问令牌设置扩展的情况。如果使用了 **连接到 Square**，您授权的是 WCPOS 应用，而不是自己的应用，因此没有可添加订阅的应用，也没有可复制的签名密钥。付款仍会通过收银机自身的检查和后台检查得到确认。
+
+使用自己的访问令牌时，请在 [Square 开发者管理面板](https://developer.squareup.com/apps)中操作自己的应用：
+
+1. 在设置界面的 **终端** 下，找到 **Webhook** 一行，点击 **复制** 以复制 webhook URL。
+2. 在 Square 开发者管理面板中打开您的应用，进入 **Webhook**。
+3. 为 **`terminal.checkout.updated`** 事件添加订阅，并将该 URL 用作通知 URL。
+4. 将订阅的 **签名密钥** 复制到 **高级设置** 下的 **Webhook 签名密钥** 中，然后保存。
+
+收到带签名的 webhook 后，**Webhook** 一行便会显示 **已于 … 前验证**。
+
+:::warning URL 必须完全一致
+Square 使用提供给它的通知 URL 为每个 webhook 签名。如果 Square 中的 URL 与设置界面上的 URL 哪怕只差一个字符，每次投递都会失败。请使用 **复制**，不要手动输入。
+:::
+
+<details>
+<summary>从 0.x 版本升级</summary>
+
+1.0.0 版本会显示新的 webhook URL。如果已有订阅，请在 Square 中将其通知 URL 改为设置界面当前显示的 URL；编辑订阅会保留其签名密钥。**覆盖 Webhook URL** 不会更改此 URL；它仅适用于扩展自身的付款页面。如果网站的公开地址与所显示的地址不同，webhook 将无法通过验证：付款仍会通过收银机自身的检查和后台检查得到确认。
+
+</details>
+
+Square 的 webhook 订阅属于 Square 应用，无法使用卖家的访问令牌添加，因此扩展无法代您添加订阅。
+
+</details>
+
+### Webhook 无法再通过验证时 {#webhook-troubleshooting}
+
+在收到 webhook 并根据 **当前** 设置通过验证之前，**Webhook** 一行会显示 **尚未验证**。
+
+<details>
+<summary>已有付款，仍显示尚未验证</summary>
+
+请检查：
+
+1. **Webhook 签名密钥** 是否与 Square 中订阅的密钥一致。
+2. Square 中的通知 URL 是否与设置界面上的完全一致。
+3. 订阅是否包含 `terminal.checkout.updated`。
+4. 网站是否可以通过 HTTPS 从互联网访问。Square 管理面板会显示每次投递尝试。
+
+更改环境、webhook URL 或签名密钥后，该行状态会重置，直到收到下一个 webhook。这是预期行为：在旧设置下通过验证的 webhook 并不能说明新设置是否有效。
+
+</details>
+
+## 设置参考 {#settings}
+
+以下设置位于 `WP Admin > WooCommerce > 设置 > 支付 > Square Terminal`，按设置流程的顺序排列。展开各组即可查看其中的设置。
+
+<details>
+<summary>Square 账户</summary>
+
+- **环境**：**测试模式（沙盒）**（默认）或 **正式环境**。一次连接仅适用于一个环境。
+- **连接到 Square**：为此网站获取 Square 授权。完成后会显示 **已连接到 Square**、商户信息和 **断开连接**。
+- **地点 ID**：终端为之收款的 Square 地点。
+- **您使用哪种 Square 设备？**：**Square Terminal**（本页介绍的设备，默认选项）或 **Square Reader**。
+
+</details>
+
+<details>
+<summary>终端</summary>
+
+- **创建设备代码**、**检查读卡器**、**验证设置**：分别用于配对终端、列出 Square 可见的设备以及检查设置。请参阅[已配对的终端和测试设备](#pairing)。
+- **Webhook**：显示是否已收到带签名的 webhook，以及可供 **复制** 的 URL。请参阅 [Webhook](#webhooks)。
+
+</details>
+
+<details>
+<summary>结账行为</summary>
+
+- **跳过收据界面**：终端直接返回空闲状态，不显示自身的收据界面。
+- **收集签名**：在付款支持签名时，要求顾客在终端上签名。
+- **结账调试日志**：扩展自身付款页面上的日志面板，内容可复制。供支持人员排查问题使用，可以保持关闭。
+
+</details>
+
+<details>
+<summary>高级设置</summary>
+
+- **沙盒访问令牌**、**生产环境访问令牌**：仅在未通过上方选项连接时需要。
+- **Webhook 签名密钥**：可选。用于让店铺验证 webhook；没有它也能确认付款。
+- **覆盖 Webhook URL**：仅适用于扩展自身的付款页面。请参阅 [Webhook](#webhooks)。
+
+**高级设置** 在设置界面上也默认折叠。
+
+</details>
+
+## 使用 Square Reader 代替终端 {#square-reader}
+
+将 **您使用哪种 Square 设备？** 设为 **Square Reader**，即可在 Square Point of Sale 应用中收款，Square Reader 需与该手机或平板电脑配对。设置界面随后会显示包含五个步骤的清单：**设置您的 Square Reader**。
+
+<details>
+<summary>Square Reader 设置的五个步骤</summary>
+
+1. 连接您的 Square 账户。
+2. 选择地点。
+3. 在 Square 注册您的店铺：粘贴 **应用 ID**。
+4. 向 Square 提供店铺的返回地址。
+5. 设置手机或平板电脑。
+
+</details>
+
+在收银机上，付款会在[旧版选项卡](../../pos/checkout/legacy-tab.mdx)中的扩展自身付款页面上进行：按 **打开 Square Point of Sale**，然后在 Square 应用中完成付款。仅在以下条件下可用：
+
+- 处于 **正式环境**，而非测试模式；
+- 使用安装了 Square Point of Sale 应用的 Android 或 iOS 手机或平板电脑。在其他设备上，该按钮会被禁用，并显示原因。
+
+## 退款 {#refunds}
+
+从订单中对 Square Terminal 付款进行退款，款项会通过 Square 退回顾客的银行卡。也支持部分退款。请参阅[退款](../../orders/refunds.mdx)。
+
+通过扩展自身付款页面收取的款项（例如在 1.0.0 之前的版本中收取的款项），则需从 Square 管理面板退款。
+
+## 使用要求 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WCPOS Pro">2.0.0 或更高版本</RequirementItem>
+  <RequirementItem label="Square 账户">有效的 Square 卖家账户和一个 Square 地点</RequirementItem>
+  <RequirementItem label="Square Terminal">已联网，并使用适用于您的 Square 账户和地点的设备代码与此扩展配对（请参阅上文的已配对的终端和测试设备）</RequirementItem>
+  <RequirementItem label="连接">收银机和店铺都必须在线。店铺会将每笔付款发送到已配对的终端，因此任何收银机都可以使用任何已配对的终端</RequirementItem>
+  <RequirementItem label="可公开访问的 HTTPS 网站">仅 webhook 需要；没有 webhook 也能确认付款</RequirementItem>
+</RequirementsList>
+
+## 相关文档 {#related-documentation}
+
+- [收款：使用读卡器](../../pos/checkout/taking-a-payment.mdx#card-reader)
+- [收款面板](../../pos/checkout/payment-methods.mdx)
+- [取消付款](../../pos/checkout/cancelling-a-payment.mdx)
+- [Square Terminal API 文档](https://developer.squareup.com/docs/terminal-api/overview)，用于查询硬件和 API 问题
+- 请在 [GitHub](https://github.com/wcpos/square-terminal-for-woocommerce) 上报告扩展问题。账户和硬件问题由 Square 支持团队处理。
+
+<LinkCards>
+  <LinkCard to="/getting-started/make-sale" title="结账" description="从头到尾完成一笔销售" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="支付网关" description="收银机上可用的所有支付网关" />
+  <LinkCard to="/manage-store/orders/refund-rules" title="退款" description="为已完成的销售退还款项" />
+</LinkCards>

@@ -1,0 +1,274 @@
+---
+title: Gatewaysjabloon
+slug: /developers/gateway-template
+sidebar_label: Gatewaysjabloon
+sidebar_position: 9
+description: "Bouw je eigen betaalgateway voor WCPOS, uitsluitend voor de POS, met het gatewaysjabloon: één PHP-bestand, een installatiescript en automatische GitHub-releases."
+---
+
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+- **Een betaling van een klant ontvangen?** Zie [Betalingen ontvangen op het tabblad Legacy](../pos/checkout/legacy-tab.mdx).
+- **Gateway al ingesteld?** [Probeer een testbetaling aan de kassa](#at-the-till).
+- **Een gateway bouwen?** Deze pagina is voor ontwikkelaars. Je leest hier hoe je [je eigen POS-betaalgateway bouwt](#build), installeert en inschakelt.
+
+:::info Pro-functie
+Voor andere gateways dan Contant en Kaart heb je [WCPOS Pro](../getting-started/pro-license.mdx) nodig. Zonder Pro staat je gateway wel in de POS-kassa-instellingen, maar kun je deze niet inschakelen.
+:::
+
+Het gatewaysjabloon is een startpunt voor je eigen betaalmethode aan de kassa: een WordPress-plugin die uit één PHP-bestand bestaat. Een installatiescript vult de naam van je gateway in en bouwt de plugin voor je. De gateway blijft uitgeschakeld bij het afrekenen in je webwinkel en verschijnt in de POS zodra je deze in de POS-instellingen inschakelt.
+
+Aan de kassa staat je gateway op het [tabblad Legacy](../pos/checkout/legacy-tab.mdx) van het afrekenscherm. Dit tabblad opent de WooCommerce-betaalpagina van je gateway binnen de POS. De kassamedewerker kiest daar de gateway en drukt op **Betaling verwerken** onderaan het tabblad.
+
+## Probeer een betaling aan de kassa {#at-the-till}
+
+Zodra je gateway is [gebouwd en ingeschakeld](#build), verloopt een betaling als volgt. Een ontwikkelaar bouwt en installeert de gateway; de kassamedewerker ontvangt de betaling.
+
+Voor het tabblad Legacy moet je winkel bereikbaar zijn. Het verwerkt de hele bestelling, dus je kunt het niet gebruiken zodra er al een betaling voor de bestelling is ontvangen. Zie [Het tabblad Legacy](../pos/checkout/legacy-tab.mdx).
+
+:::warning Gebruik een testbestelling
+Het ongewijzigde sjabloon int geen geld. Het markeert de bestelling alleen als betaald, dus probeer het met een testbestelling, niet met een echte verkoop aan een klant. Je eigen betaallogica hoort in `process_payment()`.
+:::
+
+1. Als je winkel kassasessies gebruikt, open dan de kassa. Voeg een product toe aan de winkelwagen en druk op **Afrekenen**.
+2. Open het tabblad **Legacy**, naast **Betalingen** bovenaan het betaalscherm.
+3. Kies je gateway op de betaalpagina en druk vervolgens op **Betaling verwerken** onderaan het tabblad.
+4. De verkoop wordt afgerond en de bon verschijnt, net als op het [scherm na betaling](../pos/checkout/index.mdx#paid), met de bestelling op de **Bestelstatus** van de gateway. Een [gateway voor later betalen](#pay-later), ingesteld zoals hieronder, sluit de verkoop ook af, maar de bestelling blijft op **Wacht op betaling** staan.
+
+<details>
+<summary>Voor ontwikkelaars: hoe de POS weet dat de betaling is afgerond</summary>
+
+**Betaling verwerken** verstuurt de betaalpagina, waarna WooCommerce `process_payment()` van je gateway uitvoert. Wanneer die het adres van de pagina voor ontvangen bestellingen retourneert, `get_return_url( $order )`, controleert de POS de bestelstatus:
+
+- **Betaald (In behandeling of Afgerond), of de Bestelstatus van de gateway** uit de POS-kassa-instellingen — de POS sluit de verkoop af.
+- **Elke andere status** — de POS blijft wachten en de verkoop blijft openstaan.
+
+</details>
+
+## Wat je nodig hebt {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WCPOS Pro">Om de gateway in de POS in te schakelen</RequirementItem>
+  <RequirementItem label="WooCommerce">Geïnstalleerd en actief</RequirementItem>
+  <RequirementItem label="Bash">Om het installatiescript uit te voeren</RequirementItem>
+  <RequirementItem label="PHP">Enige kennis van PHP om de betaallogica aan te passen</RequirementItem>
+</RequirementsList>
+
+## Bouw je gateway {#build}
+
+### Haal het sjabloon op {#get-template}
+
+```bash
+git clone https://github.com/wcpos/woocommerce-gateway-template.git
+cd woocommerce-gateway-template
+```
+
+Of druk op **Dit sjabloon gebruiken** in de [GitHub-repository](https://github.com/wcpos/woocommerce-gateway-template) om je eigen kopie te maken en kloon die vervolgens.
+
+### Voer het installatiescript uit {#setup-script}
+
+```bash
+./create-gateway.sh
+```
+
+Het is een Bash-script. Het vraagt om:
+
+- **Gatewaynaam** — het enige verplichte antwoord, bijvoorbeeld `Cash Payment`.
+- **Gatewayslug** — druk op Enter om de op basis van de naam gemaakte slug te gebruiken (`cash-payment`). Alleen kleine letters, cijfers en koppeltekens.
+- **Gatewaybeschrijving** en **standaardbeschrijving bij het afrekenen** — optioneel.
+- **GitHub-gebruikersnaam**, **repositorynaam** en **auteursnaam** — optioneel. De repositorynaam is standaard de slug plus `-gateway`.
+- **Doelmap** — waar de plugin wordt geplaatst. Standaard is dit de map met het sjabloon.
+
+De plugin komt in een map met de naam van de repository, bijvoorbeeld `cash-payment-gateway/`, met daarin `wcpos-cash-payment.php`.
+
+### Installeer de plugin {#install}
+
+Kopieer de gegenereerde map naar de map `wp-content/plugins/` van je site, of maak een zipbestand van de map. Ga in dat laatste geval in het WordPress-beheer naar **Plugins > Nieuwe plugin**, druk op **Plugin uploaden**, kies het zipbestand en druk op **Nu installeren**.
+
+Activeer de plugin vervolgens. WooCommerce moet ook actief zijn: zonder WooCommerce laadt de plugin niets.
+
+### Schakel de gateway in voor de POS {#enable}
+
+1. Ga naar **WP Admin > POS > Instellingen > Kassa**.
+2. Zoek je gateway in de lijst **Gateways**, onder de naam die je hebt opgegeven. De **Gateway-ID** is `wcpos_` plus je slug met underscores, bijvoorbeeld `wcpos_cash_payment`.
+3. Zet **Ingeschakeld** aan en kies de **Bestelstatus** die een op deze manier betaalde verkoop moet krijgen. Zie [Kassa-instellingen](../settings/wp-admin/checkout.mdx#payment-gateways).
+
+De gateway verschijnt de volgende keer dat de POS wordt geladen op het tabblad Legacy. [Probeer een betaling aan de kassa](#at-the-till) om de gateway te testen.
+
+## Wat er in het pluginbestand staat {#how-it-works}
+
+De plugin registreert één WooCommerce-betaalgatewayklasse. De gateway blijft uitgeschakeld bij het afrekenen in je webwinkel, markeert de bestelling als betaald (bij een POS-verkoop met de **Bestelstatus** van de gateway) en stuurt de POS naar de pagina voor ontvangen bestellingen.
+
+<details>
+<summary>De belangrijkste regels</summary>
+
+- **`$this->enabled = 'no';`** in de constructor — houdt de gateway uitgeschakeld bij het afrekenen in je webwinkel, ook als deze is ingeschakeld in de betaalinstellingen van WooCommerce. WCPOS schakelt de gateway alleen in voor POS-verzoeken, en alleen als deze is ingeschakeld in de POS-kassa-instellingen.
+- **`process_payment()`** — roept `$order->payment_complete()` aan, wat de bestelling als betaald markeert en de voorraad verlaagt. Voor een POS-bestelling stelt WCPOS de status in op de **Bestelstatus** van de gateway uit de POS-kassa-instellingen (**Afgerond**, tenzij je een andere hebt gekozen). De methode retourneert `get_return_url( $order )`, het adres van de pagina voor ontvangen bestellingen waarop de POS wacht.
+- **`init_form_fields()`** — de velden **Titel** en **Beschrijving** in de betaalinstellingen van WooCommerce. De POS kan de gateway een eigen titel geven via **POS-instellingen** in het menu van de gateway.
+
+De plugin laadt ook een eigen tekstdomein, `woocommerce-pos-<your-slug>-gateway`, met een `.pot` bestand in `languages/`.
+
+</details>
+
+## Pas je gateway aan {#customise}
+
+### Vraag de kassamedewerker om invoer {#payment-fields}
+
+Als je gateway invoer van de kassamedewerker nodig heeft, bijvoorbeeld een referentienummer, stel dan `$this->has_fields = true;` in de constructor in en voeg een methode `payment_fields()` toe. De velden verschijnen op de betaalpagina van de gateway op het tabblad Legacy. Lees de waarde in `process_payment()` uit `$_POST['my_gateway_reference']` en schoon deze op met `sanitize_text_field( wp_unslash( ... ) )`.
+
+<details>
+<summary>Toon de code van payment_fields()</summary>
+
+```php
+public function payment_fields() {
+    if ( $this->description ) {
+        echo wpautop( wptexturize( $this->description ) );
+    }
+
+    woocommerce_form_field( 'my_gateway_reference', array(
+        'type'     => 'text',
+        'label'    => __( 'Reference Number', 'your-text-domain' ),
+        'required' => true,
+    ) );
+}
+```
+
+</details>
+
+### Laat de klant later betalen {#pay-later}
+
+Het sjabloon markeert de bestelling meteen als betaald. Voor een gateway waarbij het geld later binnenkomt, zoals bij een factuur, zet je de bestelling in `process_payment()` op **Wacht op betaling** en verlaag je zelf de voorraad, omdat `payment_complete()` niet wordt aangeroepen.
+
+<details>
+<summary>Toon de code van process_payment()</summary>
+
+```php
+public function process_payment( $order_id ) {
+    $order = wc_get_order( $order_id );
+
+    if ( ! $order ) {
+        return array( 'result' => 'failure' );
+    }
+
+    // The customer pays later.
+    $order->update_status( 'pending', __( 'Awaiting payment', 'your-text-domain' ) );
+
+    // payment_complete() is not called, so reduce stock here.
+    wc_reduce_stock_levels( $order_id );
+
+    return array(
+        'result'   => 'success',
+        'redirect' => $this->get_return_url( $order ),
+    );
+}
+```
+
+</details>
+
+Stel vervolgens de **Bestelstatus** van de gateway in op **Wacht op betaling** via **WP Admin > POS > Instellingen > Kassa**. **Wacht op betaling** is geen betaalde status, dus zonder deze instelling blijft de POS wachten en blijft de verkoop openstaan. Zie [Hoe de kassa met de status omgaat](../settings/wp-admin/checkout.mdx#order-status-at-the-till).
+
+<details>
+<summary>Vul de placeholders handmatig in</summary>
+
+Als je het script liever niet uitvoert, kies dan **Dit sjabloon gebruiken** op GitHub en zoek en vervang vervolgens deze placeholders in elk bestand:
+
+| Placeholder | Wat je invult | Voorbeeld |
+|---|---|---|
+| `{{GATEWAY_NAME}}` | De naam van je gateway | Contante betaling |
+| `{{GATEWAY_SLUG}}` | Kleine letters, met koppeltekens | cash-payment |
+| `{{GATEWAY_DESCRIPTION}}` | Een korte beschrijving van de gateway | Contante betalingen accepteren in WCPOS |
+| `{{GATEWAY_DEFAULT_DESCRIPTION}}` | De beschrijving op de betaalpagina | Betaal contant aan de kassa |
+| `{{GITHUB_USERNAME}}` | Je GitHub-gebruikersnaam | kilbot |
+| `{{REPO_NAME}}` | De naam van je repository | cash-payment-gateway |
+| `{{AUTHOR_NAME}}` | Je naam | kilbot |
+| `{{GATEWAY_ID}}` | De slug, met underscores in plaats van koppeltekens | cash_payment |
+| `{{GATEWAY_CLASS_NAME}}` | Elk woord van de naam met een beginhoofdletter, verbonden met underscores | Cash_Payment |
+| `{{GATEWAY_FUNCTION_PREFIX}}` | Hetzelfde als de gateway-ID | cash_payment |
+
+Hernoem vervolgens `wcpos-{{GATEWAY_SLUG}}.php` zodat de naam overeenkomt met je slug, bijvoorbeeld `wcpos-cash-payment.php`. Het script leidt de laatste drie waarden voor je af uit de naam en de slug.
+
+</details>
+
+## Een update uitbrengen {#updates}
+
+Bewerk `wcpos-<your-slug>.php`, verhoog het `Version:` nummer in de pluginheader (bijvoorbeeld van `0.1.0` naar `0.2.0`) en installeer de plugin opnieuw: vervang de map in `wp-content/plugins/`, of upload een nieuw zipbestand. WordPress vraagt om bevestiging voordat het de geïnstalleerde plugin vervangt; kies **Huidige vervangen door geüploade**.
+
+### Automatische releases op GitHub {#github-releases}
+
+De gegenereerde plugin bevat twee GitHub Actions-workflows. Als je deze naar een GitHub-repository pusht:
+
+1. Verhoog het `Version:`-nummer in de pluginheader.
+2. Commit en push naar `main`.
+3. De releaseworkflow herkent een versie zonder `v<version>` tag en publiceert een release met `woocommerce-pos-<your-slug>-gateway.zip` als bijlage.
+
+Iedereen kan dat zipbestand vervolgens downloaden van de pagina **Releases** van de repository en installeren zoals elke WordPress-plugin. De tweede workflow genereert het `.pot`-vertaalbestand opnieuw wanneer een PHP-bestand op `main` verandert.
+
+## Als er iets misgaat {#troubleshooting}
+
+<details>
+<summary>De gateway staat niet in de POS-kassa-instellingen</summary>
+
+Controleer via **WP Admin > Plugins** of je gatewayplugin is geactiveerd en WooCommerce actief is.
+
+</details>
+
+<details>
+<summary>De gateway staat in de lijst, maar de schakelaar Ingeschakeld is grijs</summary>
+
+De gratis plugin schakelt alleen **Contant** en **Kaart** in. Activeer [WCPOS Pro](../getting-started/pro-license.mdx).
+
+</details>
+
+<details>
+<summary>De gateway staat niet op het tabblad Legacy</summary>
+
+Aan de kassa: als er al een betaling voor de bestelling is ontvangen, kun je het tabblad Legacy pas gebruiken nadat die betaling is [geannuleerd](../pos/checkout/cancelling-a-payment.mdx).
+
+In WP Admin: zet **Ingeschakeld** aan via **WP Admin > POS > Instellingen > Kassa** en laad de POS opnieuw.
+
+</details>
+
+<details>
+<summary>De verkoop wordt na betaling niet afgesloten</summary>
+
+De bestelling is niet betaald en heeft niet de **Bestelstatus** van de gateway.
+
+In WP Admin: stel de **Bestelstatus** van de gateway via **WP Admin > POS > Instellingen > Kassa** in op de status die je `process_payment()` instelt.
+
+In de code: zorg dat `process_payment()` de waarde `get_return_url( $order )` retourneert.
+
+</details>
+
+<details>
+<summary>De bestelling krijgt een onverwachte status</summary>
+
+Bij POS-verkopen wordt dit bepaald door de **Bestelstatus** van de gateway in de POS-kassa-instellingen, niet door de producten in de bestelling. Zie [Bestelstatus](../settings/wp-admin/checkout.mdx#order-status).
+
+</details>
+
+<details>
+<summary>De gateway verschijnt bij het afrekenen in de webwinkel</summary>
+
+In de code: controleer of `$this->enabled = 'no';` nog in de constructor staat, na `init_settings()`.
+
+</details>
+
+## Voorbeelden en bronnen {#resources}
+
+Twee WCPOS-gateways zijn op dezelfde manier opgebouwd, elk met één PHP-bestand, en zijn nuttig om naast het sjabloon te bekijken:
+
+- **[Email Invoice](../payment/gateways/email-invoice.mdx)** — zet de bestelling op **Wacht op betaling**, verlaagt de voorraad en e-mailt de klant een betaallink ([broncode](https://github.com/wcpos/email-invoice-gateway)).
+- **[Web Checkout](../payment/gateways/web-checkout.mdx)** — stuurt de klant naar de afrekenpagina van je webwinkel om te betalen ([broncode](https://github.com/wcpos/web-checkout-gateway)).
+
+Het sjabloon staat op [GitHub](https://github.com/wcpos/woocommerce-gateway-template). Zie de [WC_Payment_Gateway-referentie](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html) van WooCommerce voor alle mogelijkheden van een gatewayklasse.
+
+## Gerelateerde documentatie {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="Het tabblad Legacy" description="Waar de betaalpagina van je gateway aan de kassa wordt geopend" />
+  <LinkCard to="/settings/checkout" title="Kassa-instellingen" description="Schakel de gateway in en kies de bestelstatus" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Betaalgateways" description="De gateways die WCPOS al heeft" />
+</LinkCards>

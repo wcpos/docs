@@ -1,0 +1,274 @@
+---
+title: Template per gateway di pagamento
+slug: /developers/gateway-template
+sidebar_label: Template per gateway di pagamento
+sidebar_position: 9
+description: "Crea un gateway di pagamento per WCPOS riservato al POS partendo dal template: un file PHP, uno script di configurazione e release automatiche su GitHub."
+---
+
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+- **Devi incassare un pagamento da un cliente?** Vedi [Incassare nella scheda Tradizionale](../pos/checkout/legacy-tab.mdx).
+- **Il gateway di pagamento è già configurato?** [Prova un pagamento di test alla cassa](#at-the-till).
+- **Stai creando un gateway di pagamento?** Questa pagina è rivolta agli sviluppatori. Spiega come [creare un gateway di pagamento per il POS](#build), installarlo e attivarlo.
+
+:::info Funzionalità Pro
+I gateway di pagamento diversi da Contanti e Carta richiedono [WCPOS Pro](../getting-started/pro-license.mdx). Senza questa versione, il tuo gateway di pagamento compare nelle impostazioni di cassa del POS, ma non può essere attivato.
+:::
+
+Il template per gateway di pagamento è un punto di partenza per creare il tuo metodo di pagamento alla cassa: un plugin WordPress composto da un solo file PHP. Uno script di configurazione inserisce il nome del tuo gateway di pagamento e genera il plugin. Il gateway di pagamento resta disattivato nella pagina di pagamento del negozio online e compare nel POS dopo che lo hai attivato nelle impostazioni del POS.
+
+Alla cassa, il tuo gateway di pagamento si trova nella [scheda Tradizionale](../pos/checkout/legacy-tab.mdx) della schermata di pagamento. La scheda apre la pagina di pagamento WooCommerce del gateway all'interno del POS. Il cassiere seleziona lì il gateway di pagamento e preme **Elabora pagamento** in fondo alla scheda.
+
+## Prova un pagamento alla cassa {#at-the-till}
+
+Una volta [creato e attivato](#build) il gateway di pagamento, ecco come si svolge un pagamento. Lo sviluppatore crea e installa il gateway di pagamento; il cassiere incassa il pagamento.
+
+La scheda Tradizionale richiede che il negozio sia raggiungibile e addebita l'intero ordine, quindi non può essere usata se è già stato incassato un pagamento per quell'ordine. Vedi [La scheda Tradizionale](../pos/checkout/legacy-tab.mdx).
+
+:::warning Usa un ordine di test
+Il template non modificato non incassa denaro. Si limita a contrassegnare l'ordine come pagato, quindi provalo su un ordine di test, non su una vendita reale a un cliente. Inserisci la tua logica di pagamento in `process_payment()`.
+:::
+
+1. Se il tuo negozio usa le sessioni di cassa, apri la cassa. Aggiungi un prodotto al carrello e premi **Cassa**.
+2. Apri la scheda **Tradizionale**, accanto a **Pagamenti** nella parte superiore della schermata di pagamento.
+3. Seleziona il tuo gateway di pagamento nella pagina di pagamento, quindi premi **Elabora pagamento** in fondo alla scheda.
+4. La vendita viene completata e viene mostrata la ricevuta, come nella [schermata di pagamento completato](../pos/checkout/index.mdx#paid), con l'ordine nello **Stato dell'ordine** del gateway di pagamento. Anche un [gateway di pagamento differito](#pay-later), configurato come descritto sotto, chiude la vendita, ma l'ordine resta **In attesa di pagamento**.
+
+<details>
+<summary>Per gli sviluppatori: come il POS riconosce il completamento del pagamento</summary>
+
+**Elabora pagamento** invia il modulo della pagina di pagamento e WooCommerce esegue `process_payment()` del tuo gateway di pagamento. Quando il metodo restituisce l'indirizzo della pagina di ordine ricevuto, `get_return_url( $order )`, il POS controlla lo stato dell'ordine:
+
+- **Pagato (In lavorazione o Completato), oppure nello Stato dell'ordine del gateway di pagamento** definito nelle impostazioni di cassa del POS — il POS chiude la vendita.
+- **Qualsiasi altro stato** — il POS continua ad attendere e la vendita resta aperta.
+
+</details>
+
+## Cosa ti serve {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WCPOS Pro">Per attivare il gateway di pagamento nel POS</RequirementItem>
+  <RequirementItem label="WooCommerce">Installato e attivo</RequirementItem>
+  <RequirementItem label="Bash">Per eseguire lo script di configurazione</RequirementItem>
+  <RequirementItem label="PHP">Qualche conoscenza di PHP per personalizzare la logica di pagamento</RequirementItem>
+</RequirementsList>
+
+## Crea il tuo gateway di pagamento {#build}
+
+### Ottieni il template {#get-template}
+
+```bash
+git clone https://github.com/wcpos/woocommerce-gateway-template.git
+cd woocommerce-gateway-template
+```
+
+In alternativa, premi **Usa questo template** nel [repository GitHub](https://github.com/wcpos/woocommerce-gateway-template) per crearne una copia, quindi clona la copia.
+
+### Esegui lo script di configurazione {#setup-script}
+
+```bash
+./create-gateway.sh
+```
+
+È uno script Bash. Richiede:
+
+- **Nome del gateway di pagamento** — l'unica risposta obbligatoria, ad esempio `Cash Payment`.
+- **Slug del gateway di pagamento** — premi Invio per usare quello generato dal nome (`cash-payment`). Sono consentiti solo lettere minuscole, numeri e trattini.
+- **Descrizione del gateway di pagamento** e **descrizione predefinita nella pagina di pagamento** — facoltative.
+- **Nome utente GitHub**, **nome del repository** e **nome dell'autore** — facoltativi. Il nome predefinito del repository è lo slug seguito da `-gateway`.
+- **Directory di destinazione** — dove collocare il plugin. Per impostazione predefinita è la cartella che contiene il template.
+
+Il plugin viene creato in una cartella con il nome del repository, ad esempio `cash-payment-gateway/`, che contiene `wcpos-cash-payment.php`.
+
+### Installa il plugin {#install}
+
+Copia la cartella generata nella directory `wp-content/plugins/` del sito oppure comprimi la cartella in formato zip, poi nell'area di amministrazione di WordPress vai su **Plugin > Aggiungi un nuovo plugin**, premi **Carica plugin**, seleziona lo zip e premi **Installa ora**.
+
+Quindi attivalo. Anche WooCommerce deve essere attivo: senza di esso, il plugin non carica nulla.
+
+### Attivalo per il POS {#enable}
+
+1. Vai su **WP Admin > POS > Impostazioni > Cassa**.
+2. Trova il tuo gateway di pagamento nell'elenco **Gateway di pagamento**, con il nome che gli hai assegnato. Il suo **ID gateway** è composto da `wcpos_` seguito dal tuo slug con trattini bassi, ad esempio `wcpos_cash_payment`.
+3. Attiva **Abilitato** e scegli lo **Stato dell'ordine** da assegnare al termine di una vendita pagata con questo metodo. Vedi [Impostazioni di cassa](../settings/wp-admin/checkout.mdx#payment-gateways).
+
+Il gateway di pagamento compare nella scheda Tradizionale al successivo caricamento del POS. Per verificarne il funzionamento, [prova un pagamento alla cassa](#at-the-till).
+
+## Cosa contiene il file del plugin {#how-it-works}
+
+Il plugin registra una classe di gateway di pagamento WooCommerce. Resta disattivato nella pagina di pagamento del negozio online, contrassegna l'ordine come pagato (per una vendita POS, con lo **Stato dell'ordine** del gateway di pagamento) e indirizza il POS alla pagina di ordine ricevuto.
+
+<details>
+<summary>Le righe importanti</summary>
+
+- **`$this->enabled = 'no';`** nel costruttore — mantiene il gateway di pagamento disattivato nella pagina di pagamento del negozio online, anche se è attivato nelle impostazioni di pagamento di WooCommerce. WCPOS lo attiva solo per le richieste del POS e solo quando è abilitato nelle impostazioni di cassa del POS.
+- **`process_payment()`** — chiama `$order->payment_complete()`, che contrassegna l'ordine come pagato e riduce le scorte. Per un ordine POS, WCPOS assegna lo **Stato dell'ordine** del gateway di pagamento definito nelle impostazioni di cassa del POS (**Completato**, a meno che tu non ne abbia scelto un altro). Restituisce `get_return_url( $order )`, l'indirizzo della pagina di ordine ricevuto atteso dal POS.
+- **`init_form_fields()`** — i campi **Titolo** e **Descrizione** nelle impostazioni di pagamento di WooCommerce. Il POS può assegnare al gateway di pagamento un titolo specifico tramite **Impostazioni POS** nel menu del gateway.
+
+Il plugin carica anche il proprio dominio di testo, `woocommerce-pos-<your-slug>-gateway`, con un file `.pot` in `languages/`.
+
+</details>
+
+## Personalizza il tuo gateway di pagamento {#customise}
+
+### Richiedi informazioni al cassiere {#payment-fields}
+
+Se il tuo gateway di pagamento richiede dati dal cassiere, ad esempio un numero di riferimento, imposta `$this->has_fields = true;` nel costruttore e aggiungi un metodo `payment_fields()`. I suoi campi compaiono nella pagina di pagamento del gateway nella scheda Tradizionale. In `process_payment()`, leggi il valore da `$_POST['my_gateway_reference']`, ripulendolo con `sanitize_text_field( wp_unslash( ... ) )`.
+
+<details>
+<summary>Mostra il codice di payment_fields()</summary>
+
+```php
+public function payment_fields() {
+    if ( $this->description ) {
+        echo wpautop( wptexturize( $this->description ) );
+    }
+
+    woocommerce_form_field( 'my_gateway_reference', array(
+        'type'     => 'text',
+        'label'    => __( 'Reference Number', 'your-text-domain' ),
+        'required' => true,
+    ) );
+}
+```
+
+</details>
+
+### Consenti al cliente di pagare in seguito {#pay-later}
+
+Il template contrassegna subito l'ordine come pagato. Per un gateway di pagamento con cui il denaro arriva in seguito, ad esempio tramite fattura, imposta l'ordine su **In attesa di pagamento** in `process_payment()` e riduci le scorte nel tuo codice, poiché `payment_complete()` non viene chiamato.
+
+<details>
+<summary>Mostra il codice di process_payment()</summary>
+
+```php
+public function process_payment( $order_id ) {
+    $order = wc_get_order( $order_id );
+
+    if ( ! $order ) {
+        return array( 'result' => 'failure' );
+    }
+
+    // The customer pays later.
+    $order->update_status( 'pending', __( 'Awaiting payment', 'your-text-domain' ) );
+
+    // payment_complete() is not called, so reduce stock here.
+    wc_reduce_stock_levels( $order_id );
+
+    return array(
+        'result'   => 'success',
+        'redirect' => $this->get_return_url( $order ),
+    );
+}
+```
+
+</details>
+
+Quindi imposta lo **Stato dell'ordine** del gateway di pagamento su **In attesa di pagamento** in **WP Admin > POS > Impostazioni > Cassa**. **In attesa di pagamento** non indica un ordine pagato, quindi senza questa impostazione il POS continua ad attendere e la vendita resta aperta. Vedi [Come la cassa gestisce lo stato](../settings/wp-admin/checkout.mdx#order-status-at-the-till).
+
+<details>
+<summary>Compila i segnaposto manualmente</summary>
+
+Se preferisci non eseguire lo script, scegli **Usa questo template** su GitHub, quindi cerca e sostituisci questi segnaposto in ogni file:
+
+| Segnaposto | Cosa inserire | Esempio |
+|---|---|---|
+| `{{GATEWAY_NAME}}` | Il nome del tuo gateway di pagamento | Pagamento in contanti |
+| `{{GATEWAY_SLUG}}` | Lettere minuscole, con trattini | cash-payment |
+| `{{GATEWAY_DESCRIPTION}}` | Una breve descrizione del gateway di pagamento | Accetta pagamenti in contanti in WCPOS |
+| `{{GATEWAY_DEFAULT_DESCRIPTION}}` | La descrizione mostrata nella pagina di pagamento | Paga in contanti al punto vendita |
+| `{{GITHUB_USERNAME}}` | Il tuo nome utente GitHub | kilbot |
+| `{{REPO_NAME}}` | Il nome del tuo repository | cash-payment-gateway |
+| `{{AUTHOR_NAME}}` | Il tuo nome | kilbot |
+| `{{GATEWAY_ID}}` | Lo slug, con trattini bassi al posto dei trattini | cash_payment |
+| `{{GATEWAY_CLASS_NAME}}` | Le parole del nome con l'iniziale maiuscola, unite da trattini bassi | Cash_Payment |
+| `{{GATEWAY_FUNCTION_PREFIX}}` | Lo stesso valore dell'ID del gateway di pagamento | cash_payment |
+
+Quindi rinomina `wcpos-{{GATEWAY_SLUG}}.php` in modo che corrisponda al tuo slug, ad esempio `wcpos-cash-payment.php`. Lo script ricava automaticamente gli ultimi tre valori dal nome e dallo slug.
+
+</details>
+
+## Pubblica un aggiornamento {#updates}
+
+Modifica `wcpos-<your-slug>.php`, aumenta il numero di `Version:` nell'intestazione del plugin (ad esempio da `0.1.0` a `0.2.0`), quindi installalo di nuovo: sostituisci la cartella in `wp-content/plugins/`, oppure carica un nuovo zip. WordPress chiede conferma prima di sostituire il plugin installato; scegli **Sostituisci l'attuale con quello caricato**.
+
+### Release automatiche su GitHub {#github-releases}
+
+Il plugin generato include due workflow di GitHub Actions. Se lo carichi in un repository GitHub:
+
+1. Aumenta il numero `Version:` nell'intestazione del plugin.
+2. Esegui il commit e il push su `main`.
+3. Il workflow di rilascio rileva una versione ancora priva del tag `v<version>` e pubblica una release con `woocommerce-pos-<your-slug>-gateway.zip` in allegato.
+
+Chiunque può quindi scaricare lo zip dalla pagina **Release** del repository e installarlo come qualsiasi plugin WordPress. Il secondo workflow rigenera il file di traduzione `.pot` ogni volta che un file PHP viene modificato su `main`.
+
+## Se qualcosa va storto {#troubleshooting}
+
+<details>
+<summary>Il gateway di pagamento non compare nelle impostazioni di cassa del POS</summary>
+
+In **WP Admin > Plugin**, verifica che il plugin del tuo gateway di pagamento sia attivato e che WooCommerce sia attivo.
+
+</details>
+
+<details>
+<summary>Il gateway di pagamento è nell'elenco, ma il suo interruttore Abilitato è disattivato</summary>
+
+Il plugin gratuito consente di attivare solo **Contanti** e **Carta**. Attiva [WCPOS Pro](../getting-started/pro-license.mdx).
+
+</details>
+
+<details>
+<summary>Non compare nella scheda Tradizionale</summary>
+
+Alla cassa: se è già stato incassato un pagamento per l'ordine, la scheda Tradizionale non può essere usata finché quel pagamento non viene [annullato](../pos/checkout/cancelling-a-payment.mdx).
+
+In WP Admin: attiva **Abilitato** in **WP Admin > POS > Impostazioni > Cassa**, quindi ricarica il POS.
+
+</details>
+
+<details>
+<summary>La vendita non si chiude dopo il pagamento</summary>
+
+L'ordine non risulta pagato e non si trova nello **Stato dell'ordine** del gateway di pagamento.
+
+In WP Admin: imposta lo **Stato dell'ordine** del gateway di pagamento in **WP Admin > POS > Impostazioni > Cassa** sullo stato assegnato dal tuo `process_payment()`.
+
+Nel codice: assicurati che `process_payment()` restituisca `get_return_url( $order )`.
+
+</details>
+
+<details>
+<summary>All'ordine viene assegnato uno stato inatteso</summary>
+
+Per le vendite POS, lo stato è determinato dallo **Stato dell'ordine** del gateway di pagamento nelle impostazioni di cassa del POS, non dai prodotti nell'ordine. Vedi [Stato dell'ordine](../settings/wp-admin/checkout.mdx#order-status).
+
+</details>
+
+<details>
+<summary>Compare nella pagina di pagamento del negozio online</summary>
+
+Nel codice: verifica che `$this->enabled = 'no';` sia ancora presente nel costruttore, dopo `init_settings()`.
+
+</details>
+
+## Esempi e risorse {#resources}
+
+Due gateway di pagamento WCPOS sono costruiti nello stesso modo, con un solo file PHP ciascuno, e sono utili da consultare insieme al template:
+
+- **[Email Invoice](../payment/gateways/email-invoice.mdx)** — imposta l'ordine su **In attesa di pagamento**, riduce le scorte e invia al cliente un'email con un link per pagare ([codice sorgente](https://github.com/wcpos/email-invoice-gateway)).
+- **[Web Checkout](../payment/gateways/web-checkout.mdx)** — indirizza il cliente alla pagina di pagamento del tuo negozio online per pagare ([codice sorgente](https://github.com/wcpos/web-checkout-gateway)).
+
+Il template è disponibile su [GitHub](https://github.com/wcpos/woocommerce-gateway-template). Per conoscere tutte le funzionalità di una classe di gateway di pagamento, consulta la [documentazione di riferimento di WC_Payment_Gateway](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html) di WooCommerce.
+
+## Documentazione correlata {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="La scheda Tradizionale" description="Dove si apre alla cassa la pagina di pagamento del tuo gateway di pagamento" />
+  <LinkCard to="/settings/checkout" title="Impostazioni di cassa" description="Attiva il gateway di pagamento e scegli lo stato degli ordini associato" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Gateway di pagamento" description="I gateway di pagamento già disponibili in WCPOS" />
+</LinkCards>

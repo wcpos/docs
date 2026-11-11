@@ -1,0 +1,274 @@
+---
+title: 网关模板
+slug: /developers/gateway-template
+sidebar_label: 网关模板
+sidebar_position: 9
+description: "使用网关模板为 WCPOS 构建仅供 POS 使用的支付网关：一个 PHP 文件、一个设置脚本，以及在 GitHub 上自动发布版本的工作流。"
+---
+
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+- **要向客户收款？** 请参阅[在传统支付选项卡中收款](../pos/checkout/legacy-tab.mdx)。
+- **网关已设置好？** [在收银设备上测试付款](#at-the-till)。
+- **要构建网关？** 本页面向开发者，介绍如何[构建自己的 POS 支付网关](#build)，以及如何安装并启用它。
+
+:::info Pro 功能
+现金和银行卡以外的网关需要 [WCPOS Pro](../getting-started/pro-license.mdx)。没有它，您的网关仍会出现在 POS 收银台设置中，但无法启用。
+:::
+
+网关模板可作为您开发自定义收款方式的起点：它是一个仅包含一个 PHP 文件的 WordPress 插件。设置脚本会填入您的网关名称并构建插件。该网关不会在网店的结账页面启用；在 POS 设置中启用后，它就会出现在 POS 中。
+
+收款时，您的网关位于结账界面的[传统支付选项卡](../pos/checkout/legacy-tab.mdx)中。该选项卡会在 POS 内打开网关的 WooCommerce 支付页面。收银员在页面中选择网关，然后点击选项卡底部的 **处理付款**。
+
+## 在收银设备上测试付款 {#at-the-till}
+
+网关[构建并启用](#build)后，可按以下流程收款。开发者负责构建和安装网关，收银员负责收款。
+
+传统支付选项卡需要能够连接到您的店铺，并且会收取整个订单的款项。因此，只要订单已收到任何付款，就无法使用该选项卡。请参阅[传统支付选项卡](../pos/checkout/legacy-tab.mdx)。
+
+:::warning 请使用测试订单
+未经修改的模板不会实际收取任何款项，只会将订单标记为已付款，因此请使用测试订单，不要用于客户的真实交易。您需要在 `process_payment()` 中编写自己的付款逻辑。
+:::
+
+1. 如果您的店铺使用收银班次，请先开启收银机。将商品添加到购物车，然后点击 **结账**。
+2. 打开付款界面顶部的 **传统支付** 选项卡，它位于 **支付** 旁边。
+3. 在支付页面选择您的网关，然后点击选项卡底部的 **处理付款**。
+4. 交易完成后会显示收据，与[已付款界面](../pos/checkout/index.mdx#paid)相同，订单状态为该网关设置的 **订单状态**。按下文设置的[稍后付款网关](#pay-later)也会完成交易，但订单会保持 **等待付款** 状态。
+
+<details>
+<summary>开发者须知：POS 如何判断付款已完成</summary>
+
+点击 **处理付款** 会提交支付页面，WooCommerce 随后运行网关的 `process_payment()`。当该方法返回订单已接收页面的地址 `get_return_url( $order )` 时，POS 会检查订单状态：
+
+- **已付款（处理中或已完成），或 POS 收银台设置中为该网关指定的订单状态**——POS 会完成交易。
+- **其他任何状态**——POS 会继续等待，交易保持未完成状态。
+
+</details>
+
+## 准备条件 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WCPOS Pro">用于在 POS 中启用网关</RequirementItem>
+  <RequirementItem label="WooCommerce">已安装并启用</RequirementItem>
+  <RequirementItem label="Bash">用于运行设置脚本</RequirementItem>
+  <RequirementItem label="PHP">具备一些 PHP 知识，以便自定义付款逻辑</RequirementItem>
+</RequirementsList>
+
+## 构建您的网关 {#build}
+
+### 获取模板 {#get-template}
+
+```bash
+git clone https://github.com/wcpos/woocommerce-gateway-template.git
+cd woocommerce-gateway-template
+```
+
+或者在 [GitHub 仓库](https://github.com/wcpos/woocommerce-gateway-template)中点击 **使用此模板**，创建自己的副本，然后克隆该副本。
+
+### 运行设置脚本 {#setup-script}
+
+```bash
+./create-gateway.sh
+```
+
+这是一个 Bash 脚本，会要求您输入以下内容：
+
+- **网关名称**——唯一的必填项，例如 `Cash Payment`。
+- **网关别名**——按 Enter 可使用根据名称生成的别名(`cash-payment`)。只允许使用小写字母、数字和连字符。
+- **网关描述** 和 **默认结账描述**——选填。
+- **GitHub 用户名**、**仓库名称** 和 **作者名称**——选填。仓库名称默认为别名加上 `-gateway`。
+- **目标目录**——存放插件的位置，默认为模板所在的文件夹。
+
+插件会生成在以仓库名称命名的文件夹中，例如 `cash-payment-gateway/`，其中包含 `wcpos-cash-payment.php`。
+
+### 安装插件 {#install}
+
+您可以将生成的文件夹复制到网站的 `wp-content/plugins/` 目录中，也可以将其压缩为 zip 文件，然后在 WordPress 后台前往 **插件 > 安装插件**，点击 **上传插件**，选择该 zip 文件，再点击 **现在安装**。
+
+然后启用插件。WooCommerce 也必须已启用，否则该插件不会加载任何功能。
+
+### 为 POS 启用网关 {#enable}
+
+1. 前往 **WP Admin > POS > 设置 > 收银台**。
+2. 在 **网关** 列表中，根据您设置的名称找到该网关。它的 **网关 ID** 由 `wcpos_` 加上使用下划线的别名组成，例如 `wcpos_cash_payment`。
+3. 打开 **已启用** 开关，并选择通过此方式付款后交易应达到的 **订单状态**。请参阅[收银台设置](../settings/wp-admin/checkout.mdx#payment-gateways)。
+
+下次加载 POS 时，该网关就会出现在传统支付选项卡中。要测试它，请[在收银设备上尝试付款](#at-the-till)。
+
+## 插件文件包含哪些内容 {#how-it-works}
+
+该插件注册一个 WooCommerce 支付网关类。它不会在网店结账页面启用，会将订单标记为已付款（对于 POS 交易，使用该网关的 **订单状态**），并将 POS 跳转到订单已接收页面。
+
+<details>
+<summary>关键代码行</summary>
+
+- 构造函数中的 **`$this->enabled = 'no';`**——确保网关不会在网店结账页面启用，即使在 WooCommerce 支付设置中已将其启用。WCPOS 只会针对 POS 请求启用该网关，且前提是已在 POS 收银台设置中启用它。
+- **`process_payment()`**——调用 `$order->payment_complete()`，将订单标记为已付款并扣减库存。对于 POS 订单，WCPOS 会将状态设为 POS 收银台设置中该网关的 **订单状态**（默认为 **已完成**，除非您选择了其他状态）。该方法会返回 `get_return_url( $order )`，即 POS 等待的订单已接收页面地址。
+- **`init_form_fields()`**——定义 WooCommerce 支付设置中的 **标题** 和 **描述** 字段。通过网关菜单中的 **POS 设置**，可以为网关设置在 POS 中使用的专属标题。
+
+该插件还会加载自己的文本域， `woocommerce-pos-<your-slug>-gateway`，并附带一个 `.pot` 文件，位于 `languages/`。
+
+</details>
+
+## 自定义您的网关 {#customise}
+
+### 要求收银员输入信息 {#payment-fields}
+
+如果您的网关需要收银员输入信息（例如参考编号），请在构造函数中设置 `$this->has_fields = true;`，并添加 `payment_fields()` 方法。其字段会显示在传统支付选项卡中的网关支付页面上。在 `process_payment()` 中从 `$_POST['my_gateway_reference']` 读取值，并使用 `sanitize_text_field( wp_unslash( ... ) )` 清理该值。
+
+<details>
+<summary>查看 payment_fields() 代码</summary>
+
+```php
+public function payment_fields() {
+    if ( $this->description ) {
+        echo wpautop( wptexturize( $this->description ) );
+    }
+
+    woocommerce_form_field( 'my_gateway_reference', array(
+        'type'     => 'text',
+        'label'    => __( 'Reference Number', 'your-text-domain' ),
+        'required' => true,
+    ) );
+}
+```
+
+</details>
+
+### 允许客户稍后付款 {#pay-later}
+
+模板会立即将订单标记为已付款。对于款项稍后到账的网关（例如发票付款），请在 `process_payment()` 中将订单设为 **等待付款**，并自行扣减库存，因为此时不会调用 `payment_complete()`。
+
+<details>
+<summary>查看 process_payment() 代码</summary>
+
+```php
+public function process_payment( $order_id ) {
+    $order = wc_get_order( $order_id );
+
+    if ( ! $order ) {
+        return array( 'result' => 'failure' );
+    }
+
+    // The customer pays later.
+    $order->update_status( 'pending', __( 'Awaiting payment', 'your-text-domain' ) );
+
+    // payment_complete() is not called, so reduce stock here.
+    wc_reduce_stock_levels( $order_id );
+
+    return array(
+        'result'   => 'success',
+        'redirect' => $this->get_return_url( $order ),
+    );
+}
+```
+
+</details>
+
+然后在 **WP Admin > POS > 设置 > 收银台** 中，将该网关的 **订单状态** 设为 **等待付款**。**等待付款** 不属于已付款状态，因此如果未进行此设置，POS 会继续等待，交易将保持未完成状态。请参阅[收银设备如何处理订单状态](../settings/wp-admin/checkout.mdx#order-status-at-the-till)。
+
+<details>
+<summary>手动填写占位符</summary>
+
+如果您不想运行脚本，可以在 GitHub 上点击 **使用此模板**，然后在每个文件中查找并替换以下占位符：
+
+| 占位符 | 填写内容 | 示例 |
+|---|---|---|
+| `{{GATEWAY_NAME}}` | 您的网关名称 | 现金付款 |
+| `{{GATEWAY_SLUG}}` | 小写字母，以连字符连接 | cash-payment |
+| `{{GATEWAY_DESCRIPTION}}` | 网关的简短描述 | 在 WCPOS 中接受现金付款 |
+| `{{GATEWAY_DEFAULT_DESCRIPTION}}` | 支付页面上显示的描述 | 在收银处使用现金付款 |
+| `{{GITHUB_USERNAME}}` | 您的 GitHub 用户名 | kilbot |
+| `{{REPO_NAME}}` | 您的仓库名称 | cash-payment-gateway |
+| `{{AUTHOR_NAME}}` | 您的姓名 | kilbot |
+| `{{GATEWAY_ID}}` | 将别名中的连字符替换为下划线 | cash_payment |
+| `{{GATEWAY_CLASS_NAME}}` | 名称中每个单词的首字母大写，并以下划线连接 | Cash_Payment |
+| `{{GATEWAY_FUNCTION_PREFIX}}` | 与网关 ID 相同 | cash_payment |
+
+然后将 `wcpos-{{GATEWAY_SLUG}}.php` 重命名为与您的别名相符的文件名，例如 `wcpos-cash-payment.php`。脚本会根据名称和别名自动生成最后三个值。
+
+</details>
+
+## 发布更新 {#updates}
+
+编辑 `wcpos-<your-slug>.php`，提高插件头部的 `Version:` 版本号（例如从 `0.1.0` 升至 `0.2.0`），然后重新安装：替换以下目录中的文件夹： `wp-content/plugins/`，或上传新的 zip 文件。WordPress 会在替换已安装的插件前询问您；请选择 **使用上传的插件替换当前插件**。
+
+### 在 GitHub 上自动发布版本 {#github-releases}
+
+生成的插件包含两个 GitHub Actions 工作流。将其推送到 GitHub 仓库后：
+
+1. 提高插件头部的 `Version:` 版本号。
+2. 提交并推送到 `main`。
+3. 发布工作流发现某个版本尚无 `v<version>` 标签时，会发布一个版本，并将 `woocommerce-pos-<your-slug>-gateway.zip` 作为附件。
+
+之后，任何人都可以从仓库的 **发行版** 页面下载该 zip 文件，并像安装其他 WordPress 插件一样安装它。每当 `main` 上的 PHP 文件发生变化时，第二个工作流都会重新生成 `.pot` 翻译文件。
+
+## 遇到问题时 {#troubleshooting}
+
+<details>
+<summary>POS 收银台设置中没有该网关</summary>
+
+在 **WP Admin > 插件** 中，检查您的网关插件和 WooCommerce 是否都已启用。
+
+</details>
+
+<details>
+<summary>网关已列出，但已启用开关呈灰色</summary>
+
+免费插件只能启用 **现金** 和 **银行卡**。请启用 [WCPOS Pro](../getting-started/pro-license.mdx)。
+
+</details>
+
+<details>
+<summary>传统支付选项卡中没有该网关</summary>
+
+在收银设备上：如果订单已经收到付款，必须先[取消该付款](../pos/checkout/cancelling-a-payment.mdx)，才能使用传统支付选项卡。
+
+在 WP Admin 中：前往 **WP Admin > POS > 设置 > 收银台**，打开 **已启用** 开关，然后重新加载 POS。
+
+</details>
+
+<details>
+<summary>付款后交易未完成</summary>
+
+订单既未付款，也未达到该网关的 **订单状态**。
+
+在 WP Admin 中：前往 **WP Admin > POS > 设置 > 收银台**，将网关的 **订单状态** 设为您的 `process_payment()` 所设置的状态。
+
+在代码中：确保 `process_payment()` 返回 `get_return_url( $order )`。
+
+</details>
+
+<details>
+<summary>订单最终状态与预期不符</summary>
+
+对于 POS 交易，最终状态由 POS 收银台设置中该网关的 **订单状态** 决定，而非订单中的商品。请参阅[订单状态](../settings/wp-admin/checkout.mdx#order-status)。
+
+</details>
+
+<details>
+<summary>网关出现在网店结账页面上</summary>
+
+在代码中：检查构造函数中的 `init_settings()` 之后是否仍有 `$this->enabled = 'no';`。
+
+</details>
+
+## 示例和资源 {#resources}
+
+以下两个 WCPOS 网关采用相同的构建方式，各自只有一个 PHP 文件，适合与模板对照阅读：
+
+- **[邮件发票](../payment/gateways/email-invoice.mdx)**——将订单设为 **等待付款**，扣减库存，并通过电子邮件向客户发送付款链接（[源代码](https://github.com/wcpos/email-invoice-gateway)）。
+- **[网页结账](../payment/gateways/web-checkout.mdx)**——将客户引导至网店的结账页面付款（[源代码](https://github.com/wcpos/web-checkout-gateway)）。
+
+模板托管在 [GitHub](https://github.com/wcpos/woocommerce-gateway-template) 上。要了解网关类的全部功能，请参阅 WooCommerce 的 [WC_Payment_Gateway 参考文档](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html)。
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="传统支付选项卡" description="在收银设备上打开网关支付页面的位置" />
+  <LinkCard to="/settings/checkout" title="收银台设置" description="启用网关并选择其订单状态" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="支付网关" description="WCPOS 已有的网关" />
+</LinkCards>

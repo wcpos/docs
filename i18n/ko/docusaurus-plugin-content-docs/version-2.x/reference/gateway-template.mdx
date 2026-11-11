@@ -1,0 +1,274 @@
+---
+title: 결제 게이트웨이 템플릿
+slug: /developers/gateway-template
+sidebar_label: 결제 게이트웨이 템플릿
+sidebar_position: 9
+description: "PHP 파일 하나, 설정 스크립트, GitHub 자동 릴리스를 제공하는 결제 게이트웨이 템플릿으로 WCPOS용 POS 전용 결제 게이트웨이를 만드세요."
+---
+
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+
+- **고객의 결제를 받으려 하나요?** [레거시 탭에서 결제 받기](../pos/checkout/legacy-tab.mdx)를 참고하세요.
+- **결제 게이트웨이를 이미 설정했나요?** [계산대에서 테스트 결제를 진행하세요](#at-the-till).
+- **결제 게이트웨이를 만들고 있나요?** 이 페이지는 개발자를 위한 문서입니다. [POS 결제 게이트웨이를 직접 만들고](#build) 설치한 다음 활성화하는 방법을 설명합니다.
+
+:::info Pro 기능
+현금과 카드 이외의 결제 게이트웨이에는 [WCPOS Pro](../getting-started/pro-license.mdx)가 필요합니다. Pro가 없으면 POS 결제 설정에 결제 게이트웨이가 표시되지만 활성화할 수 없습니다.
+:::
+
+결제 게이트웨이 템플릿은 계산대에서 사용할 결제 수단을 만드는 시작점으로, PHP 파일 하나로 구성된 WordPress 플러그인입니다. 설정 스크립트가 결제 게이트웨이 이름을 채우고 플러그인을 만들어 줍니다. 이 결제 게이트웨이는 온라인 매장의 결제 페이지에서는 비활성화 상태로 유지되며, POS 설정에서 활성화하면 POS에 표시됩니다.
+
+계산대에서는 결제 화면의 [레거시 탭](../pos/checkout/legacy-tab.mdx)에 결제 게이트웨이가 표시됩니다. 이 탭은 POS 안에서 결제 게이트웨이의 WooCommerce 결제 페이지를 엽니다. 캐셔는 여기서 결제 게이트웨이를 선택하고 탭 하단의 **결제 처리**를 누릅니다.
+
+## 계산대에서 결제 테스트 {#at-the-till}
+
+결제 게이트웨이를 [만들고 활성화](#build)하면 다음과 같이 결제할 수 있습니다. 개발자가 결제 게이트웨이를 만들고 설치하며, 캐셔가 결제를 받습니다.
+
+레거시 탭을 사용하려면 매장에 연결할 수 있어야 합니다. 주문 전체를 청구하므로 주문에 대해 이미 결제를 받은 경우에는 사용할 수 없습니다. [레거시 탭](../pos/checkout/legacy-tab.mdx)을 참고하세요.
+
+:::warning 테스트 주문을 사용하세요
+수정하지 않은 템플릿은 실제로 돈을 받지 않습니다. 주문을 결제 완료로 표시할 뿐이므로 실제 고객의 판매가 아닌 테스트 주문으로 시도하세요. 직접 구현할 결제 로직은 `process_payment()`에 넣습니다.
+:::
+
+1. 매장에서 계산대 세션을 사용한다면 계산대를 여세요. 장바구니에 상품을 추가하고 **결제**를 누르세요.
+2. 결제 화면 상단의 **결제** 옆에 있는 **레거시** 탭을 여세요.
+3. 결제 페이지에서 해당 결제 게이트웨이를 선택한 후 탭 하단의 **결제 처리**를 누르세요.
+4. [결제 완료 화면](../pos/checkout/index.mdx#paid)과 같이 판매가 완료되고 영수증이 표시되며, 주문은 결제 게이트웨이에 지정된 **주문 상태**가 됩니다. 아래 설명대로 설정한 [후불 결제 게이트웨이](#pay-later)도 판매를 종료하지만, 주문은 **결제 대기 중** 상태로 유지됩니다.
+
+<details>
+<summary>개발자 안내: POS가 결제 완료를 확인하는 방법</summary>
+
+**결제 처리**를 누르면 결제 페이지가 전송되고 WooCommerce가 결제 게이트웨이의 `process_payment()`를 실행합니다. 이 메서드가 주문 접수 주소인 `get_return_url( $order )`를 반환하면 POS가 주문 상태를 확인합니다:
+
+- **결제 완료(처리 중 또는 완료됨)이거나 결제 게이트웨이에 지정된 주문 상태**인 경우 — POS 결제 설정을 기준으로 판단하며, POS가 판매를 종료합니다.
+- **그 밖의 상태** — POS가 계속 기다리며 판매는 열린 상태로 유지됩니다.
+
+</details>
+
+## 필요한 사항 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="WCPOS Pro">POS에서 결제 게이트웨이를 활성화하는 데 필요</RequirementItem>
+  <RequirementItem label="WooCommerce">설치 및 활성화 필요</RequirementItem>
+  <RequirementItem label="Bash">설정 스크립트 실행에 필요</RequirementItem>
+  <RequirementItem label="PHP">결제 로직을 수정하기 위한 기본적인 PHP 지식</RequirementItem>
+</RequirementsList>
+
+## 결제 게이트웨이 만들기 {#build}
+
+### 템플릿 가져오기 {#get-template}
+
+```bash
+git clone https://github.com/wcpos/woocommerce-gateway-template.git
+cd woocommerce-gateway-template
+```
+
+또는 [GitHub 저장소](https://github.com/wcpos/woocommerce-gateway-template)에서 **이 템플릿 사용**을 눌러 사본을 만든 다음 해당 저장소를 복제하세요.
+
+### 설정 스크립트 실행 {#setup-script}
+
+```bash
+./create-gateway.sh
+```
+
+Bash 스크립트이며 다음 내용을 입력하라는 메시지가 표시됩니다:
+
+- **결제 게이트웨이 이름** — 유일한 필수 입력 항목입니다. 예: `Cash Payment`.
+- **결제 게이트웨이 슬러그** — Enter를 누르면 이름에서 생성된 값(`cash-payment`)을 사용합니다. 소문자, 숫자, 하이픈만 사용할 수 있습니다.
+- **결제 게이트웨이 설명** 및 **기본 결제 설명** — 선택 사항입니다.
+- **GitHub 사용자 이름**, **저장소 이름**, **작성자 이름** — 선택 사항입니다. 저장소 이름의 기본값은 슬러그에 `-gateway`를 붙인 값입니다.
+- **대상 디렉터리** — 플러그인을 저장할 위치입니다. 기본값은 템플릿이 있는 폴더입니다.
+
+플러그인은 `cash-payment-gateway/`처럼 저장소 이름을 딴 폴더에 생성되며, 그 안에 `wcpos-cash-payment.php`가 들어갑니다.
+
+### 플러그인 설치 {#install}
+
+생성된 폴더를 사이트의 `wp-content/plugins/` 디렉터리에 복사하세요. 또는 폴더를 zip으로 압축한 후 WordPress 관리자에서 **플러그인 > 새 플러그인 추가**로 이동하여 **플러그인 업로드**를 누르고, zip 파일을 선택한 다음 **지금 설치**를 누르세요.
+
+그런 다음 활성화하세요. WooCommerce도 활성화되어 있어야 합니다. WooCommerce가 없으면 플러그인은 아무것도 로드하지 않습니다.
+
+### POS용으로 활성화 {#enable}
+
+1. **WP Admin > POS > 설정 > 결제**로 이동하세요.
+2. **결제 게이트웨이** 목록에서 지정한 이름으로 결제 게이트웨이를 찾으세요. **결제 게이트웨이 ID**는 `wcpos_`에 밑줄을 사용한 슬러그를 붙인 값입니다. 예: `wcpos_cash_payment`.
+3. **활성화**를 켜고 이 방식으로 결제한 판매가 끝났을 때 적용할 **주문 상태**를 선택하세요. [결제 설정](../settings/wp-admin/checkout.mdx#payment-gateways)을 참고하세요.
+
+다음에 POS를 로드하면 레거시 탭에 결제 게이트웨이가 표시됩니다. 테스트하려면 [계산대에서 결제를 시도하세요](#at-the-till).
+
+## 플러그인 파일의 구성 {#how-it-works}
+
+플러그인은 WooCommerce 결제 게이트웨이 클래스 하나를 등록합니다. 온라인 매장의 결제 페이지에서는 비활성화 상태로 유지되며, 주문을 결제 완료로 표시하고(POS 판매의 경우 결제 게이트웨이에 지정된 **주문 상태**로 설정), POS를 주문 접수 페이지로 이동시킵니다.
+
+<details>
+<summary>주요 코드</summary>
+
+- 생성자의 **`$this->enabled = 'no';`** — WooCommerce 결제 설정에서 켜더라도 온라인 매장의 결제 페이지에서는 결제 게이트웨이를 비활성화 상태로 유지합니다. WCPOS는 POS 요청에 대해서만, 그리고 POS 결제 설정에서 활성화된 경우에만 이를 켭니다.
+- **`process_payment()`** — `$order->payment_complete()`를 호출하여 주문을 결제 완료로 표시하고 재고를 차감합니다. POS 주문의 경우 WCPOS가 POS 결제 설정에서 결제 게이트웨이에 지정한 **주문 상태**로 설정합니다(다른 상태를 선택하지 않았다면 **완료됨**). POS가 기다리는 주문 접수 주소인 `get_return_url( $order )`를 반환합니다.
+- **`init_form_fields()`** — WooCommerce 결제 설정의 **제목** 및 **설명** 필드를 정의합니다. POS에서는 결제 게이트웨이 메뉴의 **POS 설정**에서 별도의 제목을 지정할 수 있습니다.
+
+플러그인은 자체 텍스트 도메인도 로드합니다: `woocommerce-pos-<your-slug>-gateway`. 해당 도메인의 `.pot` 파일이 있는 위치는 `languages/`입니다.
+
+</details>
+
+## 결제 게이트웨이 사용자 정의 {#customise}
+
+### 캐셔에게 정보 입력 요청 {#payment-fields}
+
+결제 게이트웨이에 참조 번호 등 캐셔의 입력이 필요하다면 생성자에서 `$this->has_fields = true;`를 설정하고 `payment_fields()` 메서드를 추가하세요. 필드는 레거시 탭에 있는 결제 게이트웨이의 결제 페이지에 표시됩니다. `process_payment()`에서 `$_POST['my_gateway_reference']`의 값을 읽고 `sanitize_text_field( wp_unslash( ... ) )`로 정리하세요.
+
+<details>
+<summary>payment_fields() 코드 보기</summary>
+
+```php
+public function payment_fields() {
+    if ( $this->description ) {
+        echo wpautop( wptexturize( $this->description ) );
+    }
+
+    woocommerce_form_field( 'my_gateway_reference', array(
+        'type'     => 'text',
+        'label'    => __( 'Reference Number', 'your-text-domain' ),
+        'required' => true,
+    ) );
+}
+```
+
+</details>
+
+### 고객이 나중에 결제하도록 설정 {#pay-later}
+
+템플릿은 주문을 즉시 결제 완료로 표시합니다. 청구서처럼 나중에 돈을 받는 결제 게이트웨이에서는 `process_payment()`에서 주문을 **결제 대기 중**으로 설정하고 재고를 직접 차감하세요. `payment_complete()`가 호출되지 않기 때문입니다.
+
+<details>
+<summary>process_payment() 코드 보기</summary>
+
+```php
+public function process_payment( $order_id ) {
+    $order = wc_get_order( $order_id );
+
+    if ( ! $order ) {
+        return array( 'result' => 'failure' );
+    }
+
+    // The customer pays later.
+    $order->update_status( 'pending', __( 'Awaiting payment', 'your-text-domain' ) );
+
+    // payment_complete() is not called, so reduce stock here.
+    wc_reduce_stock_levels( $order_id );
+
+    return array(
+        'result'   => 'success',
+        'redirect' => $this->get_return_url( $order ),
+    );
+}
+```
+
+</details>
+
+그런 다음 **WP Admin > POS > 설정 > 결제**에서 결제 게이트웨이의 **주문 상태**를 **결제 대기 중**으로 설정하세요. **결제 대기 중**은 결제 완료 상태가 아니므로 이 설정이 없으면 POS가 계속 기다리며 판매는 열린 상태로 유지됩니다. [계산대의 상태 처리 방식](../settings/wp-admin/checkout.mdx#order-status-at-the-till)을 참고하세요.
+
+<details>
+<summary>플레이스홀더 직접 채우기</summary>
+
+스크립트를 실행하지 않으려면 GitHub에서 **이 템플릿 사용**을 선택한 다음, 모든 파일에서 다음 플레이스홀더를 찾아 바꾸세요:
+
+| 플레이스홀더 | 입력할 내용 | 예시 |
+|---|---|---|
+| `{{GATEWAY_NAME}}` | 결제 게이트웨이 이름 | 현금 결제 |
+| `{{GATEWAY_SLUG}}` | 하이픈을 사용하는 소문자 | cash-payment |
+| `{{GATEWAY_DESCRIPTION}}` | 결제 게이트웨이의 간단한 설명 | WCPOS에서 현금 결제 받기 |
+| `{{GATEWAY_DEFAULT_DESCRIPTION}}` | 결제 페이지에 표시할 설명 | 계산대에서 현금으로 결제 |
+| `{{GITHUB_USERNAME}}` | GitHub 사용자 이름 | kilbot |
+| `{{REPO_NAME}}` | 저장소 이름 | cash-payment-gateway |
+| `{{AUTHOR_NAME}}` | 작성자 이름 | kilbot |
+| `{{GATEWAY_ID}}` | 하이픈 대신 밑줄을 사용하는 슬러그 | cash_payment |
+| `{{GATEWAY_CLASS_NAME}}` | 이름의 각 단어 첫 글자를 대문자로 바꾸고 밑줄로 연결한 값 | Cash_Payment |
+| `{{GATEWAY_FUNCTION_PREFIX}}` | 결제 게이트웨이 ID와 동일 | cash_payment |
+
+그런 다음 `wcpos-{{GATEWAY_SLUG}}.php`의 이름을 슬러그에 맞게 바꾸세요. 예: `wcpos-cash-payment.php`. 스크립트를 사용하면 이름과 슬러그에서 마지막 세 값을 자동으로 생성합니다.
+
+</details>
+
+## 업데이트 출시 {#updates}
+
+수정할 파일은 `wcpos-<your-slug>.php`입니다. 플러그인 헤더의 `Version:` 번호를 올리세요(예: `0.1.0` 에서 `0.2.0`로). 그런 다음 다시 설치하세요. 다음 디렉터리의 폴더를 교체하세요: `wp-content/plugins/`. 또는 새 zip 파일을 업로드하세요. WordPress가 설치된 플러그인을 교체하기 전에 확인을 요청하면 **업로드한 것으로 현재 플러그인 교체**를 선택하세요.
+
+### GitHub 자동 릴리스 {#github-releases}
+
+생성된 플러그인에는 GitHub Actions 워크플로 두 개가 포함됩니다. GitHub 저장소에 푸시하는 경우 다음과 같이 진행하세요:
+
+1. 플러그인 헤더의 `Version:` 번호를 올리세요.
+2. 커밋하고 `main`에 푸시하세요.
+3. 릴리스 워크플로는 해당 버전에 아직 `v<version>` 태그가 없는 것을 확인하면 릴리스를 게시하고 `woocommerce-pos-<your-slug>-gateway.zip` 파일을 첨부합니다.
+
+이후 누구나 저장소의 **릴리스** 페이지에서 zip 파일을 다운로드하여 일반 WordPress 플러그인처럼 설치할 수 있습니다. 두 번째 워크플로는 `main`에서 PHP 파일이 변경될 때마다 `.pot` 번역 파일을 다시 생성합니다.
+
+## 문제 해결 {#troubleshooting}
+
+<details>
+<summary>POS 결제 설정에 결제 게이트웨이가 없습니다</summary>
+
+**WP Admin > 플러그인**에서 결제 게이트웨이 플러그인과 WooCommerce가 모두 활성화되어 있는지 확인하세요.
+
+</details>
+
+<details>
+<summary>결제 게이트웨이가 목록에 있지만 활성화 스위치를 사용할 수 없습니다</summary>
+
+무료 플러그인에서는 **현금**과 **카드**만 활성화할 수 있습니다. [WCPOS Pro](../getting-started/pro-license.mdx)를 활성화하세요.
+
+</details>
+
+<details>
+<summary>레거시 탭에 표시되지 않습니다</summary>
+
+계산대에서: 주문에 대해 이미 결제를 받았다면 해당 결제를 [취소](../pos/checkout/cancelling-a-payment.mdx)할 때까지 레거시 탭을 사용할 수 없습니다.
+
+WP Admin에서: **WP Admin > POS > 설정 > 결제**의 **활성화**를 켠 후 POS를 다시 로드하세요.
+
+</details>
+
+<details>
+<summary>결제 후 판매가 종료되지 않습니다</summary>
+
+주문이 결제 완료 상태가 아니며 결제 게이트웨이에 지정된 **주문 상태**도 아닙니다.
+
+WP Admin에서: **WP Admin > POS > 설정 > 결제**에 있는 결제 게이트웨이의 **주문 상태**를 `process_payment()`에서 설정하는 상태로 지정하세요.
+
+코드에서: `process_payment()`가 `get_return_url( $order )`를 반환하는지 확인하세요.
+
+</details>
+
+<details>
+<summary>주문이 예상하지 못한 상태로 종료됩니다</summary>
+
+POS 판매에서는 주문에 포함된 상품이 아니라 POS 결제 설정에서 결제 게이트웨이에 지정한 **주문 상태**가 최종 상태를 결정합니다. [주문 상태](../settings/wp-admin/checkout.mdx#order-status)를 참고하세요.
+
+</details>
+
+<details>
+<summary>온라인 매장의 결제 페이지에 표시됩니다</summary>
+
+코드에서: 생성자의 `init_settings()` 뒤에 `$this->enabled = 'no';`가 그대로 있는지 확인하세요.
+
+</details>
+
+## 예제 및 참고 자료 {#resources}
+
+다음 두 WCPOS 결제 게이트웨이도 각각 PHP 파일 하나로 같은 방식으로 만들어져 있으므로 템플릿과 함께 살펴보면 좋습니다:
+
+- **[Email Invoice](../payment/gateways/email-invoice.mdx)** — 주문을 **결제 대기 중**으로 설정하고 재고를 차감한 다음 고객에게 결제 링크를 이메일로 보냅니다([소스](https://github.com/wcpos/email-invoice-gateway)).
+- **[Web Checkout](../payment/gateways/web-checkout.mdx)** — 고객이 결제할 수 있도록 온라인 매장의 결제 페이지로 이동시킵니다([소스](https://github.com/wcpos/web-checkout-gateway)).
+
+템플릿은 [GitHub](https://github.com/wcpos/woocommerce-gateway-template)에 있습니다. 결제 게이트웨이 클래스의 모든 기능은 WooCommerce의 [WC_Payment_Gateway 참조](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html)를 확인하세요.
+
+## 관련 문서 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment/legacy-tab" title="레거시 탭" description="계산대에서 결제 게이트웨이의 결제 페이지가 열리는 곳" />
+  <LinkCard to="/settings/checkout" title="결제 설정" description="결제 게이트웨이를 활성화하고 주문 상태 선택하기" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="결제 게이트웨이" description="WCPOS에서 이미 제공하는 결제 게이트웨이" />
+</LinkCards>
