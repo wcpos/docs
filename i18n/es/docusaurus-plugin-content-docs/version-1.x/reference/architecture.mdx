@@ -9,79 +9,79 @@ import LocalizedSVG from '@site/src/components/LocalizedSVG';
 
 Esta página explica la arquitectura técnica de WCPOS para desarrolladores y usuarios avanzados.
 
-## Sistema de Dos Partes {#two-part-system}
+## Sistema de dos partes {#two-part-system}
 
 WCPOS está diseñado como un sistema de dos partes:
 
 1. **Plugin PHP:** alojado en su servidor, es un plugin relativamente pequeño que amplía la [API REST de WooCommerce](/1.x/reference/wc-rest-api) con puntos de acceso específicos del POS.
 
-2. **Cliente JavaScript:** se ejecuta localmente en su navegador, en la aplicación de escritorio o en las aplicaciones de iOS y Android.
+2. **Cliente JavaScript:** se ejecuta localmente en su navegador, en la aplicación de escritorio o en las aplicaciones de iOS/Android.
 
-Puede pensar en ello como dos mundos separados:
+Puede imaginarlo como dos mundos separados:
 
-- El _mundo PHP_ es donde ocurre la gestión de datos usando WordPress y WooCommerce.
-- El _mundo JavaScript_ mantiene una copia local, apta para el uso sin conexión, de los datos de la tienda que necesitan sus cajas, optimizada para búsquedas rápidas y respuesta instantánea.
+- En el _mundo PHP_ se gestionan los datos mediante WordPress y WooCommerce.
+- El _mundo JavaScript_ mantiene una copia local, apta para el uso sin conexión, de los datos de la tienda que necesitan sus cajas, optimizada para búsquedas rápidas y una respuesta instantánea.
 
 <LocalizedSVG svgName="pos-client-woo-server" />
 
-## Sincronización de Datos {#data-synchronization}
+## Sincronización de datos {#data-synchronization}
 
 :::info Cambios en la v1.10.0
-La v1.10.0 sustituye la anterior capa de replicación por un **motor de sincronización** propio. El resumen siguiente es la versión corta; la explicación completa está en [Cómo funciona el motor de sincronización](/1.x/reference/sync-engine).
+La v1.10.0 sustituye la anterior capa de replicación por un **motor de sincronización** específico. A continuación se ofrece un resumen; la explicación completa está en [Cómo funciona el motor de sincronización](/1.x/reference/sync-engine).
 :::
 
-El cliente es local-first: cada pantalla lee y escribe en la base de datos local del dispositivo, y un motor de sincronización en segundo plano mantiene convergentes esa base de datos y WooCommerce. El motor **no** replica ciegamente toda su tienda — trabaja a partir de lo que sus pantallas necesitan realmente:
+El cliente prioriza el almacenamiento local: cada pantalla lee y escribe en la base de datos local del dispositivo, y un motor de sincronización en segundo plano mantiene convergentes esa base de datos y WooCommerce. El motor **no** replica indiscriminadamente toda su tienda; trabaja a partir de lo que sus pantallas necesitan realmente:
 
-- **Detección de cambios:** el POS consulta un registro de cambios ligero mediante solicitudes condicionales; una tienda sin actividad responde con un único `304` sin cuerpo.
-- **Demanda declarada:** una pantalla declara qué está mostrando y el motor decide si eso requiere una solicitud o si ya está resuelto localmente.
-- **Siembras y carriles:** una siembra acotada del catálogo, una ventana de pedidos recientes y carriles de mantenimiento en los ratos de inactividad rellenan y verifican los datos locales con calendarios que puede ajustar por dispositivo.
-- **Escrituras duraderas:** las ventas y las ediciones se ponen en cola localmente y se envían a WooCommerce, con una recuperación visible para todo lo que el servidor rechace.
+- **Detección de cambios:** el POS consulta periódicamente un registro de cambios ligero mediante solicitudes condicionales; una tienda sin actividad responde con un único `304` sin cuerpo.
+- **Demanda declarada:** una pantalla declara qué está mostrando y el motor decide si eso requiere una solicitud o si ya se puede resolver localmente.
+- **Siembras y carriles:** una siembra acotada del catálogo, una ventana de pedidos recientes y carriles de mantenimiento durante la inactividad rellenan y verifican los datos locales con una programación que puede ajustar por dispositivo.
+- **Escrituras duraderas:** las ventas y las ediciones se ponen en cola localmente y se envían a WooCommerce, con opciones de recuperación visibles para todo lo que el servidor rechace.
 
 Qué se sincroniza: productos y variaciones, categorías/etiquetas/marcas, clientes, tasas de impuestos, cupones (Pro) y pedidos. Las pasarelas de pago se obtienen en el momento del pago.
 
-## Pros y Contras de la Arquitectura {#architecture-pros-and-cons}
+## Ventajas y desventajas de la arquitectura {#architecture-pros-and-cons}
 
-| Bueno 😊 | Malo 😟 |
+| Ventajas 😊 | Desventajas 😟 |
 | ------------------------------------------------------------------ | -------------------------------------------------------- |
 | Buscar datos locales es instantáneo | Mantener los datos sincronizados es un desafío |
-| Datos en caché disponibles sin conexión | Limitado por la API REST de WooCommerce |
+| Datos en caché disponibles sin conexión | Limitaciones de la API REST de WooCommerce |
 | Posibilidad de crear mejores aplicaciones nativas para escritorio, iOS y Android | Los temas y hooks de WordPress no pueden personalizar la aplicación POS |
 
-## Base de Datos Local {#local-database}
+## Base de datos local {#local-database}
 
-El cliente almacena los datos en una base de datos local en cada dispositivo — las aplicaciones web y de escritorio utilizan **almacenamiento OPFS (Origin Private File System) ejecutado en un worker**, y las aplicaciones móviles usan el mismo formato en disco a través de un motor de sistema de archivos. Todas las plataformas comparten un único formato de almacenamiento y las mismas herramientas de recuperación. Esto proporciona:
+El cliente almacena los datos en una base de datos local en cada dispositivo: las aplicaciones web y de escritorio utilizan **almacenamiento OPFS (sistema de archivos privado del origen) ejecutado en un worker**, y las aplicaciones móviles usan el mismo formato en disco a través de un motor de sistema de archivos. Todas las plataformas comparten un único formato de almacenamiento y las mismas herramientas de recuperación. Esto proporciona:
 
-- **Persistencia:** los datos sobreviven a los reinicios del navegador y del dispositivo
-- **Rendimiento:** consultas rápidas sin latencia de red — el filtrado, la ordenación y la paginación se ejecutan dentro de la capa de almacenamiento, de modo que a la interfaz solo llega la página de filas visible
+- **Persistencia:** los datos se conservan tras los reinicios del navegador y del dispositivo
+- **Rendimiento:** consultas rápidas sin latencia de red; el filtrado, la ordenación y la paginación se ejecutan dentro de la capa de almacenamiento, de modo que a la interfaz solo llega la página de filas visible
 - **Navegación sin conexión:** los datos en caché permanecen accesibles sin internet
 
-Cada combinación de sitio + tienda + cajero tiene su propia base de datos local, así que los cajeros y las tiendas nunca comparten datos locales en un mismo dispositivo. Las actualizaciones nunca migran una base de datos local in situ — la aplicación vuelve a descargar desde el servidor, que es siempre la copia autorizada.
+Cada combinación de sitio + tienda + cajero tiene su propia base de datos local, así que los cajeros y las tiendas nunca comparten datos locales en un mismo dispositivo. Las actualizaciones nunca migran una base de datos local sobre la existente: la aplicación vuelve a descargar los datos desde el servidor, cuya copia es siempre la de referencia.
 
-## Arquitectura de Checkout {#checkout-architecture}
+## Arquitectura del proceso de pago {#checkout-architecture}
 
-El proceso de pago utiliza un iframe/webview que carga la página de Order Pay de WooCommerce. Este enfoque:
+El proceso de pago utiliza un iframe/webview que carga la página de pago del pedido de WooCommerce. Este enfoque:
 
-- **Aprovecha las pasarelas de pago existentes:** Cualquier pasarela de pago de WooCommerce puede funcionar en el POS
-- **Mantiene la seguridad:** El procesamiento de pagos ocurre a través de la infraestructura segura de WooCommerce
-- **Reduce la complejidad:** No es necesario reimplementar las integraciones de pasarelas de pago
+- **Aprovecha las pasarelas de pago existentes:** cualquier pasarela de pago de WooCommerce puede funcionar en el POS
+- **Mantiene la seguridad:** los pagos se procesan a través de la infraestructura segura de WooCommerce
+- **Reduce la complejidad:** no es necesario volver a implementar las integraciones de pasarelas de pago
 
-## Extensiones de API {#api-extensions}
+## Extensiones de la API {#api-extensions}
 
-El plugin PHP amplía la API REST de WooCommerce con puntos de acceso adicionales para la funcionalidad específica del POS, registrados en los espacios de nombres propios `wcpos/v1` y `wcpos/v2` — `wcpos/v2` contiene la superficie de sincronización de la v1.10.0, y por eso las versiones de la aplicación y del plugin se publican de forma sincronizada. Consulte [API REST de WooCommerce](/1.x/reference/wc-rest-api) para una introducción.
+El plugin PHP amplía la API REST de WooCommerce con puntos de acceso adicionales para funciones específicas del POS, registrados en los espacios de nombres propios `wcpos/v1` y `wcpos/v2`; `wcpos/v2` contiene la interfaz de sincronización de la v1.10.0, y por eso las versiones de la aplicación y del plugin se publican de forma sincronizada. Consulte [API REST de WooCommerce](/1.x/reference/wc-rest-api) para obtener una introducción.
 
 ### El espacio de nombres `wcpos/v2` {#wcpos-v2-namespace}
 
-La v1.10 introduce el espacio de nombres REST `wcpos/v2`. La sincronización vive aquí, y los servicios compartidos del POS que antes se servían desde `wcpos/v1` ahora se sirven desde `wcpos/v2` (las rutas de servicio de `wcpos/v1` son redirecciones a sus implementaciones de v2). Las rutas de `wcpos/v1` siguen registrándose por compatibilidad con versiones anteriores, pero están **congeladas** — el cliente actual ya no las llama.
+La v1.10 introduce el espacio de nombres REST `wcpos/v2`. La sincronización reside aquí, y los servicios compartidos del POS que antes se ofrecían desde `wcpos/v1` ahora se ofrecen desde `wcpos/v2` (las rutas de servicio de `wcpos/v1` delegan directamente en sus implementaciones de v2). Las rutas de `wcpos/v1` siguen registrándose por compatibilidad con versiones anteriores, pero están **congeladas**: el cliente actual ya no las llama.
 
-Puntos que importan si integra con estos puntos de acceso:
+Aspectos relevantes al integrar estos puntos de acceso:
 
 - **Las rutas v2 siempre se registran.** La antigua opción `woocommerce_pos_sync_api_enabled` se ha eliminado; ya no hay un indicador que active o desactive la API.
-- **Puntos de acceso públicos.** `wcpos/v2/site`, `wcpos/v2/ping` y `wcpos/v2/echo` son públicos (se usan para sondeo de capacidades y conectividad, incluidas las [alternativas de transporte](/error-codes) para hosts restrictivos).
-- **Los pedidos usan el UUID como clave principal.** La identidad del pedido en la transmisión es el UUID; el campo heredado `wooOrderId` se ha retirado del envoltorio de extracción de pedidos. Los metadatos del pedido se tipan en la transmisión mediante un único normalizador.
-- **El almacenamiento de precios por línea de artículo está documentado** para la compatibilidad de sincronización con terceros — consulte [Cómo se almacenan las sobrescrituras de precios de POS](/1.x/reference/pos-discounts#how-pos-price-overrides-are-stored).
-- **La ordenación de productos por defecto** en el POS ahora es **por nombre ascendente** (antes `menu_order, id`).
-- **Métodos heredados eliminados.** Se han eliminado varios métodos heredados del controlador `API\Settings` (por ejemplo `get_general_settings()`, `update_access_settings()`, `get_general_endpoint_args()`, `remove_license_transient()`); el alias de la clase se conserva, pero esos métodos no.
+- **Puntos de acceso públicos.** `wcpos/v2/site`, `wcpos/v2/ping` y `wcpos/v2/echo` son públicos (se usan para comprobar capacidades y conectividad, incluidas las [alternativas de transporte](/1.x/error-codes) para alojamientos restrictivos).
+- **Los pedidos usan el UUID como clave principal.** La identidad del pedido en los datos transmitidos es el UUID; el campo heredado `wooOrderId` se ha retirado de la estructura de respuesta de descarga de pedidos. Los metadatos del pedido se transmiten con tipos definidos mediante un único normalizador.
+- **El almacenamiento de precios por línea de artículo está documentado** para facilitar la compatibilidad con la sincronización de terceros; consulte [Cómo se almacenan las modificaciones de precio POS](/1.x/reference/pos-discounts#how-pos-price-overrides-are-stored).
+- **La ordenación predeterminada de productos** en el POS ahora es **por nombre ascendente** (antes `menu_order, id`).
+- **Métodos heredados eliminados.** Se han eliminado varios métodos heredados del controlador `API\Settings` (por ejemplo, `get_general_settings()`, `update_access_settings()`, `get_general_endpoint_args()`, `remove_license_transient()`); el alias de la clase se conserva, pero esos métodos no.
 
-:::note Pro refleja la división
-WCPOS Pro sigue la misma división V1/V2 — sus servicios compartidos se promueven a `wcpos/v2` mientras que sus datos de pedidos permanecen congelados en v1. Los precios de productos con ámbito de tienda se ejecutan en el carril v2, y el ámbito de tienda de la caja se traslada a las escrituras de pedidos para que los pedidos multitienda se tarifiquen y tributen contra la tienda correcta. Consulte [Pro](/getting-started/free-vs-pro).
+:::note Pro sigue la misma división
+WCPOS Pro sigue la misma división V1/V2: sus servicios compartidos pasan a `wcpos/v2`, mientras que sus datos de pedidos permanecen congelados en v1. Los precios de productos específicos de cada tienda se gestionan en el carril v2, y el ámbito de tienda de la caja se incluye al escribir los pedidos para que, en las operaciones con varias tiendas, los precios e impuestos de cada pedido se calculen según la tienda correcta. Consulte [Pro](/1.x/getting-started/free-vs-pro).
 :::
