@@ -1012,7 +1012,8 @@ function validateProtectedTermsInText(source, translated, file) {
     const sourceCount = countExactTerm(source, term);
     if (sourceCount === 0) continue;
     const translatedCount = countExactTerm(translated, term);
-    if (translatedCount < sourceCount) {
+    // Only a term gone entirely is a leak; folding a repeated name is fine.
+    if (translatedCount === 0) {
       issues.push(issue(
         'protected_term_removed',
         file,
@@ -1046,7 +1047,8 @@ function validateDocsMdxStructure(source, translated, file, locale) {
     issues.push(issue('import_changed', file, 'Import statements changed.'));
   }
 
-  if (!sameList(extractMarkdownLinkUrls(sourceWithoutCodeBlocks), extractMarkdownLinkUrls(translatedWithoutCodeBlocks))) {
+  // Multiset compare: SOV locales (ja, ko) legitimately reorder links in a sentence.
+  if (!sameList([...extractMarkdownLinkUrls(sourceWithoutCodeBlocks)].sort(), [...extractMarkdownLinkUrls(translatedWithoutCodeBlocks)].sort())) {
     issues.push(issue('link_url_changed', file, 'Markdown link URLs changed.'));
   }
 

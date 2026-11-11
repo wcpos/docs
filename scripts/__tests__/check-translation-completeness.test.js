@@ -177,6 +177,18 @@ describe('findUntranslatedProps', () => {
     ].join('\n');
     expect(findUntranslatedProps(src, src)).toEqual(['label="Square account"']);
   });
+
+  it('does not flag the Epson, receipt-template and tax-plugin names', () => {
+    const src = [
+      '<LinkCard title="Epson Secure Printing" />',
+      '<LinkCard title="Server Direct Print" />',
+      '<FeatureCard title="Minimal / Modern" />',
+      '<FeatureCard title="PHP (Legacy)" />',
+      '<LinkCard title="Email Invoice" />',
+      '',
+    ].join('\n');
+    expect(findUntranslatedProps(src, src)).toEqual(['title="Email Invoice"']);
+  });
 });
 
 describe('findLeftoverProse', () => {
@@ -325,6 +337,31 @@ Cambia a Twenty Twenty-Four para descartar un conflicto de tema.
       '',
     ].join('\n');
     expect(findLeftoverProse(src, src)).toEqual(['Email Invoice']);
+  });
+
+  it('ignores identical Markdown table rows', () => {
+    const rows = [
+      '| US EIN | US EIN | EIN | 12-3456789 |',
+      '| Canada GST/HST | Canada | GST/HST | 123456789RT0001 |',
+      '| **AR CUIT** | Argentina | CUIT | 20-12345678-9 |',
+    ].join('\n');
+    const sep = '| --- | --- | --- | --- |';
+    const source = `| Tax ID | Country | Code | Example |\n${sep}\n${rows}\n\nEnter the tax ID your customers give you at checkout.\n`;
+    const translated = `| Steuernummer | Land | Code | Beispiel |\n${sep}\n${rows}\n\nGeben Sie die Steuernummer ein, die Ihre Kunden an der Kasse angeben.\n`;
+    expect(findLeftoverProse(source, translated)).toHaveLength(0);
+  });
+
+  it('still flags a wholly untranslated prose table', () => {
+    const table = [
+      '| Step | What to do |',
+      '| --- | --- |',
+      '| Open the register | Tap the till to start a sale |',
+      '| Add the products | Scan each item into the cart |',
+      '| Take the payment | Choose a gateway and confirm |',
+    ].join('\n');
+    const source = `${table}\n\nFollow these steps at the start of every shift.\n`;
+    const translated = `${table}\n\nFolgen Sie diesen Schritten zu Beginn jeder Schicht.\n`;
+    expect(findLeftoverProse(source, translated).length).toBeGreaterThanOrEqual(3);
   });
 
   describe('multi-line MDX comment and export blocks', () => {
