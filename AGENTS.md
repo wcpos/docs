@@ -71,3 +71,17 @@ and `--check` reports drift.
 - At the 3.0 cut, browsers and search engines may have cached the `/2.x/*`
   308s, which would burn the `/2.x` prefix. If so, give the versioned 2.x docs
   a fresh prefix instead of `/2.x`.
+
+## Search index
+
+Algolia DocSearch crawls the site once a week (Thursday 20:05). Until that
+crawl, the index keeps the old version tag and the old URLs, so the search box
+shows no results on the current version (2026-11-11: two days with 0 2.x
+records after the 2.x flip).
+
+- After a version flip (`lastVersion` changes) or a release that moves URLs,
+  start a crawl by hand: Algolia dashboard → Data sources → Crawler → `wcpos`
+  → Restart crawling, config unchanged. A full crawl takes about 35 minutes.
+- `pnpm search:check` (`scripts/check-search-health.js`) queries the live index
+  with the site's own filters for the default version. It prints one line and
+  exits 1 when either query returns 0 hits, and 2 when Algolia cannot be reached.
