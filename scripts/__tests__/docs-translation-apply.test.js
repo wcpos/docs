@@ -175,15 +175,15 @@ describe('applyResults MDX', () => {
     expect(output.writes).toEqual([{ path: target, content: '正確なドメイン(`yourstore.com`)\n' }]);
   });
 
-  it('normalises full-width parens split across units around inline code', () => {
+  it('keeps English parens around inline code in a split table row', () => {
     const english = '| Element | Notes |\n| --- | --- |\n| `<receipt>` | Required.<br />`paper-width` (`48`) |\n';
     write(SOURCE, english);
     const units = parseDocsMdxUnits(SOURCE, english).units.map(unit => unit.source);
-    expect(units.indexOf('(')).toBeGreaterThan(-1);
-    expect(units.indexOf(') |')).toBe(units.indexOf('(') + 1);
+    expect(units).not.toContain('(');
+    expect(units).not.toContain(') |');
     for (const sibling of LOCALES) write(sourceToTranslatedPath(SOURCE, sibling), GERMAN);
     const target = sourceToTranslatedPath(SOURCE, 'ja');
-    const texts = units.map(text => ({ '| Element | Notes |': '| 要素 | 備考 |', '| Required.': '| 必須。', '(': '（', ') |': '） |' })[text] ?? text);
+    const texts = units.map(text => ({ '| Element | Notes |': '| 要素 | 備考 |', '| Required.': '| 必須。' })[text] ?? text);
     const output = apply({ ...ENTRY, target, locale: 'ja', pending: units.map((_text, i) => i) }, [result(texts, target, 'ja')]);
     expect(output.report).toMatchObject({ rejected: 0 });
     expect(output.writes[0].content).toContain('(`48`)');
