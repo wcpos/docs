@@ -371,6 +371,10 @@ function parseDocsMdxUnits(filePath, source) {
     if (input.source.trim() === '') {
       return;
     }
+    // A letterless fragment has nothing to translate, and identical fragments share one unit id, so one bad translation would spread to every copy.
+    if (!/\p{L}/u.test(input.source)) {
+      return;
+    }
     const index = typeIndexes[input.type]++;
     units.push({
       id: buildDocsUnitId({
