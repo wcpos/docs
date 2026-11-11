@@ -122,6 +122,8 @@ if [ -f scripts/docs-translation/first.txt ]; then
     case "$FIRST" in ''|'#'*) ;; *) WORKLIST_ARGS+=(--first "$FIRST") ;; esac
   done < scripts/docs-translation/first.txt
 fi
+# Pages an open i18n-round branch has translated wait until that round merges; a round's own run takes them.
+case "$BASE" in i18n-round/*) ;; *) WORKLIST_ARGS+=(--hold-rounds "$BASE") ;; esac
 SUMMARY=$(node scripts/docs-translation/worklist.js "${WORKLIST_ARGS[@]}" --max-units "$MAX_UNITS")
 exec 8>&-
 PLAN_SUM=$(shasum -a 256 .translate/plan.json | cut -d' ' -f1)
