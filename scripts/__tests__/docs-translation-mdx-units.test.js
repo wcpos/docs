@@ -418,6 +418,13 @@ Body text.
     ]);
   });
 
+  it('does not let an incomplete tag opener in code hide a later real tag', () => {
+    const parsed = parseDocsMdxUnits('docs/example.mdx', 'Type `<b` and press <Tip label="Bold" /> to finish.\n');
+
+    expect(parsed.units.some((unit) => unit.source.includes('<Tip'))).toBe(false);
+    expect(parsed.units.some((unit) => unit.type === 'jsx_attr' && unit.attr === 'label' && unit.source === 'Bold')).toBe(true);
+  });
+
   it('does not collapse mixed markdown link and image lines into one free-text unit', () => {
     const mdx = 'See [settings](/settings/store/general) and ![Receipt preview](./receipt.png) now.\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
