@@ -6,11 +6,11 @@ description: "Ontwikkelaarsreferentie over hoe WCPOS POS-prijsoverschrijvingen v
 
 # Technische referentie voor POS-kortingen {#pos-discount-technical-reference}
 
-Deze pagina beschrijft hoe WCPOS prijsoverschrijvingen voor orderregels behandelt die door kassamedewerkers worden toegepast — hoe ze worden opgeslagen, hoe ze samenwerken met WooCommerce-coupons en welke filters beschikbaar zijn. Zie voor documentatie voor gebruikers [Winkelwagenkortingen](/1.x/pos/cart/discounts) en [Coupons](/1.x/coupons).
+Deze pagina beschrijft hoe WCPOS omgaat met prijsoverschrijvingen die kassamedewerkers op orderregels toepassen: hoe ze worden opgeslagen, hoe ze samenwerken met WooCommerce-coupons en welke filters beschikbaar zijn. Zie voor gebruikersdocumentatie [Winkelwagenkortingen](/1.x/pos/cart/discounts) en [Coupons](/1.x/coupons).
 
 ## Hoe POS-prijsoverschrijvingen worden opgeslagen {#how-pos-price-overrides-are-stored}
 
-Wanneer een kassamedewerker de prijs van een orderregel instelt of wijzigt in de POS, worden de prijzen per eenheid opgeslagen in de orderregelmeta `_woocommerce_pos_data` als JSON:
+Wanneer een kassamedewerker de prijs van een orderregel instelt of wijzigt in de POS, worden de prijzen per eenheid als JSON opgeslagen in de orderregelmetadata `_woocommerce_pos_data`:
 
 ```json
 {
@@ -20,24 +20,24 @@ Wanneer een kassamedewerker de prijs van een orderregel instelt of wijzigt in de
 }
 ```
 
-Voor diverse (aangepaste) producten kan deze meta ook de velden `virtual`, `downloadable` en `categories` bevatten die tijdens couponvalidatie worden gebruikt.
+Voor diverse (aangepaste) producten kan deze metadata ook de velden `virtual`, `downloadable` en `categories` bevatten, die bij couponvalidatie worden gebruikt.
 
-Deze meta is de gezaghebbende bron voor prijzen per eenheid van de regel. De door WooCommerce opgeslagen `subtotal` voor de orderregel wordt afgeleid van `price * qty` (met toegepaste belastingextractie en afronding). De opgeslagen `total` kan lager zijn wanneer couponkortingen worden toegepast, dus lees voor precisie per eenheid altijd `_woocommerce_pos_data.price` en `regular_price`.
+Deze metadata is de leidende bron voor de prijzen per eenheid van de regel. Het door WooCommerce opgeslagen `subtotal` van de orderregel wordt afgeleid van `price * qty` (na het uitrekenen van de belasting en het toepassen van afronding). Het opgeslagen `total` kan lager zijn als couponkortingen zijn toegepast. Lees daarom voor nauwkeurige prijzen per eenheid altijd `_woocommerce_pos_data.price` en `regular_price` uit.
 
-Nieuwe POS-bestellingen registreren ook de serverpluginversie in de privé-ordermeta `_woocommerce_pos_version`. Dit biedt een expliciete versiemarkering voor toekomstige compatibiliteitscontroles. Bonberekeningen behandelen de opgeslagen vorm van de orderregel nog steeds als gezaghebbend, omdat een offline bestelling kan worden geaccepteerd door een nieuwere server dan de app die deze heeft aangemaakt.
+Nieuwe POS-bestellingen leggen ook de versie van de serverplugin vast in de privé-bestelmetadata `_woocommerce_pos_version`. Dit biedt een expliciete versiemarkering voor toekomstige compatibiliteitscontroles. Voor bonberekeningen blijft de opgeslagen structuur van de orderregel leidend, omdat een offline bestelling kan worden geaccepteerd door een server met een nieuwere versie dan de app waarin de bestelling is aangemaakt.
 
 ## Subtotaalmodel (v1.9.0+) {#subtotal-model-v190}
 
-Vanaf v1.9.0 sluit WCPOS aan bij de standaardsemantiek van WooCommerce voor aanbiedingsprijzen:
+Vanaf v1.9.0 sluit WCPOS aan bij de standaardwerkwijze van WooCommerce voor aanbiedingsprijzen:
 
-- `line_item.subtotal = price * qty` waarbij `price` de POS-prijs is (na eventuele overschrijving).
+- `line_item.subtotal = price * qty` waarbij `price` de POS-prijs is (na een eventuele overschrijving).
 - `line_item.total = subtotal - coupon_discount_for_line`.
-- `order.discount_total` geeft **alleen kortingen via kortingsbonnen** weer, geen POS-prijsoverschrijvingen.
+- `order.discount_total` geeft **alleen couponkortingen** weer, geen POS-prijsoverschrijvingen.
 
-Dit komt overeen met de manier waarop WooCommerce een product in de aanbieding behandelt: de `sale_price` wordt het subtotaal en `discount_total` is gereserveerd voor kortingsbonnen. Er is geen afzonderlijke regel voor "POS-korting" op de bestelling.
+Dit komt overeen met hoe WooCommerce een product in de aanbieding behandelt: de `sale_price` wordt het subtotaal en `discount_total` is gereserveerd voor coupons. Er is geen afzonderlijke regel ‘POS-korting’ op de bestelling.
 
 :::note Migratie vanaf versies vóór 1.9.0
-Eerdere versies verstuurden `subtotal = regular_price * qty`, waardoor WooCommerce `discount_total = subtotal - total` berekende en POS-prijsoverschrijvingen als korting opnam. Dit is gewijzigd omdat het conflicteerde met de berekening van kortingsbonnen: `recalculate_coupons()` gebruikt `subtotal` als basisprijs, waardoor kortingsbonnen op basis van de oorspronkelijke prijs werden berekend en onjuiste totalen opleverden.
+Eerdere versies verstuurden `subtotal = regular_price * qty`, waardoor WooCommerce `discount_total = subtotal - total` berekende en POS-prijsoverschrijvingen als korting opnam. Dit is gewijzigd omdat het botste met de couponberekening: `recalculate_coupons()` gebruikt `subtotal` als basisprijs, waardoor coupons werden berekend op basis van de oorspronkelijke prijs en onjuiste totalen opleverden.
 
 De eerdere tijdelijke oplossing aan de serverzijde — een `woocommerce_order_item_get_subtotal`-filter dat actief was tijdens `recalculate_coupons()` — is verwijderd in v1.9.0. Bekijk de [ADR](https://github.com/wcpos/wiki/blob/main/architecture/decisions/2026-04-08-subtotal-parity.md) voor de volledige geschiedenis.
 :::
@@ -46,20 +46,20 @@ De eerdere tijdelijke oplossing aan de serverzijde — een `woocommerce_order_it
 
 Ondersteuning voor kortingsbonnen is een functie van [WCPOS Pro](https://wcpos.com/pro). Wanneer een kortingsbon wordt toegepast op een bestelling met artikelen met POS-korting:
 
-1. De kortingsbon wordt berekend op basis van de **POS-kortingsprijs** (de waarde in `_woocommerce_pos_data.price`), niet op basis van de oorspronkelijke `regular_price`.
-2. Wanneer een kortingsbon wordt verwijderd, keert de bestelregel terug naar de POS-kortingsprijs.
+1. De coupon wordt berekend op basis van de **POS-kortingsprijs** (de waarde in `_woocommerce_pos_data.price`), niet op basis van de oorspronkelijke `regular_price`.
+2. Wanneer een coupon wordt verwijderd, keert de orderregel terug naar de POS-kortingsprijs.
 
 ### Gedrag van `exclude_sale_items` {#exclude_sale_items-behaviour}
 
-Artikelen met POS-korting worden door WooCommerce als "in de aanbieding" behandeld wanneer `_woocommerce_pos_data.price < regular_price`. Coupons waarvoor `exclude_sale_items` is ingeschakeld, slaan deze artikelen daarom over, in overeenstemming met de manier waarop WooCommerce reguliere aanbiedingsprijzen behandelt.
+Artikelen met POS-korting worden door WooCommerce als ‘in de aanbieding’ behandeld wanneer `_woocommerce_pos_data.price < regular_price`. Coupons waarvoor `exclude_sale_items` is ingeschakeld, slaan deze artikelen daarom over, net zoals WooCommerce dat bij reguliere aanbiedingsprijzen doet.
 
-Zie het filter `woocommerce_pos_item_is_on_sale` hieronder als ander gedrag nodig is.
+Zie het filter `woocommerce_pos_item_is_on_sale` hieronder als je ander gedrag nodig hebt.
 
 ## Beschikbare filters {#available-filters}
 
 ### `woocommerce_pos_item_is_on_sale` {#woocommerce_pos_item_is_on_sale}
 
-Bepaal of een artikel met POS-korting voor couponvalidatie als "in de aanbieding" wordt beschouwd.
+Overschrijf of een artikel met POS-korting bij couponvalidatie als ‘in de aanbieding’ wordt beschouwd.
 
 ```php
 add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product, $item, $pos_data ) {
@@ -70,37 +70,37 @@ add_filter( 'woocommerce_pos_item_is_on_sale', function ( $is_on_sale, $product,
 
 **Parameters:**
 
-| Parameternaam | Gegevenstype | Beschrijving |
+| Parameter | Type | Beschrijving |
 |---|---|---|
 | `$is_on_sale` | `bool` | Of het artikel als in de aanbieding wordt beschouwd (standaard: `price < regular_price`) |
 | `$product` | `WC_Product` | Het productobject |
-| `$item` | `WC_Order_Item_Product` | Het bestelregelartikel |
-| `$pos_data` | `array` | De gedecodeerde `_woocommerce_pos_data` JSON |
+| `$item` | `WC_Order_Item_Product` | De orderregel |
+| `$pos_data` | `array` | De gedecodeerde JSON uit `_woocommerce_pos_data` |
 
-## REST API-eindpunt {#rest-api-endpoint}
+## REST API-endpoint {#rest-api-endpoint}
 
-Het REST-eindpunt voor coupons bevindt zich in de **gratis plugin** op `/wp-json/wcpos/v1/coupons`, zodat de POS-app nooit een 404 ontvangt bij het opvragen van coupons — zelfs niet op sites waarop WCPOS Pro niet is geïnstalleerd. De couponfunctie voor gebruikers vereist echter Pro.
+Het REST-endpoint voor coupons bevindt zich in de **gratis plugin** op `/wp-json/wcpos/v1/coupons`, zodat de POS-app nooit een 404 ontvangt bij het opvragen van coupons — zelfs niet op sites zonder WCPOS Pro. De couponfunctie voor gebruikers vereist echter wel Pro.
 
 De controller breidt `WC_REST_Coupons_Controller` uit met POS-specifieke toevoegingen:
 
-- UUID-verwerking voor offline-first-synchronisatie
-- Machtiging `access_woocommerce_pos` voor toestemmingscontroles
+- UUID-verwerking voor synchronisatie die uitgaat van offline gebruik
+- De machtiging `access_woocommerce_pos` voor toegangscontroles
 - Geoptimaliseerd querypad voor bulk-ID's wanneer `posts_per_page=-1` en `fields=id` (of `fields=id,date_modified_gmt`) worden aangevraagd
 
-## Beschikbaarheid van kassabongegevens {#receipt-data-exposure}
+## Beschikbaarheid van bongegevens {#receipt-data-exposure}
 
-De gegevensbuilder voor kassabonnen (`Receipt_Data_Builder`) stelt het volgende beschikbaar:
+De gegevensbuilder voor bonnen (`Receipt_Data_Builder`) stelt het volgende beschikbaar:
 
-- `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — kortingsbedrag per regel, berekend als `subtotal - total`. Sinds v1.9.0 betreft dit bij POS-prijsoverschrijvingen **alleen couponkortingen**, omdat `subtotal === total` wanneer geen coupon wordt toegepast.
+- `lines[].discounts`, `lines[].discounts_incl`, `lines[].discounts_excl` — kortingsbedrag per regel, berekend als `subtotal - total`. Vanaf v1.9.0 geeft dit bij POS-prijsoverschrijvingen **alleen couponkortingen** weer, omdat `subtotal === total` wanneer geen coupon is toegepast.
 - `totals.discount_total`, `totals.discount_total_incl`, `totals.discount_total_excl` — totale couponkorting op bestelniveau uit `WC_Order::get_discount_total()`.
-- `totals.sale_savings_total`, `totals.sale_savings_total_incl`, `totals.sale_savings_total_excl` — de totale geregistreerde besparing op de overgang van reguliere naar verkoopprijzen voor alle productregels, inclusief catalogusaanbiedingen en prijsaanpassingen bij de kassa.
-- `totals.total_saved`, `totals.total_saved_incl`, `totals.total_saved_excl` — gecombineerde totalen van WooCommerce-korting en besparing op de reguliere prijs. De builder sluit regelbesparingen uit die al zijn opgenomen in het WooCommerce-kortingstotaal van een bestelling van vóór v1.9.0.
-- `totals.total_saved_complete` — false wanneer een regel onvoldoende vastgelegde prijsgegevens bevat voor een betrouwbare aggregatie; de nullable besparingstotalen zijn in dat geval `null`.
-- `discounts[]` — array met couponregelitems met `label`, `code` en `total`.
+- `totals.sale_savings_total`, `totals.sale_savings_total_incl`, `totals.sale_savings_total_excl` — de totale vastgelegde besparing tussen reguliere prijzen en verkoopprijzen over alle productregels, inclusief catalogusaanbiedingen en prijsoverschrijvingen aan de kassa.
+- `totals.total_saved`, `totals.total_saved_incl`, `totals.total_saved_excl` — gecombineerde totalen van WooCommerce-korting en besparing ten opzichte van de reguliere prijs. De builder sluit besparingen per regel uit die al zijn opgenomen in het WooCommerce-kortingstotaal van een bestelling van vóór v1.9.0.
+- `totals.total_saved_complete` — false wanneer een regel onvoldoende vastgelegde prijsgegevens bevat voor een betrouwbaar totaal; de besparingstotalen die een null-waarde toestaan zijn in dat geval `null`.
+- `discounts[]` — array van couponregels met `label`, `code` en `total`.
 
-De meta met een onderstreping als voorvoegsel van het regelitem (inclusief `_woocommerce_pos_data`) wordt door `lines[].meta` uit `Receipt_Data_Builder::get_item_meta_pairs()` gefilterd. Receipt Data v1.1 toont in plaats daarvan de vastgelegde normale prijs, verkoopprijs vóór couponkorting, besparing per regel en totale besparing via canonieke velden. Zie [Normale prijs en besparing weergeven](/1.x/receipts/receipt-data#displaying-regular-price-and-savings) en [Totalen](/1.x/receipts/receipt-data#totals) voor sjabloonvoorbeelden.
+De metadata van de orderregel met een underscore als voorvoegsel (inclusief `_woocommerce_pos_data`) wordt door `Receipt_Data_Builder::get_item_meta_pairs()` uit `lines[].meta` gefilterd. Bongegevens v1.1 stelt in plaats daarvan de vastgelegde reguliere prijs, de verkoopprijs vóór couponkorting, de besparing per regel en de totale besparing beschikbaar via canonieke velden. Zie [Reguliere prijs en besparingen weergeven](/1.x/receipts/receipt-data#displaying-regular-price-and-savings) en [Totalen](/1.x/receipts/receipt-data#totals) voor sjabloonvoorbeelden.
 
 ## Gerelateerd {#related}
 
-- [Kortingen in de winkelwagen](/1.x/pos/cart/discounts) — gebruikershandleiding voor kortingen die door de kassamedewerker worden toegepast
-- [Kortingsbonnen](/1.x/coupons) — gebruikershandleiding voor WooCommerce-kortingsbonnen in de POS (Pro)
+- [Winkelwagenkortingen](/1.x/pos/cart/discounts) — gebruikershandleiding voor kortingen die door de kassamedewerker worden toegepast
+- [Coupons](/1.x/coupons) — gebruikershandleiding voor WooCommerce-coupons in de POS (Pro)
