@@ -1018,6 +1018,38 @@ Después de la imagen.
 
     expect(output).toBe('<Image alt="He said &quot;hi&quot;" />\n');
   });
+
+  const letterlessTableMdx =
+    '| Element | Notes |\n| --- | --- |\n| `<receipt>` | Required. Wraps the whole template.<br />`paper-width` (`48`) |\n';
+
+  it('emits no letterless unit from a table row split around inline code', () => {
+    const parsed = parseDocsMdxUnits('docs/example.mdx', letterlessTableMdx);
+
+    expect(parsed.units.filter((unit) => !/\p{L}/u.test(unit.source))).toStrictEqual([]);
+    expect(parsed.units.map((unit) => unit.source)).toContain('| Required. Wraps the whole template.');
+  });
+
+  it('emits no punctuation-only units between code spans', () => {
+    const parsed = parseDocsMdxUnits('docs/example.mdx', 'Use `a`, `b` or `c`: `d`. <br />\n');
+
+    expect(parsed.units.map((unit) => [unit.type, unit.source])).toStrictEqual([
+      ['paragraph', 'Use'],
+      ['paragraph', 'or'],
+    ]);
+  });
+
+  it('keeps letterless fragments byte for byte when every unit is translated', () => {
+    const parsed = parseDocsMdxUnits('docs/example.mdx', letterlessTableMdx);
+    const output = applyDocsMdxTranslations(parsed, new Map(parsed.units.map((unit) => [unit.id, `DE ${unit.source}`])));
+
+    expect(output).toContain('`paper-width` (`48`)');
+  });
+
+  it('emits no unit for a digits-and-symbols fragment', () => {
+    const parsed = parseDocsMdxUnits('docs/example.mdx', '`x` 1–8 `y` <br />\n');
+
+    expect(parsed.units).toStrictEqual([]);
+  });
 });
 
 describe('parseDocsMdxUnits tilde fences', () => {
@@ -1105,7 +1137,6 @@ describe('MDX comment and export blocks', () => {
       ['paragraph', '{/* Screenshot: pos.png */}'],
       ['paragraph', 'export const Yes = () =>'],
       ['jsx_attr', 'Included'],
-      ['paragraph', ';'],
       ['paragraph', 'Hello world.'],
     ]);
   });
