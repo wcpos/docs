@@ -13,75 +13,75 @@ Questa pagina spiega l'architettura tecnica di WCPOS per sviluppatori e utenti a
 
 WCPOS è progettato come un sistema a due parti:
 
-1. **Plugin PHP:** Ospitato sul tuo server, è un plugin relativamente piccolo che estende l'[API REST di WooCommerce](/1.x/reference/wc-rest-api) con endpoint specifici per il POS.
+1. **Plugin PHP:** ospitato sul tuo server, è un plugin relativamente piccolo che estende l'[API REST di WooCommerce](/1.x/reference/wc-rest-api) con endpoint specifici per il POS.
 
-2. **Client JavaScript:** Viene eseguito localmente nel tuo browser, nell'app desktop o nelle app iOS/Android.
+2. **Client JavaScript:** viene eseguito localmente nel tuo browser, nell'app desktop o nelle app iOS/Android.
 
-Puoi pensarlo come due mondi separati:
+Puoi immaginarlo come due mondi separati:
 
-- Il _mondo PHP_ è dove avviene la gestione dei dati usando WordPress e WooCommerce.
-- Il _mondo JavaScript_ mantiene una copia locale, utilizzabile offline, dei dati del negozio di cui le tue casse hanno bisogno, ottimizzata per ricerche veloci e risposta immediata.
+- Nel _mondo PHP_ avviene la gestione dei dati tramite WordPress e WooCommerce.
+- Il _mondo JavaScript_ mantiene una copia locale, utilizzabile offline, dei dati del negozio di cui le tue casse hanno bisogno, ottimizzata per ricerche veloci e risposte immediate.
 
 <LocalizedSVG svgName="pos-client-woo-server" />
 
 ## Sincronizzazione dei dati {#data-synchronization}
 
 :::info Modificato nella v1.10.0
-La v1.10.0 sostituisce il precedente livello di replica con un **motore di sincronizzazione** dedicato. Il riepilogo qui sotto è la versione breve — la spiegazione completa si trova in [Come funziona il motore di sincronizzazione](/1.x/reference/sync-engine).
+La v1.10.0 sostituisce il precedente livello di replica con un **motore di sincronizzazione** dedicato. Di seguito trovi un breve riepilogo; per la spiegazione completa, consulta [Come funziona il motore di sincronizzazione](/1.x/reference/sync-engine).
 :::
 
-Il client è local-first: ogni schermata legge e scrive sul database locale del dispositivo, e un motore di sincronizzazione in background mantiene convergenti quel database e WooCommerce. Il motore **non** replica ciecamente l'intero negozio — lavora a partire da ciò di cui le tue schermate hanno effettivamente bisogno:
+Il client privilegia i dati locali: ogni schermata legge e scrive nel database locale del dispositivo e un motore di sincronizzazione in background mantiene allineati quel database e WooCommerce. Il motore **non** replica indiscriminatamente l'intero negozio: si basa su ciò di cui le schermate hanno effettivamente bisogno:
 
-- **Rilevamento delle modifiche:** il POS interroga un leggero registro delle modifiche con richieste condizionali; un negozio inattivo risponde con un unico `304` privo di corpo.
-- **Domanda dichiarata:** una schermata dichiara ciò che sta mostrando, e il motore decide se ciò richiede una richiesta o è già risolvibile localmente.
-- **Precaricamenti e corsie:** un precaricamento delimitato del catalogo, una finestra sugli ordini recenti e corsie di manutenzione nei momenti di inattività riempiono e verificano i dati locali secondo pianificazioni regolabili per ciascun dispositivo.
-- **Scritture durevoli:** le vendite e le modifiche vengono messe in coda localmente e inviate a WooCommerce, con un recupero visibile per tutto ciò che il server rifiuta.
+- **Rilevamento delle modifiche:** il POS interroga periodicamente un registro leggero delle modifiche con richieste condizionali; un negozio inattivo risponde con un unico `304` privo di corpo.
+- **Domanda dichiarata:** una schermata dichiara ciò che sta mostrando e il motore decide se serve una richiesta o se i dati sono già disponibili localmente.
+- **Precaricamenti e corsie:** un precaricamento limitato del catalogo, una finestra sugli ordini recenti e corsie di manutenzione nei momenti di inattività popolano e verificano i dati locali secondo pianificazioni regolabili per ciascun dispositivo.
+- **Scritture durevoli:** le vendite e le modifiche vengono messe in coda localmente e poi inviate a WooCommerce, con strumenti di recupero visibili per tutto ciò che il server rifiuta.
 
-Cosa viene sincronizzato: prodotti e variazioni, categorie/tag/marche, clienti, aliquote fiscali, coupon (Pro) e ordini. I gateway di pagamento vengono recuperati al momento del checkout.
+Vengono sincronizzati prodotti e variazioni, categorie/tag/marche, clienti, aliquote fiscali, coupon (Pro) e ordini. I gateway di pagamento vengono recuperati al momento del checkout.
 
 ## Vantaggi e svantaggi dell'architettura {#architecture-pros-and-cons}
 
-| Buono 😊 | Cattivo 😟 |
+| Vantaggi 😊 | Svantaggi 😟 |
 | ------------------------------------------------------------------ | -------------------------------------------------------- |
-| La ricerca dei dati locali è istantanea | Mantenere i dati sincronizzati è una sfida |
-| Dati memorizzati nella cache disponibili offline | Limitato dall'API REST di WooCommerce |
-| Possibilità di creare migliori app native per desktop, iOS e Android | I temi e gli hook di WordPress non possono personalizzare l'app POS |
+| La ricerca nei dati locali è istantanea | Mantenere i dati sincronizzati è complesso |
+| I dati nella cache sono disponibili offline | Limitazioni imposte dall'API REST di WooCommerce |
+| Possibilità di creare app native migliori per desktop, iOS e Android | I temi e gli hook di WordPress non possono personalizzare l'app POS |
 
 ## Database locale {#local-database}
 
-Il client memorizza i dati in un database locale su ciascun dispositivo — le app web e desktop usano l'**archiviazione OPFS (Origin Private File System) eseguita in un worker**, e le app mobili usano lo stesso formato su disco attraverso un motore su filesystem. Tutte le piattaforme condividono un unico formato di archiviazione e gli stessi strumenti di recupero. Questo fornisce:
+Il client memorizza i dati in un database locale su ciascun dispositivo: le app web e desktop usano un **sistema di archiviazione OPFS (Origin Private File System) eseguito in un worker**, mentre le app mobili usano lo stesso formato su disco tramite un motore basato sul filesystem. Tutte le piattaforme condividono un unico formato di archiviazione e gli stessi strumenti di recupero. Questo offre:
 
-- **Persistenza:** I dati sopravvivono ai riavvii del browser e del dispositivo
-- **Prestazioni:** Query veloci senza latenza di rete — filtro, ordinamento e paginazione vengono eseguiti all'interno del livello di archiviazione, così solo la pagina di righe visibile raggiunge l'interfaccia
-- **Navigazione offline:** I dati memorizzati nella cache restano accessibili senza internet
+- **Persistenza:** i dati vengono conservati anche dopo il riavvio del browser o del dispositivo
+- **Prestazioni:** query veloci senza latenza di rete — filtro, ordinamento e paginazione vengono eseguiti nel livello di archiviazione, così solo la pagina di righe visibile raggiunge l'interfaccia
+- **Navigazione offline:** i dati nella cache restano accessibili senza internet
 
-Ogni combinazione sito + negozio + cassiere ottiene il proprio database locale, così cassieri e negozi non condividono mai i dati locali su uno stesso dispositivo. Gli aggiornamenti non migrano mai un database locale sul posto — l'app riscarica dal server, che è sempre la copia autorevole.
+Ogni combinazione sito + negozio + cassiere dispone del proprio database locale, quindi cassieri e negozi non condividono mai dati locali sullo stesso dispositivo. Gli aggiornamenti non eseguono mai una migrazione del database locale esistente: l'app riscarica i dati dal server, che resta sempre la copia autorevole.
 
 ## Architettura del checkout {#checkout-architecture}
 
-Il processo di checkout usa un iframe/webview che carica la pagina Order Pay di WooCommerce. Questo approccio:
+Il processo di checkout usa un iframe/webview che carica la pagina di pagamento dell'ordine di WooCommerce. Questo approccio:
 
-- **Sfrutta i gateway di pagamento esistenti:** Qualsiasi gateway di pagamento WooCommerce può funzionare nel POS
-- **Mantiene la sicurezza:** L'elaborazione dei pagamenti avviene attraverso l'infrastruttura sicura di WooCommerce
-- **Riduce la complessità:** Non è necessario re-implementare le integrazioni dei gateway di pagamento
+- **Sfrutta i gateway di pagamento esistenti:** qualsiasi gateway di pagamento WooCommerce può funzionare nel POS
+- **Mantiene la sicurezza:** l'elaborazione dei pagamenti avviene tramite l'infrastruttura sicura di WooCommerce
+- **Riduce la complessità:** non è necessario reimplementare le integrazioni dei gateway di pagamento
 
 ## Estensioni dell'API {#api-extensions}
 
-Il plugin PHP estende l'API REST di WooCommerce con endpoint aggiuntivi per funzionalità specifiche del POS, registrati sotto i namespace dedicati `wcpos/v1` e `wcpos/v2` — `wcpos/v2` contiene la superficie di sincronizzazione della v1.10.0, ed è per questo che le versioni dell'app e del plugin vengono rilasciate di pari passo. Vedi [API REST di WooCommerce](/1.x/reference/wc-rest-api) per un'introduzione.
+Il plugin PHP estende l'API REST di WooCommerce con endpoint aggiuntivi per le funzionalità specifiche del POS, registrati nei namespace dedicati `wcpos/v1` e `wcpos/v2`: `wcpos/v2` contiene le funzionalità di sincronizzazione della v1.10.0, motivo per cui le versioni dell'app e del plugin vengono rilasciate di pari passo. Consulta [API REST di WooCommerce](/1.x/reference/wc-rest-api) per un'introduzione.
 
 ### Il namespace `wcpos/v2` {#wcpos-v2-namespace}
 
-La v1.10 introduce il namespace REST `wcpos/v2`. La sincronizzazione risiede qui, e i servizi POS condivisi che in precedenza erano serviti da `wcpos/v1` sono ora serviti da `wcpos/v2` (le route di servizio `wcpos/v1` sono pass-through verso le loro implementazioni v2). Le route `wcpos/v1` si registrano ancora per retrocompatibilità ma sono **congelate** — il client attuale non le chiama più.
+La v1.10 introduce il namespace REST `wcpos/v2`. La sincronizzazione risiede qui e i servizi POS condivisi, prima disponibili tramite `wcpos/v1`, sono ora disponibili tramite `wcpos/v2` (le route dei servizi `wcpos/v1` inoltrano le richieste alle rispettive implementazioni v2). Le route `wcpos/v1` vengono ancora registrate per retrocompatibilità, ma sono **congelate**: il client attuale non le chiama più.
 
-Punti che contano se ti integri con questi endpoint:
+Aspetti importanti per chi integra questi endpoint:
 
-- **Le route v2 si registrano sempre.** La vecchia opzione `woocommerce_pos_sync_api_enabled` è stata rimossa; non esiste più un flag che attivi o disattivi l'API.
-- **Endpoint pubblici.** `wcpos/v2/site`, `wcpos/v2/ping` e `wcpos/v2/echo` sono pubblici (usati per il rilevamento delle capacità e della connettività, incluse le [riserve di trasporto](/error-codes) per gli host restrittivi).
-- **Gli ordini hanno lo UUID come chiave primaria.** L'identità dell'ordine sul canale è lo UUID; il vecchio campo `wooOrderId` è stato ritirato dall'envelope di pull degli ordini. I metadati dell'ordine sono tipizzati sul canale tramite un unico normalizzatore.
-- **La memorizzazione dei prezzi per singola riga è documentata** per la compatibilità di sincronizzazione con terze parti — vedi [Come vengono memorizzate le modifiche di prezzo del POS](/1.x/reference/pos-discounts#how-pos-price-overrides-are-stored).
+- **Le route v2 vengono sempre registrate.** La vecchia opzione `woocommerce_pos_sync_api_enabled` è stata rimossa; non esiste più un flag che attivi o disattivi l'API.
+- **Endpoint pubblici.** `wcpos/v2/site`, `wcpos/v2/ping` e `wcpos/v2/echo` sono pubblici (usati per verificare funzionalità e connettività, incluse le [alternative di trasporto](/1.x/error-codes) per gli host con restrizioni).
+- **Gli ordini hanno l'UUID come chiave primaria.** Nei dati trasmessi, l'ordine è identificato dall'UUID; il vecchio campo `wooOrderId` è stato rimosso dall'involucro dei dati di recupero degli ordini. I metadati degli ordini vengono tipizzati per la trasmissione tramite un unico normalizzatore.
+- **La memorizzazione dei prezzi per singola riga è documentata** per garantire la compatibilità della sincronizzazione con terze parti — consulta [Come vengono memorizzate le sovrascritture di prezzo POS](/1.x/reference/pos-discounts#how-pos-price-overrides-are-stored).
 - **L'ordinamento predefinito dei prodotti** nel POS è ora **per nome crescente** (in precedenza `menu_order, id`).
-- **Metodi legacy rimossi.** Diversi metodi legacy del controller `API\Settings` (ad esempio `get_general_settings()`, `update_access_settings()`, `get_general_endpoint_args()`, `remove_license_transient()`) sono stati rimossi; l'alias della classe sopravvive ma quei metodi no.
+- **Metodi legacy rimossi.** Diversi metodi legacy del controller `API\Settings` (ad esempio `get_general_settings()`, `update_access_settings()`, `get_general_endpoint_args()`, `remove_license_transient()`) sono stati rimossi; l'alias della classe rimane, ma quei metodi no.
 
 :::note Pro rispecchia la separazione
-WCPOS Pro segue la stessa separazione V1/V2 — i suoi servizi condivisi sono promossi a `wcpos/v2` mentre i suoi dati degli ordini restano congelati a v1. I prezzi dei prodotti a livello di negozio funzionano sulla corsia v2, e lo scope del negozio della cassa viene riportato sulle scritture degli ordini così che gli ordini multi-negozio vengano prezzati e tassati rispetto al negozio corretto. Vedi [Pro](/getting-started/free-vs-pro).
+WCPOS Pro segue la stessa separazione V1/V2: i servizi condivisi passano a `wcpos/v2`, mentre i dati degli ordini restano congelati alla v1. I prezzi dei prodotti specifici del negozio vengono gestiti nella corsia v2 e il contesto del negozio della cassa viene riportato nelle scritture degli ordini, così che negli ordini di più negozi prezzi e imposte vengano calcolati in base al negozio corretto. Consulta [Pro](/1.x/getting-started/free-vs-pro).
 :::
