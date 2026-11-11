@@ -1,0 +1,135 @@
+---
+title: "订单存储（HPOS）"
+slug: /troubleshooting/performance/order-storage-hpos
+sidebar_label: 订单存储（HPOS）
+description: "解决大型店铺中 WCPOS 结账缓慢的问题：检查 WooCommerce 使用的订单存储方式，并使用 WooCommerce 自带的工具从旧版存储切换到 HPOS。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/support/performance/order-storage/en/manifest.json';
+
+**症状：** WCPOS 结账需要好几秒，而且随着时间推移越来越慢。
+
+:::note 此操作在 WordPress 后台进行，而不是在收银终端上
+只需在 WordPress 后台操作一次。操作需要 WooCommerce 设置的访问权限；如果没有权限，请让网站管理员按以下步骤操作。告诉对方结账很慢，并将本页发送给对方。
+:::
+
+一个常见原因是 WooCommerce 存储订单的方式。请检查店铺使用哪种存储方式；如果是旧版存储，请使用 WooCommerce 自带的工具迁移到高性能订单存储（HPOS）。
+
+## 检查店铺使用的存储方式 {#check-which-storage-your-store-uses}
+
+1. 在 WordPress 后台，前往 **WooCommerce → 设置 → 高级 → 功能**。
+2. 找到 **订单数据存储**：
+   - 如果选中的是 **高性能订单存储（推荐）**，说明已在使用 HPOS，问题不在这里。请参阅[结账缓慢的其他原因](#other-causes-of-slow-checkout)。
+   - 如果选中的是 **WordPress 文章存储（旧版）**，请按下文切换到 HPOS。它能加快每次结账中的一个耗时步骤（[原因](#why-legacy-order-storage-slows-checkout)），店铺规模越大，改善越明显。
+
+这家店铺已在使用 HPOS：
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[77, 0], [80, 0], [186, 18]]} alt="WooCommerce 设置中高级选项卡的功能页面：订单数据存储已选中高性能订单存储，启用兼容模式未勾选，下方还有其他功能">
+
+1. **高级** — **WooCommerce → 设置** 中的最后一个选项卡。
+2. **功能** — 选项卡下方的最后一个链接。
+3. **订单数据存储** — 当前选中的选项就是店铺使用的存储方式。此处为 **高性能订单存储（推荐）**。使用 HPOS 的店铺可以忽略 **启用兼容模式** 下方的未同步提示：只有在[切换回旧版存储](#switch-back)时才需要关注它。
+
+</JourneyShot>
+
+自 2023 年起，新建的 WooCommerce 店铺已默认使用 HPOS，因此较早创建的店铺更有可能仍在使用旧版存储。
+
+:::tip WCPOS 也会提醒
+使用旧版存储的店铺会在 **POS → 设置 → [收银台](../../settings/wp-admin/checkout.mdx)** 顶部看到警告。其中的 **打开 WooCommerce 订单存储设置** 链接会直接进入功能页面，**如何切换** 则会返回本页。
+:::
+
+## 切换到 HPOS {#switch-to-hpos}
+
+WooCommerce 会代为迁移订单：先复制订单（即同步），再进行切换。只有复制完成后，WooCommerce 才允许切换。
+
+:::warning 先备份
+开始之前，请完整备份网站和数据库，并确认可以恢复。如果有[预发布网站](../troubleshooting/plugin-conflicts.mdx#before-you-start-use-a-staging-site)，请先在那里尝试切换。
+:::
+
+1. 前往 **WooCommerce → 设置 → 高级 → 功能**。如果本页的警告列出了与 HPOS 不兼容的插件，请先处理这些插件。请参阅[只有高性能订单存储呈灰色](#goes-wrong)。
+2. 勾选 **启用兼容模式**，然后点击 **保存更改**。WooCommerce 会开始在后台复制订单。大型店铺可能需要等待一段时间；复选框下方会显示 **正在同步订单…** 和待处理的订单数，以提示进度。
+3. 不时刷新页面，直到 **启用兼容模式** 下方不再显示任何提示，即表示复制已完成。如果显示的是 **目前有订单尚未同步。** 请点击 **立即同步订单**。如果选项仍呈灰色，请参阅[出现问题时](#goes-wrong)。
+4. 选择 **高性能订单存储（推荐）**，然后点击 **保存更改**。
+5. 保持 **启用兼容模式** 为勾选状态，同时检查一切是否仍然正常：
+   - 在 WCPOS 中进行一笔测试销售，确认能够完成。
+   - 在 **WooCommerce → 订单** 中找到这笔销售。
+   - 检查处理订单的插件（例如会计、配送或邮件插件）是否仍能获取新订单。
+
+   兼容模式开启时，两份订单数据会保持同步，因此复制的数据更新到最新状态后，就可以[切换回旧版存储](#switch-back)。
+6. 上述检查通过后，取消勾选 **启用兼容模式**，然后点击 **保存更改**。此后若要切换回去，需要先将订单复制回旧版存储。请参阅[切换回旧版存储](#switch-back)。
+
+完整说明请参阅 WooCommerce 指南：[高性能订单存储](https://woocommerce.com/document/high-performance-order-storage/#how-to-enable-high-performance-order-storage)。
+
+## 切换回旧版存储 {#switch-back}
+
+如果切换后某些功能无法正常使用，请先切换回旧版存储，找出发生问题的插件后再尝试。
+
+1. 前往 **WooCommerce → 设置 → 高级 → 功能**。
+2. 如果 **启用兼容模式** 未勾选，请勾选它并点击 **保存更改**。WooCommerce 会将订单复制回旧版存储。
+3. 等待 **启用兼容模式** 下方不再显示任何提示。期间不时刷新页面，如果出现 **立即同步订单**，请点击它。在此之前，两个选项都会保持灰色。
+4. 选择 **WordPress 文章存储（旧版）**，然后点击 **保存更改**。
+
+切换后产生的订单也会保留：兼容模式会将它们一并复制到旧版存储。
+
+## 出现问题时 {#goes-wrong}
+
+**尝试切换时，两种存储选项都呈灰色。**
+无论向哪个方向切换，WooCommerce 都要求两份订单数据保持同步后才允许更改存储方式。这表示复制尚未完成。请查看 **启用兼容模式** 下方的提示：
+- **正在同步订单…** 并显示数字：复制仍在进行中。请等待，并不时刷新页面。
+- **目前有订单尚未同步。** 并附有 **立即同步订单** 链接：复制尚未运行。请点击 **立即同步订单**，等待复制完成后再切换。
+
+对于已使用 HPOS 且关闭兼容模式的店铺，只要不需要切换，出现这个界面就是正常的。此处两个选项都呈灰色，复制也未在运行：
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[262, 0], [362, 0], [-46, 0], [-44, 0]]} alt="订单数据存储的局部视图：两个存储选项都呈灰色，高性能订单存储已选中，启用兼容模式未勾选，下方显示目前有订单尚未同步的提示和立即同步订单链接">
+
+1. **WordPress 文章存储（旧版）** — 复制完成前保持灰色。
+2. **高性能订单存储（推荐）** — 已选中，也呈灰色。
+3. **启用兼容模式** — 下方的提示说明复制是否正在进行。
+4. **立即同步订单** — 开始复制。
+
+</JourneyShot>
+
+**只有高性能订单存储呈灰色。**
+如果某个已启用的插件被标记为与 HPOS 不兼容，WooCommerce 会阻止切换。功能页面上的警告会列出这些插件，并提供 **查看和管理** 链接。切换之前，请更新这些插件，或向其开发者咨询 HPOS 支持情况。
+
+**切换后某些功能无法正常使用。**
+[切换回旧版存储](#switch-back)，找出发生问题的插件后再尝试。
+
+**切换后结账仍然很慢。**
+订单存储并非唯一原因。请参阅下方的[结账缓慢的其他原因](#other-causes-of-slow-checkout)。
+
+## 旧版存储为什么会拖慢结账 {#why-legacy-order-storage-slows-checkout}
+
+使用旧版存储时，店铺规模越大，WCPOS 保存销售记录就越慢。使用 HPOS 后，造成这段延迟的订单查询几乎可以瞬间完成。主机服务和其他插件仍可能拖慢结账。请参阅[结账缓慢的其他原因](#other-causes-of-slow-checkout)。
+
+<details>
+<summary>能快多少，以及原因</summary>
+
+WCPOS 每次保存订单时，都会先根据 WCPOS 为该订单分配的 ID 查找订单。使用旧版存储时，WooCommerce 将订单与 WordPress 文章存放在同一组数据表中，这些表无法根据该 ID 快速找到订单，因此查找时需要逐条扫描店铺记录。HPOS 将订单存放在专用数据表中，同样的查找几乎可以即时完成。
+
+在我们测量的一家店铺中（约有 30,000 个商品及变体，使用旧版存储），每次查询约需 0.46 秒，而每次结账大约会进行两次这样的查询。使用 HPOS 后，同样的查询约需 1 毫秒。各店铺的情况会有所不同，但规模越大，收益越明显。
+
+</details>
+
+## WCPOS 支持的存储方式 {#what-wcpos-supports}
+
+- **WCPOS 完全支持 HPOS，并推荐使用。**
+- **旧版存储仍可使用。** 功能不会受影响，只是在大型店铺中结账会慢一些。
+
+## 结账缓慢的其他原因 {#other-causes-of-slow-checkout}
+
+订单存储并非拖慢结账的唯一因素。如果已在使用 HPOS，或切换后结账仍然很慢，请检查：
+
+- **主机服务。** 服务器繁忙或性能不足会拖慢每个环节。请参阅[服务器性能](./server.mdx)。
+- **保存订单时运行的其他插件**，例如会计、邮件营销或库存插件。请参阅[插件冲突](../troubleshooting/plugin-conflicts.mdx)和[结账性能](./checkout.mdx#2-plugin-interference-during-order-creation)。
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/troubleshooting/performance/slow-checkout" title="结账性能" description="加快结账的其他方法" />
+  <LinkCard to="/troubleshooting/performance/slow-server" title="服务器性能" description="主机服务、缓存和数据库调优" />
+  <LinkCard to="/troubleshooting/common-problems/plugin-conflicts" title="插件冲突" description="找出拖慢店铺的插件" />
+</LinkCards>

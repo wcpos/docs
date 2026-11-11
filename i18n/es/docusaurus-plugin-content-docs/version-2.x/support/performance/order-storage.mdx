@@ -1,0 +1,135 @@
+---
+title: "Almacenamiento de pedidos (HPOS)"
+slug: /troubleshooting/performance/order-storage-hpos
+sidebar_label: Almacenamiento de pedidos (HPOS)
+description: "Solucione la lentitud del proceso de pago en WCPOS en una tienda grande: compruebe qué almacenamiento de pedidos utiliza WooCommerce y cambie del almacenamiento heredado a HPOS con la herramienta de WooCommerce."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/support/performance/order-storage/en/manifest.json';
+
+**El síntoma:** el proceso de pago en WCPOS tarda varios segundos y se ha ido ralentizando con el tiempo.
+
+:::note Esto se hace en la administración de WordPress, no en la caja
+Esto se hace una sola vez, en la administración de WordPress. Necesita acceso a los ajustes de WooCommerce; si no lo tiene, pida a la persona que administra su sitio web que siga estos pasos. Indíquele que el proceso de pago es lento y envíele esta página.
+:::
+
+Una causa habitual es la forma en que WooCommerce almacena sus pedidos. Compruebe qué tipo de almacenamiento utiliza su tienda y, si es el antiguo, cambie al almacenamiento de pedidos de alto rendimiento (HPOS) con la herramienta de WooCommerce.
+
+## Comprobar qué almacenamiento utiliza su tienda {#check-which-storage-your-store-uses}
+
+1. En la administración de WordPress, vaya a **WooCommerce → Ajustes → Avanzado → Características**.
+2. Busque **Almacenamiento de datos de pedidos**:
+   - Si está seleccionado **Almacenamiento de pedidos de alto rendimiento (recomendado)**: ya utiliza HPOS, así que esta no es la causa. Consulte [Otras causas de un proceso de pago lento](#other-causes-of-slow-checkout).
+   - Si está seleccionado **Almacenamiento de entradas de WordPress (heredado)**: cambie a HPOS siguiendo los pasos de abajo. Acelera un paso lento de cada proceso de pago ([por qué](#why-legacy-order-storage-slows-checkout)) y, cuanto mayor sea su tienda, más ayudará.
+
+Esta tienda ya utiliza HPOS:
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[77, 0], [80, 0], [186, 18]]} alt="Ajustes de WooCommerce en la pestaña Avanzado, página Características: Almacenamiento de datos de pedidos con Almacenamiento de pedidos de alto rendimiento seleccionado, Activar el modo de compatibilidad desmarcado y las demás características debajo">
+
+1. **Avanzado** — la última pestaña de **WooCommerce → Ajustes**.
+2. **Características** — el último enlace bajo las pestañas.
+3. **Almacenamiento de datos de pedidos** — la opción seleccionada es el almacenamiento que utiliza su tienda. Aquí es **Almacenamiento de pedidos de alto rendimiento (recomendado)**. En una tienda con HPOS puede ignorar el mensaje de falta de sincronización bajo **Activar el modo de compatibilidad**: solo es relevante si [vuelve al almacenamiento anterior](#switch-back).
+
+</JourneyShot>
+
+Las nuevas tiendas de WooCommerce utilizan HPOS desde 2023, por lo que es más probable que una tienda antigua siga utilizando el almacenamiento heredado.
+
+:::tip WCPOS también se lo indica
+En una tienda con almacenamiento heredado, aparece una advertencia en la parte superior de **POS → Ajustes → [Caja](../../settings/wp-admin/checkout.mdx)**. Su enlace **Abrir el ajuste de almacenamiento de pedidos de WooCommerce** le lleva directamente a la página Características, y **Cómo cambiar** le trae de vuelta aquí.
+:::
+
+## Cambiar a HPOS {#switch-to-hpos}
+
+WooCommerce traslada sus pedidos por usted. Primero los copia al otro almacenamiento (la sincronización) y después usted realiza el cambio. WooCommerce no le permitirá cambiar hasta que la copia esté completa.
+
+:::warning Haga primero una copia de seguridad
+Haga una copia de seguridad completa de su sitio y su base de datos antes de empezar, y compruebe que puede restaurarla. Si tiene un [sitio de pruebas](../troubleshooting/plugin-conflicts.mdx#before-you-start-use-a-staging-site), pruebe el cambio allí primero.
+:::
+
+1. Vaya a **WooCommerce → Ajustes → Avanzado → Características**. Si una advertencia en esta página menciona plugins incompatibles con HPOS, resuelva primero esos problemas: consulte [Solo está deshabilitado el almacenamiento de pedidos de alto rendimiento](#goes-wrong).
+2. Marque **Activar el modo de compatibilidad** y haga clic en **Guardar cambios**. WooCommerce empieza a copiar sus pedidos en segundo plano. En una tienda grande puede tardar un tiempo; el progreso se muestra bajo la casilla como **Sincronizando pedidos...**, con el número de pedidos pendientes.
+3. Recargue la página de vez en cuando hasta que no quede ningún mensaje bajo **Activar el modo de compatibilidad**: la copia ha terminado. Si aparece **Actualmente hay pedidos sin sincronizar.**, haga clic en **Sincronizar pedidos ahora**. Si las opciones siguen deshabilitadas, consulte [Si algo sale mal](#goes-wrong).
+4. Seleccione **Almacenamiento de pedidos de alto rendimiento (recomendado)** y haga clic en **Guardar cambios**.
+5. Deje marcada la opción **Activar el modo de compatibilidad** mientras comprueba que todo sigue funcionando:
+   - Realice una venta de prueba en WCPOS y compruebe que se completa.
+   - Busque esa venta en **WooCommerce → Pedidos**.
+   - Compruebe que los plugins que trabajan con sus pedidos, como los de contabilidad, envío o correo electrónico, siguen detectando los nuevos pedidos.
+
+   Mientras el modo de compatibilidad está activado, ambas copias de sus pedidos se mantienen sincronizadas, por lo que puede [volver al almacenamiento anterior](#switch-back) una vez que la copia esté actualizada.
+6. Cuando termine estas comprobaciones con éxito, desmarque **Activar el modo de compatibilidad** y haga clic en **Guardar cambios**. A partir de entonces, para volver atrás deberá copiar primero sus pedidos al almacenamiento anterior: consulte [Volver al almacenamiento heredado](#switch-back).
+
+Para obtener todos los detalles, consulte la guía de WooCommerce: [Almacenamiento de pedidos de alto rendimiento](https://woocommerce.com/document/high-performance-order-storage/#how-to-enable-high-performance-order-storage).
+
+## Volver al almacenamiento heredado {#switch-back}
+
+Si algo ha dejado de funcionar después del cambio, vuelva al almacenamiento heredado e identifique el plugin que ha fallado antes de intentarlo de nuevo.
+
+1. Vaya a **WooCommerce → Ajustes → Avanzado → Características**.
+2. Si **Activar el modo de compatibilidad** está desmarcado, márquelo y haga clic en **Guardar cambios**. WooCommerce copia sus pedidos de vuelta al almacenamiento heredado.
+3. Espere hasta que no quede ningún mensaje bajo **Activar el modo de compatibilidad**. Recargue la página de vez en cuando y haga clic en **Sincronizar pedidos ahora** si aparece. Hasta entonces, ambas opciones permanecen deshabilitadas.
+4. Seleccione **Almacenamiento de entradas de WordPress (heredado)** y haga clic en **Guardar cambios**.
+
+Los pedidos recibidos desde el cambio se conservan: el modo de compatibilidad también los copia al almacenamiento heredado.
+
+## Si algo sale mal {#goes-wrong}
+
+**Ambas opciones de almacenamiento están deshabilitadas al intentar cambiar.**
+WooCommerce solo permite cambiar de almacenamiento, en cualquiera de los dos sentidos, cuando ambas copias de sus pedidos están sincronizadas. La copia no ha terminado. Mire debajo de **Activar el modo de compatibilidad**:
+- **Sincronizando pedidos...** con un número: la copia sigue en curso. Espere y recargue la página de vez en cuando.
+- **Actualmente hay pedidos sin sincronizar.** con un enlace **Sincronizar pedidos ahora**: la copia no está en curso. Haga clic en **Sincronizar pedidos ahora**, espere a que termine la copia y después cambie de almacenamiento.
+
+En una tienda que ya utiliza HPOS con el modo de compatibilidad desactivado, esta pantalla es normal hasta que quiera cambiar. Aquí ambas opciones están deshabilitadas y la copia no está en curso:
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[262, 0], [362, 0], [-46, 0], [-44, 0]]} alt="Detalle de Almacenamiento de datos de pedidos: ambas opciones de almacenamiento deshabilitadas con Almacenamiento de pedidos de alto rendimiento seleccionado, Activar el modo de compatibilidad desmarcado y, debajo, Actualmente hay pedidos sin sincronizar con un enlace Sincronizar pedidos ahora">
+
+1. **Almacenamiento de entradas de WordPress (heredado)** — deshabilitado hasta que se complete la copia.
+2. **Almacenamiento de pedidos de alto rendimiento (recomendado)** — seleccionado y también deshabilitado.
+3. **Activar el modo de compatibilidad** — el mensaje debajo indica si la copia está en curso.
+4. **Sincronizar pedidos ahora** — inicia la copia.
+
+</JourneyShot>
+
+**Solo está deshabilitado el almacenamiento de pedidos de alto rendimiento.**
+WooCommerce bloquea el cambio mientras un plugin activo esté marcado como incompatible con HPOS. Una advertencia en la página Características enumera esos plugins, con un enlace **Ver y gestionar**. Actualícelos o pregunte a sus desarrolladores por la compatibilidad con HPOS antes de cambiar.
+
+**Algo ha dejado de funcionar después del cambio.**
+[Vuelva al almacenamiento heredado](#switch-back) e identifique el plugin que ha fallado antes de intentarlo de nuevo.
+
+**El proceso de pago sigue siendo lento después del cambio.**
+El almacenamiento de pedidos no era la única causa. Consulte [Otras causas de un proceso de pago lento](#other-causes-of-slow-checkout) más abajo.
+
+## Por qué el almacenamiento heredado ralentiza el proceso de pago {#why-legacy-order-storage-slows-checkout}
+
+Con el almacenamiento heredado, guardar una venta en WCPOS se ralentiza a medida que crece su tienda. Con HPOS, la búsqueda del pedido que provoca ese retraso es casi instantánea. El alojamiento y otros plugins pueden seguir ralentizando el proceso de pago: consulte [Otras causas de un proceso de pago lento](#other-causes-of-slow-checkout).
+
+<details>
+<summary>Cuánto más rápido es y por qué</summary>
+
+Cada vez que WCPOS guarda un pedido, primero lo busca por el ID que le asignó. Con el almacenamiento heredado, WooCommerce guarda los pedidos junto con las entradas de WordPress, en tablas que no permiten encontrar rápidamente un pedido por ese ID, por lo que la búsqueda recorre los registros de la tienda uno a uno. HPOS guarda los pedidos en sus propias tablas, donde la misma búsqueda es casi instantánea.
+
+En una tienda que medimos (unos 30.000 productos y variaciones, con almacenamiento heredado), cada búsqueda tardó unos 0,46 segundos y cada proceso de pago realizó unas dos búsquedas. Con HPOS, la misma búsqueda tardó aproximadamente 1 milisegundo. Los resultados de su tienda serán distintos, pero cuanto mayor sea, más ganará.
+
+</details>
+
+## Qué admite WCPOS {#what-wcpos-supports}
+
+- **HPOS es totalmente compatible y es lo que recomendamos.**
+- **El almacenamiento heredado sigue funcionando.** Nada deja de funcionar; el proceso de pago solo es más lento en tiendas grandes.
+
+## Otras causas de un proceso de pago lento {#other-causes-of-slow-checkout}
+
+El almacenamiento de pedidos no es lo único que ralentiza el proceso de pago. Si ya utiliza HPOS o el proceso de pago sigue siendo lento después del cambio, revise:
+
+- **Su alojamiento.** Un servidor ocupado o con recursos insuficientes ralentiza todos los pasos. Consulte [Rendimiento del servidor](./server.mdx).
+- **Otros plugins que se ejecutan al guardar un pedido**, como los de contabilidad, marketing por correo electrónico o inventario. Consulte [Conflictos entre plugins](../troubleshooting/plugin-conflicts.mdx) y [Rendimiento del proceso de pago](./checkout.mdx#2-plugin-interference-during-order-creation).
+
+## Documentación relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/troubleshooting/performance/slow-checkout" title="Rendimiento del proceso de pago" description="Otras formas de agilizar el proceso de pago" />
+  <LinkCard to="/troubleshooting/performance/slow-server" title="Rendimiento del servidor" description="Alojamiento, caché y optimización de la base de datos" />
+  <LinkCard to="/troubleshooting/common-problems/plugin-conflicts" title="Conflictos entre plugins" description="Identifique un plugin que ralentiza la tienda" />
+</LinkCards>

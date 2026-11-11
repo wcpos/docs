@@ -1,0 +1,249 @@
+---
+title: Moteur de synchronisation
+slug: /developers/sync-engine
+sidebar_label: Moteur de synchronisation
+sidebar_position: 3
+description: "Référence technique du moteur de synchronisation de WCPOS 2.x : une base de données par boutique et caissier, tâches en arrière-plan, détection des modifications, couverture, file d’écriture, onglet de navigateur actif unique et stockage local."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.json';
+
+Ouvrez le menu du PDV, puis [**État de la boutique**](../support/store-health.mdx), juste au-dessus de **Réglages** et **Assistance** en bas du menu, pour retrouver sur votre caisse tout ce que décrit cette page. Pour vérifier un point sur votre caisse, commencez ici :
+
+- **Vérifier les modifications en attente d’envoi.** Ouvrez **État de la boutique → Base de données** et consultez **modifications en attente d’envoi** : ce que cette caisse doit encore envoyer à votre boutique. Voir [Base de données](../support/store-health.mdx#database). Si le compteur reste supérieur à 0, voir [Le nombre de « modifications en attente d’envoi » ne diminue pas](../support/store-health.mdx#waiting-to-send). Pour comprendre l’envoi : [Comment les modifications parviennent à votre boutique](#write-path).
+- **Vérifier les données téléchargées.** Ouvrez **État de la boutique → Base de données** et consultez le tableau : il indique la part des données de votre boutique présente sur cet appareil. Voir [Ce qui se trouve sur cet appareil](../support/store-health.mdx#coverage). Pour comprendre le décompte des téléchargements : [Tout est-il téléchargé ?](#coverage).
+- **Quand une modification effectuée dans WooCommerce arrive-t-elle sur la caisse ?** Voir [Comment le PDV détecte les modifications](#change-signal).
+- **Une vente ou une modification n’est pas parvenue à votre boutique.** Voir [Modifications jamais parvenues à votre serveur](../support/store-health.mdx#refused-changes).
+- **« Le PDV est ouvert dans un autre onglet. »** Voir [Un seul onglet fait fonctionner le PDV](#multi-tab).
+- **« Base de données locale indisponible. »** Appuyez sur **Recharger l’application**. Voir [Stockage local](#local-storage).
+- **Mise à jour vers la version 2.0.** Voir [Avant de cliquer sur Mettre à jour](../getting-started/upgrading-to-2.mdx#before-you-click-update).
+
+:::warning Avant de cliquer sur Mettre à jour
+Sur chaque caisse, ouvrez **État de la boutique → Base de données** et attendez que **modifications en attente d’envoi** indique 0, puis effectuez la mise à jour. Les modifications encore en attente sur une caisse ne sont pas envoyées après la mise à jour. Si le compteur ne diminue pas, n’effectuez pas encore la mise à jour : voir [Le nombre de « modifications en attente d’envoi » ne diminue pas](../support/store-health.mdx#waiting-to-send). Plus de détails dans [Mise à jour vers la version 2.0](#upgrading).
+:::
+
+WCPOS privilégie le fonctionnement local. Chaque écran lit et écrit dans une base de données sur l’appareil, et un **moteur de synchronisation** maintient cette base et votre boutique WooCommerce à jour en arrière-plan. La suite de cette page explique quelles données le moteur récupère, à quel moment et comment les ventes parviennent à votre boutique. Elle s’adresse aux développeurs, aux intégrateurs et aux propriétaires de boutiques qui souhaitent comprendre les sollicitations du PDV sur leur hébergement.
+
+## Une base de données par boutique et caissier {#one-engine-per-scope}
+
+Sur un appareil, chaque combinaison de boutique et de caissier dispose de sa propre base de données locale. Deux caissiers sur un même appareil ne partagent jamais leurs données locales.
+
+- **Le changement est complet ou n’a pas lieu.** La base de données de la nouvelle boutique ou du nouveau caissier se charge d’abord, et le basculement n’a lieu que lorsqu’elle est prête. En cas d’erreur, un message s’affiche : la caisse ne reste jamais dans un état intermédiaire.
+- **Chaque requête identifie sa boutique.** Avec WCPOS Pro et plusieurs boutiques, un prix modifié en caisse met à jour le prix de cette boutique, et non celui de la boutique en ligne.
+- **Une nouvelle version crée une nouvelle base de données.** Aucune migration n’est effectuée sur place. Voir [Mise à jour vers la version 2.0](#upgrading).
+
+<Accordion>
+<AccordionItem question="Organisation des moteurs et des périmètres">
+
+Chaque appareil exécute **un moteur de synchronisation par site**. Au sein de ce moteur, chaque paire boutique-caissier constitue un **périmètre** doté de sa propre base de données locale. Changer de boutique ou de caissier change le périmètre et toute sa base de données, sur le même moteur. Se connecter à un autre site remplace le moteur.
+
+</AccordionItem>
+</Accordion>
+
+## Ce qui s’exécute en arrière-plan {#sync-lanes}
+
+La **vérification des modifications** de la caisse interroge votre boutique pour savoir si quelque chose a changé, toutes les 60 secondes en mode **Équilibré**. Les [préréglages de synchronisation](../support/store-health.mdx#sync-presets) permettent de régler cette fréquence de toutes les 10 secondes (**Temps réel**) à toutes les 5 minutes (**Éco**).
+
+- **Les tâches en arrière-plan attendent que le caissier soit inactif.** Les téléchargements complémentaires de produits, de clients et de variations ne s’exécutent qu’après 60 secondes sans utilisation de la caisse et sans écran en attente de données. Ils sont différés tant que votre boutique peine à répondre. Il en va de même pour les vérifications en arrière-plan des enregistrements supprimés et des totaux de votre boutique.
+
+<Accordion>
+<AccordionItem question="Chaque tâche, sa fréquence et son plafond de requêtes">
+
+Tout ce que le moteur exécute à intervalles réguliers constitue une **tâche** : un travail en arrière-plan nommé et délimité. La vérification des modifications est celle que vous pouvez régler. Les modifications effectuées sur l’appareil sont envoyées environ 0,3 seconde après leur création.
+
+Les chargements initiaux, les téléchargements progressifs, les totaux et les audits déclarent chacun le nombre de requêtes autorisées par exécution. Les trois processus dont dépend l’attente du caissier (la vérification des modifications, le traitement de la file d’écriture et celui des demandes de données) n’ont pas encore de plafond. Les budgets sont détaillés dans [Performances de la synchronisation](sync-performance.mdx).
+
+| Tâche | Fréquence | Requêtes par exécution |
+| --- | --- | --- |
+| Vérification des modifications | Votre préréglage : 10 s (Temps réel), 60 s (Équilibré), 5 min (Éco) ; personnalisable à partir de 5 s | Pas encore de plafond |
+| Traitement de la file d’écriture | Environ 0,3 s après chaque modification, vérification de secours toutes les 10 s | Pas encore de plafond |
+| Traitement des demandes de données (récupère ce que les écrans ont déclaré) | 30 s | Pas encore de plafond |
+| Chargements initiaux des commandes récentes, des produits et des données de référence | 5 min | 0 (ils mettent du travail en file pour le traitement des demandes de données) |
+| Téléchargements progressifs de clients, de produits et de variations | 5 min, après 60 s d’inactivité | 1 |
+| Nouvelle tentative de récupération des totaux du serveur | 30 s | 11 |
+| Compactage de la couverture | 60 s | 0 |
+| Initialisation du contrôle d’existence | 15 min | 5 |
+| Audit des suppressions | 17 min | 11 |
+
+Les commandes ne sont pas incluses dans la vérification des modifications. Chaque exécution du chargement initial des commandes récentes revérifie donc aussi chaque panier ouvert sur l’appareil dont votre boutique possède une copie et pour lequel aucun envoi n’est en attente. Un panier supprimé ou mis à la corbeille dans votre boutique est alors retiré de l’appareil. Toute récupération ciblée d’une commande fait de même : une commande que votre boutique ne possède plus est retirée, au lieu de faire échouer la récupération, sauf si cet appareil a encore une modification en attente d’envoi pour cette commande.
+
+</AccordionItem>
+</Accordion>
+
+L’intervalle de vérification et le nombre d’enregistrements par requête se règlent pour chaque appareil dans **État de la boutique → Performances** :
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[368, 0], [506, -55], [186, -27], [186, -27], [186, -27], [161, -24], [161, -20], [456, 0]]} alt="État de la boutique dans l’onglet Performances : la ligne d’état, la bande d’activité du moteur, les préréglages Éco, Équilibré et Temps réel, les deux curseurs et la ligne En ce moment">
+
+1. **État** — **✓ Normal**, ou **⚠ Intervention nécessaire** lorsque la caisse est hors ligne, que la synchronisation est bloquée, qu’un premier téléchargement a échoué ou que la dernière exécution d’une tâche de synchronisation a échoué. Viennent ensuite les requêtes des dernières 24 heures sur cette caisse.
+2. **Activité du moteur** — une case par heure pour les dernières 24 heures. Vert : des requêtes et aucune erreur. Orange : au moins une requête a échoué. Vide : l’application était fermée.
+3. **Éco** — vérification des modifications toutes les 5 minutes, 25 enregistrements par requête.
+4. **Équilibré** — le réglage par défaut : toutes les 60 secondes, 50 enregistrements.
+5. **Temps réel** — toutes les 10 secondes, 75 enregistrements.
+6. **Vérifier les modifications** — l’intervalle de vérification des modifications, de 5 secondes à 5 minutes.
+7. **Enregistrements par requête** — le nombre d’enregistrements récupérés en une requête, de 10 à 100.
+8. **En ce moment** — le moment de la prochaine vérification et le nombre approximatif de requêtes par heure générées par ces réglages.
+
+</JourneyShot>
+
+## Comment le PDV détecte les modifications {#change-signal}
+
+Le PDV ne télécharge pas à nouveau votre catalogue pour repérer les modifications. À chaque vérification, il pose une question légère à votre boutique : quelque chose a-t-il changé depuis la dernière fois ? En mode **Équilibré**, une caisse connectée vérifie les changements de prix et de stock environ une fois par minute. Les vérifications peuvent prendre plus de temps lorsque votre boutique peine à répondre. Les commandes suivent leur propre calendrier, distinct.
+
+<Accordion>
+<AccordionItem question="Fonctionnement de la vérification des modifications">
+
+Votre boutique tient un **journal des modifications**, et le PDV demande si quelque chose a changé depuis sa dernière position dans ce journal.
+
+- **Une seule vérification couvre huit types d’enregistrements :** produits, variations, taux de taxe, clients, coupons, catégories, marques et étiquettes. Les commandes n’en font pas partie ; les commandes ouvertes et récentes ont leur propre tâche, de sorte que les mises à jour des produits et des commandes arrivent à des rythmes différents.
+- **Une boutique sans activité ne coûte presque rien.** La requête est conditionnelle. Si rien n’a changé, votre boutique répond `304 Not Modified` sans corps de réponse.
+- **Les vérifications sont décalées de ±20%,** afin que plusieurs caisses sur un même site interrogent la boutique à des moments différents.
+- **Une caisse inutilisée ralentit un peu.** Après 10 minutes sans interaction tactile, pression sur une touche ou lecture de code-barres acceptée, les vérifications s’espacent à au moins 30 secondes, puis au moins 60. Une fenêtre masquée passe directement à 60. En modes **Équilibré** et **Éco**, cela ne change rien. L’interaction tactile suivante rétablit la fréquence normale avec une vérification immédiate, sauf si votre boutique a demandé au PDV de ralentir. La fréquence en période d’inactivité n’est jamais supérieure à celle de votre réglage.
+- **Une caisse fermée pendant plusieurs jours reprend à partir du présent.** Si plus de 5,000 modifications se sont accumulées, ou si votre boutique a purgé son journal au-delà de la position de la caisse, le moteur passe à la fin du journal et revérifie les données déjà présentes sur l’appareil. La charge dépend de la taille de la copie locale, et non de la durée d’absence.
+
+</AccordionItem>
+</Accordion>
+
+## Comment les écrans obtiennent leurs données {#declared-demand}
+
+Un écran affiche toujours immédiatement les données déjà présentes sur l’appareil. Lorsqu’il a besoin d’enregistrements que l’appareil ne possède pas encore, par exemple pour une recherche au-delà des premiers produits, le moteur les récupère depuis votre boutique tant que la caisse est en ligne. Toutes les données ne sont pas présentes sur l’appareil dès le départ ; cela dépend du type d’enregistrement :
+
+1. **Les taux de taxe** sont récupérés en premier au démarrage : le panier ne peut pas effectuer ses calculs sans eux.
+2. **Produits :** les 100 premiers, dans l’ordre par défaut, sont récupérés au démarrage. Les autres arrivent lorsqu’un écran les demande, ainsi que par téléchargement complémentaire pendant les périodes d’inactivité, selon l’ordre de tri du caissier.
+3. **Les clients** ne sont pas récupérés au démarrage. Un écran les demande, un téléchargement complémentaire en période d’inactivité en ajoute 10 à la fois, et la vérification des modifications apporte les clients nouveaux et modifiés.
+4. **Les catégories, étiquettes, marques et coupons** ne sont pas non plus récupérés au démarrage. Ils se chargent à la première ouverture (une réouverture dans les 15 secondes ne déclenche pas de nouvelle requête), sont complétés en arrière-plan dès que votre boutique signale qu’elle en possède, sont actualisés toutes les 30 minutes et suivent la vérification des modifications.
+
+Lorsque la caisse est en ligne, l’ouverture du sélecteur de variations actualise leurs prix et leurs stocks. Les variations déjà présentes sur l’appareil s’affichent immédiatement pendant cette opération.
+
+<Accordion>
+<AccordionItem question="Comment un écran demande des données">
+
+Les écrans ne se synchronisent pas. **Un écran déclare ce qu’il affiche (recherche, filtres, tri, page) et le moteur décide si cela nécessite une requête.** Chaque déclaration aboutit à l’un des trois résultats suivants :
+
+- **Données fournies localement** — tous les enregistrements nécessaires sont déjà sur l’appareil.
+- **Données récupérées** — le moteur est allé les chercher dans votre boutique.
+- **Déclaration abandonnée** — l’écran l’a abandonnée, généralement parce que vous avez fait défiler la page ou changé un filtre et qu’une nouvelle déclaration l’a remplacée. C’est un fonctionnement normal, pas une erreur.
+
+Un filtre que votre boutique ne peut pas exprimer est appliqué sur l’appareil ; le reste de la requête peut tout de même être envoyé à votre boutique. Une déclaration satisfaite ne signifie pas que tous les enregistrements d’un type sont téléchargés. Ce suivi est distinct, comme expliqué [ci-dessous](#coverage).
+
+</AccordionItem>
+</Accordion>
+
+## Tout est-il téléchargé ? {#coverage}
+
+**État de la boutique → Base de données** répertorie chaque type d’enregistrement avec le nombre présent sur l’appareil, le total de votre boutique et une barre de couverture. Voir [Ce qui se trouve sur cet appareil](../support/store-health.mdx#coverage). Aucun total n’y est déduit des seules données présentes sur l’appareil :
+
+- **Un total périmé ou manquant affiche *vérification…*.** S’il est périmé, le dernier chiffre fourni par votre boutique reste affiché à côté. Un décompte tiré de l’appareil indiquerait toujours 100% et masquerait précisément l’écart que ce chiffre est censé montrer.
+- **Les commandes affichent une couverture partielle par conception.** La barre se rapporte à toutes les commandes de votre boutique, alors que la caisse ne conserve que les commandes ouvertes et récentes (**les commandes ouvertes + récentes restent sur l’appareil · les plus anciennes se téléchargent à la consultation**).
+- **L’état Prêt à vendre apparaît rapidement.** Il s’active dès que les premiers produits sont sur l’appareil, même hors ligne : pouvoir vendre hors ligne est justement l’objectif.
+
+<Accordion>
+<AccordionItem question="Comment les totaux de téléchargement sont vérifiés">
+
+Une indication comme *1,240 produits sur 5,000* nécessite le total de votre boutique pour le second nombre. Le moteur en conserve un par type d’enregistrement. Chacun fait l’objet d’une requête légère distincte, avec un enregistrement par page, qui lit l’en-tête `X-WP-Total` de WooCommerce, au plus une fois toutes les 15 minutes environ par type.
+
+</AccordionItem>
+</Accordion>
+
+## Comment les modifications parviennent à votre boutique {#write-path}
+
+Chaque modification effectuée sur l’appareil (une vente, un produit modifié, un nouveau client) est d’abord enregistrée sur l’appareil, puis envoyée à votre boutique en une seconde environ. Un panier ouvert fait exception : il est envoyé lorsque vous appuyez sur **Paiement**. **Une vente enregistrée hors ligne attend sur l’appareil et est envoyée au retour de la connexion.** La plupart des modifications ne nécessitent aucune intervention. Deux types attendent votre choix dans **État de la boutique → Base de données**, et un troisième est résolu automatiquement :
+
+- **Une commande en conflit fait l’objet d’une seule nouvelle tentative.** Si votre boutique possède une copie plus récente de la commande, le moteur réconcilie les versions et l’envoie à nouveau. Si cette tentative échoue aussi, ou si l’enregistrement n’est pas une commande, la modification est retenue pour vous laisser choisir : **Envoyer à nouveau** ou **Utiliser la version du serveur**. Voir [Modifications retenues parce que votre boutique possédait une version plus récente](../support/store-health.mdx#held-changes).
+- **Une modification refusée par votre boutique n’est jamais renvoyée automatiquement**, sauf pour une commande supprimée dans votre boutique (voir ci-après). Elle est conservée avec le motif fourni par votre boutique et apparaît dans **État de la boutique → Base de données** sous **modifications jamais parvenues à votre serveur**. **Envoyer à nouveau** la reconstruit à partir de l’état actuel de l’enregistrement sur l’appareil ; **Abandonner** la supprime. Voir [Modifications jamais parvenues à votre serveur](../support/store-health.mdx#refused-changes).
+- **Commande supprimée dans la boutique.** Lorsque votre boutique a supprimé une commande ou l’a mise à la corbeille alors que cette caisse la mettait encore à jour, le PDV résout la situation sans vous solliciter : un panier ouvert est conservé et renvoyé comme nouvelle commande avec un nouveau numéro la prochaine fois que vous appuyez sur **Paiement** ; toute autre commande est retirée de cet appareil. Un message intitulé **Commande supprimée dans la boutique** indique une seule fois le résultat :
+  - Panier ouvert : **La commande #1234 a été supprimée dans la boutique. Le panier a été conservé comme nouvelle commande.**
+  - Toute autre commande : **La commande #1234 a été supprimée dans la boutique et a été retirée de cet appareil.**
+
+  Le journal consigne [SYNC203](../error-codes/SYNC203.mdx).
+
+<Accordion>
+<AccordionItem question="Comment les modifications sont envoyées">
+
+- **Une file d’attente persistante intervient d’abord.** Chaque modification entre dans une file sur l’appareil avant tout envoi. Environ 0,3 seconde plus tard, le traitement de la file d’écriture l’envoie ; une vérification toutes les 10 secondes rattrape tout ce qu’un signal de déclenchement aurait manqué.
+- **Les modifications du panier sont traitées une par une pour chaque commande.** Une succession rapide de lectures de codes-barres est appliquée dans l’ordre. Ajouter un produit qui occupe déjà exactement une ligne dans le panier augmente la quantité de cette ligne au lieu d’en ajouter une seconde.
+- **Ce que votre boutique renvoie est conservé.** Lorsque votre boutique accepte une modification, l’appareil adopte sa copie afin que les modifications suivantes s’appuient sur elle. Pour les commandes, cela conserve les ID de lignes attribués par WooCommerce, afin qu’une mise à jour ne crée pas de lignes en double. Une modification locale que votre boutique n’a pas encore reçue n’est jamais écrasée.
+- **Une commande supprimée est prise en charge par le PDV.** Votre boutique répond `404` à une mise à jour d’une commande qu’elle ne possède plus. Le PDV abandonne la modification en attente ; pour un panier ouvert, il remet ensuite le panier en file comme nouvelle commande, avec toutes les modifications effectuées entre-temps.
+
+</AccordionItem>
+</Accordion>
+
+## Un seul onglet fait fonctionner le PDV {#multi-tab}
+
+Dans un navigateur web, **un seul onglet par site fait fonctionner le PDV**. Un second onglet du même site, quelle que soit la boutique ou le caissier, s’arrête sur cet écran. Il n’ouvre jamais la base de données locale : il ne peut donc ni enregistrer une vente ni envoyer quoi que ce soit, et rien n’est perturbé dans le premier onglet.
+
+<JourneyShot manifest={manifest} device="tablet" step={5} offsets={[[637, 37], [334, 0]]} alt="Un second onglet du PDV dans le navigateur : Le PDV est ouvert dans un autre onglet, Un seul onglet peut faire fonctionner la caisse, et le bouton Prendre le relais ici">
+
+1. **Le PDV est ouvert dans un autre onglet** — cet onglet est en attente. **Un seul onglet peut faire fonctionner la caisse.**
+2. **Prendre le relais ici** — demande à l’autre onglet de céder la main. Celui-ci termine tout paiement en cours et attend jusqu’à 15 secondes la fin d’un enregistrement, puis se met en attente, et cet onglet charge le PDV.
+
+</JourneyShot>
+
+- **Un onglet en attente ne se réactive pas tout seul.** La fermeture de l’onglet actif laisse l’autre en attente jusqu’à ce que vous appuyiez sur **Prendre le relais ici** ou que vous le rechargiez.
+- **« L’autre onglet ne répond pas »** — l’onglet actif n’a pas cédé la main. Fermez-le ou rechargez-le pour poursuivre dans celui-ci.
+- **Un paiement que l’ancien onglet tente de lancer après avoir cédé le contrôle de la caisse** est refusé avant son envoi et consigné sous [CLIENT161](../error-codes/CLIENT161.mdx). Un paiement lancé auparavant, même s’il commence pendant que le transfert attend la fin d’un enregistrement, se termine avant que l’onglet cède la main.
+- **Les applications de bureau et mobiles** n’ont ni onglets ni contrôle d’accès entre onglets. Un navigateur qui ne peut pas coordonner ses onglets (sans prise en charge de Web Locks) laisse chaque onglet fonctionner sans cette vérification.
+
+## Stockage local {#local-storage}
+
+En version 2.0, chaque caisse conserve ses données dans une base de données sur l’appareil lui-même.
+
+Si une bannière indique **Base de données locale indisponible — la lecture des codes-barres, le paiement, l’enregistrement et l’annulation sont bloqués jusqu’au rechargement de l’application**, appuyez sur **Recharger l’application**. Tant que vous ne l’avez pas fait, les remboursements sont également bloqués et une lecture de code-barres affiche **Lecture des codes-barres indisponible** au lieu de rester sans réponse. Le PDV bloque toute opération susceptible de perdre une vente lorsque la base de données de l’appareil cesse de répondre ou qu’un enregistrement local reste bloqué. Le code est [SYNC161](../error-codes/SYNC161.mdx).
+
+<Accordion>
+<AccordionItem question="Où les données sont stockées sur chaque plateforme">
+
+La base de données est SQLite, utilisée via RxDB Premium :
+
+| Plateforme | Emplacement des données |
+| --- | --- |
+| Web | SQLite-wasm dans un worker dédié unique, dans le système de fichiers privé du navigateur (OPFS) |
+| Bureau | SQLite dans le processus principal de l’application |
+| iOS et Android | SQLite via expo-sqlite |
+
+Les requêtes s’exécutent dans la base de données : filtrage, tri et pagination. Seules les lignes affichées à l’écran parviennent à l’application.
+
+</AccordionItem>
+</Accordion>
+
+## Mise à jour vers la version 2.0 {#upgrading}
+
+La version 2.0 ne migre pas les données locales. Chaque appareil **télécharge à nouveau toutes les données** :
+
+1. **Chaque appareil crée une nouvelle base de données** et télécharge à nouveau les données depuis votre boutique, une seule fois. Votre boutique conserve la copie complète de tout ce qui a été synchronisé.
+2. **Les modifications mises en file avant la mise à jour ne sont pas envoyées.** Sur chaque caisse, attendez que **modifications en attente d’envoi** indique 0 dans **État de la boutique → Base de données** avant d’effectuer la mise à jour. Voir [Avant de cliquer sur Mettre à jour](../getting-started/upgrading-to-2.mdx#before-you-click-update). Les anciennes bases de données 1.x sont supprimées une fois la boutique prête à vendre.
+3. **L’application et l’extension vont de pair.** L’application 2.0 nécessite l’extension WCPOS 2.0. Si un seul des deux éléments est à jour, l’application indique lequel ne l’est pas : [AUTH331](../error-codes/AUTH331.mdx) lorsque l’extension est plus ancienne, [SYNC341](../error-codes/SYNC341.mdx) lorsque l’application est plus ancienne.
+
+## Ce qui a changé depuis la version 1.9 {#what-changed-in-v1100}
+
+<Accordion>
+<AccordionItem question="Comparaison des versions 1.9, 1.10–1.11 et 2.0">
+
+| | 1.9 | 1.10–1.11 | 2.0 |
+| --- | --- | --- | --- |
+| Unité de synchronisation | Un flux par requête d’écran | Un moteur, une base de données par site, boutique et caissier | Identique |
+| Déclencheur d’une récupération | L’ouverture d’un écran | Un écran qui déclare ses besoins | Identique |
+| Détection des modifications | Vérifications périodiques et audit complet toutes les heures | Journal des modifications avec réponses conditionnelles `304` | Identique |
+| Totaux de votre boutique | Aucun suivi | Par type d’enregistrement, avec *vérification…* | Identique |
+| Modifications refusées | Nouvelles tentatives invisibles | File persistante, panneau de récupération, aucune nouvelle tentative silencieuse | Identique |
+| Onglets du navigateur | Non coordonnés | Chaque onglet est actif, un seul est désigné pour l’envoi | Un onglet actif par site, les autres en attente |
+| Stockage | IndexedDB (web), SQLite (applications) | Stockage dans le système de fichiers (OPFS sur le web) | SQLite sur toutes les plateformes |
+| Réglage de la synchronisation | Fixe | Préréglages et curseurs dans État de la boutique | Identique |
+| Recherche locale | Correspondance sur le début des mots | Correspondance sur une sous-chaîne | Chaque mot, de toute longueur, n’importe où dans l’enregistrement |
+
+</AccordionItem>
+</Accordion>
+
+Pour les budgets de requêtes, le ralentissement lorsque votre boutique peine à répondre et les chiffres mesurés, voir [Performances de la synchronisation](sync-performance.mdx).
+
+## Documentation associée {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="État de la boutique" to="/troubleshooting/store-health" description="Où le propriétaire de la boutique retrouve toutes ces informations sur la caisse." />
+  <LinkCard title="Performances de la synchronisation" to="/developers/sync-performance" description="Budgets de requêtes et ralentissement lorsque votre boutique est occupée." />
+  <LinkCard title="Mise à jour vers la version 2.0" to="/getting-started/upgrade-2-0" description="Ce qu’il faut faire sur chaque caisse avant la mise à jour." />
+</LinkCards>

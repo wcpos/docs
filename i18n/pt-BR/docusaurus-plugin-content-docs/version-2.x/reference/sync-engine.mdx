@@ -1,0 +1,249 @@
+---
+title: Mecanismo de sincronização
+slug: /developers/sync-engine
+sidebar_label: Mecanismo de sincronização
+sidebar_position: 3
+description: "Referência para desenvolvedores sobre o mecanismo de sincronização do WCPOS 2.x: um banco de dados por loja e operador de caixa, rotinas em segundo plano, verificação de alterações, cobertura, fila de gravação, uma aba ativa no navegador e armazenamento local."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.json';
+
+Abra o menu do POS e depois [**Saúde da loja**](../support/store-health.mdx), logo acima de **Configurações** e **Suporte**, no fim do menu, para ver no seu próprio terminal tudo o que esta página descreve. Para verificar algo no seu terminal, comece aqui:
+
+- **Verifique as alterações aguardando envio.** Abra **Saúde da loja → Banco de dados** e veja **alterações aguardando envio**: o que este terminal ainda precisa enviar à sua loja. Veja [Banco de dados](../support/store-health.mdx#database). Se o número permanecer acima de 0, veja [O número de "alterações aguardando envio" não diminui](../support/store-health.mdx#waiting-to-send). Como funciona o envio: [Como as alterações chegam à sua loja](#write-path).
+- **Verifique o que foi baixado.** Abra **Saúde da loja → Banco de dados** e consulte a tabela: quanto dos dados da sua loja está neste dispositivo. Veja [O que está neste dispositivo](../support/store-health.mdx#coverage). Como os downloads são contabilizados: [Tudo já foi baixado?](#coverage).
+- **Quando uma alteração feita no WooCommerce chega ao terminal?** Veja [Como o POS fica sabendo das alterações](#change-signal).
+- **Uma venda ou edição não chegou à sua loja.** Veja [Alterações que nunca chegaram ao seu servidor](../support/store-health.mdx#refused-changes).
+- **"O POS está aberto em outra aba."** Veja [Uma única aba executa o POS](#multi-tab).
+- **"Banco de dados local indisponível."** Pressione **Recarregar o aplicativo**. Veja [Armazenamento local](#local-storage).
+- **Atualização para a versão 2.0.** Veja [Antes de clicar em Atualizar](../getting-started/upgrading-to-2.mdx#before-you-click-update).
+
+:::warning Antes de clicar em Atualizar
+Em cada terminal, abra **Saúde da loja → Banco de dados** e espere até que **alterações aguardando envio** mostre 0. Depois, atualize. As alterações que ainda estiverem aguardando no terminal não serão enviadas após a atualização. Se o número não diminuir, não atualize ainda: veja [O número de "alterações aguardando envio" não diminui](../support/store-health.mdx#waiting-to-send). Saiba mais em [Atualização para a versão 2.0](#upgrading).
+:::
+
+O WCPOS prioriza os dados locais. Todas as telas leem e gravam em um banco de dados no dispositivo, e um **mecanismo de sincronização** mantém esse banco de dados e sua loja WooCommerce sincronizados em segundo plano. O restante desta página explica quais dados o mecanismo busca, quando isso acontece e como as vendas chegam à sua loja. É uma referência para desenvolvedores, integradores e lojistas que querem entender o que o POS exige da hospedagem.
+
+## Um banco de dados por loja e operador de caixa {#one-engine-per-scope}
+
+Cada combinação de loja e operador de caixa em um dispositivo tem seu próprio banco de dados local. Dois operadores de caixa no mesmo dispositivo nunca compartilham dados locais.
+
+- **A troca é completa ou não acontece.** A nova loja ou o novo operador de caixa carrega seu banco de dados primeiro e só assume quando ele está pronto. Em caso de falha, um erro é exibido; o terminal nunca fica com a troca pela metade.
+- **Cada requisição identifica sua loja.** No WCPOS Pro com várias lojas, um preço alterado no terminal atualiza o preço daquela loja, não o da loja virtual.
+- **Uma nova versão inicia um novo banco de dados.** Nada é migrado no banco existente. Veja [Atualização para a versão 2.0](#upgrading).
+
+<Accordion>
+<AccordionItem question="Como os mecanismos e escopos são organizados">
+
+Cada dispositivo executa **um mecanismo de sincronização por site**. Dentro dele, cada par de loja e operador de caixa é um **escopo** com seu próprio banco de dados local. Trocar de loja ou de operador de caixa troca o escopo e todo o seu banco de dados no mesmo mecanismo. Conectar-se a outro site substitui o mecanismo.
+
+</AccordionItem>
+</Accordion>
+
+## O que é executado em segundo plano {#sync-lanes}
+
+A **verificação de alterações** do terminal consulta sua loja para saber se algo mudou, a cada 60 segundos no modo **Equilibrado**. As [predefinições de sincronização](../support/store-health.mdx#sync-presets) definem esse intervalo entre 10 segundos (**Tempo real**) e 5 minutos (**Econômico**).
+
+- **O trabalho em segundo plano espera pelo operador de caixa.** Os downloads complementares de produtos, clientes e variações só ocorrem após 60 segundos sem ninguém usar o terminal e sem nenhuma tela aguardando dados, e ficam suspensos enquanto sua loja tem dificuldade para responder. O mesmo vale para as verificações em segundo plano de registros excluídos e dos totais da sua loja.
+
+<Accordion>
+<AccordionItem question="Cada rotina, sua frequência e seu limite de requisições">
+
+Tudo o que o mecanismo executa por temporizador é uma **rotina**: uma tarefa em segundo plano com nome e limites definidos. A verificação de alterações é a que você pode ajustar. As alterações feitas no dispositivo são enviadas cerca de 0,3 segundos depois de serem feitas.
+
+As cargas iniciais, os downloads graduais, os totais e as auditorias declaram, cada um, quantas requisições uma execução pode fazer. Os três fluxos pelos quais o operador de caixa espera (a verificação de alterações, o processamento da fila de gravação e o processamento da fila de demanda) ainda não têm limite. Os limites estão em [Desempenho da sincronização](sync-performance.mdx).
+
+| Rotina | Frequência | Requisições por execução |
+| --- | --- | --- |
+| Verificação de alterações | Sua predefinição: 10 s (Tempo real), 60 s (Equilibrado), 5 min (Econômico); personalizável a partir de 5 s | Ainda sem limite |
+| Processamento da fila de gravação | Cerca de 0,3 s após cada alteração, verificação de segurança a cada 10 s | Ainda sem limite |
+| Processamento da fila de demanda (busca o que as telas declararam) | 30 s | Ainda sem limite |
+| Cargas iniciais de pedidos recentes, produtos e dados de referência | 5 min | 0 (enfileiram trabalho para o processamento da fila de demanda) |
+| Downloads graduais de clientes, produtos e variações | 5 min, após 60 s de inatividade | 1 |
+| Nova tentativa de obter os totais do servidor | 30 s | 11 |
+| Compactação da cobertura | 60 s | 0 |
+| Verificação inicial de existência | 15 min | 5 |
+| Auditoria de exclusões | 17 min | 11 |
+
+Os pedidos não entram na verificação de alterações. Por isso, cada execução da carga inicial de pedidos recentes também verifica novamente todos os carrinhos abertos no dispositivo dos quais sua loja tem uma cópia e que não têm nada aguardando envio. Um carrinho que sua loja excluiu ou moveu para a lixeira é então removido do dispositivo. Qualquer busca direcionada de pedido faz o mesmo: um pedido que sua loja não tem mais é removido, em vez de causar uma falha na busca, a menos que este dispositivo ainda tenha uma alteração desse pedido aguardando envio.
+
+</AccordionItem>
+</Accordion>
+
+O intervalo de verificação e a quantidade de registros por requisição são definidos por dispositivo em **Saúde da loja → Desempenho**:
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[368, 0], [506, -55], [186, -27], [186, -27], [186, -27], [161, -24], [161, -20], [456, 0]]} alt="Saúde da loja na aba Desempenho: a linha de status, a faixa de tempo de atividade do mecanismo, as predefinições Econômico, Equilibrado e Tempo real, os dois controles deslizantes e a linha Agora">
+
+1. **Status** — **✓ Normal**, ou **⚠ Precisa de atenção** quando o terminal está offline, a sincronização está bloqueada, um download inicial falhou ou a última execução de uma tarefa de sincronização falhou. A tela também mostra as requisições das últimas 24 horas neste terminal.
+2. **Tempo de atividade do mecanismo** — uma célula por hora nas últimas 24 horas. Verde: houve requisições e nenhum erro. Amarelo: pelo menos uma requisição falhou. Vazio: o aplicativo estava fechado.
+3. **Econômico** — verificação de alterações a cada 5 minutos, 25 registros por requisição.
+4. **Equilibrado** — o padrão: a cada 60 segundos, 50 registros.
+5. **Tempo real** — a cada 10 segundos, 75 registros.
+6. **Verificar alterações** — o intervalo de verificação de alterações, de 5 segundos a 5 minutos.
+7. **Registros por requisição** — quantos registros uma busca obtém, de 10 a 100.
+8. **Agora** — quando será a próxima verificação e aproximadamente quantas requisições por hora essas configurações geram.
+
+</JourneyShot>
+
+## Como o POS fica sabendo das alterações {#change-signal}
+
+O POS não baixa seu catálogo novamente para detectar alterações. A cada verificação de alterações, ele faz uma consulta leve à sua loja: algo mudou desde a última vez? No modo **Equilibrado**, um terminal conectado verifica alterações de preço e estoque aproximadamente uma vez por minuto. As verificações podem demorar mais quando sua loja tem dificuldade para responder. Os pedidos seguem uma programação própria, separada.
+
+<Accordion>
+<AccordionItem question="Como funciona a verificação de alterações">
+
+Sua loja mantém um **log de alterações**, e o POS consulta se algo mudou desde sua última posição nele.
+
+- **Uma verificação abrange oito tipos de registro:** produtos, variações, alíquotas de imposto, clientes, cupons, categorias, marcas e tags. Os pedidos não entram nela; os pedidos abertos e recentes têm sua própria rotina, então as atualizações de produtos e pedidos chegam em ritmos diferentes.
+- **Uma loja sem alterações quase não gera custo.** A requisição é condicional. Quando nada mudou, sua loja responde com `304 Not Modified`, sem corpo.
+- **Os intervalos entre verificações variam em ±20%,** para que vários terminais no mesmo site façam consultas em momentos diferentes, em vez de todos ao mesmo tempo.
+- **Um terminal sem uso reduz um pouco a frequência.** Após 10 minutos sem toque, tecla pressionada ou leitura de código aceita, os intervalos entre verificações aumentam para pelo menos 30 segundos e depois para pelo menos 60. Uma janela oculta passa diretamente para 60. Nos modos **Equilibrado** e **Econômico**, isso não muda nada. O próximo toque restaura a frequência normal com uma verificação imediata, a menos que sua loja tenha pedido ao POS para reduzir o ritmo. A frequência durante a inatividade nunca é maior que a configurada.
+- **Um terminal que ficou fechado por dias retoma a partir do momento atual.** Se mais de 5,000 alterações se acumularam, ou se sua loja removeu do log os registros até além da posição do terminal, o mecanismo avança para a posição mais recente do log e verifica novamente o que o dispositivo já tem. O custo depende do tamanho da cópia local, não do tempo de ausência.
+
+</AccordionItem>
+</Accordion>
+
+## Como as telas obtêm seus dados {#declared-demand}
+
+Uma tela sempre mostra imediatamente o que já está no dispositivo. Quando precisa de registros que o dispositivo ainda não tem, como em uma busca que vai além dos primeiros produtos, o mecanismo os busca na sua loja enquanto o terminal está online. Nem tudo está no dispositivo desde o início; o que está depende do tipo de registro:
+
+1. **As alíquotas de imposto** são buscadas primeiro, na inicialização: o carrinho não consegue fazer os cálculos sem elas.
+2. **Produtos:** os primeiros 100 na ordenação padrão são buscados na inicialização. Os demais chegam quando uma tela os solicita e por meio de downloads complementares durante a inatividade, na ordenação escolhida pelo operador de caixa.
+3. **Clientes** não são buscados na inicialização. Uma tela os solicita, um download complementar durante a inatividade adiciona 10 por vez, e a verificação de alterações traz os novos e os editados.
+4. **Categorias, tags, marcas e cupons** também não são buscados na inicialização. São carregados na primeira abertura (reabrir em até 15 segundos não gera outra solicitação), são baixados em segundo plano assim que sua loja informa que tem registros desses tipos, são atualizados a cada 30 minutos e acompanham a verificação de alterações.
+
+Quando o terminal está online, abrir o seletor de variações atualiza seus preços e estoques. As variações que já estão no dispositivo aparecem imediatamente enquanto isso acontece.
+
+<Accordion>
+<AccordionItem question="Como uma tela solicita dados">
+
+As telas não fazem sincronização. **Uma tela declara o que exibe (busca, filtros, ordenação, página), e o mecanismo decide se isso exige uma requisição.** Cada declaração termina de uma destas três formas:
+
+- **Atendida localmente** — todos os registros necessários já estão no dispositivo.
+- **Buscada** — o mecanismo foi à sua loja buscar os dados.
+- **Liberada** — a tela deixou de precisar dela, geralmente porque você rolou a tela ou mudou um filtro e uma declaração mais recente a substituiu. Isso é normal, não um erro.
+
+Um filtro que sua loja não consegue expressar é aplicado no dispositivo; o restante da consulta ainda pode ser enviado à sua loja. Uma declaração resolvida não significa que todos os registros de um tipo foram baixados. Isso é acompanhado separadamente, [abaixo](#coverage).
+
+</AccordionItem>
+</Accordion>
+
+## Tudo já foi baixado? {#coverage}
+
+**Saúde da loja → Banco de dados** lista cada tipo de registro com a quantidade no dispositivo, o total da sua loja e uma barra de cobertura. Veja [O que está neste dispositivo](../support/store-health.mdx#coverage). Nenhum número ali é inventado a partir do que o dispositivo tem:
+
+- **Um total desatualizado ou ausente mostra *verificando…*.** Quando está desatualizado, o último valor recebido da sua loja permanece ao lado. Uma contagem baseada no dispositivo sempre mostraria 100% e esconderia justamente a diferença que o indicador deve revelar.
+- **Os pedidos mostram cobertura parcial por definição.** A barra usa todos os pedidos da sua loja como referência, enquanto o terminal mantém apenas os abertos e recentes (**abertos + recentes ficam no dispositivo · antigos são baixados ao visualizar**).
+- **Pronto para vender aparece cedo.** O indicador é ativado assim que os primeiros produtos estão no dispositivo, e estar offline não impede isso: vender offline é o objetivo.
+
+<Accordion>
+<AccordionItem question="Como os totais de download são verificados">
+
+Um indicador como *1,240 de 5,000 produtos* precisa do total da sua loja para o segundo número. O mecanismo mantém um total por tipo de registro. Cada um exige uma requisição própria de baixo custo, com um registro por página, que lê o cabeçalho `X-WP-Total` do WooCommerce, no máximo uma vez a cada 15 minutos, aproximadamente, por tipo.
+
+</AccordionItem>
+</Accordion>
+
+## Como as alterações chegam à sua loja {#write-path}
+
+Cada alteração feita no dispositivo (uma venda, uma edição de produto, um novo cliente) é salva primeiro no dispositivo e enviada à sua loja em cerca de um segundo. Um carrinho aberto é a exceção: ele é enviado quando você pressiona **Finalizar Compra**. **Uma venda registrada offline aguarda no dispositivo e é enviada quando a conexão volta.** A maioria das alterações não exige nenhuma ação sua. Dois tipos aguardam uma escolha em **Saúde da loja → Banco de dados**, e um terceiro é resolvido automaticamente:
+
+- **Um pedido com conflito tem uma nova tentativa de envio.** Se sua loja tem uma cópia mais recente do pedido, o mecanismo concilia as versões e envia mais uma vez. Se isso também falhar, ou se o registro não for um pedido, a alteração fica retida para você escolher: **Enviar novamente** ou **Usar versão do servidor**. Veja [Alterações retidas porque sua loja tinha uma versão mais recente](../support/store-health.mdx#held-changes).
+- **Uma alteração recusada pela sua loja nunca é reenviada automaticamente**, exceto quando se trata de um pedido que sua loja excluiu (veja a seguir). Ela é mantida com o motivo informado pela sua loja e exibida em **Saúde da loja → Banco de dados** como **alterações que nunca chegaram ao seu servidor**. **Enviar novamente** a recria a partir do registro como ele está agora no dispositivo; **Descartar** a remove. Veja [Alterações que nunca chegaram ao seu servidor](../support/store-health.mdx#refused-changes).
+- **Pedido excluído na loja.** Quando sua loja excluiu um pedido ou o moveu para a lixeira enquanto este terminal ainda o atualizava, o POS resolve a situação sem perguntar: um carrinho aberto é mantido e reenviado como um novo pedido, com um novo número, na próxima vez que você pressionar **Finalizar Compra**; qualquer outro pedido é removido deste dispositivo. Uma mensagem com o título **Pedido excluído na loja** informa qual ação foi tomada, uma única vez:
+  - Carrinho aberto: **O pedido #1234 foi excluído na loja. O carrinho foi mantido como um novo pedido.**
+  - Qualquer outro pedido: **O pedido #1234 foi excluído na loja e removido deste dispositivo.**
+
+  O log registra [SYNC203](../error-codes/SYNC203.mdx).
+
+<Accordion>
+<AccordionItem question="Como as alterações são enviadas">
+
+- **A fila persistente vem primeiro.** Cada alteração entra em uma fila no dispositivo antes de qualquer envio. Cerca de 0,3 segundos depois, o processamento da fila de gravação a envia; uma consulta a cada 10 segundos captura qualquer alteração que não tenha sido enviada pelo acionamento inicial.
+- **As alterações no carrinho são aplicadas uma por vez para cada pedido.** Uma sequência rápida de leituras de código é aplicada na ordem. Adicionar um produto que já tem exatamente uma linha no carrinho aumenta a quantidade dessa linha, em vez de adicionar uma segunda linha.
+- **O que sua loja devolve é mantido.** Quando sua loja aceita uma alteração, o dispositivo adota a cópia da loja para que as próximas edições correspondam a ela. No caso dos pedidos, isso preserva os IDs de linha atribuídos pelo WooCommerce, para que uma atualização não adicione linhas duplicadas. Uma edição local que sua loja ainda não recebeu nunca é sobrescrita.
+- **Um pedido excluído é resolvido pelo POS.** Sua loja responde com `404` a uma atualização de um pedido que ela não tem mais. O POS descarta a alteração na fila; se for um carrinho aberto, ele enfileira o carrinho novamente como um novo pedido, incluindo qualquer edição feita nesse intervalo.
+
+</AccordionItem>
+</Accordion>
+
+## Uma única aba executa o POS {#multi-tab}
+
+Em um navegador, **apenas uma aba por site executa o POS**. Uma segunda aba do mesmo site, para qualquer loja ou operador de caixa, para nesta tela. Ela nunca abre o banco de dados local, então não pode registrar uma venda nem enviar nada, e nada na primeira aba é afetado.
+
+<JourneyShot manifest={manifest} device="tablet" step={5} offsets={[[637, 37], [334, 0]]} alt="Uma segunda aba do POS no navegador: O POS está aberto em outra aba, Apenas uma aba pode operar o caixa e o botão Assumir aqui">
+
+1. **O POS está aberto em outra aba** — esta aba está em espera. **Apenas uma aba pode operar o caixa.**
+2. **Assumir aqui** — solicita que a outra aba transfira o controle. Ela conclui um pagamento em andamento e aguarda até 15 segundos por um salvamento, depois entra em espera, e esta aba carrega o POS.
+
+</JourneyShot>
+
+- **Uma aba em espera não é ativada sozinha.** Fechar a aba ativa mantém a outra em espera até você pressionar **Assumir aqui** ou recarregá-la.
+- **"A outra aba não está respondendo"** — a aba ativa não transferiu o controle. Feche-a ou recarregue-a para continuar nesta aba.
+- **Um pagamento que a aba anterior tenta iniciar depois de liberar o caixa** é recusado antes de ser enviado e registrado como [CLIENT161](../error-codes/CLIENT161.mdx). Um pagamento iniciado antes disso, mesmo que comece enquanto a transferência aguarda um salvamento, é concluído antes de a aba transferir o controle.
+- **Os aplicativos para desktop e dispositivos móveis** não têm abas nem esse bloqueio. Um navegador que não consegue coordenar suas abas (sem suporte a Web Locks) executa todas as abas sem essa verificação.
+
+## Armazenamento local {#local-storage}
+
+Na versão 2.0, cada terminal mantém seus dados em um banco de dados no próprio dispositivo.
+
+Se um aviso mostrar **Banco de dados local indisponível — leitura de códigos, finalização de compras, salvamento e anulação estão bloqueados até que o aplicativo seja recarregado**, pressione **Recarregar o aplicativo**. Até você fazer isso, os reembolsos também ficam bloqueados, e uma leitura de código mostra **Leitura de códigos indisponível**, em vez de não dar resposta. O POS interrompe tudo o que poderia causar a perda de uma venda quando o banco de dados do dispositivo para de responder ou um salvamento local trava. O código é [SYNC161](../error-codes/SYNC161.mdx).
+
+<Accordion>
+<AccordionItem question="Onde os dados ficam em cada plataforma">
+
+O banco de dados é SQLite, executado por meio do RxDB Premium:
+
+| Plataforma | Onde os dados ficam |
+| --- | --- |
+| Web | SQLite-wasm em um worker dedicado, no sistema de arquivos privado do navegador (OPFS) |
+| Desktop | SQLite no processo principal do aplicativo |
+| iOS e Android | SQLite por meio do expo-sqlite |
+
+As consultas são executadas dentro do banco de dados: filtragem, ordenação e paginação. Apenas as linhas exibidas na tela chegam ao aplicativo.
+
+</AccordionItem>
+</Accordion>
+
+## Atualização para a versão 2.0 {#upgrading}
+
+A versão 2.0 não migra os dados locais. Cada dispositivo **baixa tudo novamente**:
+
+1. **Cada dispositivo inicia um banco de dados novo** e baixa os dados da sua loja novamente, uma única vez. Sua loja mantém a cópia completa de tudo o que foi sincronizado.
+2. **As alterações enfileiradas antes da atualização não são enviadas.** Em cada terminal, espere até que **alterações aguardando envio** mostre 0 em **Saúde da loja → Banco de dados** antes de atualizar. Veja [Antes de clicar em Atualizar](../getting-started/upgrading-to-2.mdx#before-you-click-update). Os bancos de dados antigos da versão 1.x são excluídos assim que a loja está pronta para vender.
+3. **O aplicativo e o plugin precisam ser atualizados juntos.** O aplicativo 2.0 precisa do plugin WCPOS 2.0. Se apenas um dos lados estiver atualizado, o aplicativo informa qual: [AUTH331](../error-codes/AUTH331.mdx) quando o plugin é mais antigo, [SYNC341](../error-codes/SYNC341.mdx) quando o aplicativo é mais antigo.
+
+## O que mudou desde a versão 1.9 {#what-changed-in-v1100}
+
+<Accordion>
+<AccordionItem question="1.9, 1.10–1.11 e 2.0 lado a lado">
+
+| | 1.9 | 1.10–1.11 | 2.0 |
+| --- | --- | --- | --- |
+| Unidade de sincronização | Um fluxo por consulta de tela | Um mecanismo, um banco de dados por site, loja e operador de caixa | Igual |
+| O que aciona uma busca | A abertura de uma tela | Uma tela declarando o que precisa | Igual |
+| Detecção de alterações | Consultas periódicas e uma auditoria completa a cada hora | Log de alterações com respostas condicionais `304` | Igual |
+| Totais da sua loja | Não acompanhados | Por tipo de registro, com *verificando…* | Igual |
+| Alterações recusadas | Novas tentativas sem indicação visível | Fila persistente, painel de recuperação, sem novas tentativas silenciosas | Igual |
+| Abas do navegador | Sem coordenação | Todas as abas ativas, uma escolhida para enviar | Uma aba ativa por site, as demais em espera |
+| Armazenamento | IndexedDB (web), SQLite (aplicativos) | Armazenamento no sistema de arquivos (OPFS na web) | SQLite em todas as plataformas |
+| Ajuste da sincronização | Fixo | Predefinições e controles deslizantes em Saúde da loja | Igual |
+| Busca local | Correspondência por prefixo de palavra | Correspondência por substring | Cada palavra, de qualquer tamanho, em qualquer parte do registro |
+
+</AccordionItem>
+</Accordion>
+
+Para saber sobre os limites de requisições, a redução do ritmo quando sua loja tem dificuldade para responder e os números medidos, veja [Desempenho da sincronização](sync-performance.mdx).
+
+## Documentação relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Saúde da loja" to="/troubleshooting/store-health" description="Onde o lojista vê tudo isso no terminal." />
+  <LinkCard title="Desempenho da sincronização" to="/developers/sync-performance" description="Limites de requisições e redução do ritmo quando sua loja está ocupada." />
+  <LinkCard title="Atualização para a versão 2.0" to="/getting-started/upgrade-2-0" description="O que fazer em cada terminal antes de atualizar." />
+</LinkCards>

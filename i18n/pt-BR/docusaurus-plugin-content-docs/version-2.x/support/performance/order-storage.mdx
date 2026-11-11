@@ -1,0 +1,135 @@
+---
+title: "Armazenamento de pedidos (HPOS)"
+slug: /troubleshooting/performance/order-storage-hpos
+sidebar_label: Armazenamento de pedidos (HPOS)
+description: "Resolva a lentidão na finalização da compra no WCPOS em uma loja grande: verifique qual armazenamento de pedidos o WooCommerce usa e mude do armazenamento legado para o HPOS com a ferramenta do próprio WooCommerce."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/support/performance/order-storage/en/manifest.json';
+
+**O sintoma:** a finalização da compra no WCPOS leva vários segundos e vem ficando mais lenta com o tempo.
+
+:::note Isso é feito no painel administrativo do WordPress, não no caixa
+Você faz isso uma vez, no painel administrativo do WordPress. É necessário ter acesso às configurações do WooCommerce; se não tiver, peça à pessoa responsável pelo seu site que siga estas etapas. Informe que a finalização da compra está lenta e envie esta página.
+:::
+
+Uma causa comum é a forma como o WooCommerce armazena seus pedidos. Verifique qual tipo de armazenamento sua loja usa e, se for o antigo, mude para o armazenamento de pedidos de alto desempenho (HPOS) com a ferramenta do próprio WooCommerce.
+
+## Verifique qual armazenamento sua loja usa {#check-which-storage-your-store-uses}
+
+1. No painel administrativo do WordPress, acesse **WooCommerce → Configurações → Avançado → Recursos**.
+2. Encontre **Armazenamento de dados de pedidos**:
+   - **Armazenamento de pedidos de alto desempenho (recomendado)** selecionado: você já usa HPOS, então essa não é a causa. Consulte [Outras causas de lentidão na finalização da compra](#other-causes-of-slow-checkout).
+   - **Armazenamento de posts do WordPress (legado)** selecionado: mude para o HPOS seguindo as instruções abaixo. Ele acelera uma etapa lenta em cada finalização de compra ([entenda por quê](#why-legacy-order-storage-slows-checkout)), e quanto maior a loja, maior o benefício.
+
+Esta loja já usa HPOS:
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[77, 0], [80, 0], [186, 18]]} alt="Configurações do WooCommerce na aba Avançado, página Recursos: Armazenamento de dados de pedidos com Armazenamento de pedidos de alto desempenho selecionado, Ativar modo de compatibilidade desmarcado e os outros recursos abaixo">
+
+1. **Avançado** — a última aba em **WooCommerce → Configurações**.
+2. **Recursos** — o último link abaixo das abas.
+3. **Armazenamento de dados de pedidos** — a opção selecionada é o armazenamento que sua loja usa. Aqui, é **Armazenamento de pedidos de alto desempenho (recomendado)**. Em uma loja com HPOS, você pode ignorar a mensagem de falta de sincronização abaixo de **Ativar modo de compatibilidade**: ela só importa se você [voltar ao armazenamento anterior](#switch-back).
+
+</JourneyShot>
+
+As novas lojas WooCommerce usam HPOS desde 2023, então uma loja mais antiga tem maior probabilidade de ainda usar o armazenamento legado.
+
+:::tip O WCPOS também avisa
+Em uma loja com armazenamento legado, um aviso aparece no topo de **Caixa → Configurações → [Caixa](../../settings/wp-admin/checkout.mdx)**. O link **Abrir a configuração de armazenamento de pedidos do WooCommerce** leva você diretamente à página Recursos, e **Como mudar** traz você de volta aqui.
+:::
+
+## Mude para o HPOS {#switch-to-hpos}
+
+O WooCommerce transfere seus pedidos para você. Primeiro, ele os copia para o outro armazenamento (a sincronização); depois, você faz a mudança. O WooCommerce só permite mudar quando a cópia está concluída.
+
+:::warning Faça um backup primeiro
+Faça um backup completo do site e do banco de dados antes de começar e verifique se você consegue restaurá-lo. Se tiver um [site de testes](../troubleshooting/plugin-conflicts.mdx#before-you-start-use-a-staging-site), experimente fazer a mudança nele primeiro.
+:::
+
+1. Acesse **WooCommerce → Configurações → Avançado → Recursos**. Se um aviso nessa página listar plugins incompatíveis com o HPOS, resolva isso primeiro: consulte [Apenas Armazenamento de pedidos de alto desempenho está desabilitado](#goes-wrong).
+2. Marque **Ativar modo de compatibilidade** e clique em **Salvar alterações**. O WooCommerce começa a copiar seus pedidos em segundo plano. Em uma loja grande, isso pode demorar; o progresso aparece abaixo da caixa de seleção como **Sincronizando pedidos...**, com o número de pedidos ainda pendentes.
+3. Recarregue a página de vez em quando até que não haja mais nenhuma mensagem abaixo de **Ativar modo de compatibilidade**: a cópia terminou. Se aparecer **Atualmente, há pedidos fora de sincronia.**, clique em **Sincronizar pedidos agora**. Se as opções continuarem desabilitadas, consulte [Se algo der errado](#goes-wrong).
+4. Selecione **Armazenamento de pedidos de alto desempenho (recomendado)** e clique em **Salvar alterações**.
+5. Deixe **Ativar modo de compatibilidade** marcado enquanto verifica se tudo continua funcionando:
+   - Faça uma venda de teste no WCPOS e verifique se ela é concluída.
+   - Localize essa venda em **WooCommerce → Pedidos**.
+   - Verifique se os plugins que trabalham com seus pedidos, como os de contabilidade, entrega ou e-mail, continuam recebendo os novos pedidos.
+
+   Enquanto o modo de compatibilidade estiver ativo, as duas cópias dos pedidos permanecem sincronizadas, então você pode [voltar ao armazenamento anterior](#switch-back) assim que a cópia estiver atualizada.
+6. Quando essas verificações estiverem concluídas sem problemas, desmarque **Ativar modo de compatibilidade** e clique em **Salvar alterações**. A partir daí, para voltar, será necessário primeiro copiar seus pedidos de volta: consulte [Volte ao armazenamento legado](#switch-back).
+
+Para conhecer todos os detalhes, consulte o guia do WooCommerce: [Armazenamento de pedidos de alto desempenho](https://woocommerce.com/document/high-performance-order-storage/#how-to-enable-high-performance-order-storage).
+
+## Volte ao armazenamento legado {#switch-back}
+
+Se algo parou de funcionar após a mudança, volte ao armazenamento legado e identifique o plugin que apresentou problema antes de tentar novamente.
+
+1. Acesse **WooCommerce → Configurações → Avançado → Recursos**.
+2. Se **Ativar modo de compatibilidade** estiver desmarcado, marque-o e clique em **Salvar alterações**. O WooCommerce copia seus pedidos de volta para o armazenamento legado.
+3. Aguarde até que não haja mais nenhuma mensagem abaixo de **Ativar modo de compatibilidade**. Recarregue a página de vez em quando e clique em **Sincronizar pedidos agora** se o link aparecer. Até lá, as duas opções permanecem desabilitadas.
+4. Selecione **Armazenamento de posts do WordPress (legado)** e clique em **Salvar alterações**.
+
+Os pedidos feitos desde a mudança são mantidos: o modo de compatibilidade também os copia para o armazenamento legado.
+
+## Se algo der errado {#goes-wrong}
+
+**As duas opções de armazenamento estão desabilitadas quando você tenta mudar.**
+O WooCommerce só permite mudar o armazenamento, em qualquer direção, quando as duas cópias dos pedidos estão sincronizadas. A cópia ainda não terminou. Veja abaixo de **Ativar modo de compatibilidade**:
+- **Sincronizando pedidos...** com um número: a cópia ainda está em andamento. Aguarde e recarregue a página de vez em quando.
+- **Atualmente, há pedidos fora de sincronia.** com um link **Sincronizar pedidos agora**: a cópia não está em andamento. Clique em **Sincronizar pedidos agora**, aguarde a conclusão da cópia e então faça a mudança.
+
+Em uma loja que já usa HPOS com o modo de compatibilidade desativado, essa tela é normal até você querer mudar. Aqui, as duas opções estão desabilitadas e a cópia não está em andamento:
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[262, 0], [362, 0], [-46, 0], [-44, 0]]} alt="Detalhe de Armazenamento de dados de pedidos: as duas opções de armazenamento desabilitadas, com Armazenamento de pedidos de alto desempenho selecionado, Ativar modo de compatibilidade desmarcado e, abaixo, Atualmente, há pedidos fora de sincronia com um link Sincronizar pedidos agora">
+
+1. **Armazenamento de posts do WordPress (legado)** — desabilitado até a conclusão da cópia.
+2. **Armazenamento de pedidos de alto desempenho (recomendado)** — selecionado e também desabilitado.
+3. **Ativar modo de compatibilidade** — a mensagem abaixo indica se a cópia está em andamento.
+4. **Sincronizar pedidos agora** — inicia a cópia.
+
+</JourneyShot>
+
+**Apenas Armazenamento de pedidos de alto desempenho está desabilitado.**
+O WooCommerce bloqueia a mudança enquanto houver um plugin ativo marcado como incompatível com o HPOS. Um aviso na página Recursos lista esses plugins, com um link **Ver e gerenciar**. Atualize-os ou pergunte aos desenvolvedores sobre o suporte ao HPOS antes de mudar.
+
+**Algo parou de funcionar após a mudança.**
+[Volte ao armazenamento legado](#switch-back) e identifique o plugin que apresentou problema antes de tentar novamente.
+
+**A finalização da compra continua lenta após a mudança.**
+O armazenamento de pedidos não era a única causa. Consulte [Outras causas de lentidão na finalização da compra](#other-causes-of-slow-checkout) abaixo.
+
+## Por que o armazenamento legado deixa a finalização da compra lenta {#why-legacy-order-storage-slows-checkout}
+
+Com o armazenamento legado, salvar uma venda no WCPOS fica mais lento à medida que sua loja cresce. Com o HPOS, a busca do pedido que causa essa demora é quase instantânea. A hospedagem e outros plugins ainda podem deixar a finalização da compra lenta: consulte [Outras causas de lentidão na finalização da compra](#other-causes-of-slow-checkout).
+
+<details>
+<summary>Quanto mais rápido fica e por quê</summary>
+
+Sempre que o WCPOS salva um pedido, primeiro ele busca esse pedido pelo ID que o próprio WCPOS atribuiu. Com o armazenamento legado, o WooCommerce mantém os pedidos junto dos posts do WordPress, em tabelas sem uma forma rápida de encontrar um pedido por esse ID, então a busca percorre os registros da loja um a um. O HPOS mantém os pedidos em tabelas próprias, nas quais a mesma busca é quase instantânea.
+
+Em uma loja que medimos (cerca de 30.000 produtos e variações, com armazenamento legado), cada busca levou cerca de 0,46 segundos, e uma finalização de compra fez cerca de duas buscas. Com o HPOS, a mesma busca levou cerca de 1 milissegundo. O resultado na sua loja será diferente, mas, quanto maior ela for, maior será o ganho.
+
+</details>
+
+## O que o WCPOS suporta {#what-wcpos-supports}
+
+- **O HPOS é totalmente suportado e é o que recomendamos.**
+- **O armazenamento legado continua funcionando.** Nada deixa de funcionar; a finalização da compra só é mais lenta em lojas grandes.
+
+## Outras causas de lentidão na finalização da compra {#other-causes-of-slow-checkout}
+
+O armazenamento de pedidos não é a única coisa que deixa a finalização da compra lenta. Se você já usa HPOS ou se a finalização da compra continua lenta após a mudança, verifique:
+
+- **Sua hospedagem.** Um servidor sobrecarregado ou com poucos recursos deixa todas as etapas lentas. Consulte [Desempenho do servidor](./server.mdx).
+- **Outros plugins executados quando um pedido é salvo**, como plugins de contabilidade, e-mail marketing ou estoque. Consulte [Conflitos de plugins](../troubleshooting/plugin-conflicts.mdx) e [Desempenho da finalização da compra](./checkout.mdx#2-plugin-interference-during-order-creation).
+
+## Documentação relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/troubleshooting/performance/slow-checkout" title="Desempenho da finalização da compra" description="Outras formas de acelerar a finalização da compra" />
+  <LinkCard to="/troubleshooting/performance/slow-server" title="Desempenho do servidor" description="Hospedagem, cache e ajustes no banco de dados" />
+  <LinkCard to="/troubleshooting/common-problems/plugin-conflicts" title="Conflitos de plugins" description="Identifique um plugin que deixa a loja lenta" />
+</LinkCards>

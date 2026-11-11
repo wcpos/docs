@@ -1,0 +1,249 @@
+---
+title: Synchronisatie-engine
+slug: /developers/sync-engine
+sidebar_label: Synchronisatie-engine
+sidebar_position: 3
+description: "Naslagwerk voor ontwikkelaars over de synchronisatie-engine van WCPOS 2.x: één database per winkel en kassamedewerker, achtergrondtaken, wijzigingscontrole, dekking, de schrijfwachtrij, één actief browsertabblad en lokale opslag."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.json';
+
+Open het POS-menu en vervolgens [**Winkelstatus**](../support/store-health.mdx), net boven **Instellingen** en **Ondersteuning** onderaan het menu, om alles wat deze pagina beschrijft op je eigen kassa te bekijken. Begin hier als je iets op je kassa wilt controleren:
+
+- **Controleer wijzigingen die wachten op verzending.** Open **Winkelstatus → Database** en bekijk **wijzigingen die wachten op verzending**: wat deze kassa nog naar je winkel moet sturen. Zie [Database](../support/store-health.mdx#database). Blijft het aantal boven 0, zie dan [‘wijzigingen die wachten op verzending’ neemt niet af](../support/store-health.mdx#waiting-to-send). Zo werkt het verzenden: [Hoe wijzigingen teruggaan naar je winkel](#write-path).
+- **Controleer wat er is gedownload.** Open **Winkelstatus → Database** en bekijk de tabel: hoeveel van je winkel op dit apparaat staat. Zie [Wat er op dit apparaat staat](../support/store-health.mdx#coverage). Zo worden downloads geteld: [Is alles gedownload?](#coverage).
+- **Wanneer bereikt een wijziging in WooCommerce de kassa?** Zie [Hoe de POS wijzigingen ontdekt](#change-signal).
+- **Een verkoop of bewerking heeft je winkel niet bereikt.** Zie [Wijzigingen die je server nooit hebben bereikt](../support/store-health.mdx#refused-changes).
+- **‘De POS is geopend in een ander tabblad.’** Zie [Eén tabblad draait de POS](#multi-tab).
+- **‘Lokale database niet beschikbaar.’** Druk op **App opnieuw laden**. Zie [Lokale opslag](#local-storage).
+- **Bijwerken naar 2.0.** Zie [Voordat je op Bijwerken klikt](../getting-started/upgrading-to-2.mdx#before-you-click-update).
+
+:::warning Voordat je op Bijwerken klikt
+Open op elke kassa **Winkelstatus → Database** en wacht tot **wijzigingen die wachten op verzending** op 0 staat. Voer daarna de update uit. Wijzigingen die nog op een kassa wachten, worden na de update niet verzonden. Als het aantal niet afneemt, werk dan nog niet bij: zie [‘wijzigingen die wachten op verzending’ neemt niet af](../support/store-health.mdx#waiting-to-send). Meer informatie vind je in [Upgraden naar 2.0](#upgrading).
+:::
+
+WCPOS werkt primair met lokale gegevens. Elk scherm leest en schrijft in een database op het apparaat, en een **synchronisatie-engine** houdt die database en je WooCommerce-winkel op de achtergrond gelijk. De rest van deze pagina legt uit wat de engine ophaalt, wanneer dat gebeurt en hoe verkopen teruggaan naar je winkel. De uitleg is bedoeld voor ontwikkelaars, integrators en winkeleigenaren die willen weten wat de POS van hun hosting vraagt.
+
+## Eén database per winkel en kassamedewerker {#one-engine-per-scope}
+
+Elke combinatie van winkel en kassamedewerker op een apparaat heeft een eigen lokale database. Twee kassamedewerkers op hetzelfde apparaat delen nooit lokale gegevens.
+
+- **Wisselen gebeurt volledig of helemaal niet.** De nieuwe winkel of kassamedewerker laadt eerst de bijbehorende database en neemt het pas over als die klaar is. Bij een fout verschijnt een melding; de kassa blijft nooit halverwege het wisselen hangen.
+- **Elk verzoek vermeldt de bijbehorende winkel.** Bij WCPOS Pro met meerdere winkels wordt een prijswijziging aan de kassa toegepast op de prijs van die winkel, niet op die van de webwinkel.
+- **Een nieuwe versie begint met een nieuwe database.** Er worden geen gegevens binnen de bestaande database gemigreerd. Zie [Upgraden naar 2.0](#upgrading).
+
+<Accordion>
+<AccordionItem question="Hoe engines en scopes zijn ingedeeld">
+
+Op elk apparaat draait **één synchronisatie-engine per site**. Daarbinnen vormt elke combinatie van winkel en kassamedewerker een **scope** met een eigen lokale database. Wisselen van winkel of kassamedewerker wisselt de scope, inclusief de hele database, binnen dezelfde engine. Verbinding maken met een andere site vervangt de engine.
+
+</AccordionItem>
+</Accordion>
+
+## Wat er op de achtergrond draait {#sync-lanes}
+
+De **wijzigingscontrole** van de kassa vraagt je winkel of er iets is veranderd, bij **Gebalanceerd** elke 60 seconden. Met de [synchronisatieprofielen](../support/store-health.mdx#sync-presets) stel je dit in van elke 10 seconden (**Realtime**) tot elke 5 minuten (**Eco**).
+
+- **Achtergrondtaken wachten op de kassamedewerker.** Aanvullingen van producten, klanten en variaties worden pas uitgevoerd als de kassa 60 seconden niet is gebruikt en geen enkel scherm op gegevens wacht. Ze wachten ook zolang je winkel moeite heeft om te antwoorden. Hetzelfde geldt voor de achtergrondcontroles op verwijderde records en op de totalen van je winkel.
+
+<Accordion>
+<AccordionItem question="Elke taak, de frequentie en het maximale aantal verzoeken">
+
+Alles wat de engine volgens een tijdschema doet, is een **taak**: een afgebakend stuk achtergrondwerk met een naam. De wijzigingscontrole is de taak die je kunt instellen. Wijzigingen op het apparaat worden ongeveer 0,3 seconden nadat ze zijn gemaakt verzonden.
+
+De taken voor de eerste vulling, geleidelijke aanvulling, totalen en controles geven elk aan hoeveel verzoeken ze per uitvoering mogen doen. De drie processen waarop een kassamedewerker wacht (de wijzigingscontrole, de verwerking van de schrijfwachtrij en de verwerking van gegevensaanvragen) hebben nog geen limiet. De limieten staan in [Synchronisatieprestaties](sync-performance.mdx).
+
+| Taak | Frequentie | Verzoeken per uitvoering |
+| --- | --- | --- |
+| Wijzigingscontrole | Je profiel: 10 s (Realtime), 60 s (Gebalanceerd), 5 min (Eco); aangepast vanaf 5 s | Nog geen limiet |
+| Verwerking van de schrijfwachtrij | Ongeveer 0,3 s na elke wijziging, extra controle elke 10 s | Nog geen limiet |
+| Verwerking van gegevensaanvragen (haalt op wat schermen hebben aangevraagd) | 30 s | Nog geen limiet |
+| Eerste vulling met recente bestellingen, producten en referentiegegevens | 5 min | 0 (zet werk in de wachtrij voor de verwerking van gegevensaanvragen) |
+| Geleidelijke aanvulling van klanten, producten en variaties | 5 min, na 60 s inactiviteit | 1 |
+| Servertotalen opnieuw opvragen | 30 s | 11 |
+| Dekkingsgegevens comprimeren | 60 s | 0 |
+| Bestaanscontrole voorbereiden | 15 min | 5 |
+| Controle op verwijderingen | 17 min | 11 |
+
+Bestellingen vallen niet onder de wijzigingscontrole. Daarom controleert elke uitvoering van de eerste vulling met recente bestellingen ook opnieuw alle open winkelwagens op het apparaat waarvan je winkel een kopie heeft en waarvoor niets op verzending wacht. Een winkelwagen die je winkel heeft verwijderd of in de prullenbak heeft geplaatst, wordt dan van het apparaat verwijderd. Het gericht ophalen van een bestelling doet hetzelfde: een bestelling die je winkel niet meer heeft, wordt verwijderd in plaats van dat het ophalen mislukt, tenzij er op dit apparaat nog een wijziging voor die bestelling op verzending wacht.
+
+</AccordionItem>
+</Accordion>
+
+Het controle-interval en het aantal records per verzoek stel je per apparaat in via **Winkelstatus → Prestaties**:
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[368, 0], [506, -55], [186, -27], [186, -27], [186, -27], [161, -24], [161, -20], [456, 0]]} alt="Winkelstatus op het tabblad Prestaties: de statusregel, de strook met de actieve tijd van de engine, de profielen Eco, Gebalanceerd en Realtime, de twee schuifregelaars en de regel Op dit moment">
+
+1. **Status** — **✓ Normaal**, of **⚠ Aandacht nodig** wanneer de kassa offline is, synchronisatie is geblokkeerd, een eerste download is mislukt of de laatste uitvoering van een synchronisatietaak is mislukt. Daaronder staan de verzoeken van de afgelopen 24 uur op deze kassa.
+2. **Actieve tijd van de engine** — één vakje per uur voor de afgelopen 24 uur. Groen: verzoeken en geen fouten. Oranje: minstens één verzoek is mislukt. Leeg: de app was gesloten.
+3. **Eco** — de wijzigingscontrole elke 5 minuten, 25 records per verzoek.
+4. **Gebalanceerd** — de standaard: elke 60 seconden, 50 records.
+5. **Realtime** — elke 10 seconden, 75 records.
+6. **Controleren op wijzigingen** — het interval voor de wijzigingscontrole, van 5 seconden tot 5 minuten.
+7. **Records per verzoek** — hoeveel records er per ophaalverzoek worden opgehaald, van 10 tot 100.
+8. **Op dit moment** — wanneer de volgende controle plaatsvindt en hoeveel verzoeken per uur deze instellingen ongeveer opleveren.
+
+</JourneyShot>
+
+## Hoe de POS wijzigingen ontdekt {#change-signal}
+
+De POS downloadt je catalogus niet opnieuw om wijzigingen te ontdekken. Bij elke wijzigingscontrole stelt de POS je winkel één lichte vraag: is er sinds de vorige keer iets veranderd? Met **Gebalanceerd** controleert een verbonden kassa ongeveer één keer per minuut op prijs- en voorraadwijzigingen. Er kan meer tijd tussen controles zitten wanneer je winkel moeite heeft om te antwoorden. Bestellingen volgen hun eigen, afzonderlijke schema.
+
+<Accordion>
+<AccordionItem question="Hoe de wijzigingscontrole werkt">
+
+Je winkel houdt een **wijzigingslogboek** bij, en de POS vraagt of er iets is veranderd sinds de laatst bekende positie daarin.
+
+- **Eén controle omvat acht soorten records:** producten, variaties, belastingtarieven, klanten, coupons, categorieën, merken en tags. Bestellingen vallen er niet onder; open en recente bestellingen hebben hun eigen taak, waardoor product- en bestellingsupdates op verschillende momenten binnenkomen.
+- **Een rustige winkel kost bijna niets.** Het verzoek is voorwaardelijk. Als er niets is veranderd, antwoordt je winkel met `304 Not Modified`, zonder inhoud.
+- **Controles worden met ±20% gespreid,** zodat meerdere kassa's op één site geleidelijk op verschillende momenten controleren in plaats van tegelijk.
+- **Een ongebruikte kassa vertraagt een beetje.** Na 10 minuten zonder aanraking, toetsaanslag of geaccepteerde scan wordt het controle-interval verlengd tot minstens 30 seconden en daarna tot minstens 60. Een verborgen venster gaat meteen naar 60. Bij **Gebalanceerd** en **Eco** verandert daardoor niets. Bij de volgende aanraking wordt de volledige frequentie hersteld en vindt meteen een controle plaats, tenzij je winkel de POS heeft gevraagd minder vaak verzoeken te doen. Bij inactiviteit wordt nooit vaker gecontroleerd dan je instelling aangeeft.
+- **Een kassa die dagen gesloten was, begint bij het heden.** Als er meer dan 5,000 wijzigingen zijn opgestapeld, of als je winkel het logboek heeft opgeschoond tot voorbij de positie van de kassa, springt de engine naar het nieuwste punt in het logboek en controleert opnieuw wat er al op het apparaat staat. De belasting hangt af van de omvang van de lokale kopie, niet van hoelang de kassa gesloten was.
+
+</AccordionItem>
+</Accordion>
+
+## Hoe schermen hun gegevens krijgen {#declared-demand}
+
+Een scherm toont altijd meteen wat er al op het apparaat staat. Als het records nodig heeft die nog niet op het apparaat staan, bijvoorbeeld bij een zoekopdracht die verder gaat dan de eerste producten, haalt de engine ze uit je winkel op zolang de kassa online is. Niet alles staat vanaf het begin op het apparaat; wat er wel staat, hangt af van het soort record:
+
+1. **Belastingtarieven** worden bij het opstarten als eerste opgehaald: zonder die tarieven kan de winkelwagen geen berekeningen maken.
+2. **Producten:** de eerste 100 in de standaardvolgorde worden bij het opstarten opgehaald. De rest komt binnen wanneer een scherm erom vraagt en via aanvulling tijdens inactiviteit, in de sorteervolgorde van de kassamedewerker.
+3. **Klanten** worden niet bij het opstarten opgehaald. Een scherm vraagt ze op, aanvulling tijdens inactiviteit voegt er telkens 10 toe en de wijzigingscontrole haalt nieuwe en gewijzigde klanten op.
+4. **Categorieën, tags, merken en coupons** worden ook niet bij het opstarten opgehaald. Ze worden geladen wanneer je ze voor het eerst opent (opnieuw openen binnen 15 seconden leidt niet tot een nieuw verzoek), op de achtergrond aangevuld zodra je winkel meldt dat ze aanwezig zijn, elke 30 minuten vernieuwd en via de wijzigingscontrole bijgewerkt.
+
+Wanneer de kassa online is, worden bij het openen van de variatiekiezer de prijzen en voorraad vernieuwd. Variaties die al op het apparaat staan, worden ondertussen meteen getoond.
+
+<Accordion>
+<AccordionItem question="Hoe een scherm gegevens opvraagt">
+
+Schermen synchroniseren niet zelf. **Een scherm geeft aan wat het toont (zoekopdracht, filters, sortering, pagina) en de engine bepaalt of daarvoor een verzoek nodig is.** Elke aanvraag eindigt op een van drie manieren:
+
+- **Lokaal geleverd** — elk benodigd record staat al op het apparaat.
+- **Opgehaald** — de engine heeft de gegevens uit je winkel opgehaald.
+- **Vrijgegeven** — het scherm heeft de aanvraag losgelaten, meestal omdat je hebt gescrold of een filter hebt gewijzigd en een nieuwere aanvraag ervoor in de plaats kwam. Dit is normaal, geen fout.
+
+Een filter dat je winkel niet kan verwerken, wordt op het apparaat toegepast; de rest van de query kan nog steeds naar je winkel gaan. Een afgehandelde aanvraag betekent niet dat een soort record volledig is gedownload. Dat wordt afzonderlijk bijgehouden, zie [hieronder](#coverage).
+
+</AccordionItem>
+</Accordion>
+
+## Is alles gedownload? {#coverage}
+
+**Winkelstatus → Database** toont voor elk soort record het aantal op het apparaat, het totaal in je winkel en een dekkingsbalk. Zie [Wat er op dit apparaat staat](../support/store-health.mdx#coverage). Een getal daar wordt nooit afgeleid van alleen de gegevens op het apparaat:
+
+- **Bij een verouderd of ontbrekend totaal staat *controleren…*.** Bij een verouderd totaal blijft het laatst bekende getal uit je winkel ernaast staan. Een telling op basis van het apparaat zou altijd 100% aangeven en juist het verschil verbergen dat het getal zichtbaar moet maken.
+- **Bestellingen worden bewust als gedeeltelijk weergegeven.** De balk vergelijkt met alle bestellingen in je winkel, terwijl de kassa alleen open en recente bestellingen bewaart (**open + recent blijven op het apparaat · oudere worden bij het bekijken gedownload**).
+- **Klaar voor verkoop verschijnt al vroeg.** Die status wordt actief zodra de eerste producten op het apparaat staan. Offline zijn houdt dat niet tegen: offline kunnen verkopen is juist de bedoeling.
+
+<Accordion>
+<AccordionItem question="Hoe downloadtotalen worden gecontroleerd">
+
+Bij een aanduiding als *1,240 van 5,000 producten* is voor het tweede getal het totaal uit je winkel nodig. De engine houdt dat per soort record bij. Elk totaal wordt met een eigen licht verzoek opgehaald: één record per pagina, waarbij de engine de `X-WP-Total`-header van WooCommerce uitleest, hooguit ongeveer eens per 15 minuten per soort.
+
+</AccordionItem>
+</Accordion>
+
+## Hoe wijzigingen teruggaan naar je winkel {#write-path}
+
+Elke wijziging op het apparaat (een verkoop, een productbewerking, een nieuwe klant) wordt eerst op het apparaat opgeslagen en binnen ongeveer een seconde naar je winkel gestuurd. Een open winkelwagen is de uitzondering: die wordt verzonden wanneer je op **Afrekenen** drukt. **Een offline geregistreerde verkoop wacht op het apparaat en wordt verzonden zodra de verbinding terug is.** Voor de meeste wijzigingen hoef je niets te doen. Twee soorten wachten op een keuze in **Winkelstatus → Database**, en een derde wordt voor je afgehandeld:
+
+- **Een conflicterende bestelling wordt één keer opnieuw geprobeerd.** Als je winkel een nieuwere kopie van de bestelling heeft, stemt de engine de versies op elkaar af en verzendt opnieuw. Als ook dat mislukt, of als het record geen bestelling is, wordt de wijziging vastgehouden zodat je kunt kiezen: **Opnieuw verzenden** of **Serverversie gebruiken**. Zie [Wijzigingen die zijn vastgehouden omdat je winkel een nieuwere versie had](../support/store-health.mdx#held-changes).
+- **Een wijziging die je winkel weigert, wordt nooit automatisch opnieuw geprobeerd**, behalve bij een bestelling die je winkel heeft verwijderd (zie hieronder). De wijziging wordt bewaard met de reden die je winkel opgeeft en verschijnt in **Winkelstatus → Database** als **wijzigingen die je server nooit hebben bereikt**. **Opnieuw verzenden** bouwt de wijziging opnieuw op vanuit het record zoals het nu op het apparaat staat; **Verwerpen** verwijdert de wijziging. Zie [Wijzigingen die je server nooit hebben bereikt](../support/store-health.mdx#refused-changes).
+- **Bestelling verwijderd in de winkel.** Wanneer je winkel een bestelling heeft verwijderd of in de prullenbak heeft geplaatst terwijl deze kassa die nog aan het bijwerken was, handelt de POS dit zonder vragen af: een open winkelwagen blijft bewaard en wordt de volgende keer dat je op **Afrekenen** drukt opnieuw verzonden als nieuwe bestelling met een nieuw nummer; elke andere bestelling wordt van dit apparaat verwijderd. Een melding met de titel **Bestelling verwijderd in de winkel** geeft eenmalig aan wat er is gebeurd:
+  - Open winkelwagen: **Bestelling #1234 is verwijderd in de winkel. De winkelwagen is bewaard als nieuwe bestelling.**
+  - Elke andere bestelling: **Bestelling #1234 is verwijderd in de winkel en is van dit apparaat verwijderd.**
+
+  Het logboek registreert [SYNC203](../error-codes/SYNC203.mdx).
+
+<Accordion>
+<AccordionItem question="Hoe wijzigingen worden verzonden">
+
+- **Eerst komt een blijvend opgeslagen wachtrij.** Elke wijziging gaat in een wachtrij op het apparaat voordat er iets wordt verzonden. Ongeveer 0,3 seconden later verzendt de verwerking van de schrijfwachtrij de wijziging; een controle elke 10 seconden vangt alles op wat niet direct is opgepakt.
+- **Winkelwagenwijzigingen worden per bestelling één voor één verwerkt.** Een snelle reeks scans wordt in volgorde toegepast. Als je een product toevoegt dat al op precies één regel in de winkelwagen staat, wordt het aantal op die regel verhoogd in plaats van een tweede regel toe te voegen.
+- **Wat je winkel terugstuurt, wordt bewaard.** Wanneer je winkel een wijziging accepteert, neemt het apparaat de kopie van je winkel over, zodat latere bewerkingen daarop aansluiten. Bij bestellingen blijven zo de regel-ID's behouden die WooCommerce heeft toegewezen, zodat een update geen dubbele regels toevoegt. Een lokale bewerking die je winkel nog niet heeft ontvangen, wordt nooit overschreven.
+- **Een verwijderde bestelling wordt door de POS afgehandeld.** Je winkel antwoordt met `404` op een update voor een bestelling die niet meer bestaat. De POS verwijdert de wijziging uit de wachtrij; bij een open winkelwagen wordt die vervolgens opnieuw als nieuwe bestelling in de wachtrij geplaatst, inclusief eventuele tussentijdse bewerkingen.
+
+</AccordionItem>
+</Accordion>
+
+## Eén tabblad draait de POS {#multi-tab}
+
+In een webbrowser **draait de POS in slechts één tabblad per site**. Een tweede tabblad van dezelfde site, ongeacht de winkel of kassamedewerker, blijft op dit scherm staan. Het opent de lokale database nooit en kan dus geen verkoop registreren of iets verzenden. Het eerste tabblad wordt nergens in gestoord.
+
+<JourneyShot manifest={manifest} device="tablet" step={5} offsets={[[637, 37], [334, 0]]} alt="Een tweede browsertabblad van de POS: De POS is geopend in een ander tabblad, Slechts één tabblad kan de kassa bedienen en de knop Hier overnemen">
+
+1. **De POS is geopend in een ander tabblad** — dit tabblad staat in de wachtstand. **Slechts één tabblad kan de kassa bedienen.**
+2. **Hier overnemen** — vraagt het andere tabblad de kassa over te dragen. Dat rondt een lopende betaling af, wacht maximaal 15 seconden op het opslaan en gaat vervolgens zelf in de wachtstand. Daarna laadt dit tabblad de POS.
+
+</JourneyShot>
+
+- **Een tabblad in de wachtstand wordt niet vanzelf actief.** Als je het actieve tabblad sluit, blijft het andere in de wachtstand totdat je op **Hier overnemen** drukt of het opnieuw laadt.
+- **‘Het andere tabblad reageert niet’** — het actieve tabblad heeft de kassa niet overgedragen. Sluit het of laad het opnieuw om in dit tabblad verder te gaan.
+- **Een betaling die het oude tabblad probeert te starten nadat het de kassa heeft overgedragen,** wordt geweigerd voordat die wordt verzonden en vastgelegd als [CLIENT161](../error-codes/CLIENT161.mdx). Een betaling die eerder is gestart, wordt afgerond voordat het tabblad de kassa overdraagt. Dat geldt ook voor een betaling die start terwijl de overdracht op het opslaan wacht.
+- **Desktop- en mobiele apps** hebben geen tabbladen en geen toegangscontrole daarvoor. Een browser die zijn tabbladen niet kan coördineren (geen ondersteuning voor Web Locks), laat elk tabblad zonder controle draaien.
+
+## Lokale opslag {#local-storage}
+
+In 2.0 bewaart elke kassa zijn gegevens in een database op het apparaat zelf.
+
+Als een banner **Lokale database niet beschikbaar — scannen, afrekenen, opslaan en annuleren zijn geblokkeerd totdat de app opnieuw is geladen** toont, druk dan op **App opnieuw laden**. Totdat je dat doet, zijn ook terugbetalingen geblokkeerd en toont een scan **Scannen niet beschikbaar** in plaats van zonder reactie te blijven. De POS blokkeert alles waardoor een verkoop verloren zou kunnen gaan wanneer de database van het apparaat niet meer reageert of lokaal opslaan vastloopt. De code is [SYNC161](../error-codes/SYNC161.mdx).
+
+<Accordion>
+<AccordionItem question="Waar de gegevens op elk platform worden opgeslagen">
+
+De database is SQLite en wordt gebruikt via RxDB Premium:
+
+| Platform | Waar de gegevens worden opgeslagen |
+| --- | --- |
+| Web | SQLite-wasm in één speciaal daarvoor bestemde worker, in het privébestandssysteem van de browser (OPFS) |
+| Desktop | SQLite in het hoofdproces van de app |
+| iOS en Android | SQLite via expo-sqlite |
+
+Query's worden binnen de database uitgevoerd: filteren, sorteren en pagineren. Alleen de rijen die op het scherm staan, bereiken de app.
+
+</AccordionItem>
+</Accordion>
+
+## Upgraden naar 2.0 {#upgrading}
+
+2.0 migreert geen lokale gegevens. Elk apparaat **downloadt alles opnieuw**:
+
+1. **Elk apparaat begint met een nieuwe database** en downloadt eenmalig opnieuw uit je winkel. Je winkel bevat de volledige kopie van alles wat is gesynchroniseerd.
+2. **Wijzigingen die vóór de update in de wachtrij stonden, worden niet verzonden.** Wacht op elke kassa tot **wijzigingen die wachten op verzending** op 0 staat in **Winkelstatus → Database** voordat je bijwerkt. Zie [Voordat je op Bijwerken klikt](../getting-started/upgrading-to-2.mdx#before-you-click-update). De oude 1.x-databases worden verwijderd zodra de winkel klaar is voor verkoop.
+3. **De app en de plugin horen bij elkaar.** De 2.0-app heeft de WCPOS 2.0-plugin nodig. Als slechts één van beide is bijgewerkt, geeft de app aan welke: [AUTH331](../error-codes/AUTH331.mdx) wanneer de plugin ouder is, [SYNC341](../error-codes/SYNC341.mdx) wanneer de app ouder is.
+
+## Wat er sinds 1.9 is veranderd {#what-changed-in-v1100}
+
+<Accordion>
+<AccordionItem question="1.9, 1.10–1.11 en 2.0 naast elkaar">
+
+| | 1.9 | 1.10–1.11 | 2.0 |
+| --- | --- | --- | --- |
+| Synchronisatie-eenheid | Eén gegevensstroom per schermquery | Eén engine, een database per site, winkel en kassamedewerker | Hetzelfde |
+| Aanleiding om gegevens op te halen | Een scherm dat wordt geopend | Een scherm dat aangeeft wat het nodig heeft | Hetzelfde |
+| Wijzigingen detecteren | Periodieke controles en elk uur een volledige controle | Wijzigingslogboek met voorwaardelijke `304`-antwoorden | Hetzelfde |
+| Totalen van je winkel | Niet bijgehouden | Per soort record, met *controleren…* | Hetzelfde |
+| Geweigerde wijzigingen | Buiten beeld opnieuw geprobeerd | Blijvend opgeslagen wachtrij, herstelpaneel, geen stille nieuwe pogingen | Hetzelfde |
+| Browsertabbladen | Niet gecoördineerd | Elk tabblad actief, één gekozen verzender | Eén actief tabblad per site, de andere in de wachtstand |
+| Opslag | IndexedDB (web), SQLite (apps) | Opslag in het bestandssysteem (OPFS op het web) | SQLite op elk platform |
+| Synchronisatie afstellen | Vaste instellingen | Profielen en schuifregelaars in Winkelstatus | Hetzelfde |
+| Lokaal zoeken | Zoeken op het begin van woorden | Zoeken op tekstdelen | Elk woord, ongeacht de lengte, overal in het record |
+
+</AccordionItem>
+</Accordion>
+
+Zie [Synchronisatieprestaties](sync-performance.mdx) voor de verzoeklimieten, het terugschakelen wanneer je winkel moeite heeft om te antwoorden en de gemeten cijfers.
+
+## Gerelateerde documentatie {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Winkelstatus" to="/troubleshooting/store-health" description="Waar de winkeleigenaar dit alles op de kassa kan bekijken." />
+  <LinkCard title="Synchronisatieprestaties" to="/developers/sync-performance" description="Verzoeklimieten en terugschakelen wanneer je winkel het druk heeft." />
+  <LinkCard title="Upgraden naar 2.0" to="/getting-started/upgrade-2-0" description="Wat je op elke kassa moet doen voordat je bijwerkt." />
+</LinkCards>

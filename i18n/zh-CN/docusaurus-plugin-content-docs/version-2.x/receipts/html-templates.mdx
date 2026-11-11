@@ -1,0 +1,372 @@
+---
+title: HTML 模板
+slug: /settings/receipt-templates/html-templates
+sidebar_label: HTML 模板
+sidebar_position: 3
+description: "使用 Mustache 占位符编写和编辑 HTML 收据模板，通过真实订单检查效果，并修正常见问题。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import checkoutManifest from '@site/static/img/2.x/pos/checkout/en/manifest.json';
+
+**WP 后台：** 在 `WP Admin → POS → Templates` 中编辑 HTML 模板。
+
+编辑 HTML 模板即可修改收据的文字或布局：这种收据像网页一样排版，用 `{{placeholders}}` 标记订单详情的填入位置。如需切换到其他现成的收据，请参阅[自定义收据](./customise.mdx)。
+
+<details>
+<summary>选择 HTML 还是热敏模板？</summary>
+
+浏览器打印、PDF、A4 发票以及支持打印网页的打印机均可使用 HTML。对于接收 ESC/POS 指令的收据打印机，请使用[热敏模板](./thermal-templates.mdx)。我们建议大多数店铺使用 HTML 引擎。POS 会直接在设备上填充 HTML 模板，因此即使与店铺的连接中断，也能预览和打印。
+
+</details>
+
+快速跳转：[编写模板](#write) · [语法](#syntax) · [常用模式](#common-patterns) · [问题排查](#goes-wrong)
+
+## 编写模板 {#write}
+
+无需从空白页面开始：复制模板库中的模板，再编辑副本。
+
+1. 在 **模板库** 中，找到最接近您需求的卡片，点击 **使用模板**。您的副本会出现在 **您的模板** 下，模板库中的原始模板保持不变。
+2. 打开副本。**字段** 列出了所有占位符：搜索所需字段，再点击 **插入**，无需记住字段名称。输入内容时，**预览** 会用 **示例数据** 或您的某个 POS 订单填充模板。
+3. 按需修改。例如，要在 **标准收据** 的副本中添加退货说明，请在接近末尾的位置找到 `{{i18n.thank_you_purchase}}` 。其后的 `</div>` 用于关闭页脚。在这个 `</div>`之后复制粘贴以下内容：
+
+   ```html
+   <div style="text-align: center;">
+     Returns within 30 days
+     with this receipt.
+   </div>
+   ```
+
+   直接输入的文字会按原样打印，固定使用一种语言。请像此处一样，将样式写在各个元素上(`style="…"`)，不要放在 `<style>` 块中：请参阅 [打印时样式可能丢失](#styling)。
+
+4. 点击 **更新**。此后，使用该副本打印的每张收据都会体现您的修改，例如页脚消息下方的退货说明。
+5. 在 **您的模板** 中打开 **启用**，这样 POS 收银时就能选择该模板。
+
+   <details>
+   <summary>将此模板设为收银时的首选模板</summary>
+
+   收银界面会按 **您的模板** 中的顺序列出已启用的模板，并在每笔销售开始时使用第一个模板。拖动模板所在行的 **≡** 手柄，或使用其 **操作** 列中的 **↑** 和 **↓** 按钮，即可将模板上移。使用独立模板列表的店铺会保留自己的排序。请参阅[收银员在收银界面看到的内容](./customise.mdx#at-the-till)。
+
+   </details>
+
+6. 正式用于收银前，请先在 POS 中检查：参阅[在 POS 中检查](#check)。
+
+### 在 POS 中检查 {#check}
+
+编辑器的预览能容忍某些错误，但 POS 不能，因此只有确认模板在收银界面显示正确后，才能正式使用。
+
+**快速查看布局** 时，无需完成销售：将一件商品放入购物车，点击 **结账** 旁的 **⋮**，再点击 **打印**。系统会为购物车中的订单打开模板选择器和预览。即使订单尚未传到店铺，也能在这里预览 HTML 模板；**旧版 PHP 模板** 则会要求您先同步订单。
+
+**正式用于收银前**，请用一笔真实销售核对所有金额：
+
+1. 录入一笔与繁忙时段类似的订单：包含折扣明细、应税商品，并使用需要找零的现金付款。
+2. 在付款完成界面的 **模板** 下选择您的模板。
+3. 查看预览：名称、价格、折扣、税费明细、实收金额和找零。
+4. 按实际收银时的方式，使用 **打印收据** 或 **下载 PDF**，并检查打印出的纸质收据或文件。[打印时样式可能丢失](#styling)。
+
+付款完成界面，已选中模板库中的 **标准收据**：
+
+<JourneyShot manifest={checkoutManifest} device="tablet" step={6} offsets={[[279, 0], [260, 0], [292, 0], [292, 0], [0, 0], [48, -38], [49, -38], [128, 0]]} alt="现金销售后的付款完成界面，已选中标准收据 HTML 模板：找零与已付金额、模板和打印机选择器、已填充内容的收据预览及其缩放控件，以及通过电子邮件发送收据、下载 PDF、打印收据和新销售按钮">
+
+1. **找零** — 应退还的金额。在收据中，对应 `{{#payments}}` 内的 `{{change_display}}`。
+2. **付款方式** — 付款金额及方式：在收据中分别对应 `{{amount_display}}` 和 `{{method_title}}`。
+3. **模板** — 在这里选择模板。列表中仅显示已启用的模板，本次选择仅对当前销售有效。请参阅[自定义收据](./customise.mdx)。
+4. **打印机** — 用于打印的设备。请参阅[打印收据](./at-checkout.mdx#print-receipt)。
+5. **预览** — POS 用本次销售数据填充模板后，显示收据的打印效果。使用 **−** 和 **+** 进行缩放。
+6. **打印收据** — 使用上方所选的打印机打印收据。
+7. **通过电子邮件发送收据** — 将收据发送给顾客。
+8. **新销售** — 为下一位顾客打开空购物车。
+
+</JourneyShot>
+
+**通过电子邮件发送收据** 旁的 **下载 PDF** 会让店铺将收据渲染为 PDF，因此需要联网。有关此界面的更多信息，请参阅[结账时的收据](./at-checkout.mdx)。
+
+:::tip 保留原始模板
+每次点击 **使用模板** 都会创建新副本。尝试修改时，可以创建两个副本（*收据 v1*、*收据 v2*），在收银界面切换使用。
+:::
+
+## 语法 {#syntax}
+
+占位符使用 [Mustache](https://mustache.github.io/mustache.5.html)，这是一种小型模板语言，本身不包含逻辑。它有三种功能：填入值、为列表中的每一项重复一个块，以及显示或隐藏一个块。
+
+### 变量 {#variables}
+
+将字段名称放在双花括号内：
+
+```html
+<h1>{{store.name}}</h1>
+<p>Order #{{order.number}}</p>
+<p>Total: {{totals.total_display}}</p>
+```
+
+以 `_display` 结尾的字段表示已按店铺设置格式化的金额（如 `$12.50`，而非 `12.5`）。[收据数据参考](./receipt-data.mdx)列出了所有字段。
+
+### 转义 {#escaping}
+
+`{{field}}` 将值作为纯文本输出：商品名称中的 `<` 会显示为 `<`，不会被当作 HTML。三重花括号 `{{{field}}}` 则将值作为 HTML 输出。打印前仍会清理这些 HTML（参阅[样式](#styling)），因此字段无法添加脚本。
+
+### 区块（循环与条件） {#sections-loops-and-conditionals}
+
+`{{#section}}...{{/section}}` 会为列表中的每一项重复该块，或在值存在时显示一次。
+
+<details>
+<summary>示例：每个订单明细占一行</summary>
+
+```html
+{{#lines}}
+<div class="line-item">
+  <span>{{name}} × {{qty}}</span>
+  <span>{{line_total_display}}</span>
+</div>
+{{/lines}}
+```
+
+</details>
+
+在区块内部，会先在当前项中查找名称，再向外查找。因此，`{{i18n.tendered}}` 可以在 `{{#payments}}` 内使用。对于 `store.address_lines` 这样的纯文本列表，`{{.}}` 表示当前项本身。
+
+### 反向区块 {#inverted-sections}
+
+当值缺失、为空、为 `false` 或 `0` 时，`{{^section}}...{{/section}}` 会显示该块。
+
+<details>
+<summary>示例：顾客姓名或“访客结账”</summary>
+
+```html
+{{#customer.id}}
+  <p>Customer: {{customer.name}}</p>
+{{/customer.id}}
+{{^customer.id}}
+  <p>Guest checkout</p>
+{{/customer.id}}
+```
+
+</details>
+
+### 本地化标签 {#localised-labels}
+
+`{{i18n.key}}` 会以店铺的语言输出标签，因此同一模板可用于所有店铺。
+
+<details>
+<summary>示例：已翻译的小计标签</summary>
+
+```html
+<th>{{i18n.subtotal}}</th>
+<td>{{totals.subtotal_display}}</td>
+```
+
+</details>
+
+标签使用店铺的 WordPress 语言，而非收银员在应用中选择的语言。[i18n 参考](./receipt-data.mdx#i18n)列出了所有键。
+
+<details>
+<summary>POS 不支持的功能</summary>
+
+- **局部模板**(`{{> name}}`)在 POS 中不会输出任何内容。请将所有内容放在同一个模板中。
+- 不支持 **Lambda 函数**（用函数代替值）：收据数据仅包含普通值。
+- **注释**(`{{! a note }}`)和更改分隔符(`{{=<% %>=}}`)的用法与标准 Mustache 相同。
+
+</details>
+
+## 常用模式 {#common-patterns}
+
+### 店铺页眉 {#store-header}
+
+`store.address_lines` 保存了已分行的地址。请循环遍历它，无需自行拼接地址字段。
+
+<details>
+<summary>示例：标志、名称、地址、电话和税务 ID</summary>
+
+```html
+<div style="text-align: center;">
+  {{#store.logo}}<img src="{{store.logo}}" alt="{{store.name}}" style="max-width: 200px;" />{{/store.logo}}
+  <h1 style="margin: 8px 0;">{{store.name}}</h1>
+  {{#store.address_lines}}<div>{{.}}</div>{{/store.address_lines}}
+  {{#store.phone}}<div>{{store.phone}}</div>{{/store.phone}}
+  {{#store.tax_ids}}<div>{{label}}: {{value}}</div>{{/store.tax_ids}}
+</div>
+```
+
+</details>
+
+标志来自店铺设置，而非模板。请参阅[自定义收据](./customise.mdx)。
+
+### 带折扣的订单明细 {#line-items-with-discounts}
+
+明细的 `discounts` 以正数表示折扣金额，无折扣时为 `0`。Mustache 将 `0` 视为空，因此 `{{#discounts}}...{{/discounts}}` 仅在有折扣的明细中显示该块。
+
+<details>
+<summary>示例：每条明细及其折扣</summary>
+
+```html
+{{#lines}}
+<div class="line-item" style="display: flex; justify-content: space-between;">
+  <div>
+    <div>{{name}} × {{qty}}</div>
+    {{#discounts}}
+      <div style="font-size: 0.9em;">
+        <s>{{line_subtotal_display}}</s> −{{discounts_display}}
+      </div>
+    {{/discounts}}
+  </div>
+  <div>{{line_total_display}}</div>
+</div>
+{{/lines}}
+```
+
+</details>
+
+`line_subtotal_display` 表示明细折扣前的金额，`line_total_display` 表示折扣后的金额。有关促销价和节省金额，请参阅[显示原价和节省金额](./receipt-data.mdx#displaying-regular-price-and-savings)。
+
+### 税费汇总 {#tax-summary}
+
+`tax_summary` 中每种税率占一行。`rate` 是百分比数值，例如 `10`。它可能为空（税率为 0%，或收据在离线时打印），因此使用 `{{#rate}}` 条件可避免收据上出现没有数值的 `(%)`。
+
+<details>
+<summary>示例：每种税率占一行</summary>
+
+```html
+{{#tax_summary}}
+<div class="tax-line" style="display: flex; justify-content: space-between;">
+  <span>{{label}}{{#rate}} ({{rate}}%){{/rate}}</span>
+  <span>{{tax_amount_display}}</span>
+</div>
+{{/tax_summary}}
+```
+
+</details>
+
+
+### 付款详情 {#payment-details}
+
+在订单传到店铺之前就打印了收据，例如离线时打印？此时收据不会包含实收现金和找零。请在订单同步后重新打印。无论是否同步，付款完成界面都会显示找零。
+
+<details>
+<summary>原因及包含实收金额与找零的示例</summary>
+
+付款完成界面的 **找零** 由 POS 自行计算。收据的 `tendered` 和 `change` 字段来自店铺，因此在订单同步前为空，`{{#tendered}}` 块会被跳过。
+
+```html
+{{#payments}}
+<div class="payment" style="display: flex; justify-content: space-between;">
+  <span>{{method_title}}</span>
+  <span>{{amount_display}}</span>
+</div>
+{{#tendered}}
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.tendered}}</span><span>{{tendered_display}}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>{{i18n.change}}</span><span>{{change_display}}</span>
+  </div>
+{{/tendered}}
+{{/payments}}
+```
+
+</details>
+
+
+### 条形码和二维码 {#barcodes-and-qr-codes}
+
+使用与[热敏模板](./thermal-templates.mdx)相同的元素。将值放在元素内部，POS 会在该位置绘制条形码或二维码。
+
+<details>
+<summary>示例：Code 128、EAN-13 和二维码</summary>
+
+```html
+<!-- Code 128 barcode of the order number -->
+<barcode type="code128" height="40">{{order.number}}</barcode>
+
+<!-- EAN-13 of each product, when your SKUs are EAN numbers -->
+{{#lines}}<barcode type="ean13" height="30">{{sku}}</barcode>{{/lines}}
+
+<!-- QR code: size sets how big, 4 by default -->
+{{#order.payment_url}}<qrcode size="4">{{order.payment_url}}</qrcode>{{/order.payment_url}}
+```
+
+</details>
+
+- **务必设置 `type`。** 如果不设置，POS 会绘制 Code 128，而店铺生成的 PDF 会绘制二维码。
+- **订单号请使用 Code 128。** 仅当 SKU 是有效的 EAN 商品编码时才使用 EAN-13。
+
+<details>
+<summary>条形码类型、二维码尺寸和使用占位符指定类型</summary>
+
+- **请从以下类型中选择：** `code128`、`code39`、`code93`、`ean13`、`ean8`、`upca`、`upce`、`codabar`、`itf` 和 `qrcode`。POS 可以绘制其他 [bwip-js 类型](https://github.com/metafloor/bwip-js/wiki/Supported-Barcode-Types)，例如 `pdf417`，但编辑器预览和 PDF 会将这些类型绘制为 Code 128。
+- **使用 `<qrcode size="…">` 绘制二维码。** `<barcode type="qrcode">` （或 `qr`）也能绘制二维码，但 POS 根据 `height` 确定尺寸，PDF 则根据 `size`确定尺寸，因此两者不一致。
+- **`type` 可以使用占位符**，因为占位符会在条形码或二维码绘制前填充：
+
+  ```html
+  <barcode type="{{presentation_hints.order_barcode_type}}">{{order.number}}</barcode>
+  ```
+
+</details>
+
+如果值不符合所选类型的要求，POS 会显示 **条形码错误** 或 **二维码错误** 块，其中包含该值。请修正值，或选择支持该值的类型。PDF 则会直接打印该值。
+
+## 样式 {#styling}
+
+与模板库中的模板一样，使用 `style="…"` 属性为每个元素设置 **内联** 样式：
+
+```html
+<div style="font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <strong style="font-size: 16px;">{{store.name}}</strong>
+  </div>
+  <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid black; padding-top: 8px;">
+    <span>{{i18n.total}}</span>
+    <span>{{totals.total_display}}</span>
+  </div>
+</div>
+```
+
+:::warning 打印时样式可能丢失
+使用 `<style>` 块时，模板编辑器的预览看起来没有问题，因为编辑器会按原样显示您编写的 HTML。店铺生成的 PDF 和移动应用会在打印前移除 `<style>` 块，因此同一张收据在这些环境中打印时会失去样式。请将所有样式写为内联样式。
+:::
+
+<details>
+<summary>哪些 HTML 会被移除？</summary>
+
+打印前会清理收据，因此模板无法运行代码。无论在哪里打印，都会移除脚本、 `<link>` 和 `<meta>` 标签，以及 `on…` 属性。店铺生成的 PDF 会移除 `<style>` 块、 `<head>` 及其他文档级标签；移动应用也会移除 `<style>` 块。
+
+</details>
+
+:::tip 为黑白打印设计
+收据通常使用黑白热敏打印机或激光打印机打印。请通过 **字体粗细、留白、字号和水平线** 来体现层次，而非彩色填充。彩色背景和灰色文字可能消失，也可能打印成模糊的半色调图案。
+:::
+
+:::tip 没有热敏打印机，也想要热敏纸收据的外观？
+在模板库的 **窄版收据** 卡片上点击 **使用模板**。这是一种宽 72 mm 的等宽字体布局，通过浏览器、支持打印网页的打印机（Sunmi 和 iMin 设备），以及普通纸张均可清晰打印。对于直接接收 ESC/POS 指令的打印机，请改用 **简易热敏收据**（58mm 或 80mm）。
+:::
+
+## 最佳实践 {#best-practices}
+
+- 金额请 **使用 `_display` 字段**：它们已包含店铺的货币格式。
+- **使用 `{{i18n.*}}` 标签** 代替直接输入的文字，使模板适用于各店铺的语言。
+- **将可选字段放在区块中**，即 `{{#field}}...{{/field}}`，这样字段为空时就不会打印任何内容。
+- **以模板库中的模板为起点**，无需从空白页面开始。
+- 正式用于收银前，使用包含折扣、税费明细和现金付款的真实订单，**在 POS 中检查**。
+
+## 问题排查 {#goes-wrong}
+
+**编辑器中显示样式，收据上却没有。** 请改用内联样式。参阅[打印时样式可能丢失](#styling)。
+
+**字段没有输出任何内容。** 对照[收据数据参考](./receipt-data.mdx)检查字段名称；名称拼写错误或未知字段会输出空白，不会报错。在区块内部，会先在当前项中查找名称。
+
+**收据显示条形码错误块。** 该值不符合条形码类型的要求。请参阅[条形码和二维码](#barcodes-and-qr-codes)。
+
+**收据上没有实收金额和找零。** 收据是在离线状态下、订单传到店铺之前打印的；付款完成界面仍会显示找零。订单同步后，请重新打印。参阅[离线模式](../getting-started/offline.mdx)。
+
+**模板未出现在收银界面的模板列表中。** 该模板尚未 **启用**，或者店铺使用了独立的模板列表。请参阅[自定义收据](./customise.mdx#per-store-assignments)。
+
+**编辑器预览显示“模板渲染错误”。** 某个区块没有闭合，或结束标签与开始标签不匹配。每个 `{{#x}}` 和 `{{^x}}` 都需要对应的 `{{/x}}`。
+
+## 相关文档 {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/settings/receipt-templates/receipt-data" title="收据数据参考" description="模板可以打印的所有字段" />
+  <LinkCard to="/settings/receipt-templates/thermal-templates" title="热敏模板" description="适用于 ESC/POS 收据打印机的模板" />
+  <LinkCard to="/settings/receipt-templates/customise-receipt" title="自定义收据" description="选择、复制和切换模板" />
+</LinkCards>
