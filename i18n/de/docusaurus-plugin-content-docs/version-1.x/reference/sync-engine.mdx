@@ -19,108 +19,108 @@ Der Wechsel des Geltungsbereichs erfolgt **transaktional**: Die Datenebene der n
 
 Bei Upgrades werden lokale Datenbanken niemals an Ort und Stelle migriert — die App startet eine frische Datenbank und lädt vom Server neu herunter, der stets die maßgebliche Kopie besitzt (siehe [Upgrade von v1.9](#upgrading-from-v19)).
 
-Bei Pro-Installationen mit mehreren Shops weist jede Sync-Anfrage ihren Shop aus, sodass ein an der Kasse geänderter Preis den Preis dieses Shops aktualisiert und nicht den des Onlineshops.
+Bei Pro-Installationen mit mehreren Filialen enthält jede Sync-Anfrage die Kennung ihrer Filiale. Ein an der Kasse geänderter Preis aktualisiert somit den Preis dieser Filiale und nicht den des Onlineshops.
 
 ## Was im Hintergrund läuft {#sync-lanes}
 
-Alles, was die Engine planmäßig erledigt, ist eine **Spur** (lane) — eine benannte, begrenzte Einheit an Hintergrundarbeit. Die Spuren teilen sich in drei Gruppen auf:
+Alles, was die Engine nach einem Zeitplan erledigt, ist eine **Spur** — eine benannte, begrenzte Einheit an Hintergrundarbeit. Die Spuren sind in drei Gruppen unterteilt:
 
-| Gruppe | Spuren | Standard-Takt |
+| Gruppe | Spuren | Standardtakt |
 | --- | --- | --- |
 | **Abruf** | Änderungsprüfung (Änderungssignal) | 10 s – 5 min, je nach Ihrer [Sync-Voreinstellung](/1.x/support/store-health#sync-presets) |
-| | Aktuelle Bestellungen, Erstbefüllung Produktkatalog, Erstbefüllung Referenzdaten | ~5 min |
-| | Kunden-Nachladen (nur im Leerlauf) | ~5 min |
-| **Versand** | Warteschlange leeren — sendet lokale Änderungen aus der Warteschlange | ~10 s |
+| | Aktuelle Bestellungen, Erstbefüllung des Produktkatalogs, Erstbefüllung der Referenzdaten | ~5 min |
+| | Schrittweises Nachladen von Kunden (nur im Leerlauf) | ~5 min |
+| **Versand** | Warteschlange abarbeiten — sendet vorgemerkte lokale Änderungen | ~10 s |
 | **Wartung** | Integritäts- und Löschprüfungen, Aktualisierung der Server-Gesamtzahlen | alle paar Minuten bis ~17 min |
 
 Für jede Spur gelten zwei Eigenschaften:
 
-- **Jede Spur deklariert eine Obergrenze an Anfragen pro Durchlauf.** Keine Spur darf sich in einem Durchlauf auf eine unbegrenzte Anzahl von Anfragen auffächern; größere Aufgaben laufen in begrenzten Stapeln mit fortsetzbaren Cursorn. Das ist eine zentrale Design-Invariante und wird ausführlich unter [Sync-Leistung](/1.x/reference/sync-performance) behandelt.
-- **Wartung tritt hinter den Kassierer zurück.** Prüfungen und Hintergrund-Vorbefüllungen laufen erst nach der interaktiven Arbeit, die eine Kasse verkaufsbereit macht, niemals davor — und sie werden als Erstes pausiert, wenn Ihr Server Anzeichen von Überlastung zeigt.
+- **Jede Spur legt eine Anfrageobergrenze pro Durchlauf fest.** Keine Spur darf in einem Durchlauf eine unbegrenzte Anzahl von Anfragen auslösen; größere Aufgaben verwenden begrenzte Stapel mit fortsetzbaren Cursorn. Dies ist eine unveränderliche Grundregel des Designs, die unter [Sync-Leistung](/1.x/reference/sync-performance) ausführlich erläutert wird.
+- **Wartung hat gegenüber dem Kassierer Nachrang.** Prüfungen und Vorbefüllungen im Hintergrund laufen erst nach den interaktiven Vorgängen, die eine Kasse verkaufsbereit machen, niemals davor. Sie werden als Erstes pausiert, wenn Ihr Server Anzeichen von Überlastung zeigt.
 
-Die obigen Taktraten sind Standardwerte. Prüfintervall und Datensätze pro Anfrage können Händler pro Gerät unter **Shop-Zustand → Leistung** im POS anpassen — siehe [Shop-Zustand](/1.x/support/store-health).
+Die oben genannten Taktungen sind Standardwerte. Händler können das Prüfintervall und die Datensätze pro Anfrage im POS unter **Shop-Zustand → Leistung** pro Gerät anpassen — siehe [Shop-Zustand](/1.x/support/store-health).
 
-## Wie das POS von Änderungen erfährt {#change-signal}
+## Wie der POS von Änderungen erfährt {#change-signal}
 
-Die Engine lädt Daten nicht erneut herunter, um herauszufinden, ob sie sich geändert haben. Der Server führt ein Änderungsprotokoll, und das POS ruft eine schlanke **Änderungsprüfung** ab, die genau eine Frage beantwortet: Hat sich seit meiner letzten Position etwas bewegt?
+Die Engine lädt Daten nicht erneut herunter, um festzustellen, ob sie sich geändert haben. Der Server führt ein Änderungsprotokoll, und der POS ruft regelmäßig eine schlanke **Änderungsprüfung** ab, die eine Frage beantwortet: Hat sich seit meiner letzten Position etwas geändert?
 
-- **Eine Prüfung deckt acht Sammlungen ab** — Produkte, Variationen, Steuersätze, Kunden, Gutscheine, Kategorien, Marken und Schlagwörter. Bestellungen stehen bewusst nicht auf der Änderungsprüfung; ihre Aktualität stammt aus der eigenen Spur für aktuelle Bestellungen — deshalb können Produkt- und Bestellaktualisierungen in unterschiedlichen Rhythmen eintreffen.
-- **Eine untätige Kasse kostet fast nichts.** Die Engine sendet bedingte Anfragen: Hat sich nichts geändert, antwortet der Server mit einem einzigen `304 Not Modified` ohne Inhalt. Ein ruhiger Shop pendelt sich auf eine winzige Antwort pro Prüfung ein.
-- **Prüfungen werden um ±20 % gestreut**, damit mehrere Kassen einer Website auseinanderdriften, statt den Server in synchronisierten Schüben zu treffen.
-- **Verlangsamung im Leerlauf:** Nach 10 Minuten ohne Interaktion werden die Prüfabstände gedehnt (bis zu einer Untergrenze von 60 Sekunden). Jede echte Aktivität — eine Berührung, ein Tastendruck, ein akzeptierter Barcode-Scan — kehrt sofort zum vollen Takt zurück und löst umgehend eine Nachhol-Prüfung aus. Die Verlangsamung dehnt das Intervall immer nur; sie fragt nie häufiger ab als eingestellt.
-- **Eine tagelang geschlossene Kasse setzt neu auf, statt die Historie nachzuspielen.** Ist das Änderungsprotokoll zu weit über die letzte Position der Kasse hinausgelaufen, würde das Nachspielen jeder Zeile Hunderte von Anfragen kosten. Stattdessen springt die Engine mit ihrem Cursor an den Anfang und prüft den aktuellen Serverzustand dessen erneut, was das Gerät bereits besitzt — die Kosten skalieren also mit dem Umfang der lokalen Kopie und nicht damit, wie lange die Kasse abwesend war.
+- **Eine Prüfung deckt acht Sammlungen ab** — Produkte, Variationen, Steuersätze, Kunden, Gutscheine, Kategorien, Marken und Schlagwörter. Bestellungen sind bewusst von der Änderungsprüfung ausgenommen; sie werden über eine eigene Spur für aktuelle Bestellungen aktualisiert. Deshalb können Produkt- und Bestellaktualisierungen in unterschiedlichen Rhythmen eintreffen.
+- **Eine untätige Kasse verursacht fast keinen Aufwand.** Die Engine sendet bedingte Anfragen: Hat sich nichts geändert, antwortet der Server mit einem einzigen `304 Not Modified` ohne Antwortinhalt. Bei einer ruhigen Filiale bleibt es bei einer winzigen Antwort pro Prüfung.
+- **Prüfungen werden um ±20% zeitlich gestreut**, damit mehrere Kassen einer Website zu unterschiedlichen Zeiten anfragen, statt den Server in synchronisierten Schüben zu belasten.
+- **Verlangsamung im Leerlauf:** Nach 10 Minuten ohne Interaktion verlängern sich die Prüfabstände (auf mindestens 60 Sekunden). Jede tatsächliche Aktivität — eine Berührung, ein Tastendruck, ein akzeptierter Barcode-Scan — stellt sofort den vollen Takt wieder her und löst eine unmittelbare Nachholprüfung aus. Die Verlangsamung verlängert das Intervall ausschließlich; sie führt nie zu häufigeren Abfragen als konfiguriert.
+- **Eine tagelang geschlossene Kasse gleicht den aktuellen Stand neu ab, statt die Historie nachzuvollziehen.** Ist das Änderungsprotokoll zu weit über die letzte Position der Kasse hinaus fortgeschritten, würde das Nachvollziehen jeder Zeile Hunderte von Anfragen verursachen. Stattdessen setzt die Engine ihren Cursor auf den neuesten Stand und prüft den aktuellen Serverzustand der bereits auf dem Gerät vorhandenen Daten erneut — der Aufwand hängt somit vom Umfang der lokalen Kopie ab und nicht davon, wie lange die Kasse nicht verbunden war.
 
-## Wie Bildschirme an ihre Daten kommen {#declared-demand}
+## Wie Bildschirme ihre Daten erhalten {#declared-demand}
 
-In v1.10.0 führen Bildschirme keine eigene Synchronisierung mehr aus. **Ein Bildschirm erklärt, was er anzeigt — Suchbegriff, Filter, Sortierung, Seite — und die Engine entscheidet, ob dafür überhaupt eine Anfrage nötig ist.** Jede Erklärung wird auf eine von drei Arten aufgelöst:
+In v1.10.0 führen Bildschirme keine eigene Synchronisierung aus. **Ein Bildschirm meldet, was er anzeigt — Suchbegriff, Filter, Sortierung, Seite — und die Engine entscheidet, ob dafür überhaupt eine Anfrage erforderlich ist.** Jede Bedarfsmeldung endet mit einem von drei Ergebnissen:
 
-- **Abgerufen** — die Engine hat dafür Arbeit auf der Leitung geleistet.
-- **Lokal bedient** — das Gerät hatte die Antwort bereits, oder ein identischer kürzlicher Abruf deckt sie ab.
-- **Überholt** — der Bildschirm ist weitergezogen (Sie haben gescrollt oder einen Filter geändert) und eine neuere Erklärung hat sie ersetzt. Das ist Routine, kein Fehler.
+- **Abgerufen** — die Engine hat Daten über das Netzwerk abgerufen, um den Bedarf zu erfüllen.
+- **Lokal bedient** — das Gerät hatte die Antwort bereits, oder ein identischer kürzlich erfolgter Abruf deckt den Bedarf ab.
+- **Überholt** — die Ansicht hat sich geändert (Sie haben gescrollt oder einen Filter geändert), und eine neuere Bedarfsmeldung hat die vorherige ersetzt. Das ist ein normaler Vorgang, kein Fehler.
 
-Ein Filter, der sich nur lokal beantworten lässt, gelangt nie zum Server. Und eine erfolgreiche Erklärung bedeutet nicht, dass eine Sammlung vollständig heruntergeladen ist — die Vollständigkeit wird separat verfolgt (nächster Abschnitt).
+Ein Filter, der nur lokal ausgewertet werden kann, wird nie an den Server gesendet. Eine erfolgreich erfüllte Bedarfsmeldung bedeutet zudem nicht, dass eine Sammlung vollständig heruntergeladen wurde — die Vollständigkeit wird separat erfasst (nächster Abschnitt).
 
-Nicht alles wird vorsorglich heruntergeladen, und was beim Start auf dem Gerät liegt, ist je nach Sammlung unterschiedlich:
+Nicht alles wird vorab heruntergeladen. Welche Daten beim Start auf dem Gerät vorhanden sind, hängt von der Sammlung ab:
 
-1. **Vorbefüllt** — Produkte füllen sich über eine begrenzte Katalog-Erstbefüllung; Steuersätze werden beim Start geholt (ein POS kann ohne sie nicht rechnen).
-2. **Bei Bedarf, plus Nachladen im Leerlauf** — Kunden haben keine vorsorgliche Erstbefüllung. Das Kunden-Nachladen holt pro Leerlaufintervall einen kleinen Stapel und setzt vollständig aus, sobald der Kassierer aktiv ist; neue und geänderte Kunden kommen über die Änderungsprüfung an.
-3. **Beim ersten Öffnen abgerufen** — Kategorien, Schlagwörter, Marken und Gutscheine werden geholt, wenn ein Kassierer sie zum ersten Mal öffnet. Eine Sammlung, die niemand öffnet, erzeugt niemals eine einzige Anfrage.
+1. **Vorbefüllt** — Produkte werden über eine begrenzte Katalog-Erstbefüllung geladen; Steuersätze werden beim Start abgerufen (ohne sie kann ein POS keine Warenkorbberechnungen durchführen).
+2. **Bei Bedarf, zusätzlich schrittweise im Leerlauf** — Kunden werden nicht vorab geladen. Pro Leerlaufintervall wird ein kleiner Stapel von Kunden heruntergeladen; ist der Kassierer aktiv, entfällt dieser Abruf vollständig. Neue oder geänderte Kunden werden über die Änderungsprüfung geladen.
+3. **Beim ersten Öffnen abgerufen** — Kategorien, Schlagwörter, Marken und Gutscheine werden geladen, wenn ein Kassierer sie erstmals öffnet. Eine Sammlung, die niemand öffnet, erzeugt zu keinem Zeitpunkt Anfragen.
 
-Variationsauswahlen aktualisieren zusätzlich Preis und Lagerbestand einmal pro Öffnen, sodass eine bereits vorhandene Variation sofort erscheint, aber nie einen tagealten Lagerbestand anzeigt.
+Die Variationsauswahl aktualisiert zusätzlich bei jedem Öffnen einmal Preis und Lagerbestand. So wird eine lokal vorhandene Variation sofort angezeigt, ohne einen tagealten Lagerbestand auszugeben.
 
-## „Ist alles heruntergeladen?“ — ehrliche Abdeckung {#coverage}
+## „Ist alles heruntergeladen?“ — ehrliche Abdeckungsanzeige {#coverage}
 
-Eine Anzeige wie *„1.240 von 5.000 Produkten“* braucht eine **serverseitige** Gesamtzahl als Nenner. Die Engine führt eine solche pro Sammlung (etwa alle 15 Minuten aktualisiert, meist kostenlos — echte Sync-Antworten enthalten die Gesamtzahl bereits, sodass eine eigene Anfrage selten nötig ist) und hält sich an einen strengen Ehrlichkeitsvertrag:
+Eine Anzeige wie *„1,240 von 5,000 Produkten“* benötigt eine **serverseitige** Gesamtzahl als Bezugsgröße. Die Engine hält eine solche Zahl pro Sammlung vor (ungefähr alle 15 Minuten aktualisiert, meist ohne zusätzlichen Aufwand — reguläre Sync-Antworten enthalten die Gesamtzahl bereits, sodass eine eigene Anfrage selten nötig ist) und befolgt strenge Regeln für eine ehrliche Anzeige:
 
-- Eine veraltete oder fehlende Server-Gesamtzahl wird als *wird geprüft …* angezeigt — niemals stillschweigend durch eine lokale Zählung ersetzt. Ein lokaler Nenner würde immer 100 % ergeben und genau die Lücke verbergen, die die Zahl sichtbar machen soll.
-- Wenn die Engine für die Vollständigkeit nicht bürgen kann, lautet das Urteil *unbekannt*, und die Oberfläche kennzeichnet den Wert als lokale Zählung.
-- Der Abdeckungsbalken für Bestellungen misst gegen die **gesamte** Bestellhistorie auf dem Server, während die Kasse bewusst nur offene und aktuelle Bestellungen vorhält — eine gesunde Kasse wird dort also planmäßig als teilweise abgedeckt angezeigt.
+- Eine veraltete oder fehlende Server-Gesamtzahl wird als *wird geprüft …* angezeigt und niemals stillschweigend durch die lokale Anzahl ersetzt. Mit einer lokalen Bezugsgröße würde die Anzeige immer 100% ergeben und genau die Lücke verbergen, die sie sichtbar machen soll.
+- Kann die Engine die Vollständigkeit nicht bestätigen, lautet das Ergebnis *unbekannt*, und die Oberfläche kennzeichnet den Wert als lokale Anzahl.
+- Der Abdeckungsbalken für Bestellungen bezieht sich auf die **gesamte** Bestellhistorie des Servers, während die Kasse bewusst nur offene und aktuelle Bestellungen vorhält — bei einer ordnungsgemäß funktionierenden Kasse wird hier daher erwartungsgemäß eine teilweise Abdeckung angezeigt.
 
-Diese Zahlen erscheinen unter **Shop-Zustand → Datenbank**, zusammen mit dem Meilenstein *Verkaufsbereit*, der umspringt, sobald das erste Produkt auf dem Gerät liegt — offline zu sein blockiert ihn nicht, denn genau darum geht es beim Offline-Verkauf. Siehe [Shop-Zustand](/1.x/support/store-health).
+Diese Zahlen erscheinen unter **Shop-Zustand → Datenbank**, zusammen mit dem Meilenstein *Verkaufsbereit*, der erreicht ist, sobald das erste Produkt auf dem Gerät liegt. Eine fehlende Verbindung verhindert dies nicht, denn genau darum geht es beim Offline-Verkauf. Siehe [Shop-Zustand](/1.x/support/store-health).
 
 ## Wie Änderungen zurück in Ihren Shop gelangen {#write-path}
 
-Jeder lokale Schreibvorgang — ein Verkauf, eine Produktänderung, eine Kundenaktualisierung — landet zuerst in einer **dauerhaften ausgehenden Warteschlange** auf dem Gerät, und eine Versandspur schiebt die Warteschlange alle paar Sekunden zu WooCommerce. Das macht den Offline-Verkauf sicher: Ein ohne Verbindung abgerechneter Verkauf bleibt in der Warteschlange und wird gesendet, sobald die Verbindung zurückkehrt.
+Jeder lokale Schreibvorgang — ein Verkauf, eine Produktänderung, eine Kundenaktualisierung — landet zunächst in einer **dauerhaften ausgehenden Warteschlange** auf dem Gerät. Eine Versandspur überträgt die Einträge alle paar Sekunden an WooCommerce. Das macht den Offline-Verkauf sicher: Ein ohne Verbindung erfasster Verkauf bleibt in der Warteschlange und wird gesendet, sobald die Verbindung wiederhergestellt ist.
 
 Wichtige Details:
 
-- **Warenkorb-Schreibvorgänge werden pro Bestellung serialisiert.** Schnelle Scanner-Salven werden nacheinander angewendet, und ein wiederholtes Hinzufügen wird mit der Position zusammengeführt, die es dupliziert, statt eine zweite Position in die Warteschlange zu stellen.
-- **Bestellbestätigungen übernehmen die Kopie des Servers.** WooCommerce vergibt beim Anlegen IDs für Bestellpositionen; die Engine übernimmt die bestätigte Bestellung, damit spätere Aktualisierungen zu diesen Positionen passen, statt Duplikate anzuhängen. Die Übernahme ist zurückhaltend — sie überschreibt nie eine lokale Änderung, die der Server noch nicht gesehen hat, und gilt nur für Bestellungen.
-- **Bei einem Konflikt beim Schreiben einer Bestellung versucht die Engine einmal, ihn selbst zu beheben.** Wenn beim Schreiben einer Bestellung eine neuere Serverkopie entgegenkommt, gleicht die Engine die Daten ab und wiederholt den Vorgang genau einmal. Falls das weiterhin nicht gelingt, wird der Konflikt gemeldet, damit Sie ihn beheben können, statt unbemerkt in einer Schleife erneut aufzutreten.
-- **Ein Schreibvorgang, den der Server dauerhaft ablehnt, wird nie stillschweigend wiederholt.** Er wird mit der Begründung des Servers geparkt und unter **Shop-Zustand → Datenbank** als *„Änderungen haben Ihren Server nie erreicht“* angezeigt, mit zwei ausdrücklichen Aktionen: **Erneut senden** (baut die Anfrage aus dem Datensatz in seinem aktuellen Zustand neu auf, sodass spätere Korrekturen berücksichtigt werden) und **Verwerfen**. Es gibt keine automatische Wiederholschleife — die Wiederherstellung ist immer eine sichtbare, bewusste Handlung. Die Anleitung für Händler finden Sie unter [Shop-Zustand](/1.x/support/store-health#database).
+- **Warenkorb-Schreibvorgänge werden pro Bestellung nacheinander ausgeführt.** Schnell aufeinanderfolgende Scans werden einzeln verarbeitet. Wird derselbe Artikel erneut hinzugefügt, wird er mit der vorhandenen Position zusammengeführt, statt eine zweite Position einzureihen.
+- **Bei Bestellbestätigungen wird die Serverkopie übernommen.** WooCommerce vergibt beim Erstellen IDs für die Bestellpositionen; die Engine übernimmt die bestätigte Bestellung, damit spätere Aktualisierungen die richtigen Positionen ändern, statt Duplikate anzuhängen. Die Übernahme erfolgt vorsichtig: Sie überschreibt niemals eine lokale Änderung, die der Server noch nicht erhalten hat, und gilt nur für Bestellungen.
+- **Bei einem Schreibkonflikt einer Bestellung erfolgt einmalig eine automatische Behebung.** Kollidiert ein Schreibvorgang mit einer neueren Serverkopie, gleicht die Engine die Daten ab und versucht den Vorgang genau einmal erneut. Gelingt er weiterhin nicht, wird der Konflikt zur manuellen Behebung angezeigt, statt unbemerkt in einer Schleife wiederholt zu werden.
+- **Ein vom Server dauerhaft abgelehnter Schreibvorgang wird niemals stillschweigend wiederholt.** Er wird mit der Begründung des Servers zurückgestellt und unter **Shop-Zustand → Datenbank** als *„Änderungen haben Ihren Server nie erreicht“* angezeigt. Es gibt zwei ausdrückliche Aktionen: **Erneut senden** (erstellt die Anfrage anhand des aktuellen Datensatzes neu, sodass spätere Korrekturen berücksichtigt werden) und **Verwerfen**. Es gibt keine automatische Wiederholungsschleife — die Wiederherstellung ist immer eine sichtbare, bewusste Handlung. Die Anleitung für Händler finden Sie unter [Shop-Zustand](/1.x/support/store-health#database).
 
 ### Mehrere Browser-Tabs {#multi-tab}
 
-Das Web-POS in mehreren Tabs desselben Shops zu betreiben, wird unterstützt. Jeder Tab kann einen Verkauf abrechnen — Schreibvorgänge werden an die gemeinsame Warteschlange angehängt —, aber **ein gewählter Tab übernimmt den Versand** für jeden Bereich aus Shop + Kassierer. Wird dieser Tab geschlossen, befördert der Browser automatisch den nächsten. Zwei Tabs, die als unterschiedliche Kassierer angemeldet sind, sind getrennte Bereiche und verwalten jeweils ihre eigene Warteschlange.
+Der Web-POS kann für dieselbe Filiale in mehreren Tabs ausgeführt werden. Jeder Tab kann Verkäufe erfassen — Schreibvorgänge werden an die gemeinsame Warteschlange angehängt. Für jeden Geltungsbereich aus Filiale + Kassierer **übernimmt jedoch ein ausgewählter Tab den Versand**. Wird dieser Tab geschlossen, bestimmt der Browser automatisch den nächsten. Zwei Tabs, die als unterschiedliche Kassierer angemeldet sind, haben getrennte Geltungsbereiche und verwalten jeweils ihre eigene Warteschlange.
 
 ## Lokaler Speicher {#local-storage}
 
-Die Web- und Desktop-Apps speichern Daten über einen **OPFS-Worker** (Origin Private File System); die iOS- und Android-Apps nutzen dasselbe Format auf der Festplatte über eine Dateisystem-Engine. Alle vier Plattformen teilen sich ein Speicherformat und dieselben Werkzeuge zur Wiederherstellung nach Beschädigungen. (Frühere Versionen nutzten IndexedDB im Web und SQLite nativ.)
+Die Web- und Desktop-Apps speichern Daten über einen **OPFS-Worker (Origin Private File System)**; die iOS- und Android-Apps verwenden über eine Dateisystem-Engine dasselbe Format auf dem Datenträger. Alle vier Plattformen nutzen ein gemeinsames Speicherformat und dieselben Werkzeuge zur Wiederherstellung beschädigter Daten. (Frühere Versionen verwendeten IndexedDB im Web und SQLite in nativen Apps.)
 
-Wenn der lokale Datenspeicher **nicht lesbar** wird, blockiert WCPOS den Checkout und fordert zum Neuladen auf, statt einen Verkauf mit beschädigten Daten zuzulassen und dadurch Daten zu verlieren. Barcode-Scans schlagen in diesem Zustand ebenfalls sichtbar fehl, statt unbemerkt zu bleiben — so kann ein beschädigter Datenspeicher keinen Verkauf unbemerkt verschlucken, bevor die Wiederherstellungswerkzeuge ihn neu aufbauen.
+Wird der lokale Datenspeicher **unlesbar**, blockiert WCPOS den Checkout und fordert zum Neuladen auf, statt einen Verkauf auf Grundlage beschädigter Daten zuzulassen und ihn dadurch zu verlieren. Auch Barcode-Scans schlagen in diesem Zustand mit einer sichtbaren Fehlermeldung fehl. So kann ein beschädigter Datenspeicher keinen Verkauf unbemerkt verschlucken, bevor die Wiederherstellungswerkzeuge ihn neu aufbauen.
 
-Abfragen werden innerhalb der Datenbankschicht ausgeführt — Selektor, Sortierung und Seite —, sodass nur die sichtbare Zeilenseite in die App übergeht. Bei einem synthetischen Testbestand von 10.000 Bestellungen senkte diese Verlagerung die Aktualisierungskosten pro Schreibvorgang unter einem aktiven Abonnement von ~27 ms auf ~0,06 ms.
+Abfragen werden innerhalb der Datenbankschicht ausgeführt — Auswahl, Sortierung und Seitenauswahl —, sodass nur die Zeilen der sichtbaren Seite an die App übergeben werden. Bei einem synthetischen Testbestand mit 10,000 Bestellungen senkte diese Verlagerung den Aktualisierungsaufwand pro Schreibvorgang bei einem aktiven Abonnement von ~27 ms auf ~0.06 ms.
 
 ## Upgrade von v1.9 {#upgrading-from-v19}
 
-v1.10.0 migriert lokale Datenbanken nicht — es führt eine **Kalt-Neusynchronisierung** durch:
+v1.10.0 migriert keine lokalen Datenbanken, sondern führt eine **vollständige Neusynchronisierung** durch:
 
-1. Beim ersten Start öffnet die App eine frische lokale Datenbank und lädt aus Ihrem Shop neu herunter. Rechnen Sie auf jedem Gerät mit einem einmaligen vollständigen erneuten Download.
-2. Es geht nichts verloren: Ihr WooCommerce-Server ist die maßgebliche Kopie aller synchronisierten Daten. Ausstehende, noch nicht gesendete Änderungen werden **vor** dem Aufräumen der alten Daten gesendet oder sichtbar gemacht — das Upgrade kann keinen ungesendeten Verkauf vernichten.
-3. **App und Plugin erscheinen im Gleichschritt.** Clients der Version v1.10.0 sprechen die v2-Sync-API des Plugins. Wird nur eine Seite aktualisiert, schlagen Anfragen mit `rest_no_route`-Fehlern fehl — dieses Muster bedeutet „aktualisieren Sie die andere Hälfte“ und nicht „defekte Installation“.
+1. Beim ersten Start öffnet die App eine neue lokale Datenbank und lädt die Daten erneut aus Ihrem Shop herunter. Rechnen Sie auf jedem Gerät mit einem einmaligen vollständigen erneuten Download.
+2. Es geht nichts verloren: Ihr WooCommerce-Server enthält die maßgebliche Kopie aller synchronisierten Daten. Ausstehende, noch nicht gesendete Änderungen werden übertragen oder sichtbar gemacht, **bevor** alte Daten bereinigt werden — das Upgrade kann keinen ungesendeten Verkauf löschen.
+3. **App und Plugin werden aufeinander abgestimmt veröffentlicht.** Clients der Version v1.10.0 verwenden die v2-Sync-API des Plugins. Wird nur eine Seite aktualisiert, schlagen Anfragen mit `rest_no_route`-Fehlern fehl — diese Fehlermeldung bedeutet „Aktualisieren Sie auch die andere Seite“ und weist nicht auf eine beschädigte Installation hin.
 
 ## Was sich in v1.10.0 geändert hat {#what-changed-in-v1100}
 
 | | v1.9.x | v1.10.0 |
 | --- | --- | --- |
-| Einheit der Synchronisierung | Ein Replikationsstrom pro eingebundener Bildschirmabfrage | Eine Engine pro Website + Shop + Kassierer |
-| Was einen Abruf auslöst | Das Einbinden eines Bildschirms | Ein Bildschirm, der seinen Bedarf erklärt |
+| Synchronisierungseinheit | Ein Replikationsstrom pro eingebundener Bildschirmabfrage | Eine Engine pro Website + Filiale + Kassierer |
+| Auslöser eines Abrufs | Ein Bildschirm wird eingebunden | Ein Bildschirm meldet seinen Datenbedarf |
 | Änderungserkennung | Regelmäßige Abfragen + stündliche Vollprüfung | Cursor im Änderungsprotokoll mit bedingten `304`-Antworten |
-| Server-Gesamtzahlen | Nicht erfasst | Gesamtzahlen pro Sammlung mit ehrlichen *wird geprüft …*-Zuständen |
-| Fehlgeschlagene Schreibvorgänge | Undurchsichtig wiederholt | Dauerhafte Warteschlange, sichtbares Wiederherstellungsfenster, keine stillen Wiederholungen |
-| Mehrere Web-Tabs | Unkoordiniert | Ein gewählter Sender pro Bereich |
-| Lokale Suche | Wortanfang-Treffer | Teilstring-Treffer (mindestens 3 Zeichen) |
+| Server-Gesamtzahlen | Nicht erfasst | Gesamtzahlen pro Sammlung mit ehrlichem Status *wird geprüft …* |
+| Fehlgeschlagene Schreibvorgänge | Nicht nachvollziehbar wiederholt | Dauerhafte Warteschlange, sichtbares Wiederherstellungsfenster, keine stillschweigenden Wiederholungen |
+| Mehrere Web-Tabs | Unkoordiniert | Ein ausgewählter Sender pro Geltungsbereich |
+| Lokale Suche | Suche nach Wortanfängen | Suche nach Teilzeichenfolgen (mindestens 3 Zeichen) |
 | Speicher | IndexedDB (Web), SQLite (nativ) | Speicher im OPFS-Format auf allen Plattformen |
-| Sync-Feinjustierung | Fest | Voreinstellungen und Regler pro Gerät im Shop-Zustand |
+| Sync-Abstimmung | Fest vorgegeben | Voreinstellungen und Regler pro Gerät im Shop-Zustand |
 
-Zur Leistungsphilosophie hinter der Engine — Anfrageobergrenzen, Zurückschalten bei Serverlast und die gemessenen Zahlen — siehe [Sync-Leistung](/1.x/reference/sync-performance).
+Die Leistungsprinzipien der Engine — Anfrageobergrenzen, Zurückschalten bei Serverlast und die gemessenen Werte — werden unter [Sync-Leistung](/1.x/reference/sync-performance) erläutert.
