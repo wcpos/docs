@@ -486,7 +486,9 @@ function parseDocsMdxUnits(filePath, source) {
     }
 
     const codeRanges = inlineCodeRanges(lineNoNewline);
-    const tagRanges = inlineTagRanges(lineNoNewline);
+    // A tag inside an inline code span is code, already protected by codeRanges;
+    // counting it as a tag would split the line into fragments.
+    const tagRanges = inlineTagRanges(lineNoNewline).filter((range) => !overlapsAnyRange(range, codeRanges));
     const protectedInlineRanges = [...codeRanges, ...tagRanges];
     const linkMatches = markdownLinkMatches(lineNoNewline).filter((linkMatch) => !overlapsAnyRange(linkMatch, protectedInlineRanges));
     const imageMatches = markdownImageMatches(lineNoNewline).filter((imageMatch) => !overlapsAnyRange(imageMatch, protectedInlineRanges));

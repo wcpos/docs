@@ -225,7 +225,7 @@ Body text.
   });
 
   it('keeps a space after inline code when a translated fragment drops leading punctuation', () => {
-    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x).\n';
+    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x). <br />\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
     const fragment = parsed.units.find((unit) => unit.source === ', and');
     const link = parsed.units.find((unit) => unit.source === 'everything');
@@ -239,7 +239,7 @@ Body text.
   });
 
   it('keeps a space before and after inline code when punctuation around it is dropped', () => {
-    const mdx = '# T\n\nThe same `<barcode>` tag, see (`ean13`) too.\n';
+    const mdx = '# T\n\nThe same `<barcode>` tag, see (`ean13`) too. <br />\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
     const before = parsed.units.find((unit) => unit.source === 'tag, see (');
     const after = parsed.units.find((unit) => unit.source === ') too.');
@@ -253,7 +253,7 @@ Body text.
   });
 
   it('does not add a space next to inline code for CJK translations', () => {
-    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x).\n';
+    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x). <br />\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
     const fragment = parsed.units.find((unit) => unit.source === ', and');
 
@@ -263,7 +263,7 @@ Body text.
   });
 
   it('leaves a translation that keeps the punctuation unchanged', () => {
-    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x).\n';
+    const mdx = '# T\n\nThe same `<barcode>` syntax works. Types include `upca`, `pdf417`, and [everything](https://example.com/x). <br />\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
     const fragment = parsed.units.find((unit) => unit.source === ', and');
 
@@ -273,7 +273,7 @@ Body text.
   });
 
   it('keeps a translation glued to inline code when the English fragment is glued', () => {
-    const mdx = '# T\n\nThe same `<barcode>` tag fills the `SKU`s column.\n';
+    const mdx = '# T\n\nThe same `<barcode>` tag fills the `SKU`s column. <br />\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
     const fragment = parsed.units.find((unit) => unit.source === 's column.');
 
@@ -359,6 +359,53 @@ Body text.
     expect(output).toBe(
       'Instalar desde `WP Admin > POS > Settings > Extensions`, o descargar desde la [página de lanzamientos de GitHub](https://github.com/wcpos/wcpos-atum/releases).\n',
     );
+  });
+
+  it('keeps a line whose only tags are inside code spans as one paragraph unit', () => {
+    const mdx = '- A column prints its **text only**. Styling inside a `<col>` (`<bold>`, `<size>` and the rest) shows in the preview.\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+
+    expect(parsed.units.map((unit) => [unit.type, unit.source])).toStrictEqual([
+      ['paragraph', 'A column prints its **text only**. Styling inside a `<col>` (`<bold>`, `<size>` and the rest) shows in the preview.'],
+    ]);
+
+    const output = applyDocsMdxTranslations(
+      parsed,
+      new Map([
+        [parsed.units[0].id, 'Eine Spalte druckt nur ihren **Text**. Formatierung in einer `<col>` (`<bold>`, `<size>` und der Rest) erscheint in der Vorschau.'],
+      ]),
+    );
+
+    expect(output).toBe('- Eine Spalte druckt nur ihren **Text**. Formatierung in einer `<col>` (`<bold>`, `<size>` und der Rest) erscheint in der Vorschau.\n');
+  });
+
+  it('gives two same-ending sentences around code-span tags their own units', () => {
+    const mdx = 'A centred store name prints cleanly even without the `<text>` wrap.\n\nFor anything else, keep the `<text>` wrap.\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+
+    expect(parsed.units.map((unit) => [unit.type, unit.source])).toStrictEqual([
+      ['paragraph', 'A centred store name prints cleanly even without the `<text>` wrap.'],
+      ['paragraph', 'For anything else, keep the `<text>` wrap.'],
+    ]);
+    expect(parsed.units[0].id).not.toBe(parsed.units[1].id);
+
+    const output = applyDocsMdxTranslations(
+      parsed,
+      new Map([
+        [parsed.units[0].id, 'Ein zentrierter Shopname druckt auch ohne den `<text>`-Wrapper sauber.'],
+        [parsed.units[1].id, 'Für alles andere behalten Sie den `<text>`-Wrapper.'],
+      ]),
+    );
+
+    expect(output).toBe('Ein zentrierter Shopname druckt auch ohne den `<text>`-Wrapper sauber.\n\nFür alles andere behalten Sie den `<text>`-Wrapper.\n');
+  });
+
+  it('still splits a line around a real inline tag outside code', () => {
+    const mdx = 'Press the sync button (<Icon name="arrow-rotate-right" />) and choose `Clear`.\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+
+    expect(parsed.units.length).toBeGreaterThan(1);
+    expect(parsed.units.some((unit) => unit.source.includes('<Icon'))).toBe(false);
   });
 
   it('does not collapse mixed markdown link and image lines into one free-text unit', () => {
