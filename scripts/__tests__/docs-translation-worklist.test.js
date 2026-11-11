@@ -513,6 +513,54 @@ describe('ordering, limits, and packets', () => {
   });
 });
 
+describe('open i18n-round holds', () => {
+  const A = 'versioned_docs/version-2.x/a.mdx';
+  const B = 'versioned_docs/version-2.x/b.mdx';
+  function roundFixture({ round = true } = {}) {
+    addDoc(A, PARAGRAPH, null);
+    addDoc(B, EDITED, null);
+    commitFixtures();
+    git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+    if (!round) return;
+    git('checkout', '-q', '-b', 'round');
+    write(sourceToTranslatedPath(A, 'de'), REUSED[3]);
+    commitFixtures();
+    git('update-ref', 'refs/remotes/origin/i18n-round/x', 'HEAD');
+    git('checkout', '-q', '-');
+  }
+  const sourcesOf = result => [...new Set(result.plan.targets.map(entry => entry.source))];
+
+  it('skips, in every locale, a page an open round has translated', () => {
+    roundFixture();
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const held = buildWorklist({ rootDir, holdRounds: 'main' });
+    expect(sourcesOf(held)).toEqual([B]);
+    expect(held.plan.targets).toHaveLength(LOCALES.length);
+    expect(held.plan.quarantined).toEqual([]);
+    expect(held.packets.flatMap(packet => Object.values(packet.files).map(file => file.source_path))).toEqual(Array(LOCALES.length).fill(B));
+    expect(held.summary.held).toEqual([A]);
+    expect(stderr).toHaveBeenCalledWith('holding 1 page(s) for open i18n-round branches\n');
+  });
+
+  it('plans the page as before without holdRounds', () => {
+    roundFixture();
+    const plain = buildWorklist({ rootDir });
+    expect(sourcesOf(plain)).toEqual([A, B]);
+    expect(plain.plan.targets).toHaveLength(2 * LOCALES.length);
+    expect(plain.summary).not.toHaveProperty('held');
+  });
+
+  it('holds nothing when no round branch exists', () => {
+    roundFixture({ round: false });
+    const held = buildWorklist({ rootDir, holdRounds: 'main' });
+    const plain = buildWorklist({ rootDir });
+    expect(held.summary.held).toEqual([]);
+    expect(held.plan).toEqual(plain.plan);
+    expect(held.packets).toEqual(plain.packets);
+    expect(sourcesOf(held)).toEqual([A, B]);
+  });
+});
+
 describe('worklist CLI', () => {
   it('writes named packets and plan, prints one summary line, and removes stale packets on a zero-work run', () => {
     addDoc(DOC, PARAGRAPH, null);
@@ -568,7 +616,7 @@ describe('worklist CLI', () => {
   it.each([
     [[], '--out is required'], [['--out', 'out'], '--plan is required'],
     [['--locale', 'xx'], 'Unknown locale: xx'], [['--out'], 'Missing value for --out'],
-    [['--first'], 'Missing value for --first'],
+    [['--first'], 'Missing value for --first'], [['--hold-rounds'], 'Missing value for --hold-rounds'],
     [['--wat'], 'Unknown argument: --wat'],
     ...['0', '1.5', 'NaN', '9007199254740992'].map(value => [['--max-units', value], '--max-units must be a positive integer']),
   ])('rejects invalid arguments %j', (args, message) => {
