@@ -408,6 +408,16 @@ Body text.
     expect(parsed.units.some((unit) => unit.source.includes('<Icon'))).toBe(false);
   });
 
+  it('keeps a real JSX tag with a template-literal attribute out of the units', () => {
+    const mdx = 'Open the panel <Tip label={`Clear and refresh`} /> and press save.\n';
+    const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
+
+    expect(parsed.units.map((unit) => [unit.type, unit.source])).toStrictEqual([
+      ['paragraph', 'Open the panel'],
+      ['paragraph', 'and press save.'],
+    ]);
+  });
+
   it('does not collapse mixed markdown link and image lines into one free-text unit', () => {
     const mdx = 'See [settings](/settings/store/general) and ![Receipt preview](./receipt.png) now.\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
