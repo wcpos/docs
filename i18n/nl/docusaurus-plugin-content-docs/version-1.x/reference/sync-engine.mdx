@@ -19,95 +19,95 @@ Het wisselen van scope verloopt **transactioneel**: de nieuwe winkel of kassamed
 
 Bij upgrades worden lokale databases nooit ter plekke gemigreerd — de app begint met een nieuwe database en downloadt opnieuw vanaf de server, die altijd de gezaghebbende kopie heeft (zie [Upgraden vanaf v1.9](#upgrading-from-v19)).
 
-Bij Pro-installaties met meerdere winkels identificeert elk synchronisatieverzoek zijn winkel, zodat een prijs die aan de kassa wordt aangepast de prijs van díé winkel bijwerkt en niet die van de webwinkel.
+Bij Pro-installaties met meerdere winkels vermeldt elk synchronisatieverzoek bij welke winkel het hoort. Een prijs die aan de kassa wordt aangepast, werkt zo de prijs van die winkel bij en niet die van de webwinkel.
 
 ## Wat er op de achtergrond draait {#sync-lanes}
 
-Alles wat de engine volgens een schema doet, is een **baan** — een benoemde, begrensde eenheid achtergrondwerk. Banen vallen in drie groepen uiteen:
+Alles wat de engine volgens een schema doet, is een **baan** — een benoemde, begrensde eenheid achtergrondwerk. Banen vallen uiteen in drie groepen:
 
 | Groep | Banen | Standaardritme |
 | --- | --- | --- |
-| **Ophalen** | Wijzigingscontrole (wijzigingssignaal) | 10 s – 5 min, ingesteld door je [synchronisatievoorinstelling](/1.x/support/store-health#sync-presets) |
+| **Ophalen** | Wijzigingscontrole (wijzigingssignaal) | 10 s – 5 min, ingesteld via je [synchronisatievoorinstelling](/1.x/support/store-health#sync-presets) |
 | | Recente bestellingen, basisvulling productcatalogus, basisvulling referentiegegevens | ~5 min |
-| | Klanten druppelsgewijs (alleen tijdens inactiviteit) | ~5 min |
+| | Klanten druppelsgewijs ophalen (alleen tijdens inactiviteit) | ~5 min |
 | **Versturen** | Wachtrij legen — verstuurt lokale wijzigingen uit de wachtrij | ~10 s |
 | **Onderhoud** | Integriteits- en verwijderingsaudits, vernieuwen van servertotalen | elke paar minuten tot ~17 min |
 
 Voor elke baan gelden twee eigenschappen:
 
-- **Elke baan declareert een maximum aantal verzoeken per run.** Geen enkele baan mag in één run een onbegrensd aantal verzoeken uitwaaieren; grotere taken gebruiken begrensde batches met hervatbare cursors. Dit is een centrale ontwerpinvariant, die uitgebreid wordt behandeld in [Synchronisatieprestaties](/1.x/reference/sync-performance).
-- **Onderhoud geeft voorrang aan de kassamedewerker.** Audits en achtergrondvoorbereiding draaien ná het interactieve werk dat een kassa klaarmaakt om te verkopen, nooit ervoor, en ze worden als eerste gepauzeerd zodra je server tekenen van druk vertoont.
+- **Elke baan declareert een maximumaantal verzoeken per run.** Geen enkele baan mag in één run een onbegrensd aantal verzoeken versturen; grotere taken gebruiken begrensde batches met hervatbare cursors. Dit is een vaste ontwerpregel, die uitgebreid wordt behandeld in [Synchronisatieprestaties](/1.x/reference/sync-performance).
+- **Onderhoud geeft voorrang aan de kassamedewerker.** Audits en achtergrondvoorbereiding draaien na het interactieve werk dat een kassa klaarmaakt om te verkopen, nooit ervoor. Ze worden als eerste gepauzeerd zodra je server tekenen van overbelasting vertoont.
 
-De bovenstaande ritmes zijn standaardwaarden. Het controle-interval en het aantal records per verzoek zijn per apparaat door de verkoper in te stellen via **Winkelstatus → Prestaties** in de POS — zie [Winkelstatus](/1.x/support/store-health).
+De bovenstaande ritmes zijn standaardwaarden. De verkoper kan het controle-interval en het aantal records per verzoek per apparaat instellen via **Winkelstatus → Prestaties** in de POS — zie [Winkelstatus](/1.x/support/store-health).
 
-## Hoe de POS wijzigingen leert kennen {#change-signal}
+## Hoe de POS wijzigingen detecteert {#change-signal}
 
-De engine downloadt gegevens niet opnieuw om te ontdekken of ze zijn gewijzigd. De server houdt een wijzigingslog bij, en de POS bevraagt een lichtgewicht **wijzigingscontrole** die één vraag beantwoordt: is er iets veranderd sinds mijn laatste positie?
+De engine downloadt gegevens niet opnieuw om te ontdekken of ze zijn gewijzigd. De server houdt een wijzigingslog bij en de POS voert periodiek een lichte **wijzigingscontrole** uit die één vraag beantwoordt: is er iets veranderd sinds mijn laatste positie?
 
-- **Eén controle dekt acht collecties** — producten, variaties, belastingtarieven, klanten, kortingsbonnen, categorieën, merken en tags. Bestellingen staan bewust niet in de wijzigingscontrole; de actualiteit van bestellingen komt uit een eigen baan voor recente bestellingen, en daarom kunnen product- en bestelupdates in verschillende ritmes binnenkomen.
-- **Een inactieve kassa kost bijna niets.** De engine stuurt voorwaardelijke verzoeken: als er niets is veranderd, antwoordt de server met één enkele `304 Not Modified` zonder body. Een rustige winkel komt uit op één klein antwoord per controle.
-- **Controles krijgen ±20% jitter** zodat meerdere kassa's op één site uit elkaar lopen in plaats van de server in gesynchroniseerde pieken te raken.
-- **Verval bij inactiviteit:** na 10 minuten zonder interactie worden de controles verder uit elkaar gezet (met een ondergrens van 60 seconden). Elke echte activiteit — een aanraking, een toetsaanslag, een geaccepteerde barcodescan — schakelt direct terug naar het volledige ritme en start meteen een inhaalcontrole. Het verval rekt het interval alleen op; er wordt nooit sneller bevraagd dan de geconfigureerde instelling.
-- **Een kassa die dagenlang dicht was, stelt een nieuwe basislijn in plaats van de geschiedenis opnieuw af te spelen.** Als het wijzigingslog te ver voorbij de laatste positie van de kassa is gekomen, zou het opnieuw afspelen van elke regel honderden verzoeken kosten. In plaats daarvan zet de engine zijn cursor naar de kop en controleert opnieuw wat de huidige serverstatus is van wat het apparaat al heeft — zo schaalt de kosten met de omvang van de lokale kopie en niet met hoelang de kassa weg was.
+- **Eén controle dekt acht collecties** — producten, variaties, belastingtarieven, klanten, kortingsbonnen, categorieën, merken en tags. Bestellingen vallen bewust buiten de wijzigingscontrole; een eigen baan voor recente bestellingen houdt ze actueel. Daardoor kunnen product- en bestelupdates in verschillende ritmes binnenkomen.
+- **Een inactieve kassa kost bijna niets.** De engine stuurt voorwaardelijke verzoeken: als er niets is veranderd, antwoordt de server met één enkele `304 Not Modified` zonder body. Bij een rustige winkel blijft het bij één klein antwoord per controle.
+- **Controle-intervallen variëren willekeurig met ±20%**, zodat meerdere kassa's op één site hun verzoeken spreiden in plaats van de server in gesynchroniseerde pieken te belasten.
+- **Vertraging bij inactiviteit:** na 10 minuten zonder interactie worden de controle-intervallen verlengd (tot een ondergrens van 60 seconden). Elke echte activiteit — een aanraking, een toetsaanslag, een geaccepteerde barcodescan — schakelt direct terug naar het volledige ritme en start meteen een inhaalcontrole. De vertraging verlengt het interval alleen; er wordt nooit vaker gecontroleerd dan de ingestelde frequentie.
+- **Een kassa die dagenlang gesloten was, stelt een nieuwe basislijn vast in plaats van de geschiedenis opnieuw te verwerken.** Als het wijzigingslog te ver voorbij de laatste positie van de kassa is gekomen, zou het verwerken van elke regel honderden verzoeken kosten. De engine zet zijn cursor dan op de nieuwste positie en controleert opnieuw de huidige serverstatus van de gegevens die het apparaat al heeft — zo schalen de kosten met de omvang van de lokale kopie, niet met hoelang de kassa gesloten was.
 
 ## Hoe schermen hun gegevens krijgen {#declared-demand}
 
-In v1.10.0 draaien schermen niet hun eigen synchronisatie. **Een scherm declareert wat het toont — zoekterm, filters, sortering, pagina — en de engine bepaalt of daar überhaupt een verzoek voor nodig is.** Elke declaratie wordt op een van drie manieren afgehandeld:
+In v1.10.0 voeren schermen geen eigen synchronisatie uit. **Een scherm declareert wat het toont — zoekterm, filters, sortering, pagina — en de engine bepaalt of daar überhaupt een verzoek voor nodig is.** Elke declaratie wordt op een van drie manieren afgehandeld:
 
-- **Opgehaald** — de engine heeft werk over de lijn gedaan om eraan te voldoen.
-- **Lokaal beantwoord** — het apparaat had het antwoord al, of een identieke recente ophaalactie dekt het af.
-- **Vervangen** — het scherm ging verder (je scrollde, je wijzigde een filter) en een nieuwere declaratie kwam ervoor in de plaats. Dit is normaal, geen fout.
+- **Opgehaald** — de engine heeft via het netwerk gegevens opgehaald om aan de behoefte te voldoen.
+- **Lokaal beantwoord** — het apparaat had het antwoord al, of een identieke recente ophaalactie dekt de behoefte.
+- **Vervangen** — het scherm ging verder (je scrolde of wijzigde een filter) en een nieuwere declaratie kwam ervoor in de plaats. Dit is normaal, geen fout.
 
-Een filter dat alleen lokaal beantwoord kan worden, gaat nooit naar de server. En een geslaagde declaratie betekent niet dat een collectie volledig is gedownload — volledigheid wordt apart bijgehouden (volgende sectie).
+Een filter dat alleen lokaal kan worden afgehandeld, gaat nooit naar de server. Een geslaagde declaratie betekent ook niet dat een collectie volledig is gedownload — volledigheid wordt apart bijgehouden (zie de volgende sectie).
 
-Niet alles wordt gretig gedownload, en wat er bij het opstarten op het apparaat staat, verschilt per collectie:
+Niet alles wordt vooraf gedownload, en wat er bij het opstarten op het apparaat staat, verschilt per collectie:
 
-1. **Basisvulling** — producten komen binnen via een begrensde basisvulling van de catalogus; belastingtarieven worden bij het opstarten opgehaald (een POS kan zonder die tarieven niet rekenen in het winkelwagentje).
-2. **Op aanvraag, plus een druppel tijdens inactiviteit** — klanten hebben geen gretige basisvulling. De klantendruppel downloadt een kleine batch per inactief interval en slaat die volledig over zodra de kassamedewerker actief is; nieuwe en gewijzigde klanten komen binnen via de wijzigingscontrole.
-3. **Opgehaald bij eerste opening** — categorieën, tags, merken en kortingsbonnen worden opgehaald wanneer een kassamedewerker ze voor het eerst opent. Een collectie die niemand opent, genereert nooit ook maar één verzoek.
+1. **Basisvulling** — producten worden opgehaald via een begrensde basisvulling van de catalogus; belastingtarieven worden bij het opstarten opgehaald (een POS kan zonder die tarieven geen winkelwagentotalen berekenen).
+2. **Op aanvraag, plus druppelsgewijs tijdens inactiviteit** — klanten worden niet vooraf geladen. Per inactief interval wordt een kleine batch klanten gedownload; dit wordt volledig overgeslagen als de kassamedewerker actief is. Nieuwe en gewijzigde klanten komen binnen via de wijzigingscontrole.
+3. **Opgehaald bij de eerste opening** — categorieën, tags, merken en kortingsbonnen worden opgehaald wanneer een kassamedewerker ze voor het eerst opent. Een collectie die niemand opent, genereert nooit verzoeken.
 
-Variatiekiezers vernieuwen daarnaast bij elke opening eenmalig prijs en voorraad, zodat een aanwezige variatie direct wordt weergegeven maar nooit dagenoude voorraad toont.
+Variatiekiezers vernieuwen daarnaast bij elke opening eenmalig de prijs en voorraad. Een al aanwezige variatie wordt zo direct weergegeven, maar toont nooit verouderde voorraad van dagen geleden.
 
 ## „Is alles gedownload?” — eerlijke dekking {#coverage}
 
-Een uitlezing als *„1.240 van 5.000 producten”* heeft een **servertotaal** als noemer nodig. De engine houdt er één per collectie bij (ongeveer elke 15 minuten vernieuwd, meestal gratis — echte synchronisatieantwoorden bevatten het totaal al, dus een apart verzoek is zelden nodig) en volgt een strikt eerlijkheidscontract:
+Een weergave zoals *„1,240 van 5,000 producten”* heeft een totaal **aan de serverkant** nodig als noemer. De engine houdt er één per collectie bij (ongeveer elke 15 minuten vernieuwd, meestal zonder extra kosten — echte synchronisatieantwoorden bevatten het totaal al, dus een apart verzoek is zelden nodig) en volgt daarbij strikte regels voor een eerlijke weergave:
 
-- Een verouderd of ontbrekend servertotaal wordt getoond als *controleren…* — het wordt nooit stilzwijgend vervangen door een lokale telling. Een lokale noemer zou altijd 100% aangeven en precies het gat verbergen dat het getal zichtbaar moet maken.
-- Als de engine niet kan instaan voor de volledigheid, is het oordeel *onbekend* en labelt de interface het cijfer als een lokale telling.
-- De dekkingsbalk voor bestellingen meet tegen de **volledige** bestelgeschiedenis op de server, terwijl de kassa bewust alleen openstaande en recente bestellingen bewaart — een gezonde kassa leest daar dus per ontwerp als gedeeltelijk.
+- Een verouderd of ontbrekend servertotaal wordt getoond als *controleren…* — het wordt nooit stilzwijgend vervangen door een lokale telling. Een lokale noemer zou altijd 100% aangeven en precies het verschil verbergen dat het getal zichtbaar moet maken.
+- Als de engine niet kan instaan voor de volledigheid, is het oordeel *onbekend* en vermeldt de interface dat het cijfer een lokale telling is.
+- De dekkingsbalk voor bestellingen meet ten opzichte van de **volledige** bestelgeschiedenis op de server, terwijl de kassa bewust alleen openstaande en recente bestellingen bewaart — een goed werkende kassa toont daar dus volgens ontwerp een gedeeltelijke dekking.
 
-Deze cijfers verschijnen op **Winkelstatus → Database**, samen met de mijlpaal *Klaar om te verkopen*, die omslaat zodra het eerste product op het apparaat staat — offline zijn blokkeert dat niet, want offline verkopen is juist het doel. Zie [Winkelstatus](/1.x/support/store-health).
+Deze cijfers verschijnen op **Winkelstatus → Database**, samen met de mijlpaal *Klaar om te verkopen*, die wordt bereikt zodra het eerste product op het apparaat staat — offline zijn blokkeert dit niet, want offline verkopen is juist het doel. Zie [Winkelstatus](/1.x/support/store-health).
 
 ## Hoe wijzigingen terugkomen in je winkel {#write-path}
 
-Elke lokale schrijfactie — een verkoop, een productbewerking, een klantupdate — komt eerst in een **duurzame uitgaande wachtrij** op het apparaat, en een baan duwt die wachtrij elke paar seconden naar WooCommerce. Dat is wat offline verkopen veilig maakt: een verkoop die zonder verbinding wordt aangeslagen, blijft in de wachtrij staan en wordt verstuurd zodra de verbinding terugkomt.
+Elke lokale schrijfactie — een verkoop, een productbewerking, een klantupdate — komt eerst in een **duurzame uitgaande wachtrij** op het apparaat. Een baan verstuurt de inhoud van die wachtrij elke paar seconden naar WooCommerce. Dat maakt offline verkopen veilig: een verkoop die zonder verbinding wordt aangeslagen, blijft in de wachtrij staan en wordt verstuurd zodra de verbinding terugkomt.
 
-Details die ertoe doen:
+Belangrijke details:
 
-- **Schrijfacties op het winkelwagentje worden per bestelling geserialiseerd.** Snelle reeksen scans worden één voor één toegepast, en een herhaalde toevoeging wordt samengevoegd met de regel die het dupliceert in plaats van dat er een tweede regel in de wachtrij komt.
-- **Bevestigingen van bestellingen nemen de kopie van de server over.** WooCommerce kent bij het aanmaken ID's toe aan de regelitems van een bestelling; de engine neemt de bevestigde bestelling over zodat latere updates op die regels aansluiten in plaats van dubbele regels toe te voegen. Die overname is behoudend — een lokale bewerking die de server nog niet heeft gezien wordt nooit overschreven, en het geldt alleen voor bestellingen.
-- **De engine probeert een conflict bij het opslaan van een order één keer zelf op te lossen.** Als het opslaan botst met een nieuwere serverversie, brengt de engine de gegevens in overeenstemming en probeert hij het één keer opnieuw. Lukt dat nog steeds niet, dan wordt het conflict gemeld zodat je het kunt oplossen, in plaats van dat de engine het stilzwijgend blijft proberen.
-- **Een schrijfactie die de server definitief weigert, wordt nooit stilzwijgend opnieuw geprobeerd.** Die wordt geparkeerd met de reden van de server zelf en getoond op **Winkelstatus → Database** als *„wijzigingen die je server nooit hebben bereikt”*, met twee expliciete acties: **Opnieuw versturen** (bouwt het verzoek opnieuw op uit het record zoals het er nú uitziet, zodat latere correcties meegaan) en **Verwerpen**. Er is geen automatische herhaallus — herstel is altijd een zichtbare, bewuste handeling. Zie [Winkelstatus](/1.x/support/store-health#database) voor de uitleg vanuit het perspectief van de verkoper.
+- **Schrijfacties op het winkelwagentje worden per bestelling geserialiseerd.** Snelle reeksen scans worden één voor één verwerkt. Als hetzelfde artikel opnieuw wordt toegevoegd, wordt dit samengevoegd met de bestaande regel in plaats van een tweede regel in de wachtrij te zetten.
+- **Bij bevestiging van een bestelling wordt de serverkopie overgenomen.** WooCommerce kent bij het aanmaken ID's toe aan de bestelregels; de engine neemt de bevestigde bestelling over, zodat latere updates bij die regels aansluiten in plaats van dubbele regels toe te voegen. Die overname is voorzichtig — een lokale bewerking die de server nog niet heeft ontvangen, wordt nooit overschreven. Dit geldt alleen voor bestellingen.
+- **De engine probeert een conflict bij het opslaan van een bestelling één keer zelf op te lossen.** Als een schrijfactie botst met een nieuwere serverkopie, brengt de engine de gegevens in overeenstemming en probeert hij het één keer opnieuw. Lukt dat nog steeds niet, dan wordt het conflict gemeld zodat je het kunt oplossen, in plaats van dat de engine het stilzwijgend blijft proberen.
+- **Een schrijfactie die de server definitief weigert, wordt nooit stilzwijgend opnieuw geprobeerd.** Die wordt apart gezet met de reden van de server zelf en getoond op **Winkelstatus → Database** als *„wijzigingen die je server nooit hebben bereikt”*, met twee expliciete acties: **Opnieuw versturen** (bouwt het verzoek opnieuw op uit het record zoals het er nu uitziet, zodat latere correcties worden meegenomen) en **Verwerpen**. Er is geen automatische herhaallus — herstel is altijd een zichtbare, bewuste handeling. Zie [Winkelstatus](/1.x/support/store-health#database) voor de uitleg voor verkopers.
 
 ### Meerdere browsertabbladen {#multi-tab}
 
-De web-POS in meerdere tabbladen van dezelfde winkel draaien wordt ondersteund. Elk tabblad kan een verkoop aanslaan — schrijfacties worden aan de gedeelde wachtrij toegevoegd — maar **één gekozen tabblad doet het versturen** voor elk bereik van winkel + kassamedewerker. Als dat tabblad sluit, promoveert de browser automatisch het volgende. Twee tabbladen die zijn ingelogd als verschillende kassamedewerkers zijn aparte bereiken en beheren elk hun eigen wachtrij.
+Je kunt de web-POS voor dezelfde winkel in meerdere tabbladen gebruiken. Elk tabblad kan een verkoop aanslaan — schrijfacties worden aan de gedeelde wachtrij toegevoegd — maar **één gekozen tabblad verzorgt het versturen** voor elke combinatie van winkel + kassamedewerker. Als dat tabblad sluit, wijst de browser automatisch het volgende aan. Twee tabbladen die zijn aangemeld als verschillende kassamedewerkers vormen afzonderlijke bereiken en beheren elk hun eigen wachtrij.
 
 ## Lokale opslag {#local-storage}
 
-De web- en desktop-app slaan gegevens op via een **OPFS-worker (Origin Private File System)**; de iOS- en Android-apps gebruiken hetzelfde schijfformaat via een bestandssysteem-engine. Alle vier platforms delen één opslagformaat en dezelfde gereedschappen voor herstel na corruptie. (Eerdere versies gebruikten IndexedDB op het web en SQLite op native.)
+De web- en desktopapps slaan gegevens op via een **OPFS (Origin Private File System)-worker**; de iOS- en Android-apps gebruiken hetzelfde opslagformaat op schijf via een bestandssysteemengine. Alle vier de platforms delen één opslagformaat en dezelfde hulpmiddelen voor herstel van beschadigde gegevens. (Eerdere versies gebruikten IndexedDB op het web en SQLite in de native apps.)
 
-Als de lokale gegevensopslag **onleesbaar** wordt, blokkeert WCPOS het afrekenen en vraagt het om opnieuw te laden, in plaats van een verkoop met beschadigde gegevens toe te staan en die te verliezen. Barcodescans mislukken in die situatie ook met een duidelijke foutmelding, in plaats van stilzwijgend te mislukken — zo kan een beschadigde gegevensopslag geen verkoop ongemerkt laten verdwijnen voordat de herstelhulpmiddelen deze opnieuw opbouwen.
+Als de lokale opslag **onleesbaar** wordt, blokkeert WCPOS het afrekenen en vraagt de app om opnieuw te laden. Zo wordt voorkomen dat een verkoop met beschadigde gegevens wordt verwerkt en verloren gaat. Barcodescans geven in die toestand een duidelijke foutmelding in plaats van stilzwijgend te mislukken — beschadigde opslag kan zo geen verkoop ongemerkt laten verdwijnen voordat de herstelhulpmiddelen de opslag opnieuw opbouwen.
 
-Query's worden binnen de databaselaag uitgevoerd — selector, sortering en paginering — zodat alleen de zichtbare pagina met rijen naar de app gaat. Op een synthetische fixture met 10.000 bestellingen bracht die pushdown de kosten per schrijfactie onder een live abonnement terug van ~27 ms naar ~0,06 ms.
+Query's worden binnen de databaselaag uitgevoerd — selectie, sortering en paginering — zodat alleen de zichtbare pagina met rijen naar de app gaat. Bij een synthetische fixture met 10,000 bestellingen verlaagde deze verplaatsing van het werk de updatekosten per schrijfactie bij een actief abonnement van ~27 ms naar ~0.06 ms.
 
 ## Upgraden vanaf v1.9 {#upgrading-from-v19}
 
-v1.10.0 migreert geen lokale databases — er wordt een **koude hersynchronisatie** uitgevoerd:
+v1.10.0 migreert lokale databases niet — het voert een **volledige hersynchronisatie vanaf nul** uit:
 
-1. Bij de eerste start opent de app een nieuwe lokale database en downloadt opnieuw vanuit je winkel. Reken op een eenmalige volledige herdownload op elk apparaat.
-2. Er gaat niets verloren: je WooCommerce-server is de gezaghebbende kopie van alle gesynchroniseerde gegevens. Openstaande, niet-verzonden wijzigingen worden verstuurd of getoond **voordat** oude gegevens worden opgeruimd — de upgrade kan geen niet-verzonden verkoop vernietigen.
-3. **De app en de plug-in worden in lockstep uitgebracht.** v1.10.0-clients spreken de v2-synchronisatie-API van de plug-in. Als maar één kant is geüpgraded, mislukken verzoeken met `rest_no_route`-fouten — die signatuur betekent „werk de andere helft bij”, niet dat de installatie kapot is.
+1. Bij de eerste start opent de app een nieuwe lokale database en downloadt de gegevens opnieuw vanuit je winkel. Reken op een eenmalige volledige herdownload op elk apparaat.
+2. Er gaat niets verloren: je WooCommerce-server bevat de gezaghebbende kopie van alle gesynchroniseerde gegevens. Openstaande, niet-verzonden wijzigingen worden verstuurd of gemeld **voordat** oude gegevens worden opgeruimd — de upgrade kan geen niet-verzonden verkoop vernietigen.
+3. **De app en de plug-in worden gelijktijdig uitgebracht.** v1.10.0-clients gebruiken de v2-synchronisatie-API van de plug-in. Als maar één kant is geüpgraded, mislukken verzoeken met `rest_no_route`-fouten — die fout betekent „werk de andere helft bij”, niet dat de installatie defect is.
 
 ## Wat er is veranderd in v1.10.0 {#what-changed-in-v1100}
 
@@ -115,7 +115,7 @@ v1.10.0 migreert geen lokale databases — er wordt een **koude hersynchronisati
 | --- | --- | --- |
 | Synchronisatie-eenheid | Eén replicatiestroom per aangekoppelde schermquery | Eén engine per site + winkel + kassamedewerker |
 | Wat een ophaalactie aanstuurt | Het aankoppelen van een scherm | Een scherm dat declareert wat het nodig heeft |
-| Wijzigingsdetectie | Periodieke polls + volledige audit per uur | Cursor in het wijzigingslog met voorwaardelijke `304`-antwoorden |
+| Wijzigingsdetectie | Periodieke controles + volledige audit per uur | Cursor in het wijzigingslog met voorwaardelijke `304`-antwoorden |
 | Servertotalen | Niet bijgehouden | Totalen per collectie met eerlijke *controleren…*-statussen |
 | Mislukte schrijfacties | Ondoorzichtig opnieuw geprobeerd | Duurzame wachtrij, zichtbaar herstelpaneel, geen stille herhalingen |
 | Web met meerdere tabbladen | Ongecoördineerd | Eén gekozen verzender per bereik |
@@ -123,4 +123,4 @@ v1.10.0 migreert geen lokale databases — er wordt een **koude hersynchronisati
 | Opslag | IndexedDB (web), SQLite (native) | Opslag in OPFS-formaat op alle platforms |
 | Synchronisatie afstemmen | Vast | Voorinstellingen en schuifregelaars per apparaat in Winkelstatus |
 
-Voor de prestatiefilosofie achter de engine — maxima voor verzoeken, terugschakelen bij serverdruk en de gemeten cijfers — zie [Synchronisatieprestaties](/1.x/reference/sync-performance).
+Zie [Synchronisatieprestaties](/1.x/reference/sync-performance) voor de prestatiefilosofie achter de engine — maxima voor verzoeken, terugschakelen bij serverbelasting en de gemeten cijfers.
