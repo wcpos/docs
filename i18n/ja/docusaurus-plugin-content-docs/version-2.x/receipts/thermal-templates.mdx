@@ -1,0 +1,570 @@
+---
+title: サーマルテンプレート
+slug: /settings/receipt-templates/thermal-templates
+sidebar_label: サーマルテンプレート
+sidebar_position: 4
+description: "ESC/POS と Star サーマルプリンター用の XML レシートテンプレートを作成します。各要素、列のレイアウト、プレビュー、実際の印刷での違いを解説します。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/receipts/thermal-templates/en/manifest.json';
+
+**WP 管理画面：** サーマルテンプレートは `WP Admin → POS → Templates` で編集します。
+
+サーマルテンプレートは、レシートプリンター用のレイアウトを XML で記述した短いテキストファイルです。同じファイルで画面のプレビューを描画し、印刷内容をプリンターに伝えます。プリンターの **プリンター言語** が **ESC/POS**、**StarPRNT**、**Star Line Mode** のいずれでも使えます。[HTML テンプレート](./html-templates.mdx)と同じ `{{placeholders}}` を使って注文データを埋め込みます。すべてのプレースホルダーは[レシートデータ](./receipt-data.mdx)に掲載されています。
+
+[プリンターの設定](../hardware/printers/index.mdx)で設定したレシートプリンターには、サーマルテンプレートを使用してください。
+
+**移動先：** [サーマルテンプレートの作成](#make-a-thermal-template) · [テンプレートとプリンター](#the-template-and-the-printer) · [使用できるタグ](#xml-elements) · [例：シンプルな 80mm レシート](#example-simple-80mm-receipt) · [テンプレートのプレビュー](#template-preview) · [問題が起きた場合](#if-something-goes-wrong)
+
+{/* reshoot: the receipt window with a thermal template picked needs English template names on the capture store (see the page folder's reshoot.md) */}
+
+## サーマルテンプレートの作成 {#make-a-thermal-template}
+
+ギャラリーのテンプレートを元に変更します。最初から作成する必要はありません。
+
+1. **ギャラリーを開きます。** WP Admin で **POS → テンプレート** に移動します。**テンプレートギャラリー** で形式を **ESC/POS（サーマルプリンター）** に絞り込みます。
+2. **テンプレートをコピーします。** **シンプルなサーマルレシート（80mm）** などのカードで **テンプレートを使用** をクリックします。コピーが **自分のテンプレート** に表示されます。その **有効** トグルをオンにします。
+3. **編集します。** コピーを開きます。左側の XML を変更すると、入力に合わせて右側のプレビューが更新されます。**更新** をクリックして保存してください。エディターは自動保存しません。
+4. **レシートプリンターに送信する設定をします。** POS で **設定 → 印刷** に移動します。**レシートテンプレート** で、テンプレートの横にあるプリンターの選択欄からレシートプリンターを選ぶか、**自動** のままにします。
+5. **レシートを印刷します。** レシートウィンドウの **テンプレート** で使用するテンプレートを選び、**レシートを印刷** を押します。
+
+### 例：お礼のメッセージの変更 {#example-change-the-thank-you-line}
+
+まず店舗のレシートのフッターメモを確認してください。メモが設定されている場合は、お礼のメッセージの代わりに印刷されます。その場合は[レシートのカスタマイズ](./customise.mdx#common-customisations)でメモを変更してください。メモが設定されていない場合は、このまま進めます。
+
+**シンプルなサーマルレシート（80mm）** のエディターで、末尾付近にある `{{i18n.thank_you_purchase}}` を探します。このプレースホルダーだけを任意の文章に置き換えます。
+
+変更前：
+
+```xml
+{{i18n.thank_you_purchase}}
+```
+
+変更後：
+
+```xml
+See you again soon!
+```
+
+同じ行にある、その前後の内容は変更しないでください。
+
+<details>
+<summary>お礼のメッセージを含む行全体の変更前と変更後</summary>
+
+```xml
+{{^store.personal_notes}}<text>{{i18n.thank_you_purchase}}</text>{{/store.personal_notes}}
+```
+
+```xml
+{{^store.personal_notes}}<text>See you again soon!</text>{{/store.personal_notes}}
+```
+
+</details>
+
+**更新** をクリックします。プレビューでは、レシートの末尾に新しいメッセージが表示されます。
+
+このページの以降の説明では、手順 3 で記述できる内容を紹介します。ギャラリーについて詳しくは、[レシートのカスタマイズ](./customise.mdx)を参照してください。
+
+- [テンプレートとプリンター](#the-template-and-the-printer)：プリンターの設定によって変わる内容。
+- [使用できるタグ](#xml-elements)：各タグの設定と、省略時の動作。
+- [例：シンプルな 80mm レシート](#example-simple-80mm-receipt)：テンプレートの全体例。
+- [テンプレート作成のヒント](#authoring-tips-and-pitfalls)と[問題が起きた場合](#if-something-goes-wrong)。
+
+## テンプレートとプリンター {#the-template-and-the-printer}
+
+一部の項目はテンプレートではなくプリンターで設定します。POS で **設定 → 印刷** に移動し、プリンターの行の **編集** を押してください。
+
+<JourneyShot manifest={manifest} device="tablet" step={5} offsets={[[680, 0], [680, 0], [680, 0], [680, 0]]} alt="ネットワーク接続の Epson プリンターの編集画面：プリンター言語は ESC/POS、用紙幅は 48 — 80 mm（ほとんどの Epson と Star）、レシート言語は自動。用紙の自動カット、キャッシュドロワーの自動オープン、デフォルトに設定のスイッチと、レシートを画像として印刷の設定">
+
+1. **プリンター言語** — この例では **ESC/POS** です。同じテンプレートが三種類すべての言語で動作します。
+2. **用紙幅** — この例では **48** です。印刷時はテンプレートの `paper-width` に代わって適用されます。
+3. **レシート言語** — プリンターが印刷に使う文字と記号のセットです。ESC/POS のみの設定です。
+4. **レシートを画像として印刷** — レシート全体を画像として印刷します。
+
+</JourneyShot>
+
+**キャッシュドロワーの自動オープン** をオンにすると、その下に **キャッシュドロワーのコネクター** が表示されます：
+
+<JourneyShot manifest={manifest} device="tablet" step={6} offsets={[[680, 0], [680, 0], [47, -30], [36, -30]]} maxWidth={799} alt="プリンター編集画面の下部：キャッシュドロワーの自動オープンがオン、キャッシュドロワーのコネクターはピン 2 / ドロワー 1、デフォルトに設定、およびドロワーを開く、テスト印刷、閉じるの各ボタン">
+
+1. **キャッシュドロワーの自動オープン** — レシートの印刷後にドロワーを開きます。ただし、テンプレートに独自の `<drawer />`で囲んでください。
+2. **キャッシュドロワーのコネクター** — この例では **ピン 2 / ドロワー 1** です。 `<drawer />` タグでコネクターを指定していない場合に使われます。
+3. **ドロワーを開く** — 印刷せずにドロワーを一度開きます。
+4. **テスト印刷** — テンプレートではなく、アプリのテストページである *プリンター診断* を印刷します。この例のように **キャッシュドロワーの自動オープン** がオンの場合は、ドロワーも開きます。
+
+</JourneyShot>
+
+特に **用紙幅** に注意してください。テンプレートの `paper-width` は **プレビュー** の幅だけを設定します。実際の印刷では、プリンターの **用紙幅** が優先されます。`width="*"` の列は、ほかの列を配置した残りの幅を使います（[伸縮する列](#star-width-columns)）。使用する用紙幅ごとに結果を確認してください（[レシートの幅](../hardware/printers/receipt-width.mdx)）。
+
+<details>
+<summary>レシートに影響するプリンターの設定</summary>
+
+| プリンターの設定 | サーマルテンプレートへの影響 |
+|---|---|
+| **用紙幅**（32、42、48、64） | 紙に印刷する一行あたりの文字数です。印刷時にテンプレートの `paper-width` を **置き換えます**。[レシートの幅](../hardware/printers/receipt-width.mdx)を参照してください。 |
+| **プリンター言語** | **ESC/POS**、**StarPRNT**、**Star Line Mode**。同じテンプレートを三種類すべてで印刷できます。 |
+| **レシート言語**（ESC/POS のみ） | プリンターが印刷に使う文字と記号のセットです。 |
+| **キャッシュドロワーの自動オープン** | レシートの印刷後にドロワーを開きます。ただし、テンプレートに独自の `<drawer />`がある場合は除きます。 |
+| **キャッシュドロワーのコネクター** | **ピン 2 / ドロワー 1** または **ピン 5 / ドロワー 2**。**キャッシュドロワーの自動オープン** がオンのときに表示されます。 `<drawer />` でコネクターを指定していない場合に使われます。 |
+| **レシートを画像として印刷** | レシート全体を画像として印刷します。アラビア文字、ヘブライ文字、タイ文字など、プリンターがテキストとして印刷できない文字体系に使います。テキスト印刷より時間がかかります。 |
+
+</details>
+
+## 使用できるタグ {#xml-elements}
+
+各タグについて、以下で例とともに説明します。`width="2"` などのタグ内の設定は、必須と明記されていない限り省略できます。
+
+<details>
+<summary>すべての要素と属性の一覧</summary>
+
+| タグ | 印刷内容と設定（省略した場合の値） |
+|---|---|
+| `<receipt>` | 必須。テンプレート全体を囲みます。<br />`paper-width` 全体を囲んでください(`48`) |
+| `<text>` | 一行のテキスト。 |
+| `<bold>`、 `<underline>`、 `<invert>` | スタイルを適用したテキスト。 `<invert>` は黒地に白文字です。 |
+| `<size>` | 1–8 倍に拡大したテキスト。<br />`width` 全体を囲んでください(`1`)、 `height` （次と同じ： `width`） |
+| `<align>` | 内側の内容の位置を揃えます。<br />`mode`に格納されています： `left`、 `center`、 `right` 全体を囲んでください(`left`) |
+| `<row>` + `<col>` | 横に並ぶ列。<br />`width`：数値または `*` 全体を囲んでください(`12`)； `align`に格納されています： `left`、 `right` 全体を囲んでください(`left`) |
+| `<line />` | 用紙の幅いっぱいに引く線。<br />`style`に格納されています： `single`、 `double`、 `dashed`、 `dotted` 全体を囲んでください(`single`) |
+| `<feed />` | 空行。<br />`lines` 全体を囲んでください(`1`) |
+| `<barcode>` | 内側のテキストを表すバーコード。<br />`type` 全体を囲んでください(`code128`)、 `height` 全体を囲んでください(`40`) |
+| `<qrcode>` | 内側のテキストを表す QR コード。<br />`size` 全体を囲んでください(`4`) |
+| `<image />` | ロゴや画像。<br />`src` （必須）、 `width` はプリンターのドット単位(`200`) |
+| `<cut />` | 用紙をカットします。<br />`type`に格納されています： `full`、 `partial` 全体を囲んでください(`partial`) |
+| `<drawer />` | キャッシュドロワーを開きます。<br />`connector`に格納されています： `pin2`、 `pin5` （プリンターの設定値） |
+
+</details>
+
+数値はゼロより大きい整数で指定してください。`width="1.5"` や `lines="0"` など、それ以外の値は無視され、タグの通常の値が使われます。この表にないタグは無視されますが、内側のテキストは印刷されます。
+
+### `<receipt>` タグ {#root-element}
+
+すべてのサーマルテンプレートで、全体を囲むタグは `<receipt>`に格納されています：
+
+```xml
+<receipt paper-width="48">
+  <!-- 48 characters = 80 mm paper on most Epson and Star printers -->
+  <!-- 32 characters = 58 mm paper -->
+</receipt>
+```
+
+`paper-width` はプレビューの幅を文字数で設定します。実際の印刷ではプリンターの **用紙幅** に置き換わります（[テンプレートとプリンター](#the-template-and-the-printer)）。
+
+### 太字、下線、白黒反転のテキスト {#text-and-formatting}
+
+```xml
+<text>Plain text</text>
+<bold><text>Bold text</text></bold>
+<underline><text>Underlined text</text></underline>
+<invert><text>Inverted (white on black)</text></invert>
+```
+
+スタイルタグだけでは改行されないため、内側に `<text>` を入れます。 `<text>` はテキストの後で改行します（[スタイル付き見出しを囲む](#wrap-styled-headings-in-text-for-a-line-break)）。ただし、中央揃えまたは右揃えの `<align>` 内では例外があります（[中央揃えのスタイル付き見出し](#centred-styled-headings-inside-align-blocks)）。
+
+### 左揃え、中央揃え、右揃え {#alignment}
+
+```xml
+<align mode="left"><text>Left aligned</text></align>
+<align mode="center"><text>Centered</text></align>
+<align mode="right"><text>Right aligned</text></align>
+```
+
+それ以外の `mode` は左揃えで印刷されます。
+
+### 文字の拡大 {#text-size}
+
+テキストの幅、高さ、または両方を拡大できます：
+
+```xml
+<size width="2" height="2"><text>Double-size text</text></size>
+<size width="2" height="1"><text>Wide text</text></size>
+<size width="1" height="2"><text>Tall text</text></size>
+```
+
+`height` を省略すると、`width` と同じ値になります。ESC/POS プリンターでは最大 8 倍、Star プリンターでは最大 6 倍です。
+
+### 列 {#tabular-layout}
+
+次の `<row>` 、 `<col>` を使うと、テキストを列に分けて横に並べられます：
+
+```xml
+<row>
+  <col width="16">Item name</col>
+  <col width="4" align="right">Qty</col>
+  <col width="12" align="right">Price</col>
+</row>
+```
+
+この例の幅の合計は、最も狭い用紙に対応する 32 なので、どのプリンターでも行が収まります。幅が広い用紙では、行の残りの部分は空白になります。
+
+列の幅は文字数で指定します。列に `width="*"` を指定すると残りの幅を使うため、行が用紙に収まります：
+
+```xml
+<row>
+  <col width="*">{{name}}</col>
+  <col width="12" align="right">{{line_total_display}}</col>
+</row>
+```
+
+- なお、 `<col>` の配置には `left` または `right`を指定します。列は中央揃えにできません。
+- なお、 `<col>` が `<row>` の外側にある場合は無視されます。
+- 列では **テキストだけ** が印刷されます。 `<col>` 全体を囲んでください（`<bold>`、 `<size>` など）はプレビューには表示されますが、**レシートを画像として印刷** がオンでなければ紙には反映されません。ギャラリーのテンプレート（例：**シンプルなサーマルレシート（80mm）**）では、この方法で合計を太字にしているため、紙では通常の文字になります。行全体を太字で印刷するには、 `<bold>` タグで、 `<row>`で囲んでください。
+
+<details>
+<summary>例：太字で印刷される合計行</summary>
+
+```xml
+<!-- Prints bold on paper -->
+<bold>
+  <row>
+    <col width="*">{{i18n.total}}</col>
+    <col width="16" align="right">{{totals.total_display}}</col>
+  </row>
+</bold>
+```
+
+</details>
+
+### 区切り線と空白 {#separators-and-spacing}
+
+```xml
+<line />                       <!-- Single line -->
+<line style="double" />        <!-- Double line -->
+<line style="dashed" />        <!-- Dashed line -->
+<line style="dotted" />        <!-- Dotted line -->
+<feed lines="2" />             <!-- Two blank lines -->
+```
+
+プレビューではスタイルごとに異なる線が表示されます。実際の印刷では、`single` と `dashed` は同じ見た目になります。
+
+<details>
+<summary>各線スタイルの印刷結果</summary>
+
+- `single` と `dashed` はどちらも、用紙の幅いっぱいに `-` を並べて印刷します。
+- `dotted` は用紙の幅いっぱいに `. . . .` を印刷します。Epson 独自のネットワーク接続である ePOS 経由でアプリが接続する Epson プリンター（ブラウザーから使う Epson ネットワークプリンター、または ePOS ポートで応答するプリンターにデスクトップから接続する場合）では、`single` と同じく `-` が印刷されます。
+- `double` は二重線の文字を並べて印刷します。ePOS 経由とクラウド印刷では、`=` を並べて印刷します。
+
+</details>
+
+### 用紙のカットとドロワーのオープン {#printer-commands}
+
+```xml
+<cut />                <!-- Partial cut (leaves a small tab) -->
+<cut type="full" />    <!-- Full cut -->
+<drawer />             <!-- Open the cash drawer -->
+<drawer connector="pin5" /> <!-- Open the drawer on pin 5 -->
+```
+
+- `<cut />` は、まず用紙をカッターの位置まで送ります。プレビューではカット位置を ✂ 付きの破線で示します。アプリが ePOS 経由で接続する Epson プリンターでは、 `<cut />` 、 `<cut type="full" />` は同じカット動作になります。
+- `<drawer />` は **キャッシュドロワーの自動オープン** の設定に関係なくドロワーを開きます。テンプレートに独自の `<drawer />`がある場合、アプリはドロワーを再度開きません。プレビューには何も表示されません。 [キャッシュドロワー](../hardware/printers/cash-drawer.mdx)で囲んでください。
+
+### バーコードと QR コード {#barcodes-and-qr-codes}
+
+```xml
+<barcode type="code128" height="40">{{order.number}}</barcode>
+<qrcode size="4">{{fiscal.qr_payload}}</qrcode>
+```
+
+- `height` はバーコードの高さで、プリンターのドット単位です。
+- `size` は QR コードの各マスの大きさです。数値が大きいほどコードも大きくなります。
+
+<details>
+<summary>QR コードの作成に使う `<barcode>`</summary>
+
+`<barcode type="qrcode">` （または `type="qr"`）でも QR コードを作成できます。サイズは `height`に格納されています： `height` ÷ 10 で、2 から 10 の範囲に収まるように調整されます。
+
+</details>
+
+プレビューではバーコードと QR コードを画像として描画します。プリンターには専用のバーコードコマンドを送信するか、アプリで画像を生成した場合はその画像を送って印刷します。
+
+## 例：シンプルな 80mm レシート {#example-simple-80mm-receipt}
+
+レシート全体の例です。上から順に、店舗名と住所、注文番号、日付とレジ係、三列の商品明細、**合計** 行を太字にした集計、預り金とお釣りを含む各支払い、お礼のメッセージ、用紙のカットを配置しています。
+
+<details>
+<summary>テンプレート全体を表示（約 80 行）</summary>
+
+```xml
+<receipt paper-width="48">
+  <align mode="center">
+    <bold><size height="2"><text>{{store.name}}</text></size></bold>
+    {{#store.address_lines}}<text>{{.}}</text>{{/store.address_lines}}
+    {{#store.phone}}<text>{{store.phone}}</text>{{/store.phone}}
+  </align>
+  <line />
+
+  <text>Order: #{{order.number}}</text>
+  <text>Date: {{order.created.datetime}}</text>
+  {{#cashier.name}}<text>Cashier: {{cashier.name}}</text>{{/cashier.name}}
+  <line />
+
+  <!-- Column headers, bold on paper -->
+  <bold>
+    <row>
+      <col width="*">Item</col>
+      <col width="4" align="right">Qty</col>
+      <col width="12" align="right">Total</col>
+    </row>
+  </bold>
+  <line />
+
+  <!-- Line items -->
+  {{#lines}}
+  <row>
+    <col width="*">{{name}}</col>
+    <col width="4" align="right">{{qty}}</col>
+    <col width="12" align="right">{{line_total_display}}</col>
+  </row>
+  {{/lines}}
+
+  <line />
+
+  <!-- Totals -->
+  <row>
+    <col width="*">Subtotal</col>
+    <col width="16" align="right">{{totals.subtotal_display}}</col>
+  </row>
+  {{#totals.tax_total}}
+  <row>
+    <col width="*">Tax</col>
+    <col width="16" align="right">{{totals.tax_total_display}}</col>
+  </row>
+  {{/totals.tax_total}}
+  <bold>
+    <row>
+      <col width="*">TOTAL</col>
+      <col width="16" align="right">{{totals.total_display}}</col>
+    </row>
+  </bold>
+
+  <line />
+
+  {{#payments}}
+  <row>
+    <col width="*">{{method_title}}</col>
+    <col width="16" align="right">{{amount_display}}</col>
+  </row>
+  {{#tendered}}
+  <row>
+    <col width="*">Tendered</col>
+    <col width="16" align="right">{{tendered_display}}</col>
+  </row>
+  <row>
+    <col width="*">Change</col>
+    <col width="16" align="right">{{change_display}}</col>
+  </row>
+  {{/tendered}}
+  {{/payments}}
+
+  <feed lines="2" />
+  <align mode="center">
+    <text>Thank you for your purchase!</text>
+  </align>
+  <feed lines="3" />
+  <cut />
+</receipt>
+```
+
+</details>
+
+この例のラベルは英語のテキストです。ギャラリーのテンプレートでは代わりに `{{i18n.*}}` ラベルを使い、レシートが店舗の言語に合うようにしています（[i18n フィールド](./receipt-data.mdx#i18n)）。
+
+## 伸縮する列 {#star-width-columns}
+
+`width="*"` の列は用紙に合わせて伸縮します。すべての列を特定の用紙サイズに合わせて固定する代わりに、伸縮させたい列に `*` を指定してください：
+
+```xml
+<!-- Works on 58 mm (32 characters) AND 80 mm (48 characters) printers -->
+<row>
+  <col width="*">{{name}}</col>
+  <col width="10" align="right">{{line_total_display}}</col>
+</row>
+```
+
+48 文字幅のプリンターでは、商品名に 38 文字分の幅が割り当てられます。32 文字幅のプリンターでは 22 文字分です。固定幅の列は、どちらでも同じ幅になります。
+
+<details>
+<summary>複数の `*` 列</summary>
+
+残りの幅は均等に分配されます。割り切れない端数は最後の `*` 列に割り当てられます。`*` 列の幅が 1 文字未満になることはありません。
+
+</details>
+
+## テンプレートのプレビュー {#template-preview}
+
+WP Admin のテンプレートエディターは、入力に合わせて **サーマルレシートのライブプレビュー** を表示します。入力を止めてから 300 ms 後に更新されます。POS のレシートウィンドウでも、印刷前に同じ種類のプレビューを表示します。どちらも等幅文字で、`paper-width` の幅に合わせてテンプレートを描画します。
+
+プレビューと印刷物には同じテンプレートを使います。印刷専用の別テンプレートはありません。プレビューは実際の印刷に近いものの完全には一致しないため、実運用の前に、使用する用紙幅ごとにレシートをテスト印刷してください。
+
+<details>
+<summary>プレビューと実際の印刷の違い</summary>
+
+| プレビュー | 実際の印刷 |
+|---|---|
+| 幅は `paper-width` | 幅はプリンターの **用紙幅** |
+| `<bold>`、 `<size>` は、 `<col>` 内でも反映されます | **レシートを画像として印刷** がオンでなければ、列は通常のテキストで印刷されます |
+| `<size>` は、 `width` だけで拡大されるため、高さだけを変えても通常のサイズに見えます | 幅と高さの両方が適用されます |
+| 実線と破線の見た目が異なります | どちらも `-` を印刷します |
+| `<cut />` は ✂ 付きの破線で表示され、 `<drawer />` は何も表示しません | 用紙をカットし、ドロワーを開きます |
+| すべての文字体系を表示できます | **レシートを画像として印刷** がオンでなければ、プリンターに内蔵された文字だけを印刷できます |
+
+</details>
+
+## テンプレート作成のヒント {#authoring-tips-and-pitfalls}
+
+サーマル印刷には、HTML にはない注意点がいくつかあります。それぞれの対処方法を紹介します。
+
+### スタイル付き見出しを `<text>` で囲んで改行する {#wrap-styled-headings-in-text-for-a-line-break}
+
+スタイルタグ — `<bold>`、 `<size>`、 `<underline>`、 `<invert>`、 `<align>` — は **それだけでは改行しません**。 `<text>` はテキストの後で改行します。また、行全体を扱うタグである `<line />`、 `<row>` 、 `<feed />`も改行します。ただし、中央揃えまたは右揃えの `<align>` の直下にあるスタイル付き見出しは例外で、次に別の行が続く場合は見出しの末尾で改行します（[中央揃えのスタイル付き見出し](#centred-styled-headings-inside-align-blocks)）。
+
+```xml
+<!-- ❌ Wrong: the heading runs into whatever follows -->
+<bold>{{i18n.bill_to}}</bold>
+{{customer.name}}
+
+<!-- ✅ Right: put the words inside <text> -->
+<bold><text>{{i18n.bill_to}}</text></bold>
+<text>{{customer.name}}</text>
+```
+
+ギャラリーの 80 mm テンプレートでは、すべての見出しにこの方法を使っています。
+
+### 幅の狭い行では `<size width="2">` を避ける {#avoid-size-width2-inside-narrow-rows}
+
+横幅を倍にしたテキストは、**一文字あたり倍の幅を使います**。48 文字幅のプリンターに収まる見出しでも、42 文字幅でははみ出すことがあります。58 mm 用紙では 16 文字分しか収まりません。
+
+なお、 `<col>` 内のサイズ指定は、いずれにしても印刷には反映されません。合計金額やキッチン用注文番号などを大きく印刷するには、独立した行で `<size>` を使ってください。
+
+<details>
+<summary>例：縦に拡大した店舗名と大きな合計金額</summary>
+
+```xml
+<!-- For store names, prefer normal-width, double-height -->
+<bold><size height="2"><text>{{store.name}}</text></size></bold>
+
+<!-- For a big total, put it on its own line above the row -->
+<align mode="right">
+  <bold><size height="2"><text>{{totals.total_display}}</text></size></bold>
+</align>
+```
+
+</details>
+
+### `width="*"` を使ってどの用紙にも行を収める {#use-width-for-paper-width-agnostic-layouts}
+
+`width="*"` の列は、固定幅の列を配置した残りの幅を使います。この方法で作った行は、32、42、48、64 文字幅のプリンターに収まります（[伸縮する列](#star-width-columns)）。固定幅の列と横幅を倍にしたテキストは、指定された幅をそのまま使うため、使用する用紙幅ごとに結果を確認してください。
+
+固定幅を使う場合は、**幅の合計がプリンターの用紙幅を超えないようにしてください**。58 mm 用紙では 32 です。80 mm 用紙では 48 ではなく 42 を使ってください。多くの 80 mm プリンターは一行に 42 文字を印刷するため、合計が 48 の行は折り返されます。[レシートの幅](../hardware/printers/receipt-width.mdx)でお使いのプリンターの文字数を確認してください。
+
+### `<align>` ブロック内の中央揃えのスタイル付き見出し {#centred-styled-headings-inside-align-blocks}
+
+配置設定が `<align mode="center">` （または `right`）の場合、 `<align>` の直下に置いたスタイル付き見出し — `<bold>`、 `<size>`、 `<underline>` または `<invert>` — は、次に別の行が続くと見出しの末尾で改行します。中央揃えの住所の上に、拡大して中央揃えにした店舗名を配置しても、 `<text>` で囲んでください。
+
+ただし、 `<align>` ブロックの外側では、 `<text>` で囲んでください。
+
+### ダッシュと曲線型の引用符 {#escpos-punctuation-normalisation}
+
+**ESC/POS** プリンターでは、ダッシュや曲線型の引用符は通常の記号に置き換えて印刷されるため、そのまま入力できます。Star プリンターでは、プリンターに内蔵された文字と記号だけを使用してください。
+
+<details>
+<summary>置き換わる文字と対象のプリンター</summary>
+
+**プリンター言語** が **ESC/POS** の場合、装飾的な句読記号は印刷前に通常のキーボード文字に置き換わります：
+
+- ハイフンと各種の長さのダッシュ（en ダッシュ、em ダッシュ、フィギュアダッシュ、マイナス記号）→ `-`
+- 曲線型の引用符 → 直線型の引用符
+
+そのため、`Mon–Sat 9:00–18:00` や `“open”` は、それらの記号を内蔵していないプリンターでも正しく印刷できます。Star プリンター（**StarPRNT** と **Star Line Mode**）では、アプリから印刷すると元のダッシュと引用符がそのまま使われるため、プリンターに内蔵された文字だけを使用してください。クラウド印刷では、Star のレシートも同様に通常の文字へ置き換わります。
+
+どのプリンターでも、特殊なスペース（改行しないスペース、幅の狭いスペース、細いスペース）は通常のスペースとして印刷されます。
+
+</details>
+
+### 非ラテン文字と右から左に書く文字体系 {#non-latin-and-rtl-scripts}
+
+サーマルプリンターは、内蔵の文字を使ってテキストを印刷します。アラビア語、ヘブライ語、ペルシャ語、ウルドゥー語、タイ語などの非ラテン文字は、その文字体系がプリンターに内蔵されている場合にのみ正しく印刷されます。それ以外の場合は、空白や誤った文字になります。
+
+確実な対処方法は、プリンターの **レシートを画像として印刷** を有効にすることです。レシート全体を画像にするため、プリンターに内蔵された文字に関係なく、意図したとおりに印刷できます。用紙のカット、紙送り、または `<drawer />` は、テンプレートの末尾にあれば引き続き動作しますが、途中にあるものは無視されます。ほかの対処方法については、 [非ラテン文字のレシート](../hardware/printers/non-latin-receipts.mdx)で囲んでください。
+
+:::note サーマルプリンターにはサーマルテンプレートが必要です
+サーマルプリンターでは、ページ全体を使う **HTML** テンプレートは印刷できません。印刷ジョブをプリンターコマンド（ESC/POS または Star）に変換する必要があり、HTML ページはその形式では記述できないためです。サーマルプリンターにはサーマルテンプレートを使用してください。A4/Letter のページ全体を使う HTML は、システムプリンター、PDF プリンター、または [PrintNode](./cloud-printing.mdx#setup-printnode) 経由で印刷してください。
+:::
+
+### ロゴと画像 {#logos-and-images}
+
+次の `<image />` を使ってロゴを追加します。店舗のロゴは `{{store.logo}}`に格納されています：
+
+```xml
+<align mode="center">
+  <image src="{{store.logo}}" width="200" />
+</align>
+```
+
+アプリは端末上で画像をプリンターのドットに変換します。透明部分を白で塗りつぶし、幅に収まるよう縮小し、白黒にします（ドットのパターンでロゴの濃淡を保ちます）。その後、画像としてプリンターに送信します。コントラストの高い PNG を使用してください。SVG はまだ印刷できません。
+
+<details>
+<summary>画像の幅、使用できる参照先と形式</summary>
+
+- **幅**：`width` はプリンターのドット単位です（省略時は 200）。画像は用紙より広く印刷されません。58 mm 用紙（32 文字以下）では 384 ドット、80 mm では 576 ドットです。
+- **使用できる参照先**：`data:image/png` と `data:image/jpeg` のデータ URL、`http(s)` アドレス、自分のサイト上の `/` で始まるパスです。`//` で始まるアドレスや、バックスラッシュまたは `..` を含むパスは拒否されます。
+- **推奨形式**：透明または白の背景で、コントラストの高い PNG。JPEG も使えますが、ぼやけた部分が細かな汚れのように印刷されることがあります。
+- サーマルプリンターでは **SVG はまだサポートされていません**。
+
+</details>
+
+### ヒント {#tips}
+
+- **ギャラリーのテンプレートから始めてください。** ギャラリーのサーマルテンプレートでは、上記のパターンをすべて使用しています。58 mm、80 mm、右から左に書くレシートのほか、キッチン伝票、レジ締め、現金カウント票、レポート用のテンプレートがあります。
+- `width="*"` の列を使っていても、**使用する用紙幅をすべてテストしてください**。固定幅の列や横幅を倍にしたテキストが原因で、行が折り返されることがあります。
+- 金額には **`_display` フィールドを使用してください**。店舗の通貨に合わせて書式設定済みです（[通貨フィールド](./receipt-data.mdx#currency-fields)）。
+- **シンプルにまとめてください。** サーマルプリンターでは、Web ページほど多彩な文字の装飾はできません。レシートは `<text>`、 `<row>` 、 `<col width="*">`で囲んでください。
+
+## 問題が起きた場合 {#if-something-goes-wrong}
+
+**エディターのプレビューに「サーマルテンプレートのレンダリングエラー。XML 構文を確認してください。」と表示される。**
+テンプレートを読み取れません。原因は次の二つです：
+
+- タグが閉じられていないか、エスケープされていない `&` または `<` がテキスト内にあります。すべてのタグを閉じてください（正しい例：`<line />`、誤った例： `<line>`）。また、エスケープ表記の `&amp;` を、通常の `&`で囲んでください。
+- 最も外側のタグが `<receipt>`ではありません。テンプレート全体を `<receipt>…</receipt>`で囲んでください。
+
+**見出しと次の行がつながってしまう。**
+スタイルタグだけでは改行しないため、後続のテキストが同じ行に続きます。内側に `<text>` を入れてください（[スタイル付き見出しを囲む](#wrap-styled-headings-in-text-for-a-line-break)）。ただし、中央揃えまたは右揃えの `<align>` の直下にあるスタイル付き見出しは例外です（[中央揃えのスタイル付き見出し](#centred-styled-headings-inside-align-blocks)）。
+
+**印刷すると行が二行に折り返される。**
+固定幅の合計がプリンターの **用紙幅** を超えています。列のいずれかを `width="*"` にするか、固定幅の合計を **用紙幅** 以下にしてください。58 mm 用紙では 32、多くの 80 mm プリンターでは 42 です（[`width="*"` を使う](#use-width-for-paper-width-agnostic-layouts)）。
+
+**合計がプレビューでは太字なのに、紙では通常の文字になる。**
+列タグの `<col>` 内に指定したスタイルは印刷に反映されません。ギャラリーのテンプレートはこの方法で合計を太字にしています。 `<bold>` タグで、 `<row>` 全体を囲んでください（[列](#tabular-layout)）。または、**レシートを画像として印刷** をオンにしてください。
+
+**プレビューの幅が用紙より狭い、または広い。**
+実際の印刷では、`paper-width` ではなくプリンターの **用紙幅** が使われます。印刷結果をプレビューで確認できるよう、`paper-width` を同じ数値に設定してください。
+
+**カットすると一部がつながったまま残る。**
+`<cut />` は部分カットです。完全に切り離すには、 `<cut type="full" />` を使ってください。ePOS 経由で接続する Epson プリンターでは、どちらも同じカット動作になるため、 `type` は影響しません。
+
+**ロゴが印刷されない。**
+`src` が[使用できる参照先](#logos-and-images)のいずれかであり、SVG ではないことを確認してください。ブラウザーの場合は、[ブラウザーでロゴが表示されない](../hardware/printers/logo-missing-browser.mdx)を参照してください。
+
+**疑問符、空白、誤った文字が印刷される。**
+その文字体系がプリンターに内蔵されていません。**レシートを画像として印刷** をオンにしてください（[非ラテン文字](#non-latin-and-rtl-scripts)）。
+
+**レシートを印刷するたびにキャッシュドロワーが開く。**
+**キャッシュドロワーの自動オープン** がオンになっているか、テンプレートに `<drawer />`が含まれています。このタグは設定に関係なくドロワーを開きます。開かないようにするには、設定をオフにし、 `<drawer />` をテンプレートから削除してください。
+
+**キャッシュドロワーが開かない。**
+テンプレートの `<drawer />` に `connector`が指定されていると、プリンターの設定より優先されます。 `connector` を削除してプリンターの **キャッシュドロワーのコネクター** 設定が適用されるようにし、その設定で別のピンを試してください（この設定は **キャッシュドロワーの自動オープン** がオンのときに表示されます）。ドロワーのコマンドは **プリンター言語** によって異なるため、プリンターに合った言語が選ばれていることも確認してください。
+
+**旧 StarPRNT 固定レイアウト用のテンプレートで正しく印刷できない。**
+そのレイアウトはバージョン 1.10 で削除されました。 `<row>`、 `<col>` 、 `width="*"`を使って作り直すか、ギャラリーのテンプレートから作成し直してください。
+
+## 関連ドキュメント {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/settings/receipt-templates/receipt-data" title="レシートデータ" description="テンプレートで使用できるすべてのフィールド" />
+  <LinkCard to="/settings/receipt-templates/html-templates" title="HTML テンプレート" description="ブラウザーと PDF 印刷用のページ全体を使うレシート" />
+  <LinkCard to="/troubleshooting/printer-problems/receipt-width" title="レシートの幅" description="プリンターの一行あたりの文字数を確認" />
+</LinkCards>

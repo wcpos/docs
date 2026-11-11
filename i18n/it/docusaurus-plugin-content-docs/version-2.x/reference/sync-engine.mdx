@@ -1,0 +1,249 @@
+---
+title: Motore di sincronizzazione
+slug: /developers/sync-engine
+sidebar_label: Motore di sincronizzazione
+sidebar_position: 3
+description: "Riferimento per sviluppatori sul motore di sincronizzazione di WCPOS 2.x: un database per negozio e cassiere, attività in background, controllo delle modifiche, copertura, coda di scrittura, una sola scheda del browser attiva e archiviazione locale."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.json';
+
+Apri il menu del POS, poi [**Stato del negozio**](../support/store-health.mdx), appena sopra **Impostazioni** e **Supporto** in fondo al menu, per vedere sulla tua cassa tutto ciò che descrive questa pagina. Per verificare qualcosa sulla tua cassa, parti da qui:
+
+- **Controlla le modifiche in attesa di invio.** Apri **Stato del negozio → Database** e leggi **modifiche in attesa di invio**: ciò che questa cassa deve ancora inviare al tuo negozio. Vedi [Database](../support/store-health.mdx#database). Se il valore rimane sopra 0, vedi [Il numero di «modifiche in attesa di invio» non diminuisce](../support/store-health.mdx#waiting-to-send). Come funziona l'invio: [Come le modifiche vengono inviate al tuo negozio](#write-path).
+- **Controlla cosa è stato scaricato.** Apri **Stato del negozio → Database** e leggi la tabella: indica quanti dati del tuo negozio sono presenti su questo dispositivo. Vedi [Cosa è presente su questo dispositivo](../support/store-health.mdx#coverage). Come vengono conteggiati i download: [È stato scaricato tutto?](#coverage).
+- **Quando arriva alla cassa una modifica effettuata in WooCommerce?** Vedi [Come il POS rileva le modifiche](#change-signal).
+- **Una vendita o una modifica non è arrivata al tuo negozio.** Vedi [Modifiche mai arrivate al tuo server](../support/store-health.mdx#refused-changes).
+- **«Il POS è aperto in un'altra scheda.»** Vedi [Il POS funziona in una sola scheda](#multi-tab).
+- **«Database locale non disponibile.»** Premi **Ricarica l'app**. Vedi [Archiviazione locale](#local-storage).
+- **Aggiornamento alla versione 2.0.** Vedi [Prima di fare clic su Aggiorna](../getting-started/upgrading-to-2.mdx#before-you-click-update).
+
+:::warning Prima di fare clic su Aggiorna
+Su ogni cassa, apri **Stato del negozio → Database** e attendi che **modifiche in attesa di invio** indichi 0, poi aggiorna. Le modifiche ancora in attesa su una cassa non vengono inviate dopo l'aggiornamento. Se il conteggio non diminuisce, non aggiornare ancora: vedi [Il numero di «modifiche in attesa di invio» non diminuisce](../support/store-health.mdx#waiting-to-send). Per saperne di più, vedi [Aggiornamento alla versione 2.0](#upgrading).
+:::
+
+WCPOS dà priorità ai dati locali. Ogni schermata legge e scrive in un database sul dispositivo, e un **motore di sincronizzazione** mantiene allineati quel database e il tuo negozio WooCommerce in background. Il resto della pagina spiega quali dati il motore recupera, quando lo fa e come le vendite vengono inviate al tuo negozio. Si rivolge a sviluppatori, integratori e titolari di negozi che vogliono capire quali richieste il POS invia al loro hosting.
+
+## Un database per negozio e cassiere {#one-engine-per-scope}
+
+Ogni coppia di negozio e cassiere su un dispositivo ha il proprio database locale. Due cassieri sullo stesso dispositivo non condividono mai i dati locali.
+
+- **Il passaggio è completo oppure non avviene.** Il nuovo negozio o cassiere carica prima il proprio database e subentra solo quando è pronto. In caso di errore viene mostrato un messaggio, senza mai lasciare la cassa a metà del passaggio.
+- **Ogni richiesta specifica il proprio negozio.** Su WCPOS Pro con più negozi, un prezzo modificato alla cassa aggiorna il prezzo di quel negozio, non quello del negozio online.
+- **Una nuova versione crea un nuovo database.** Nessun dato viene migrato nel database esistente. Vedi [Aggiornamento alla versione 2.0](#upgrading).
+
+<Accordion>
+<AccordionItem question="Come sono organizzati motori e ambiti">
+
+Ogni dispositivo esegue **un motore di sincronizzazione per sito**. Al suo interno, ogni coppia di negozio e cassiere costituisce un **ambito** con il proprio database locale. Cambiare negozio o cassiere significa cambiare ambito, e l'intero database associato, sullo stesso motore. La connessione a un sito diverso sostituisce il motore.
+
+</AccordionItem>
+</Accordion>
+
+## Cosa viene eseguito in background {#sync-lanes}
+
+Il **controllo delle modifiche** della cassa chiede al tuo negozio se è cambiato qualcosa, ogni 60 secondi con **Bilanciato**. I [profili di sincronizzazione](../support/store-health.mdx#sync-presets) impostano l'intervallo da ogni 10 secondi (**Tempo reale**) a ogni 5 minuti (**Eco**).
+
+- **Le attività in background aspettano il cassiere.** Il caricamento aggiuntivo di prodotti, clienti e variazioni avviene solo dopo 60 secondi senza che nessuno usi la cassa e senza schermate in attesa di dati, e viene rimandato se il tuo negozio fatica a rispondere. Lo stesso vale per i controlli in background dei record eliminati e dei totali del tuo negozio.
+
+<Accordion>
+<AccordionItem question="Ogni attività, la sua frequenza e il suo limite di richieste">
+
+Ogni operazione che il motore esegue a intervalli è un'**attività**: un lavoro in background con un nome e limiti definiti. Il controllo delle modifiche è l'attività che puoi regolare. Le modifiche effettuate sul dispositivo vengono inviate circa 0,3 secondi dopo essere state apportate.
+
+I caricamenti iniziali, quelli graduali, i controlli dei totali e le verifiche dichiarano ciascuno quante richieste può effettuare una singola esecuzione. I tre processi da cui dipende l'attesa del cassiere (il controllo delle modifiche, lo svuotamento della coda di scrittura e quello della coda delle richieste di dati) non hanno ancora un limite. I limiti sono descritti in [Prestazioni della sincronizzazione](sync-performance.mdx).
+
+| Attività | Frequenza | Richieste per esecuzione |
+| --- | --- | --- |
+| Controllo delle modifiche | Il tuo profilo: 10 s (Tempo reale), 60 s (Bilanciato), 5 min (Eco); personalizzabile da 5 s | Nessun limite per ora |
+| Svuotamento della coda di scrittura | Circa 0,3 s dopo ogni modifica, controllo di sicurezza ogni 10 s | Nessun limite per ora |
+| Svuotamento della coda delle richieste di dati (recupera quanto dichiarato dalle schermate) | 30 s | Nessun limite per ora |
+| Caricamenti iniziali di ordini recenti, prodotti e dati di riferimento | 5 min | 0 (accodano attività per lo svuotamento della coda delle richieste di dati) |
+| Caricamenti graduali di clienti, prodotti e variazioni | 5 min, dopo 60 s di inattività | 1 |
+| Nuovo tentativo di recupero dei totali dal server | 30 s | 11 |
+| Compattazione della copertura | 60 s | 0 |
+| Preparazione del controllo di esistenza | 15 min | 5 |
+| Verifica delle eliminazioni | 17 min | 11 |
+
+Gli ordini non rientrano nel controllo delle modifiche, quindi ogni esecuzione del caricamento iniziale degli ordini recenti ricontrolla anche tutti i carrelli aperti sul dispositivo di cui il tuo negozio ha una copia e che non hanno nulla in attesa di invio. Un carrello eliminato o spostato nel cestino dal tuo negozio viene quindi rimosso dal dispositivo. Lo stesso avviene con qualsiasi recupero mirato di ordini: un ordine che non esiste più nel tuo negozio viene rimosso anziché far fallire il recupero, a meno che su questo dispositivo non ci sia ancora una modifica relativa a quell'ordine in attesa di invio.
+
+</AccordionItem>
+</Accordion>
+
+L'intervallo di controllo e i record per richiesta si impostano per ciascun dispositivo in **Stato del negozio → Prestazioni**:
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[368, 0], [506, -55], [186, -27], [186, -27], [186, -27], [161, -24], [161, -20], [456, 0]]} alt="Stato del negozio nella scheda Prestazioni: la riga dello stato, la barra del tempo di attività del motore, i profili Eco, Bilanciato e Tempo reale, i due cursori e la riga In questo momento">
+
+1. **Stato** — **✓ Normale**, oppure **⚠ Richiede attenzione** quando la cassa è offline, la sincronizzazione è bloccata, un primo download è fallito o l'ultima esecuzione di un'attività di sincronizzazione è fallita. Seguono le richieste delle ultime 24 ore su questa cassa.
+2. **Tempo di attività del motore** — una cella per ora per le ultime 24 ore. Verde: richieste senza errori. Giallo: almeno una richiesta è fallita. Vuota: l'app era chiusa.
+3. **Eco** — controllo delle modifiche ogni 5 minuti, 25 record per richiesta.
+4. **Bilanciato** — il profilo predefinito: ogni 60 secondi, 50 record.
+5. **Tempo reale** — ogni 10 secondi, 75 record.
+6. **Controlla le modifiche** — l'intervallo del controllo delle modifiche, da 5 secondi a 5 minuti.
+7. **Record per richiesta** — quanti record vengono recuperati con una singola richiesta, da 10 a 100.
+8. **In questo momento** — quando è previsto il prossimo controllo e quante richieste all'ora generano approssimativamente queste impostazioni.
+
+</JourneyShot>
+
+## Come il POS rileva le modifiche {#change-signal}
+
+Il POS non scarica di nuovo il catalogo per individuare le modifiche. A ogni controllo delle modifiche invia al tuo negozio una semplice richiesta: è cambiato qualcosa dall'ultima volta? Con **Bilanciato**, una cassa connessa controlla le variazioni di prezzo e scorte circa una volta al minuto. I controlli possono richiedere più tempo quando il tuo negozio fatica a rispondere. Gli ordini seguono una pianificazione separata.
+
+<Accordion>
+<AccordionItem question="Come funziona il controllo delle modifiche">
+
+Il tuo negozio conserva un **registro delle modifiche**, e il POS chiede se è cambiato qualcosa dall'ultima posizione raggiunta nel registro.
+
+- **Un solo controllo copre otto tipi di record:** prodotti, variazioni, aliquote fiscali, clienti, coupon, categorie, marchi e tag. Gli ordini non sono inclusi; quelli aperti e recenti hanno un'attività dedicata, quindi gli aggiornamenti di prodotti e ordini arrivano con ritmi diversi.
+- **Un negozio senza modifiche ha un costo quasi nullo.** La richiesta è condizionale. Quando non è cambiato nulla, il tuo negozio risponde `304 Not Modified` senza corpo della risposta.
+- **Gli intervalli dei controlli variano del ±20%,** così le diverse casse dello stesso sito si sfalsano anziché inviare richieste nello stesso momento.
+- **Una cassa inutilizzata rallenta leggermente.** Dopo 10 minuti senza tocchi, pressioni di tasti o scansioni accettate, gli intervalli tra i controlli si allungano ad almeno 30 secondi, poi ad almeno 60. Una finestra nascosta passa direttamente a 60. Con **Bilanciato** ed **Eco** questo non cambia nulla. Il tocco successivo ripristina la frequenza normale con un controllo immediato, a meno che il tuo negozio non abbia chiesto al POS di rallentare. La frequenza durante l'inattività non supera mai quella impostata.
+- **Una cassa rimasta chiusa per giorni riparte dal momento attuale.** Se si sono accumulate più di 5,000 modifiche, o il tuo negozio ha ripulito il registro oltre la posizione della cassa, il motore passa alla posizione più recente del registro e ricontrolla ciò che è già presente sul dispositivo. Il costo dipende dalle dimensioni della copia locale, non dal tempo trascorso.
+
+</AccordionItem>
+</Accordion>
+
+## Come le schermate ottengono i dati {#declared-demand}
+
+Una schermata mostra sempre subito ciò che è già presente sul dispositivo. Quando servono record che il dispositivo non ha ancora, per esempio per una ricerca oltre i primi prodotti, il motore li recupera dal tuo negozio mentre la cassa è online. Non tutto è presente sul dispositivo fin dall'inizio; ciò che è disponibile dipende dal tipo di record:
+
+1. Le **aliquote fiscali** vengono recuperate per prime all'avvio: senza di esse il carrello non può eseguire i calcoli.
+2. **Prodotti:** i primi 100 nell'ordinamento predefinito vengono recuperati all'avvio. Gli altri arrivano quando una schermata li richiede e attraverso un caricamento aggiuntivo durante l'inattività, secondo l'ordinamento del cassiere.
+3. I **clienti** non vengono recuperati all'avvio. Una schermata li richiede, un caricamento aggiuntivo durante l'inattività ne aggiunge 10 alla volta e il controllo delle modifiche recupera quelli nuovi e modificati.
+4. Nemmeno **categorie, tag, marchi e coupon** vengono recuperati all'avvio. Si caricano alla prima apertura (una riapertura entro 15 secondi non genera un'altra richiesta), vengono completati in background quando il tuo negozio ne segnala la presenza, si aggiornano ogni 30 minuti e seguono il controllo delle modifiche.
+
+Quando la cassa è online, aprire il selettore delle variazioni ne aggiorna prezzi e scorte. Nel frattempo, le variazioni già presenti sul dispositivo vengono mostrate subito.
+
+<Accordion>
+<AccordionItem question="Come una schermata richiede i dati">
+
+Le schermate non eseguono la sincronizzazione. **Una schermata dichiara ciò che mostra (ricerca, filtri, ordinamento, pagina) e il motore decide se serve una richiesta.** Ogni dichiarazione si conclude in uno di tre modi:
+
+- **Servita localmente** — tutti i record necessari sono già presenti sul dispositivo.
+- **Recuperata** — il motore ha richiesto i dati al tuo negozio.
+- **Rilasciata** — la schermata l'ha abbandonata, di solito perché hai scorso la pagina o cambiato un filtro e una dichiarazione più recente l'ha sostituita. È un comportamento normale, non un errore.
+
+Un filtro che il tuo negozio non può esprimere viene applicato sul dispositivo; il resto della query può comunque essere inviato al tuo negozio. Una dichiarazione risolta non significa che un tipo di record sia stato scaricato interamente. Questo viene monitorato separatamente, come descritto [qui sotto](#coverage).
+
+</AccordionItem>
+</Accordion>
+
+## È stato scaricato tutto? {#coverage}
+
+**Stato del negozio → Database** elenca ogni tipo di record con il conteggio sul dispositivo, il totale del tuo negozio e una barra di copertura. Vedi [Cosa è presente su questo dispositivo](../support/store-health.mdx#coverage). I numeri mostrati non vengono mai ricavati arbitrariamente dai dati presenti sul dispositivo:
+
+- **Un totale non aggiornato o mancante mostra *verifica in corso…*.** Se non è aggiornato, l'ultimo valore ricevuto dal tuo negozio rimane visibile accanto. Un conteggio basato sul dispositivo indicherebbe sempre il 100% e nasconderebbe proprio la differenza che quel valore deve mostrare.
+- **Gli ordini risultano parziali per scelta progettuale.** La barra prende come riferimento tutti gli ordini del tuo negozio, mentre la cassa conserva solo quelli aperti e recenti (**aperti + recenti restano sul dispositivo · i meno recenti si scaricano quando vengono visualizzati**).
+- **Pronto per vendere si attiva presto.** Si attiva non appena i primi prodotti sono sul dispositivo, anche se la cassa è offline: vendere offline è proprio l'obiettivo.
+
+<Accordion>
+<AccordionItem question="Come vengono verificati i totali dei download">
+
+Un'indicazione come *1,240 di 5,000 prodotti* richiede il totale del tuo negozio per il secondo numero. Il motore ne conserva uno per ogni tipo di record. Ognuno richiede una richiesta dedicata a basso costo, con un record per pagina, che legge l'header `X-WP-Total` di WooCommerce, al massimo circa una volta ogni 15 minuti per tipo.
+
+</AccordionItem>
+</Accordion>
+
+## Come le modifiche vengono inviate al tuo negozio {#write-path}
+
+Ogni modifica effettuata sul dispositivo (una vendita, la modifica di un prodotto, un nuovo cliente) viene prima salvata sul dispositivo e inviata al tuo negozio entro circa un secondo. Un carrello aperto fa eccezione: viene inviato quando premi **Cassa**. **Una vendita registrata offline resta in attesa sul dispositivo e viene inviata quando la connessione torna disponibile.** La maggior parte delle modifiche non richiede alcun intervento. Due tipi attendono una tua scelta in **Stato del negozio → Database**, mentre un terzo viene risolto automaticamente:
+
+- **L'invio di un ordine in conflitto viene ritentato una volta.** Se il tuo negozio ha una copia più recente dell'ordine, il motore riconcilia le versioni ed effettua un altro invio. Se anche questo fallisce, o se il record non è un ordine, la modifica viene trattenuta in attesa della tua scelta: **Invia di nuovo** o **Usa la versione del server**. Vedi [Modifiche trattenute perché il tuo negozio aveva una versione più recente](../support/store-health.mdx#held-changes).
+- **L'invio di una modifica rifiutata dal tuo negozio non viene mai ritentato automaticamente**, tranne nel caso di un ordine eliminato dal tuo negozio (vedi sotto). La modifica viene conservata con il motivo indicato dal tuo negozio e mostrata in **Stato del negozio → Database** come **modifiche mai arrivate al tuo server**. **Invia di nuovo** la ricostruisce dal record così com'è ora sul dispositivo; **Scarta** la elimina. Vedi [Modifiche mai arrivate al tuo server](../support/store-health.mdx#refused-changes).
+- **Ordine eliminato nel negozio.** Quando il tuo negozio ha eliminato un ordine o lo ha spostato nel cestino mentre questa cassa lo stava ancora aggiornando, il POS risolve la situazione senza chiedere: un carrello aperto viene conservato e inviato di nuovo come nuovo ordine con un nuovo numero la prossima volta che premi **Cassa**; qualsiasi altro ordine viene rimosso da questo dispositivo. Un messaggio intitolato **Ordine eliminato nel negozio** indica una sola volta cosa è successo:
+  - Carrello aperto: **L'ordine #1234 è stato eliminato nel negozio. Il carrello è stato conservato come nuovo ordine.**
+  - Qualsiasi altro ordine: **L'ordine #1234 è stato eliminato nel negozio ed è stato rimosso da questo dispositivo.**
+
+  Nel registro viene annotato [SYNC203](../error-codes/SYNC203.mdx).
+
+<Accordion>
+<AccordionItem question="Come vengono inviate le modifiche">
+
+- **Prima di tutto, una coda persistente.** Ogni modifica entra in una coda sul dispositivo prima che venga inviato qualsiasi dato. Circa 0,3 secondi dopo, il processo di svuotamento della coda di scrittura la invia; un controllo ogni 10 secondi intercetta ciò che un segnale di attivazione non ha rilevato.
+- **Le modifiche al carrello vengono applicate una alla volta per ordine.** Una sequenza rapida di scansioni viene applicata nell'ordine di arrivo. Aggiungere un prodotto che occupa già esattamente una riga nel carrello aumenta la quantità di quella riga anziché aggiungerne una seconda.
+- **La risposta del tuo negozio viene conservata.** Quando il tuo negozio accetta una modifica, il dispositivo adotta la copia del negozio, così le modifiche successive sono coerenti con essa. Per gli ordini, questo conserva gli ID delle righe assegnati da WooCommerce, evitando che un aggiornamento aggiunga righe duplicate. Una modifica locale che il tuo negozio non ha ancora ricevuto non viene mai sovrascritta.
+- **Un ordine eliminato viene gestito dal POS.** Il tuo negozio risponde con `404` a un aggiornamento di un ordine che non esiste più. Il POS scarta la modifica in coda; se si tratta di un carrello aperto, lo rimette poi in coda come nuovo ordine, includendo le eventuali modifiche apportate nel frattempo.
+
+</AccordionItem>
+</Accordion>
+
+## Il POS funziona in una sola scheda {#multi-tab}
+
+In un browser web, **il POS funziona in una sola scheda per sito**. Una seconda scheda dello stesso sito, per qualsiasi negozio o cassiere, si ferma a questa schermata. Non apre mai il database locale, quindi non può registrare una vendita né inviare alcun dato, e non interferisce con la prima scheda.
+
+<JourneyShot manifest={manifest} device="tablet" step={5} offsets={[[637, 37], [334, 0]]} alt="Una seconda scheda del browser con il POS: Il POS è aperto in un'altra scheda, Solo una scheda può gestire la cassa e il pulsante Subentra qui">
+
+1. **Il POS è aperto in un'altra scheda** — questa scheda è in attesa. **Solo una scheda può gestire la cassa.**
+2. **Subentra qui** — chiede all'altra scheda di cedere il controllo. Quella scheda termina un eventuale pagamento in corso e attende fino a 15 secondi per un salvataggio, poi si mette in attesa, mentre questa scheda carica il POS.
+
+</JourneyShot>
+
+- **Una scheda in attesa non si riattiva da sola.** Chiudere la scheda attiva lascia l'altra in attesa finché non premi **Subentra qui** o la ricarichi.
+- **«L'altra scheda non risponde»** — la scheda attiva non ha ceduto il controllo. Chiudila o ricaricala per continuare in questa.
+- **Un pagamento che la vecchia scheda tenta di avviare dopo aver ceduto il controllo della cassa** viene rifiutato prima dell'invio e registrato come [CLIENT161](../error-codes/CLIENT161.mdx). Un pagamento avviato prima, anche durante l'attesa di un salvataggio nel passaggio di controllo, termina prima che la scheda ceda il controllo.
+- Le **app desktop e mobili** non hanno schede né questo blocco. Un browser che non può coordinare le proprie schede (senza supporto per Web Locks) esegue ogni scheda senza il controllo.
+
+## Archiviazione locale {#local-storage}
+
+Nella versione 2.0 ogni cassa conserva i propri dati in un database sul dispositivo stesso.
+
+Se un banner mostra **Database locale non disponibile — scansione, pagamento, salvataggio e annullamento sono bloccati fino al ricaricamento dell'app**, premi **Ricarica l'app**. Fino ad allora, anche i rimborsi sono bloccati e una scansione mostra **Scansione non disponibile** anziché non dare alcun riscontro. Il POS blocca qualsiasi operazione che potrebbe causare la perdita di una vendita quando il database del dispositivo smette di rispondere o un salvataggio locale si blocca. Il codice è [SYNC161](../error-codes/SYNC161.mdx).
+
+<Accordion>
+<AccordionItem question="Dove risiedono i dati su ciascuna piattaforma">
+
+Il database è SQLite, eseguito tramite RxDB Premium:
+
+| Piattaforma | Dove risiedono i dati |
+| --- | --- |
+| Web | SQLite-wasm in un worker dedicato, nel file system privato del browser (OPFS) |
+| Desktop | SQLite nel processo principale dell'app |
+| iOS e Android | SQLite tramite expo-sqlite |
+
+Le query vengono eseguite all'interno del database: filtro, ordinamento e paginazione. Solo le righe visibili sullo schermo arrivano all'app.
+
+</AccordionItem>
+</Accordion>
+
+## Aggiornamento alla versione 2.0 {#upgrading}
+
+La versione 2.0 non migra i dati locali. Ogni dispositivo **scarica di nuovo tutto**:
+
+1. **Ogni dispositivo crea un nuovo database** e scarica nuovamente i dati dal tuo negozio, una sola volta. Il tuo negozio conserva la copia completa di tutto ciò che è stato sincronizzato.
+2. **Le modifiche accodate prima dell'aggiornamento non vengono inviate.** Su ogni cassa, attendi che **modifiche in attesa di invio** indichi 0 in **Stato del negozio → Database** prima di aggiornare. Vedi [Prima di fare clic su Aggiorna](../getting-started/upgrading-to-2.mdx#before-you-click-update). I vecchi database 1.x vengono eliminati quando il negozio è pronto per vendere.
+3. **L'app e il plugin vanno aggiornati insieme.** L'app 2.0 richiede il plugin WCPOS 2.0. Se viene aggiornata solo una delle due parti, l'app indica quale: [AUTH331](../error-codes/AUTH331.mdx) quando il plugin è meno recente, [SYNC341](../error-codes/SYNC341.mdx) quando l'app è meno recente.
+
+## Cosa è cambiato rispetto alla versione 1.9 {#what-changed-in-v1100}
+
+<Accordion>
+<AccordionItem question="1.9, 1.10–1.11 e 2.0 a confronto">
+
+| | 1.9 | 1.10–1.11 | 2.0 |
+| --- | --- | --- | --- |
+| Unità di sincronizzazione | Un flusso per ogni query di schermata | Un motore, un database per sito, negozio e cassiere | Invariato |
+| Cosa attiva il recupero | L'apertura di una schermata | Una schermata che dichiara ciò di cui ha bisogno | Invariato |
+| Rilevamento delle modifiche | Controlli periodici e una verifica completa ogni ora | Registro delle modifiche con risposte condizionali `304` | Invariato |
+| Totali del tuo negozio | Non monitorati | Per tipo di record, con *verifica in corso…* | Invariato |
+| Modifiche rifiutate | Nuovi tentativi non visibili | Coda persistente, pannello di recupero, nessun nuovo tentativo silenzioso | Invariato |
+| Schede del browser | Non coordinate | Tutte le schede attive, una designata per l'invio | Una scheda attiva per sito, le altre in attesa |
+| Archiviazione | IndexedDB (web), SQLite (app) | Archiviazione nel file system (OPFS sul web) | SQLite su ogni piattaforma |
+| Regolazione della sincronizzazione | Fissa | Profili e cursori in Stato del negozio | Invariato |
+| Ricerca locale | Corrispondenza per prefisso delle parole | Corrispondenza per sottostringa | Ogni parola, di qualsiasi lunghezza, in qualsiasi punto del record |
+
+</AccordionItem>
+</Accordion>
+
+Per i limiti delle richieste, il rallentamento quando il tuo negozio fatica a rispondere e i valori misurati, vedi [Prestazioni della sincronizzazione](sync-performance.mdx).
+
+## Documentazione correlata {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Stato del negozio" to="/troubleshooting/store-health" description="Dove il titolare del negozio può vedere tutto questo sulla cassa." />
+  <LinkCard title="Prestazioni della sincronizzazione" to="/developers/sync-performance" description="Limiti delle richieste e rallentamento quando il tuo negozio è occupato." />
+  <LinkCard title="Aggiornamento alla versione 2.0" to="/getting-started/upgrade-2-0" description="Cosa fare su ogni cassa prima di aggiornare." />
+</LinkCards>

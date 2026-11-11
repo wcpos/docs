@@ -1,0 +1,249 @@
+---
+title: Motor de sincronización
+slug: /developers/sync-engine
+sidebar_label: Motor de sincronización
+sidebar_position: 3
+description: "Referencia para desarrolladores del motor de sincronización de WCPOS 2.x: una base de datos por tienda y cajero, tareas en segundo plano, comprobación de cambios, cobertura, cola de escritura, una pestaña activa del navegador y almacenamiento local."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.json';
+
+Abra el menú del POS y, después, [**Estado de la tienda**](../support/store-health.mdx), justo encima de **Ajustes** y **Soporte**, en la parte inferior del menú, para ver en su propia caja todo lo que describe esta página. Para comprobar algo en su caja, empiece aquí:
+
+- **Compruebe los cambios pendientes de envío.** Abra **Estado de la tienda → Base de datos** y consulte **cambios pendientes de envío**: lo que esta caja aún debe enviar a su tienda. Consulte [Base de datos](../support/store-health.mdx#database). Si el valor se mantiene por encima de 0, consulte [El número de «cambios pendientes de envío» no disminuye](../support/store-health.mdx#waiting-to-send). Cómo funciona el envío: [Cómo llegan los cambios a su tienda](#write-path).
+- **Compruebe qué se ha descargado.** Abra **Estado de la tienda → Base de datos** y consulte la tabla: qué parte de su tienda está en este dispositivo. Consulte [Qué hay en este dispositivo](../support/store-health.mdx#coverage). Cómo se contabilizan las descargas: [¿Está todo descargado?](#coverage).
+- **¿Cuándo llega a la caja un cambio realizado en WooCommerce?** Consulte [Cómo detecta los cambios el POS](#change-signal).
+- **Una venta o modificación no ha llegado a su tienda.** Consulte [Cambios que nunca llegaron a su servidor](../support/store-health.mdx#refused-changes).
+- **«El POS está abierto en otra pestaña».** Consulte [Una sola pestaña ejecuta el POS](#multi-tab).
+- **«Base de datos local no disponible».** Pulse **Recargar la aplicación**. Consulte [Almacenamiento local](#local-storage).
+- **Actualización a 2.0.** Consulte [Antes de hacer clic en Actualizar](../getting-started/upgrading-to-2.mdx#before-you-click-update).
+
+:::warning Antes de hacer clic en Actualizar
+En cada caja, abra **Estado de la tienda → Base de datos** y espere a que **cambios pendientes de envío** indique 0; después, actualice. Los cambios que sigan pendientes en una caja no se enviarán después de la actualización. Si el número no disminuye, no actualice todavía: consulte [El número de «cambios pendientes de envío» no disminuye](../support/store-health.mdx#waiting-to-send). Más información en [Actualización a 2.0](#upgrading).
+:::
+
+WCPOS da prioridad a los datos locales. Cada pantalla lee y escribe en una base de datos del dispositivo, y un **motor de sincronización** mantiene esa base de datos y su tienda WooCommerce sincronizadas en segundo plano. El resto de esta página explica qué obtiene el motor, cuándo lo hace y cómo llegan las ventas a su tienda. Está dirigida a desarrolladores, integradores y propietarios de tiendas que desean conocer las exigencias del POS para su alojamiento.
+
+## Una base de datos por tienda y cajero {#one-engine-per-scope}
+
+Cada combinación de tienda y cajero en un dispositivo tiene su propia base de datos local. Dos cajeros en un mismo dispositivo nunca comparten datos locales.
+
+- **El cambio se completa o no se realiza.** Primero se carga la base de datos de la nueva tienda o del nuevo cajero, y solo se pasa a ella cuando está lista. Si hay un error, se muestra; la caja nunca queda a medio cambiar.
+- **Cada solicitud identifica su tienda.** En WCPOS Pro con varias tiendas, un precio modificado en la caja actualiza el precio de esa tienda, no el de la tienda en línea.
+- **Una nueva versión inicia una nueva base de datos.** No se migra nada sobre la base de datos existente. Consulte [Actualización a 2.0](#upgrading).
+
+<Accordion>
+<AccordionItem question="Cómo se organizan los motores y los ámbitos">
+
+Cada dispositivo ejecuta **un motor de sincronización por sitio**. Dentro de él, cada pareja de tienda y cajero constituye un **ámbito** con su propia base de datos local. Cambiar de tienda o de cajero cambia el ámbito, y toda su base de datos, dentro del mismo motor. Conectarse a otro sitio sustituye el motor.
+
+</AccordionItem>
+</Accordion>
+
+## Qué se ejecuta en segundo plano {#sync-lanes}
+
+La **comprobación de cambios** de la caja consulta a su tienda si ha cambiado algo, cada 60 segundos en el modo **Equilibrado**. Los [ajustes predefinidos de sincronización](../support/store-health.mdx#sync-presets) permiten establecer una frecuencia de entre 10 segundos (**Tiempo real**) y 5 minutos (**Eco**).
+
+- **El trabajo en segundo plano espera al cajero.** Las descargas adicionales de productos, clientes y variaciones solo se ejecutan tras 60 segundos sin que nadie use la caja ni haya pantallas esperando datos, y se posponen mientras su tienda tiene dificultades para responder. Lo mismo ocurre con las comprobaciones en segundo plano de registros eliminados y de los totales de su tienda.
+
+<Accordion>
+<AccordionItem question="Cada tarea, su frecuencia y su límite de solicitudes">
+
+Todo lo que el motor ejecuta de forma programada es una **tarea**: una unidad acotada de trabajo en segundo plano con nombre propio. La comprobación de cambios es la que se puede ajustar. Los cambios realizados en el dispositivo se envían aproximadamente 0,3 segundos después de realizarse.
+
+Las cargas iniciales, las descargas graduales, los totales y las auditorías declaran cuántas solicitudes puede realizar cada ejecución. El cajero espera la respuesta de tres vías (la comprobación de cambios, el envío de la cola de escritura y el procesamiento de la demanda), que aún no tienen límite. Los límites de solicitudes se detallan en [Rendimiento de la sincronización](sync-performance.mdx).
+
+| Tarea | Frecuencia | Solicitudes por ejecución |
+| --- | --- | --- |
+| Comprobación de cambios | Su ajuste predefinido: 10 s (Tiempo real), 60 s (Equilibrado), 5 min (Eco); personalizable desde 5 s | Aún sin límite |
+| Envío de la cola de escritura | Unos 0,3 s después de cada cambio, comprobación de respaldo cada 10 s | Aún sin límite |
+| Procesamiento de la demanda (obtiene lo que han declarado las pantallas) | 30 s | Aún sin límite |
+| Cargas iniciales de pedidos recientes, productos y datos de referencia | 5 min | 0 (añaden trabajo a la cola de procesamiento de la demanda) |
+| Descargas graduales de clientes, productos y variaciones | 5 min, tras 60 s de inactividad | 1 |
+| Reintento de consulta de totales del servidor | 30 s | 11 |
+| Compactación de la cobertura | 60 s | 0 |
+| Comprobación inicial de existencia | 15 min | 5 |
+| Auditoría de eliminaciones | 17 min | 11 |
+
+Los pedidos no se incluyen en la comprobación de cambios, por lo que cada ejecución de la carga inicial de pedidos recientes también vuelve a comprobar todos los carritos abiertos del dispositivo de los que su tienda tiene una copia y que no tienen nada pendiente de envío. Si su tienda ha eliminado un carrito o lo ha enviado a la papelera, este se elimina del dispositivo. Cualquier consulta de un pedido concreto hace lo mismo: si su tienda ya no tiene el pedido, este se elimina en lugar de hacer que falle la consulta, salvo que el dispositivo aún tenga un cambio pendiente de envío para ese pedido.
+
+</AccordionItem>
+</Accordion>
+
+El intervalo de comprobación y los registros por solicitud se configuran por dispositivo en **Estado de la tienda → Rendimiento**:
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[368, 0], [506, -55], [186, -27], [186, -27], [186, -27], [161, -24], [161, -20], [456, 0]]} alt="Estado de la tienda en la pestaña Rendimiento: la línea de estado, la franja de actividad del motor, los ajustes predefinidos Eco, Equilibrado y Tiempo real, los dos controles deslizantes y la línea Ahora mismo">
+
+1. **Estado** — **✓ Normal**, o **⚠ Requiere atención** cuando la caja está sin conexión, la sincronización está bloqueada, ha fallado una descarga inicial o ha fallado la última ejecución de una tarea de sincronización. A continuación se muestran las solicitudes de esta caja durante las últimas 24 horas.
+2. **Tiempo de actividad del motor** — una celda por hora para las últimas 24 horas. Verde: hubo solicitudes y ningún error. Ámbar: al menos una solicitud falló. Vacía: la aplicación estaba cerrada.
+3. **Eco** — comprobación de cambios cada 5 minutos, 25 registros por solicitud.
+4. **Equilibrado** — el valor predeterminado: cada 60 segundos, 50 registros.
+5. **Tiempo real** — cada 10 segundos, 75 registros.
+6. **Comprobar cambios** — el intervalo de comprobación de cambios, de 5 segundos a 5 minutos.
+7. **Registros por solicitud** — cuántos registros obtiene cada solicitud de descarga, de 10 a 100.
+8. **Ahora mismo** — cuándo está prevista la próxima comprobación y cuántas solicitudes por hora generan aproximadamente estos ajustes.
+
+</JourneyShot>
+
+## Cómo detecta los cambios el POS {#change-signal}
+
+El POS no vuelve a descargar su catálogo para detectar cambios. En cada comprobación de cambios hace una consulta ligera a su tienda: ¿ha cambiado algo desde la última vez? En el modo **Equilibrado**, una caja conectada comprueba los cambios de precios y existencias aproximadamente una vez por minuto. Las comprobaciones pueden tardar más cuando su tienda tiene dificultades para responder. Los pedidos siguen su propia programación independiente.
+
+<Accordion>
+<AccordionItem question="Cómo funciona la comprobación de cambios">
+
+Su tienda mantiene un **registro de cambios**, y el POS consulta si ha cambiado algo desde su última posición en él.
+
+- **Una comprobación abarca ocho tipos de registros:** productos, variaciones, tasas de impuestos, clientes, cupones, categorías, marcas y etiquetas. Los pedidos no se incluyen; los pedidos abiertos y recientes tienen su propia tarea, por lo que las actualizaciones de productos y pedidos llegan a ritmos distintos.
+- **Una tienda sin cambios apenas consume recursos.** La solicitud es condicional. Cuando no ha cambiado nada, su tienda responde `304 Not Modified` sin cuerpo.
+- **Las comprobaciones se espacian con una variación del ±20%,** de modo que las distintas cajas de un sitio consultan en momentos diferentes, en lugar de hacerlo a la vez.
+- **Una caja sin uso reduce un poco su frecuencia.** Tras 10 minutos sin toques, pulsaciones de teclas ni escaneos aceptados, las comprobaciones se espacian hasta al menos 30 segundos, y después hasta al menos 60. Una ventana oculta pasa directamente a 60. En los modos **Equilibrado** y **Eco**, esto no cambia nada. El siguiente toque restablece la frecuencia completa con una comprobación inmediata, salvo que su tienda haya pedido al POS que reduzca la frecuencia. La frecuencia durante la inactividad nunca supera la configurada.
+- **Una caja que lleva días cerrada retoma la actividad desde el momento actual.** Si se han acumulado más de 5,000 cambios, o su tienda ha recortado el registro más allá de la posición de la caja, el motor salta al punto más reciente del registro y vuelve a comprobar lo que el dispositivo ya contiene. El consumo de recursos depende del tamaño de la copia local, no del tiempo de ausencia.
+
+</AccordionItem>
+</Accordion>
+
+## Cómo obtienen sus datos las pantallas {#declared-demand}
+
+Una pantalla siempre muestra de inmediato lo que ya está en el dispositivo. Cuando necesita registros que el dispositivo aún no tiene, por ejemplo, una búsqueda que va más allá de los primeros productos, el motor los obtiene de su tienda mientras la caja tiene conexión. No todo está en el dispositivo desde el principio; lo que se incluye depende del tipo de registro:
+
+1. **Las tasas de impuestos** se obtienen primero al iniciar: el carrito no puede hacer sus cálculos sin ellas.
+2. **Productos:** al iniciar se obtienen los primeros 100 en el orden predeterminado. El resto llega cuando una pantalla los solicita y mediante descargas adicionales durante la inactividad, en el orden de clasificación del cajero.
+3. **Los clientes** no se obtienen al iniciar. Una pantalla los solicita, las descargas adicionales durante la inactividad añaden 10 cada vez y la comprobación de cambios incorpora los nuevos y los modificados.
+4. **Las categorías, etiquetas, marcas y cupones** tampoco se obtienen al iniciar. Se cargan al abrirlos por primera vez (si se vuelven a abrir en un plazo de 15 segundos, no se consultan de nuevo), se completan en segundo plano una vez que su tienda informa de que tiene algunos, se actualizan cada 30 minutos y siguen la comprobación de cambios.
+
+Cuando la caja tiene conexión, abrir el selector de variaciones actualiza sus precios y existencias. Mientras tanto, las variaciones que ya están en el dispositivo se muestran de inmediato.
+
+<Accordion>
+<AccordionItem question="Cómo solicita datos una pantalla">
+
+Las pantallas no sincronizan datos. **Una pantalla declara lo que muestra (búsqueda, filtros, orden, página) y el motor decide si eso requiere una solicitud.** Cada declaración termina de una de estas tres formas:
+
+- **Atendida localmente** — todos los registros que necesita ya están en el dispositivo.
+- **Obtenida del servidor** — el motor ha consultado a su tienda para obtener los datos.
+- **Liberada** — la pantalla ha dejado de necesitarla, normalmente porque se ha desplazado por la pantalla o ha cambiado un filtro y una declaración más reciente la ha sustituido. Esto es habitual, no es un error.
+
+Un filtro que su tienda no puede expresar se aplica en el dispositivo; el resto de la consulta puede seguir enviándose a su tienda. Que una declaración se resuelva no significa que se hayan descargado todos los registros de un tipo. Eso se controla por separado, como se explica [más abajo](#coverage).
+
+</AccordionItem>
+</Accordion>
+
+## ¿Está todo descargado? {#coverage}
+
+**Estado de la tienda → Base de datos** muestra cada tipo de registro con la cantidad que hay en el dispositivo, el total de su tienda y una barra de cobertura. Consulte [Qué hay en este dispositivo](../support/store-health.mdx#coverage). Ninguna cifra se deduce nunca de lo que contiene el dispositivo:
+
+- **Si un total está desactualizado o falta, se muestra *comprobando…*.** Si está desactualizado, la última cifra de su tienda permanece al lado. Un recuento basado en el dispositivo siempre mostraría 100% y ocultaría precisamente la diferencia que la cifra pretende mostrar.
+- **Los pedidos se muestran como parciales por diseño.** La barra mide la cobertura respecto a todos los pedidos de su tienda, mientras que la caja solo conserva los abiertos y recientes (**los abiertos + recientes permanecen en el dispositivo · los antiguos se descargan al consultarlos**).
+- **La indicación Listo para vender aparece pronto.** Se activa en cuanto los primeros productos están en el dispositivo, y estar sin conexión no lo impide: el objetivo es poder vender sin conexión.
+
+<Accordion>
+<AccordionItem question="Cómo se comprueban los totales de descarga">
+
+Una cifra como *1,240 de 5,000 productos* necesita el total de su tienda para el segundo número. El motor mantiene un total por tipo de registro. Cada uno requiere su propia solicitud de bajo consumo, con un registro por página, que lee la cabecera `X-WP-Total` de WooCommerce, como máximo una vez cada 15 minutos aproximadamente por tipo.
+
+</AccordionItem>
+</Accordion>
+
+## Cómo llegan los cambios a su tienda {#write-path}
+
+Cada cambio realizado en el dispositivo (una venta, la modificación de un producto, un nuevo cliente) se guarda primero en el dispositivo y se envía a su tienda en aproximadamente un segundo. La excepción es un carrito abierto: se envía al pulsar **Pagar**. **Una venta registrada sin conexión espera en el dispositivo y se envía cuando se restablece la conexión.** La mayoría de los cambios no requieren ninguna intervención. Dos tipos esperan a que elija una opción en **Estado de la tienda → Base de datos**, y un tercero se resuelve automáticamente:
+
+- **Un pedido en conflicto se reintenta una vez.** Si su tienda tiene una copia más reciente del pedido, el motor concilia los datos y lo envía una vez más. Si eso también falla, o si el registro no es un pedido, el cambio queda retenido para que elija: **Enviar de nuevo** o **Usar la versión del servidor**. Consulte [Cambios retenidos porque su tienda tenía una versión más reciente](../support/store-health.mdx#held-changes).
+- **Un cambio que su tienda rechaza nunca se reintenta automáticamente**, salvo si se trata de un pedido que su tienda ha eliminado (véase a continuación). Se conserva junto con el motivo indicado por su tienda y se muestra en **Estado de la tienda → Base de datos** como **cambios que nunca llegaron a su servidor**. **Enviar de nuevo** lo reconstruye a partir del estado actual del registro en el dispositivo; **Descartar** lo elimina. Consulte [Cambios que nunca llegaron a su servidor](../support/store-health.mdx#refused-changes).
+- **Pedido eliminado en la tienda.** Cuando su tienda ha eliminado un pedido o lo ha enviado a la papelera mientras esta caja aún lo estaba actualizando, el POS lo resuelve sin preguntar: si es un carrito abierto, lo conserva y lo vuelve a enviar como un pedido nuevo con un número nuevo la próxima vez que pulse **Pagar**; cualquier otro pedido se elimina de este dispositivo. Un mensaje con el título **Pedido eliminado en la tienda** indica una sola vez qué ha ocurrido:
+  - Carrito abierto: **El pedido #1234 se ha eliminado en la tienda. El carrito se ha conservado como un pedido nuevo.**
+  - Cualquier otro pedido: **El pedido #1234 se ha eliminado en la tienda y se ha retirado de este dispositivo.**
+
+  Se anota [SYNC203](../error-codes/SYNC203.mdx) en el registro.
+
+<Accordion>
+<AccordionItem question="Cómo se envían los cambios">
+
+- **Primero, una cola persistente.** Cada cambio se añade a una cola en el dispositivo antes de enviar nada. Unos 0,3 segundos después, el proceso de envío de la cola de escritura lo envía; una consulta cada 10 segundos recoge lo que no haya detectado la activación inmediata.
+- **Los cambios del carrito se procesan de uno en uno por pedido.** Una sucesión rápida de escaneos se aplica en orden. Añadir un producto que ya tiene exactamente una línea en el carrito aumenta la cantidad de esa línea en lugar de añadir otra.
+- **Se conserva lo que devuelve su tienda.** Cuando su tienda acepta un cambio, el dispositivo adopta la copia de su tienda para que las modificaciones posteriores se basen en ella. En los pedidos, esto conserva los ID de línea asignados por WooCommerce, de modo que una actualización no añada líneas duplicadas. Nunca se sobrescribe una modificación local que su tienda aún no haya recibido.
+- **El POS resuelve los pedidos eliminados.** Su tienda responde con `404` a una actualización de un pedido que ya no tiene. El POS descarta el cambio de la cola; si es un carrito abierto, vuelve a añadirlo a la cola como un pedido nuevo, con cualquier modificación realizada mientras tanto.
+
+</AccordionItem>
+</Accordion>
+
+## Una sola pestaña ejecuta el POS {#multi-tab}
+
+En un navegador web, **solo una pestaña por sitio ejecuta el POS**. Una segunda pestaña del mismo sitio, para cualquier tienda o cajero, se detiene en esta pantalla. Nunca abre la base de datos local, por lo que no puede registrar ventas ni enviar nada, y no interfiere con la primera pestaña.
+
+<JourneyShot manifest={manifest} device="tablet" step={5} offsets={[[637, 37], [334, 0]]} alt="Una segunda pestaña del navegador con el POS: El POS está abierto en otra pestaña, Solo una pestaña puede gestionar la caja y el botón Tomar el control aquí">
+
+1. **El POS está abierto en otra pestaña** — esta pestaña queda en espera. **Solo una pestaña puede gestionar la caja.**
+2. **Tomar el control aquí** — solicita a la otra pestaña que ceda el control. Esta termina cualquier pago en curso y espera hasta 15 segundos a que se guarden los datos; después queda en espera y esta pestaña carga el POS.
+
+</JourneyShot>
+
+- **Una pestaña en espera no se reactiva por sí sola.** Al cerrar la pestaña activa, la otra sigue en espera hasta que pulse **Tomar el control aquí** o la recargue.
+- **«La otra pestaña no responde»** — la pestaña activa no ha cedido el control. Ciérrela o recárguela para continuar en esta.
+- **Si la pestaña anterior intenta iniciar un pago después de haber cedido el control de la caja**, el pago se rechaza antes de enviarse y se registra como [CLIENT161](../error-codes/CLIENT161.mdx). Un pago que se haya iniciado antes, incluso mientras la transferencia de control espera a que se guarden los datos, termina antes de que la pestaña ceda el control.
+- **Las aplicaciones de escritorio y móviles** no tienen pestañas ni esta restricción. Un navegador que no puede coordinar sus pestañas (por no admitir Web Locks) ejecuta todas las pestañas sin esta comprobación.
+
+## Almacenamiento local {#local-storage}
+
+En 2.0, cada caja conserva sus datos en una base de datos en el propio dispositivo.
+
+Si aparece el aviso **Base de datos local no disponible — el escaneo, el pago, el guardado y la anulación están bloqueados hasta que se recargue la aplicación**, pulse **Recargar la aplicación**. Hasta que lo haga, los reembolsos también estarán bloqueados, y al escanear se mostrará **Escaneo no disponible** en lugar de no dar ninguna respuesta. El POS detiene todo lo que podría provocar la pérdida de una venta cuando la base de datos del dispositivo deja de responder o un guardado local se atasca. El código es [SYNC161](../error-codes/SYNC161.mdx).
+
+<Accordion>
+<AccordionItem question="Dónde se almacenan los datos en cada plataforma">
+
+La base de datos es SQLite y se ejecuta a través de RxDB Premium:
+
+| Plataforma | Dónde se almacenan los datos |
+| --- | --- |
+| Web | SQLite-wasm en un único worker dedicado, en el sistema de archivos privado del navegador (OPFS) |
+| Escritorio | SQLite en el proceso principal de la aplicación |
+| iOS y Android | SQLite a través de expo-sqlite |
+
+Las consultas se ejecutan dentro de la base de datos: filtrado, ordenación y paginación. Solo llegan a la aplicación las filas que se muestran en pantalla.
+
+</AccordionItem>
+</Accordion>
+
+## Actualización a 2.0 {#upgrading}
+
+2.0 no migra los datos locales. Cada dispositivo **vuelve a descargarlo todo**:
+
+1. **Cada dispositivo inicia una base de datos nueva** y vuelve a descargar los datos de su tienda una vez. Su tienda conserva la copia completa de todo lo sincronizado.
+2. **Los cambios en cola antes de la actualización no se envían.** En cada caja, espere a que **cambios pendientes de envío** indique 0 en **Estado de la tienda → Base de datos** antes de actualizar. Consulte [Antes de hacer clic en Actualizar](../getting-started/upgrading-to-2.mdx#before-you-click-update). Las antiguas bases de datos de 1.x se eliminan cuando la tienda está lista para vender.
+3. **La aplicación y el plugin deben actualizarse juntos.** La aplicación 2.0 necesita el plugin WCPOS 2.0. Si solo se actualiza uno de los dos, la aplicación indica cuál: [AUTH331](../error-codes/AUTH331.mdx) cuando el plugin es más antiguo, [SYNC341](../error-codes/SYNC341.mdx) cuando la aplicación es más antigua.
+
+## Qué ha cambiado desde 1.9 {#what-changed-in-v1100}
+
+<Accordion>
+<AccordionItem question="Comparación de 1.9, 1.10–1.11 y 2.0">
+
+| | 1.9 | 1.10–1.11 | 2.0 |
+| --- | --- | --- | --- |
+| Unidad de sincronización | Un flujo por consulta de pantalla | Un motor, una base de datos por sitio, tienda y cajero | Igual |
+| Qué desencadena una descarga | La apertura de una pantalla | Una pantalla declara lo que necesita | Igual |
+| Detección de cambios | Consultas periódicas y una auditoría completa cada hora | Registro de cambios con respuestas condicionales `304` | Igual |
+| Totales de su tienda | No se controlan | Por tipo de registro, con *comprobando…* | Igual |
+| Cambios rechazados | Se reintentan sin que se vea | Cola persistente, panel de recuperación, sin reintentos silenciosos | Igual |
+| Pestañas del navegador | Sin coordinación | Todas las pestañas activas, una elegida para enviar | Una pestaña activa por sitio, las demás en espera |
+| Almacenamiento | IndexedDB (web), SQLite (aplicaciones) | Almacenamiento en el sistema de archivos (OPFS en la web) | SQLite en todas las plataformas |
+| Ajuste de la sincronización | Fijo | Ajustes predefinidos y controles deslizantes en Estado de la tienda | Igual |
+| Búsqueda local | Coincidencia por prefijo de palabra | Coincidencia por subcadena | Todas las palabras, de cualquier longitud, en cualquier parte del registro |
+
+</AccordionItem>
+</Accordion>
+
+Para conocer los límites de solicitudes, la reducción de frecuencia cuando su tienda tiene dificultades y las cifras medidas, consulte [Rendimiento de la sincronización](sync-performance.mdx).
+
+## Documentación relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Estado de la tienda" to="/troubleshooting/store-health" description="Dónde puede ver el propietario de la tienda toda esta información en la caja." />
+  <LinkCard title="Rendimiento de la sincronización" to="/developers/sync-performance" description="Límites de solicitudes y reducción de frecuencia cuando su tienda está ocupada." />
+  <LinkCard title="Actualización a 2.0" to="/getting-started/upgrade-2-0" description="Qué hacer en cada caja antes de actualizar." />
+</LinkCards>

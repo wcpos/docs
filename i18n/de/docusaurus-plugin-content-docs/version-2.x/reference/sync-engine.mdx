@@ -1,0 +1,249 @@
+---
+title: Synchronisierungsengine
+slug: /developers/sync-engine
+sidebar_label: Synchronisierungsengine
+sidebar_position: 3
+description: "Entwicklerreferenz zur Synchronisierungsengine von WCPOS 2.x: eine Datenbank pro Filiale und Kassierer, Hintergrundabläufe, Änderungsprüfung, Abdeckung, Schreibwarteschlange, ein aktiver Browser-Tab und lokale Speicherung."
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import JourneyShot from '@site/src/components/JourneyShot';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import manifest from '@site/static/img/2.x/reference/sync-engine/en/manifest.json';
+
+Öffnen Sie das POS-Menü und dann [**Filialzustand**](../support/store-health.mdx), direkt über **Einstellungen** und **Support** am unteren Ende des Menüs. Dort sehen Sie alles, was diese Seite beschreibt, auf Ihrer eigenen Kasse. Wenn Sie etwas auf Ihrer Kasse prüfen möchten, beginnen Sie hier:
+
+- **Zum Senden ausstehende Änderungen prüfen.** Öffnen Sie **Filialzustand → Datenbank** und lesen Sie **Zum Senden ausstehende Änderungen** ab: Das sind die Änderungen, die diese Kasse noch an Ihren Shop senden muss. Siehe [Datenbank](../support/store-health.mdx#database). Bleibt der Wert über 0, lesen Sie [„Zum Senden ausstehende Änderungen“ nimmt nicht ab](../support/store-health.mdx#waiting-to-send). So funktioniert das Senden: [Wie Änderungen zurück in Ihren Shop gelangen](#write-path).
+- **Heruntergeladene Daten prüfen.** Öffnen Sie **Filialzustand → Datenbank** und lesen Sie die Tabelle: Sie zeigt, wie viele Daten Ihres Shops auf diesem Gerät liegen. Siehe [Was sich auf diesem Gerät befindet](../support/store-health.mdx#coverage). So werden Downloads gezählt: [Ist alles heruntergeladen?](#coverage).
+- **Wann erreicht eine Änderung in WooCommerce die Kasse?** Siehe [Wie der POS von Änderungen erfährt](#change-signal).
+- **Ein Verkauf oder eine Bearbeitung hat Ihren Shop nicht erreicht.** Siehe [Änderungen, die Ihren Server nie erreicht haben](../support/store-health.mdx#refused-changes).
+- **„Der POS ist in einem anderen Tab geöffnet.“** Siehe [Ein Tab führt den POS aus](#multi-tab).
+- **„Lokale Datenbank nicht verfügbar.“** Drücken Sie **App neu laden**. Siehe [Lokale Speicherung](#local-storage).
+- **Update auf 2.0.** Siehe [Bevor Sie auf Aktualisieren klicken](../getting-started/upgrading-to-2.mdx#before-you-click-update).
+
+:::warning Bevor Sie auf Aktualisieren klicken
+Öffnen Sie auf jeder Kasse **Filialzustand → Datenbank** und warten Sie, bis **Zum Senden ausstehende Änderungen** den Wert 0 anzeigt. Führen Sie dann das Update durch. Änderungen, die noch auf einer Kasse warten, werden nach dem Update nicht mehr gesendet. Wenn die Zahl nicht sinkt, führen Sie das Update noch nicht durch: siehe [„Zum Senden ausstehende Änderungen“ nimmt nicht ab](../support/store-health.mdx#waiting-to-send). Mehr dazu unter [Upgrade auf 2.0](#upgrading).
+:::
+
+WCPOS arbeitet vorrangig lokal. Jede Ansicht liest und schreibt in einer Datenbank auf dem Gerät. Eine **Synchronisierungsengine** hält diese Datenbank und Ihren WooCommerce-Shop im Hintergrund auf demselben Stand. Der Rest dieser Seite erklärt, welche Daten die Engine wann abruft und wie Verkäufe zurück in Ihren Shop gelangen. Sie richtet sich an Entwickler, Integratoren und Shopbetreiber, die wissen möchten, welche Anforderungen der POS an ihr Hosting stellt.
+
+## Eine Datenbank pro Filiale und Kassierer {#one-engine-per-scope}
+
+Jede Kombination aus Filiale und Kassierer hat auf einem Gerät ihre eigene lokale Datenbank. Zwei Kassierer auf einem Gerät teilen sich niemals lokale Daten.
+
+- **Ein Wechsel erfolgt vollständig oder gar nicht.** Für die neue Filiale oder den neuen Kassierer wird zuerst die Datenbank geladen. Erst wenn sie bereit ist, wird umgeschaltet. Bei einem Fehler erscheint eine Fehlermeldung; die Kasse bleibt niemals in einem teilweise umgeschalteten Zustand.
+- **Jede Anfrage benennt ihre Filiale.** Wenn Sie WCPOS Pro mit mehreren Filialen nutzen, aktualisiert eine Preisänderung an der Kasse den Preis dieser Filiale, nicht den des Onlineshops.
+- **Eine neue Version beginnt mit einer neuen Datenbank.** Die bestehende Datenbank wird nicht migriert. Siehe [Upgrade auf 2.0](#upgrading).
+
+<Accordion>
+<AccordionItem question="Wie Engines und Geltungsbereiche aufgebaut sind">
+
+Auf jedem Gerät läuft **eine Synchronisierungsengine pro Website**. Darin bildet jede Kombination aus Filiale und Kassierer einen **Geltungsbereich** mit eigener lokaler Datenbank. Beim Wechsel der Filiale oder des Kassierers werden der Geltungsbereich und seine gesamte Datenbank innerhalb derselben Engine gewechselt. Die Verbindung mit einer anderen Website ersetzt die Engine.
+
+</AccordionItem>
+</Accordion>
+
+## Was im Hintergrund läuft {#sync-lanes}
+
+Die **Änderungsprüfung** der Kasse fragt Ihren Shop, ob sich etwas geändert hat – mit **Ausgewogen** alle 60 Sekunden. Die [Synchronisierungsvoreinstellungen](../support/store-health.mdx#sync-presets) legen das Intervall fest: von 10 Sekunden (**Echtzeit**) bis 5 Minuten (**Eco**).
+
+- **Hintergrundarbeiten warten auf den Kassierer.** Produkte, Kunden und Varianten werden erst nachgeladen, wenn die Kasse 60 Sekunden lang nicht benutzt wurde und keine Ansicht auf Daten wartet. Solange Ihr Shop Schwierigkeiten hat zu antworten, pausieren diese Arbeiten. Dasselbe gilt für die Hintergrundprüfungen auf gelöschte Datensätze und für die Gesamtzahlen Ihres Shops.
+
+<Accordion>
+<AccordionItem question="Alle Hintergrundabläufe, ihre Intervalle und Anfrageobergrenzen">
+
+Alles, was die Engine zeitgesteuert ausführt, bildet einen **Hintergrundablauf**: eine benannte, begrenzte Hintergrundaufgabe. Die Änderungsprüfung können Sie anpassen. Änderungen auf dem Gerät werden etwa 0.3 Sekunden nach ihrer Entstehung gesendet.
+
+Initialabrufe, schrittweises Nachladen, Gesamtzahlabfragen und Prüfungen legen jeweils fest, wie viele Anfragen ein Durchlauf stellen darf. Die drei Abläufe, auf die ein Kassierer wartet (Änderungsprüfung, Verarbeitung der Schreibwarteschlange und Verarbeitung des Datenbedarfs), haben noch keine Obergrenze. Die Budgets finden Sie unter [Synchronisierungsleistung](sync-performance.mdx).
+
+| Hintergrundablauf | Intervall | Anfragen pro Durchlauf |
+| --- | --- | --- |
+| Änderungsprüfung | Ihre Voreinstellung: 10 s (Echtzeit), 60 s (Ausgewogen), 5 min (Eco); benutzerdefiniert ab 5 s | Noch keine Obergrenze |
+| Verarbeitung der Schreibwarteschlange | Etwa 0.3 s nach jeder Änderung, zusätzliche Prüfung alle 10 s | Noch keine Obergrenze |
+| Verarbeitung des Datenbedarfs (ruft die von Ansichten angeforderten Daten ab) | 30 s | Noch keine Obergrenze |
+| Initialabrufe für neuere Bestellungen, Produkte und Referenzdaten | 5 min | 0 (sie reihen Aufgaben zur Verarbeitung des Datenbedarfs ein) |
+| Schrittweises Nachladen von Kunden, Produkten und Varianten | 5 min, nach 60 s Inaktivität | 1 |
+| Erneuter Abruf der Server-Gesamtzahlen | 30 s | 11 |
+| Verdichtung der Abdeckungsdaten | 60 s | 0 |
+| Initialisierung der Existenzprüfung | 15 min | 5 |
+| Prüfung auf Löschungen | 17 min | 11 |
+
+Bestellungen sind nicht Teil der Änderungsprüfung. Deshalb prüft jeder Initialabruf neuerer Bestellungen auch alle offenen Warenkörbe auf dem Gerät erneut, von denen Ihr Shop eine Kopie besitzt und für die keine Änderungen zum Senden ausstehen. Ein Warenkorb, den Ihr Shop gelöscht oder in den Papierkorb verschoben hat, wird dann vom Gerät entfernt. Dasselbe gilt für jeden gezielten Bestellabruf: Eine Bestellung, die in Ihrem Shop nicht mehr existiert, wird entfernt, statt den Abruf fehlschlagen zu lassen – es sei denn, auf diesem Gerät steht noch eine Änderung für sie zum Senden aus.
+
+</AccordionItem>
+</Accordion>
+
+Das Prüfintervall und die Datensätze pro Anfrage werden für jedes Gerät unter **Filialzustand → Leistung** eingestellt:
+
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[368, 0], [506, -55], [186, -27], [186, -27], [186, -27], [161, -24], [161, -20], [456, 0]]} alt="Filialzustand auf dem Tab Leistung: die Statuszeile, die Anzeige der Engine-Laufzeit, die Voreinstellungen Eco, Ausgewogen und Echtzeit, die beiden Schieberegler und die Zeile Aktuell">
+
+1. **Status** — **✓ Normal** oder **⚠ Aufmerksamkeit erforderlich**, wenn die Kasse offline ist, die Synchronisierung blockiert ist, ein erster Download fehlgeschlagen ist oder der letzte Durchlauf einer Synchronisierungsaufgabe fehlgeschlagen ist. Darunter die Anfragen dieser Kasse aus den letzten 24 Stunden.
+2. **Engine-Laufzeit** — eine Zelle pro Stunde für die letzten 24 Stunden. Grün: Anfragen ohne Fehler. Gelb: Mindestens eine Anfrage ist fehlgeschlagen. Leer: Die App war geschlossen.
+3. **Eco** — Änderungsprüfung alle 5 Minuten, 25 Datensätze pro Anfrage.
+4. **Ausgewogen** — die Standardeinstellung: alle 60 Sekunden, 50 Datensätze.
+5. **Echtzeit** — alle 10 Sekunden, 75 Datensätze.
+6. **Auf Änderungen prüfen** — das Intervall der Änderungsprüfung, von 5 Sekunden bis 5 Minuten.
+7. **Datensätze pro Anfrage** — wie viele Datensätze ein Abruf lädt, von 10 bis 100.
+8. **Aktuell** — wann die nächste Prüfung ansteht und wie viele Anfragen pro Stunde diese Einstellungen ungefähr verursachen.
+
+</JourneyShot>
+
+## Wie der POS von Änderungen erfährt {#change-signal}
+
+Der POS lädt Ihren Katalog nicht erneut herunter, um Änderungen zu erkennen. Bei jeder Änderungsprüfung stellt er Ihrem Shop eine einfache, ressourcenschonende Frage: Hat sich seit dem letzten Mal etwas geändert? Mit **Ausgewogen** prüft eine verbundene Kasse etwa einmal pro Minute auf Preis- und Bestandsänderungen. Die Prüfungen können länger dauern, wenn Ihr Shop Schwierigkeiten hat zu antworten. Bestellungen folgen einem eigenen, separaten Zeitplan.
+
+<Accordion>
+<AccordionItem question="So funktioniert die Änderungsprüfung">
+
+Ihr Shop führt ein **Änderungsprotokoll**. Der POS fragt ab, ob sich seit seiner letzten Position darin etwas geändert hat.
+
+- **Eine Prüfung deckt acht Datensatzarten ab:** Produkte, Varianten, Steuersätze, Kunden, Gutscheine, Kategorien, Marken und Schlagwörter. Bestellungen gehören nicht dazu; offene und neuere Bestellungen haben einen eigenen Hintergrundablauf. Deshalb treffen Produkt- und Bestellaktualisierungen in unterschiedlichen Abständen ein.
+- **Ein Shop ohne Änderungen verursacht fast keinen Aufwand.** Die Anfrage ist bedingt. Wenn sich nichts geändert hat, antwortet Ihr Shop mit `304 Not Modified` ohne Antwortinhalt.
+- **Die Prüfintervalle variieren um ±20%,** damit mehrere Kassen derselben Website zeitlich auseinanderlaufen und nicht gleichzeitig anfragen.
+- **Eine unbenutzte Kasse wird etwas langsamer.** Nach 10 Minuten ohne Berührung, Tastendruck oder akzeptierten Scan verlängern sich die Prüfintervalle auf mindestens 30 Sekunden, dann auf mindestens 60. Ein ausgeblendetes Fenster wechselt direkt auf 60. Bei **Ausgewogen** und **Eco** ändert sich dadurch nichts. Die nächste Berührung stellt mit einer sofortigen Prüfung die volle Häufigkeit wieder her, sofern Ihr Shop den POS nicht aufgefordert hat, die Anfragen zu drosseln. Im Leerlauf wird nie häufiger geprüft, als Sie eingestellt haben.
+- **Eine Kasse, die tagelang geschlossen war, beginnt beim aktuellen Stand.** Haben sich mehr als 5,000 Änderungen angesammelt oder hat Ihr Shop das Protokoll über die Position der Kasse hinaus gekürzt, springt die Engine an das aktuelle Ende des Protokolls und prüft die bereits auf dem Gerät vorhandenen Daten erneut. Der Aufwand richtet sich nach der Größe der lokalen Kopie, nicht nach der Dauer der Abwesenheit.
+
+</AccordionItem>
+</Accordion>
+
+## Wie Ansichten ihre Daten erhalten {#declared-demand}
+
+Eine Ansicht zeigt die bereits auf dem Gerät vorhandenen Daten immer sofort an. Benötigt sie Datensätze, die noch nicht auf dem Gerät liegen, etwa bei einer Suche über die ersten Produkte hinaus, ruft die Engine sie aus Ihrem Shop ab, solange die Kasse online ist. Nicht alles ist von Anfang an auf dem Gerät. Welche Daten vorliegen, hängt von der Datensatzart ab:
+
+1. **Steuersätze** werden beim Start als Erstes abgerufen: Ohne sie kann der Warenkorb seine Berechnungen nicht durchführen.
+2. **Produkte:** Die ersten 100 in der Standardreihenfolge werden beim Start abgerufen. Die übrigen werden geladen, wenn eine Ansicht sie anfordert, sowie im Leerlauf in der vom Kassierer gewählten Sortierreihenfolge.
+3. **Kunden** werden beim Start nicht abgerufen. Eine Ansicht fordert sie an, im Leerlauf werden jeweils 10 nachgeladen, und die Änderungsprüfung liefert neue und bearbeitete Kunden.
+4. **Kategorien, Schlagwörter, Marken und Gutscheine** werden ebenfalls nicht beim Start abgerufen. Sie werden beim ersten Öffnen geladen (erneutes Öffnen innerhalb von 15 Sekunden löst keine weitere Anfrage aus), im Hintergrund vervollständigt, sobald Ihr Shop meldet, dass welche vorhanden sind, alle 30 Minuten aktualisiert und durch die Änderungsprüfung auf dem neuesten Stand gehalten.
+
+Wenn die Kasse online ist, werden beim Öffnen der Variantenauswahl deren Preise und Lagerbestände aktualisiert. Bereits auf dem Gerät vorhandene Varianten werden währenddessen sofort angezeigt.
+
+<Accordion>
+<AccordionItem question="Wie eine Ansicht Daten anfordert">
+
+Ansichten synchronisieren nicht selbst. **Eine Ansicht beschreibt, was sie anzeigt (Suche, Filter, Sortierung, Seite), und die Engine entscheidet, ob dafür eine Anfrage nötig ist.** Jede solche Bedarfsdeklaration endet auf eine von drei Arten:
+
+- **Lokal bereitgestellt** — alle benötigten Datensätze sind bereits auf dem Gerät vorhanden.
+- **Abgerufen** — die Engine hat die Daten aus Ihrem Shop geholt.
+- **Freigegeben** — die Ansicht hat den Bedarf zurückgezogen, meist weil Sie gescrollt oder einen Filter geändert haben und eine neuere Deklaration ihn ersetzt hat. Das ist normal und kein Fehler.
+
+Ein Filter, den Ihr Shop nicht abbilden kann, wird auf dem Gerät angewendet; der Rest der Abfrage kann dennoch an Ihren Shop gehen. Eine erfüllte Bedarfsdeklaration bedeutet nicht, dass eine Datensatzart vollständig heruntergeladen ist. Das wird separat erfasst, siehe [unten](#coverage).
+
+</AccordionItem>
+</Accordion>
+
+## Ist alles heruntergeladen? {#coverage}
+
+**Filialzustand → Datenbank** listet jede Datensatzart mit der Anzahl auf dem Gerät, der Gesamtzahl Ihres Shops und einem Abdeckungsbalken auf. Siehe [Was sich auf diesem Gerät befindet](../support/store-health.mdx#coverage). Eine Gesamtzahl wird dort niemals aus dem Gerätebestand abgeleitet:
+
+- **Bei einer veralteten oder fehlenden Gesamtzahl erscheint *Wird geprüft…*.** Ist sie veraltet, bleibt die letzte Zahl aus Ihrem Shop daneben stehen. Eine aus dem Gerätebestand ermittelte Zahl würde immer 100% anzeigen und genau die Lücke verbergen, die die Angabe sichtbar machen soll.
+- **Bestellungen werden bewusst als teilweise vorhanden angezeigt.** Der Balken bezieht sich auf alle Bestellungen in Ihrem Shop, während die Kasse nur offene und neuere behält (**Offene + neuere bleiben auf dem Gerät · ältere werden beim Anzeigen heruntergeladen**).
+- **Verkaufsbereit wird früh angezeigt.** Der Status wird aktiv, sobald die ersten Produkte auf dem Gerät sind. Eine fehlende Internetverbindung verhindert das nicht: Gerade der Offlineverkauf ist das Ziel.
+
+<Accordion>
+<AccordionItem question="Wie die Gesamtzahlen für Downloads geprüft werden">
+
+Eine Angabe wie *1,240 von 5,000 Produkten* benötigt für die zweite Zahl die Gesamtzahl Ihres Shops. Die Engine hält für jede Datensatzart eine solche Zahl vor. Jede wird mit einer eigenen ressourcenschonenden Anfrage ermittelt: ein Datensatz pro Seite, wobei der WooCommerce-Header `X-WP-Total` ausgelesen wird, höchstens etwa alle 15 Minuten pro Datensatzart.
+
+</AccordionItem>
+</Accordion>
+
+## Wie Änderungen zurück in Ihren Shop gelangen {#write-path}
+
+Jede Änderung auf dem Gerät (ein Verkauf, eine Produktbearbeitung, ein neuer Kunde) wird zuerst auf dem Gerät gespeichert und innerhalb etwa einer Sekunde an Ihren Shop gesendet. Ein offener Warenkorb ist die Ausnahme: Er wird gesendet, wenn Sie **Kasse** drücken. **Ein offline erfasster Verkauf wartet auf dem Gerät und wird gesendet, sobald die Verbindung wiederhergestellt ist.** Bei den meisten Änderungen müssen Sie nichts tun. Zwei Arten warten unter **Filialzustand → Datenbank** auf Ihre Entscheidung, eine dritte wird für Sie erledigt:
+
+- **Eine Bestellung mit einem Konflikt wird einmal erneut gesendet.** Hat Ihr Shop eine neuere Kopie der Bestellung, gleicht die Engine die Daten ab und sendet sie noch einmal. Schlägt auch das fehl oder ist der Datensatz keine Bestellung, wird die Änderung zurückgehalten, bis Sie sich entscheiden: **Erneut senden** oder **Serverversion verwenden**. Siehe [Zurückgehaltene Änderungen, weil Ihr Shop eine neuere Version hatte](../support/store-health.mdx#held-changes).
+- **Eine von Ihrem Shop abgelehnte Änderung wird niemals selbstständig erneut gesendet**, mit Ausnahme einer Bestellung, die Ihr Shop gelöscht hat (siehe nächster Punkt). Sie wird mit der Begründung Ihres Shops gespeichert und unter **Filialzustand → Datenbank** als **Änderungen, die Ihren Server nie erreicht haben** angezeigt. **Erneut senden** erstellt sie aus dem aktuellen Stand des Datensatzes auf dem Gerät neu; **Verwerfen** entfernt sie. Siehe [Änderungen, die Ihren Server nie erreicht haben](../support/store-health.mdx#refused-changes).
+- **Bestellung im Shop gelöscht.** Hat Ihr Shop eine Bestellung gelöscht oder in den Papierkorb verschoben, während diese Kasse sie noch aktualisierte, regelt der POS das ohne Rückfrage: Ein offener Warenkorb bleibt erhalten und wird beim nächsten Drücken von **Kasse** als neue Bestellung mit neuer Nummer gesendet; jede andere Bestellung wird von diesem Gerät entfernt. Eine Meldung mit dem Titel **Bestellung im Shop gelöscht** zeigt einmalig an, was geschehen ist:
+  - Offener Warenkorb: **Bestellung #1234 wurde im Shop gelöscht. Der Warenkorb wurde als neue Bestellung beibehalten.**
+  - Jede andere Bestellung: **Bestellung #1234 wurde im Shop gelöscht und von diesem Gerät entfernt.**
+
+  Im Protokoll wird [SYNC203](../error-codes/SYNC203.mdx) erfasst.
+
+<Accordion>
+<AccordionItem question="Wie Änderungen gesendet werden">
+
+- **Zuerst kommt eine dauerhaft gespeicherte Warteschlange.** Jede Änderung wird in eine Warteschlange auf dem Gerät aufgenommen, bevor etwas gesendet wird. Etwa 0.3 Sekunden später sendet die Verarbeitung der Schreibwarteschlange sie; eine Abfrage alle 10 Sekunden erfasst alles, was der direkte Auslöser nicht erfasst hat.
+- **Warenkorbänderungen werden pro Bestellung einzeln nacheinander verarbeitet.** Auch schnell aufeinanderfolgende Scans werden in der richtigen Reihenfolge angewendet. Wird ein Produkt hinzugefügt, das bereits genau eine Position im Warenkorb hat, erhöht sich die Menge dieser Position, statt eine zweite Position anzulegen.
+- **Die Antwort Ihres Shops wird übernommen.** Wenn Ihr Shop eine Änderung akzeptiert, übernimmt das Gerät die Kopie aus Ihrem Shop, damit spätere Bearbeitungen dazu passen. Bei Bestellungen bleiben so die von WooCommerce vergebenen Positions-IDs erhalten, sodass eine Aktualisierung keine doppelten Positionen hinzufügt. Eine lokale Bearbeitung, die Ihr Shop noch nicht kennt, wird niemals überschrieben.
+- **Eine gelöschte Bestellung wird vom POS abgewickelt.** Auf die Aktualisierung einer nicht mehr vorhandenen Bestellung antwortet Ihr Shop mit `404`. Der POS verwirft die eingereihte Änderung. Bei einem offenen Warenkorb reiht er diesen anschließend erneut als neue Bestellung ein, einschließlich aller zwischenzeitlichen Bearbeitungen.
+
+</AccordionItem>
+</Accordion>
+
+## Ein Tab führt den POS aus {#multi-tab}
+
+Im Webbrowser **führt nur ein Tab pro Website den POS aus**. Ein zweiter Tab derselben Website bleibt für jede Filiale und jeden Kassierer bei dieser Ansicht stehen. Er öffnet die lokale Datenbank gar nicht erst, kann also weder einen Verkauf erfassen noch etwas senden. Im ersten Tab wird nichts beeinträchtigt.
+
+<JourneyShot manifest={manifest} device="tablet" step={5} offsets={[[637, 37], [334, 0]]} alt="Ein zweiter Browser-Tab des POS: Der POS ist in einem anderen Tab geöffnet, Nur ein Tab kann die Kasse ausführen und die Schaltfläche Hier übernehmen">
+
+1. **Der POS ist in einem anderen Tab geöffnet** — dieser Tab wartet. **Nur ein Tab kann die Kasse ausführen.**
+2. **Hier übernehmen** — fordert den anderen Tab zur Übergabe auf. Dieser schließt eine laufende Zahlung ab und wartet bis zu 15 Sekunden auf einen Speichervorgang. Dann wechselt er in den Wartezustand und dieser Tab lädt den POS.
+
+</JourneyShot>
+
+- **Ein wartender Tab wird nicht von selbst aktiv.** Wenn Sie den aktiven Tab schließen, wartet der andere weiter, bis Sie **Hier übernehmen** drücken oder ihn neu laden.
+- **„Der andere Tab antwortet nicht“** — der aktive Tab hat die Kasse nicht übergeben. Schließen Sie ihn oder laden Sie ihn neu, um in diesem Tab weiterzuarbeiten.
+- **Eine Zahlung, die der alte Tab nach Abgabe der Kasse zu starten versucht,** wird vor dem Senden abgelehnt und als [CLIENT161](../error-codes/CLIENT161.mdx) protokolliert. Eine zuvor gestartete Zahlung wird abgeschlossen, bevor der Tab die Kasse übergibt – auch dann, wenn sie beginnt, während die Übergabe auf einen Speichervorgang wartet.
+- **Desktop- und Mobil-Apps** haben weder Tabs noch diese Zugriffsbeschränkung. Ein Browser, der seine Tabs nicht koordinieren kann (keine Unterstützung für Web Locks), führt jeden Tab ohne diese Prüfung aus.
+
+## Lokale Speicherung {#local-storage}
+
+In 2.0 speichert jede Kasse ihre Daten in einer Datenbank direkt auf dem Gerät.
+
+Wenn ein Banner **Lokale Datenbank nicht verfügbar — Scannen, Kasse, Speichern und Stornieren sind blockiert, bis die App neu geladen wird** anzeigt, drücken Sie **App neu laden**. Bis dahin sind auch Rückerstattungen blockiert, und ein Scan zeigt **Scannen nicht verfügbar** an, statt ohne Rückmeldung zu bleiben. Der POS stoppt alle Vorgänge, bei denen ein Verkauf verloren gehen könnte, wenn die Datenbank des Geräts nicht mehr antwortet oder ein lokaler Speichervorgang hängen bleibt. Der Code lautet [SYNC161](../error-codes/SYNC161.mdx).
+
+<Accordion>
+<AccordionItem question="Wo die Daten auf den einzelnen Plattformen liegen">
+
+Die Datenbank ist SQLite, betrieben über RxDB Premium:
+
+| Plattform | Speicherort der Daten |
+| --- | --- |
+| Web | SQLite-wasm in einem dedizierten Worker, im privaten Dateisystem des Browsers (OPFS) |
+| Desktop | SQLite im Hauptprozess der App |
+| iOS und Android | SQLite über expo-sqlite |
+
+Abfragen werden innerhalb der Datenbank ausgeführt: Filtern, Sortieren und Seitenauswahl. Nur die angezeigten Zeilen gelangen zur App.
+
+</AccordionItem>
+</Accordion>
+
+## Upgrade auf 2.0 {#upgrading}
+
+2.0 migriert keine lokalen Daten. Jedes Gerät **lädt alles erneut herunter**:
+
+1. **Jedes Gerät beginnt mit einer neuen Datenbank** und lädt die Daten einmal erneut aus Ihrem Shop herunter. Ihr Shop enthält die vollständige Kopie aller synchronisierten Daten.
+2. **Vor dem Update eingereihte Änderungen werden nicht gesendet.** Warten Sie vor dem Update auf jeder Kasse, bis **Zum Senden ausstehende Änderungen** unter **Filialzustand → Datenbank** den Wert 0 anzeigt. Siehe [Bevor Sie auf Aktualisieren klicken](../getting-started/upgrading-to-2.mdx#before-you-click-update). Die alten 1.x-Datenbanken werden gelöscht, sobald die Filiale verkaufsbereit ist.
+3. **App und Plugin gehören zusammen.** Die App 2.0 benötigt das WCPOS-Plugin 2.0. Ist nur eine Seite aktualisiert, zeigt die App an, welche veraltet ist: [AUTH331](../error-codes/AUTH331.mdx) bei einem älteren Plugin, [SYNC341](../error-codes/SYNC341.mdx) bei einer älteren App.
+
+## Was sich seit 1.9 geändert hat {#what-changed-in-v1100}
+
+<Accordion>
+<AccordionItem question="1.9, 1.10–1.11 und 2.0 im Vergleich">
+
+| | 1.9 | 1.10–1.11 | 2.0 |
+| --- | --- | --- | --- |
+| Synchronisierungseinheit | Ein Datenstrom pro Ansichtsabfrage | Eine Engine, eine Datenbank pro Website, Filiale und Kassierer | Unverändert |
+| Auslöser eines Abrufs | Öffnen einer Ansicht | Eine Ansicht deklariert ihren Datenbedarf | Unverändert |
+| Änderungserkennung | Regelmäßige Abfragen und eine stündliche vollständige Prüfung | Änderungsprotokoll mit bedingten `304`-Antworten | Unverändert |
+| Gesamtzahlen Ihres Shops | Nicht erfasst | Pro Datensatzart, mit *Wird geprüft…* | Unverändert |
+| Abgelehnte Änderungen | Unbemerkt erneut gesendet | Dauerhaft gespeicherte Warteschlange, Wiederherstellungsbereich, keine stillen Wiederholungsversuche | Unverändert |
+| Browser-Tabs | Nicht koordiniert | Jeder Tab aktiv, ein ausgewählter Tab sendet | Ein aktiver Tab pro Website, die anderen warten |
+| Speicherung | IndexedDB (Web), SQLite (Apps) | Dateisystemspeicherung (OPFS im Web) | SQLite auf jeder Plattform |
+| Anpassung der Synchronisierung | Fest vorgegeben | Voreinstellungen und Schieberegler unter Filialzustand | Unverändert |
+| Lokale Suche | Abgleich von Wortanfängen | Abgleich von Teilzeichenfolgen | Jedes Wort, jede Länge, an beliebiger Stelle im Datensatz |
+
+</AccordionItem>
+</Accordion>
+
+Anfragebudgets, die Drosselung bei Antwortproblemen Ihres Shops und Messwerte finden Sie unter [Synchronisierungsleistung](sync-performance.mdx).
+
+## Weiterführende Dokumentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard title="Filialzustand" to="/troubleshooting/store-health" description="Wo Shopbetreiber all diese Informationen an der Kasse sehen." />
+  <LinkCard title="Synchronisierungsleistung" to="/developers/sync-performance" description="Anfragebudgets und Drosselung bei hoher Auslastung Ihres Shops." />
+  <LinkCard title="Upgrade auf 2.0" to="/getting-started/upgrade-2-0" description="Was Sie vor dem Update auf jeder Kasse tun müssen." />
+</LinkCards>
