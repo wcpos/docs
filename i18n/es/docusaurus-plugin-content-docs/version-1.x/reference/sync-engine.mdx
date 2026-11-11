@@ -23,91 +23,91 @@ En las instalaciones Pro multitienda, cada solicitud de sincronización identifi
 
 ## Qué se ejecuta en segundo plano {#sync-lanes}
 
-Todo lo que el motor hace de forma programada es un **carril**: una unidad de trabajo en segundo plano con nombre y acotada. Los carriles se agrupan en tres categorías:
+Todo lo que el motor hace de forma programada es un **carril**: una unidad acotada de trabajo en segundo plano con un nombre. Los carriles se agrupan en tres categorías:
 
 | Grupo | Carriles | Cadencia predeterminada |
 | --- | --- | --- |
 | **Descarga** | Comprobación de cambios (señal de cambio) | 10 s – 5 min, según su [preajuste de sincronización](/1.x/support/store-health#sync-presets) |
 | | Pedidos recientes, siembra del catálogo de productos, siembra de datos de referencia | ~5 min |
-| | Goteo de clientes (solo en tiempo inactivo) | ~5 min |
+| | Goteo de clientes (solo durante la inactividad) | ~5 min |
 | **Envío** | Vaciado de escrituras: envía los cambios locales en cola | ~10 s |
 | **Mantenimiento** | Auditorías de integridad y de eliminaciones, actualización de totales del servidor | de unos pocos minutos a ~17 min |
 
 Hay dos propiedades que se cumplen en todos los carriles:
 
-- **Cada carril declara un tope de solicitudes por ejecución.** Ningún carril puede desplegar un número ilimitado de solicitudes en una sola ejecución; los trabajos más grandes utilizan lotes acotados con cursores reanudables. Es una invariante central del diseño, tratada en profundidad en [Rendimiento de la sincronización](/1.x/reference/sync-performance).
+- **Cada carril declara un tope de solicitudes por ejecución.** Ningún carril puede generar un número ilimitado de solicitudes en una sola ejecución; los trabajos más grandes utilizan lotes acotados con cursores reanudables. Es una invariante fundamental del diseño, tratada en profundidad en [Rendimiento de la sincronización](/1.x/reference/sync-performance).
 - **El mantenimiento cede el paso al cajero.** Las auditorías y los precalentamientos en segundo plano se ejecutan después del trabajo interactivo que deja una caja lista para vender, nunca antes, y son lo primero que se pausa cuando su servidor muestra señales de presión.
 
-Las cadencias anteriores son valores predeterminados. El intervalo de comprobación y los registros por solicitud los puede ajustar el comerciante en cada dispositivo desde **Estado de la tienda → Rendimiento** en el POS — consulte [Estado de la tienda](/1.x/support/store-health).
+Las cadencias anteriores son valores predeterminados. El comerciante puede ajustar el intervalo de comprobación y los registros por solicitud en cada dispositivo desde **Estado de la tienda → Rendimiento** en el POS; consulte [Estado de la tienda](/1.x/support/store-health).
 
 ## Cómo se entera el POS de los cambios {#change-signal}
 
-El motor no vuelve a descargar los datos para averiguar si han cambiado. El servidor mantiene un registro de cambios, y el POS consulta una **comprobación de cambios** ligera que responde a una sola pregunta: ¿se ha movido algo desde mi última posición?
+El motor no vuelve a descargar los datos para averiguar si han cambiado. El servidor mantiene un registro de cambios, y el POS realiza periódicamente una **comprobación de cambios** ligera que responde a una sola pregunta: ¿ha cambiado algo desde mi última posición?
 
-- **Una sola comprobación cubre ocho colecciones**: productos, variaciones, tasas de impuestos, clientes, cupones, categorías, marcas y etiquetas. Los pedidos quedan deliberadamente fuera de la comprobación de cambios; su actualidad proviene de su propio carril de pedidos recientes, y por eso las actualizaciones de productos y de pedidos pueden llegar con ritmos distintos.
-- **Una caja inactiva no cuesta casi nada.** El motor envía solicitudes condicionales: cuando no ha cambiado nada, el servidor responde con un único `304 Not Modified` sin cuerpo. Una tienda tranquila se estabiliza en una respuesta diminuta por comprobación.
-- **Las comprobaciones llevan una variación aleatoria de ±20 %** para que varias cajas de un mismo sitio se desfasen entre sí en lugar de golpear el servidor en ráfagas sincronizadas.
-- **Decaimiento por inactividad:** tras 10 minutos sin interacción, las comprobaciones se espacian (hasta un mínimo de 60 segundos). Cualquier actividad real —un toque, una pulsación de tecla, un escaneo de código de barras aceptado— vuelve de inmediato a la cadencia completa y dispara una comprobación de recuperación inmediata. El decaimiento solo alarga el intervalo; nunca consulta más rápido que el valor configurado.
-- **Una caja que estuvo cerrada durante días vuelve a tomar una línea base en lugar de reproducir el historial.** Si el registro de cambios se ha alejado demasiado de la última posición de la caja, reproducir cada fila costaría cientos de solicitudes. En su lugar, el motor lleva su cursor hasta la cabecera y vuelve a comprobar el estado actual en el servidor de lo que el dispositivo ya tiene, de modo que el coste escala con el tamaño de la copia local y no con el tiempo que la caja estuvo ausente.
+- **Una sola comprobación cubre ocho colecciones**: productos, variaciones, tasas de impuestos, clientes, cupones, categorías, marcas y etiquetas. Los pedidos quedan deliberadamente fuera de la comprobación de cambios; se mantienen actualizados mediante su propio carril de pedidos recientes, y por eso las actualizaciones de productos y de pedidos pueden llegar a ritmos distintos.
+- **Una caja inactiva no cuesta casi nada.** El motor envía solicitudes condicionales: cuando no ha cambiado nada, el servidor responde con un único `304 Not Modified` sin cuerpo. Una tienda sin actividad se estabiliza en una respuesta mínima por comprobación.
+- **Las comprobaciones llevan una variación aleatoria de ±20%** para que varias cajas de un mismo sitio se desfasen entre sí en lugar de enviar solicitudes al servidor en ráfagas sincronizadas.
+- **Decaimiento por inactividad:** tras 10 minutos sin interacción, las comprobaciones se espacian (hasta un intervalo mínimo de 60 segundos). Cualquier actividad real —un toque, una pulsación de tecla, un escaneo de código de barras aceptado— restablece de inmediato la cadencia completa y dispara una comprobación inmediata para ponerse al día. El decaimiento solo alarga el intervalo; nunca consulta más rápido que el valor configurado.
+- **Una caja que estuvo cerrada durante días vuelve a establecer una base de referencia en lugar de reproducir el historial.** Si el registro de cambios ha avanzado demasiado desde la última posición de la caja, reproducir cada fila costaría cientos de solicitudes. En su lugar, el motor lleva su cursor hasta la posición más reciente y vuelve a comprobar el estado actual en el servidor de lo que el dispositivo ya tiene, de modo que el coste depende del tamaño de la copia local y no del tiempo que la caja estuvo ausente.
 
 ## Cómo obtienen sus datos las pantallas {#declared-demand}
 
 En la v1.10.0, las pantallas no ejecutan su propia sincronización. **Una pantalla declara qué está mostrando —término de búsqueda, filtros, orden, página— y el motor decide si eso requiere alguna solicitud.** Cada declaración se resuelve de una de estas tres maneras:
 
-- **Descargada**: el motor hizo trabajo en la red para satisfacerla.
+- **Descargada**: el motor recurrió a la red para satisfacerla.
 - **Servida localmente**: el dispositivo ya tenía la respuesta, o una descarga reciente idéntica la cubre.
-- **Sustituida**: la pantalla siguió adelante (usted se desplazó, cambió un filtro) y una declaración más nueva la reemplazó. Esto es rutinario, no un error.
+- **Sustituida**: la pantalla cambió (usted se desplazó o cambió un filtro) y una declaración más reciente la reemplazó. Esto es normal, no un error.
 
-Un filtro que solo puede responderse localmente nunca viaja al servidor. Y que una declaración se resuelva correctamente no significa que una colección esté descargada por completo: la exhaustividad se registra por separado (siguiente sección).
+Un filtro que solo puede resolverse localmente nunca se envía al servidor. Y que una declaración se resuelva correctamente no significa que una colección esté descargada por completo: la exhaustividad se registra por separado (siguiente sección).
 
-No todo se descarga con avidez, y lo que hay en el dispositivo al arrancar varía según la colección:
+No todo se descarga de forma anticipada, y los datos que hay en el dispositivo al arrancar varían según la colección:
 
-1. **Sembrado**: los productos se llenan mediante una siembra acotada del catálogo; las tasas de impuestos se descargan al arrancar (un POS no puede calcular el carrito sin ellas).
-2. **Bajo demanda, más un goteo en tiempo inactivo**: los clientes no tienen siembra ávida. El goteo de clientes descarga un lote pequeño por intervalo de inactividad, y se omite por completo siempre que el cajero está activo; los clientes nuevos o modificados llegan a través de la comprobación de cambios.
+1. **Sembrado**: los productos se incorporan mediante una siembra acotada del catálogo; las tasas de impuestos se descargan al arrancar (un POS no puede calcular los importes del carrito sin ellas).
+2. **Bajo demanda, más un goteo durante la inactividad**: los clientes no tienen siembra anticipada. El goteo de clientes descarga un lote pequeño por intervalo de inactividad y se omite por completo siempre que el cajero está activo; los clientes nuevos o modificados llegan a través de la comprobación de cambios.
 3. **Descargadas al abrirlas por primera vez**: las categorías, etiquetas, marcas y cupones se descargan cuando un cajero las abre por primera vez. Una colección que nadie abre no genera ninguna solicitud, jamás.
 
-Además, los selectores de variaciones actualizan el precio y el stock una vez por apertura, de modo que una variación residente se muestra al instante pero nunca enseña stock obsoleto de hace días.
+Además, los selectores de variaciones actualizan el precio y el stock una vez por apertura, de modo que una variación almacenada localmente se muestra al instante, pero nunca muestra stock obsoleto de hace días.
 
 ## «¿Está todo descargado?»: cobertura honesta {#coverage}
 
-Una lectura como *«1.240 de 5.000 productos»* necesita un total **del lado del servidor** como denominador. El motor mantiene uno por colección (actualizado aproximadamente cada 15 minutos, normalmente sin coste: las respuestas de sincronización reales ya llevan el total, por lo que rara vez hace falta una solicitud dedicada) y sigue un estricto contrato de honestidad:
+Una indicación como *«1,240 de 5,000 productos»* necesita un total **del lado del servidor** como denominador. El motor mantiene uno por colección (actualizado aproximadamente cada 15 minutos, normalmente sin coste: las respuestas de sincronización reales ya llevan el total, por lo que rara vez hace falta una solicitud dedicada) y sigue un estricto contrato de honestidad:
 
-- Un total del servidor obsoleto o ausente se muestra como *comprobando…*, nunca se sustituye en silencio por un recuento local. Un denominador local siempre marcaría el 100 % y ocultaría justamente la diferencia que ese número existe para revelar.
-- Cuando el motor no puede dar fe de la exhaustividad, el veredicto es *desconocido* y la interfaz etiqueta la cifra como un recuento local.
-- La barra de cobertura de pedidos se mide contra **todo** el historial de pedidos del servidor, mientras que la caja conserva deliberadamente solo los pedidos abiertos y recientes; por eso una caja sana aparece ahí como parcial por diseño.
+- Un total del servidor obsoleto o ausente se muestra como *comprobando…*; nunca se sustituye en silencio por un recuento local. Un denominador local siempre marcaría el 100% y ocultaría precisamente la diferencia que esa cifra debe revelar.
+- Cuando el motor no puede garantizar la exhaustividad, el resultado es *desconocido* y la interfaz etiqueta la cifra como un recuento local.
+- La barra de cobertura de pedidos se mide frente a **todo** el historial de pedidos del servidor, mientras que la caja conserva deliberadamente solo los pedidos abiertos y recientes; por eso una caja en buen estado aparece ahí con cobertura parcial por diseño.
 
-Estos números aparecen en **Estado de la tienda → Base de datos**, junto con el hito *Listo para vender*, que se activa en cuanto el primer producto está en el dispositivo — estar sin conexión no lo bloquea, porque vender sin conexión es precisamente el objetivo. Consulte [Estado de la tienda](/1.x/support/store-health).
+Estos números aparecen en **Estado de la tienda → Base de datos**, junto con el hito *Listo para vender*, que se activa en cuanto el primer producto está en el dispositivo; estar sin conexión no lo bloquea, porque vender sin conexión es precisamente el objetivo. Consulte [Estado de la tienda](/1.x/support/store-health).
 
 ## Cómo llegan los cambios a su tienda {#write-path}
 
-Toda escritura local —una venta, la edición de un producto, la actualización de un cliente— aterriza primero en una **cola de salida duradera** en el dispositivo, y un carril de vaciado envía la cola a WooCommerce cada pocos segundos. Esto es lo que hace segura la venta sin conexión: una venta registrada sin conexión espera en la cola y se vacía cuando la conexión vuelve.
+Toda escritura local —una venta, la edición de un producto, la actualización de un cliente— se guarda primero en una **cola de salida duradera** en el dispositivo, y un carril de vaciado envía la cola a WooCommerce cada pocos segundos. Esto es lo que hace segura la venta sin conexión: una venta registrada sin conexión permanece en la cola y se envía cuando vuelve la conexión.
 
-Detalles que importan:
+Detalles importantes:
 
 - **Las escrituras del carrito se serializan por pedido.** Las ráfagas rápidas del escáner se aplican una a una, y una adición repetida se fusiona con la línea que duplica en lugar de poner en cola una segunda línea.
-- **Los acuses de recibo de pedidos adoptan la copia del servidor.** WooCommerce asigna identificadores a las líneas del pedido al crearlo; el motor adopta el pedido confirmado para que las actualizaciones posteriores coincidan con esas líneas en lugar de añadir duplicados. La adopción es conservadora: nunca sobrescribe una edición local que el servidor no haya visto, y solo se aplica a los pedidos.
+- **Los acuses de recibo de pedidos adoptan la copia del servidor.** WooCommerce asigna ID a las líneas del pedido al crearlo; el motor adopta el pedido confirmado para que las actualizaciones posteriores coincidan con esas líneas en lugar de añadir duplicados. La adopción es conservadora: nunca sobrescribe una edición local que el servidor no haya visto, y solo se aplica a los pedidos.
 - **Un conflicto al escribir un pedido se resuelve automáticamente una vez.** Si al escribir un pedido se encuentra una copia más reciente en el servidor, el motor reconcilia los datos y lo vuelve a intentar una sola vez; si sigue sin poder hacerlo, el conflicto se muestra para que pueda resolverlo, en lugar de repetir el proceso en silencio.
-- **Una escritura que el servidor rechaza de forma permanente nunca se reintenta en silencio.** Se aparca con el motivo indicado por el propio servidor y se muestra en **Estado de la tienda → Base de datos** como *«cambios que nunca llegaron a su servidor»*, con dos acciones explícitas: **Enviar de nuevo** (reconstruye la solicitud a partir del registro tal como está ahora, de modo que las correcciones posteriores se aplican) y **Descartar**. No hay ningún bucle de reintento automático: la recuperación es siempre una acción visible y deliberada. Consulte [Estado de la tienda](/1.x/support/store-health#database) para el recorrido dirigido al comerciante.
+- **Una escritura que el servidor rechaza de forma permanente nunca se reintenta en silencio.** Se retiene con el motivo indicado por el propio servidor y se muestra en **Estado de la tienda → Base de datos** como *«cambios que nunca llegaron a su servidor»*, con dos acciones explícitas: **Enviar de nuevo** (reconstruye la solicitud a partir del estado actual del registro, de modo que se apliquen las correcciones posteriores) y **Descartar**. No hay ningún bucle de reintento automático: la recuperación es siempre una acción visible y deliberada. Consulte [Estado de la tienda](/1.x/support/store-health#database) para ver la guía dirigida al comerciante.
 
 ### Varias pestañas del navegador {#multi-tab}
 
-Ejecutar el POS web en varias pestañas de la misma tienda es compatible. Todas las pestañas pueden registrar una venta —las escrituras se añaden a la cola compartida—, pero **una sola pestaña elegida se encarga del envío** para cada ámbito de tienda + cajero. Si esa pestaña se cierra, el navegador promociona la siguiente automáticamente. Dos pestañas con la sesión iniciada como cajeros distintos son ámbitos separados y cada una gestiona su propia cola.
+Se puede ejecutar el POS web en varias pestañas de la misma tienda. Todas las pestañas pueden registrar una venta —las escrituras se añaden a la cola compartida—, pero **una sola pestaña elegida se encarga del envío** para cada ámbito de tienda + cajero. Si esa pestaña se cierra, el navegador asigna la función a la siguiente automáticamente. Dos pestañas con la sesión iniciada como cajeros distintos son ámbitos separados y cada una gestiona su propia cola.
 
 ## Almacenamiento local {#local-storage}
 
-Las aplicaciones web y de escritorio almacenan los datos mediante un **worker de OPFS (Origin Private File System)**; las aplicaciones de iOS y Android utilizan el mismo formato en disco a través de un motor de sistema de archivos. Las cuatro plataformas comparten un único formato de almacenamiento y las mismas herramientas de recuperación ante corrupción. (Las versiones anteriores usaban IndexedDB en web y SQLite en nativo.)
+Las aplicaciones web y de escritorio almacenan los datos mediante un **worker de OPFS (Origin Private File System)**; las aplicaciones de iOS y Android utilizan el mismo formato en disco a través de un motor de sistema de archivos. Las cuatro plataformas comparten un único formato de almacenamiento y las mismas herramientas de recuperación ante corrupción. (Las versiones anteriores usaban IndexedDB en la web y SQLite en las aplicaciones nativas.)
 
-Si el almacenamiento local deja de ser **legible**, WCPOS bloquea el proceso de pago y solicita que vuelva a cargar la aplicación, en lugar de permitir una venta con datos dañados y perderla; además, los escaneos de códigos de barras en ese estado generan un error visible en vez de fallar en silencio, para que un almacenamiento dañado no pueda descartar una venta sin avisar antes de que las herramientas de recuperación lo reconstruyan.
+Si el almacenamiento local se vuelve **ilegible**, WCPOS bloquea el proceso de pago y solicita que se vuelva a cargar la aplicación, en lugar de permitir una venta con datos dañados y perderla. Además, los escaneos de códigos de barras en ese estado generan un error visible en vez de fallar en silencio, para que un almacenamiento dañado no pueda descartar una venta sin avisar antes de que las herramientas de recuperación lo reconstruyan.
 
-Las consultas se ejecutan dentro de la capa de base de datos —selector, orden y página—, de modo que solo la página visible de filas cruza hacia la aplicación. Sobre un conjunto sintético de 10.000 pedidos, ese descenso de la consulta redujo el coste de actualización por escritura bajo una suscripción activa de ~27 ms a ~0,06 ms.
+Las consultas se ejecutan dentro de la capa de base de datos —selector, orden y página—, de modo que solo la página visible de filas se transfiere a la aplicación. En un conjunto sintético de 10,000 pedidos, trasladar allí las consultas redujo el coste de actualización por escritura con una suscripción activa de ~27 ms a ~0,06 ms.
 
 ## Actualizar desde la v1.9 {#upgrading-from-v19}
 
 La v1.10.0 no migra las bases de datos locales: realiza una **resincronización en frío**:
 
-1. En el primer arranque, la aplicación abre una base de datos local nueva y vuelve a descargar de su tienda. Cuente con una descarga completa puntual en cada dispositivo.
-2. No se pierde nada: su servidor de WooCommerce es la copia autorizada de todos los datos sincronizados. Los cambios pendientes de enviar se vacían o se muestran **antes** de que se limpien los datos antiguos: la actualización no puede destruir una venta sin enviar.
-3. **La aplicación y el plugin se publican al unísono.** Los clientes v1.10.0 hablan la API de sincronización v2 del plugin. Si solo se actualiza una de las dos partes, las solicitudes fallan con errores `rest_no_route`: esa firma significa «actualice la otra mitad», no una instalación rota.
+1. En el primer arranque, la aplicación abre una base de datos local nueva y vuelve a descargar los datos de su tienda. Tenga en cuenta que cada dispositivo realizará una descarga completa una sola vez.
+2. No se pierde nada: su servidor de WooCommerce conserva la copia de referencia de todos los datos sincronizados. Los cambios pendientes de enviar se envían o se muestran **antes** de que se eliminen los datos antiguos: la actualización no puede destruir una venta sin enviar.
+3. **La aplicación y el plugin se publican al unísono.** Los clientes v1.10.0 utilizan la API de sincronización v2 del plugin. Si solo se actualiza una de las dos partes, las solicitudes fallan con errores `rest_no_route`: ese error significa «actualice la otra parte», no que la instalación esté dañada.
 
 ## Qué cambió en la v1.10.0 {#what-changed-in-v1100}
 
@@ -115,7 +115,7 @@ La v1.10.0 no migra las bases de datos locales: realiza una **resincronización 
 | --- | --- | --- |
 | Unidad de sincronización | Un flujo de replicación por consulta de pantalla montada | Un motor por sitio + tienda + cajero |
 | Qué provoca una descarga | El montaje de una pantalla | Una pantalla que declara lo que necesita |
-| Detección de cambios | Consultas periódicas + auditoría completa cada hora | Cursor sobre el registro de cambios con respuestas condicionales `304` |
+| Detección de cambios | Consultas periódicas + auditoría completa cada hora | Cursor del registro de cambios con respuestas condicionales `304` |
 | Totales del servidor | No registrados | Totales por colección con estados honestos de *comprobando…* |
 | Escrituras fallidas | Reintentadas de forma opaca | Cola duradera, panel de recuperación visible, sin reintentos silenciosos |
 | Web multipestaña | Sin coordinación | Un único emisor elegido por ámbito |
@@ -123,4 +123,4 @@ La v1.10.0 no migra las bases de datos locales: realiza una **resincronización 
 | Almacenamiento | IndexedDB (web), SQLite (nativo) | Almacenamiento en formato OPFS en todas las plataformas |
 | Ajuste de la sincronización | Fijo | Preajustes y controles por dispositivo en Estado de la tienda |
 
-Para conocer la filosofía de rendimiento que hay detrás del motor —topes de solicitudes, reducción de ritmo ante la presión del servidor y las cifras medidas—, consulte [Rendimiento de la sincronización](/1.x/reference/sync-performance).
+Para conocer la filosofía de rendimiento del motor —topes de solicitudes, reducción del ritmo ante la presión del servidor y cifras medidas—, consulte [Rendimiento de la sincronización](/1.x/reference/sync-performance).
