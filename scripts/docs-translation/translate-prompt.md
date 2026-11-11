@@ -54,6 +54,10 @@ Write exactly one JSON file per packet at the given results path:
   `{placeholders}`, HTML/JSX tags and their non-text attributes, `:::` admonition
   markers, table pipes (same number of cells), list markers, Markdown emphasis markers
   around the same words, and every number.
+- Each inline code span appears exactly as many times as in the English, never more and
+  never fewer. Do not repeat a span to fit the grammar: "starts and ends with `<receipt>`"
+  names `<receipt>` once, so the translation names it once (e.g. with "both" or "wraps
+  the template in"). Do not merge two occurrences into one.
 - Exception: a backticked WP-admin breadcrumb such as `` `WP Admin > WooCommerce > Settings > Payments` ``
   is a visible UI path. Localize its menu labels to the labels WordPress, WooCommerce and
   WCPOS actually use in the locale; keep the backticks, the ` > ` separators and the
