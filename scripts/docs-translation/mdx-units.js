@@ -151,13 +151,18 @@ function overlapsAnyRange(range, ranges) {
   return ranges.some((candidate) => rangesOverlap(range, candidate));
 }
 
-function inlineTagRanges(line) {
+function inlineTagRanges(line, codeRanges) {
   const ranges = [];
   let cursor = 0;
   while (cursor < line.length) {
     const start = line.indexOf('<', cursor);
     if (start === -1) {
       break;
+    }
+    const codeRange = codeRanges.find((range) => range.start <= start && start < range.end);
+    if (codeRange !== undefined) {
+      cursor = codeRange.end;
+      continue;
     }
     const tagNameStart = line[start + 1] === '/' ? start + 2 : start + 1;
     if (!/[A-Za-z]/.test(line[tagNameStart] ?? '')) {
@@ -486,7 +491,10 @@ function parseDocsMdxUnits(filePath, source) {
     }
 
     const codeRanges = inlineCodeRanges(lineNoNewline);
-    const tagRanges = inlineTagRanges(lineNoNewline);
+    // Tag scanning skips inline code spans: a `<` inside code is code, already
+    // protected by codeRanges. A real tag that contains code (a template-literal
+    // attribute) is still found.
+    const tagRanges = inlineTagRanges(lineNoNewline, codeRanges);
     const protectedInlineRanges = [...codeRanges, ...tagRanges];
     const linkMatches = markdownLinkMatches(lineNoNewline).filter((linkMatch) => !overlapsAnyRange(linkMatch, protectedInlineRanges));
     const imageMatches = markdownImageMatches(lineNoNewline).filter((imageMatch) => !overlapsAnyRange(imageMatch, protectedInlineRanges));
