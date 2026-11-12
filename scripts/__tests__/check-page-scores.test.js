@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const {
-  VDOCS, pageHash, saveScores, loadScores, resolveCommit, meanOf, REQUIRED_CATEGORIES,
+  VDOCS, pageHash, saveScores, loadScores, resolveCommit, meanOf, REQUIRED_CATEGORIES, RUNS_DIR,
 } = require('../lib/page-scores');
 const { recordFromGate, recordGroup, carry } = require('../record-page-score');
 const {
@@ -23,7 +23,7 @@ const seven = (value, overrides = {}) => ({
   ...Object.fromEntries(REQUIRED_CATEGORIES.map((key) => [key, value])), ...overrides,
 });
 const PASS = seven(8.5, { 'task clarity': 8 });
-const gate = { round: 2, state: 'keep', scores: { a: PASS } };
+const gate = { round: 2, state: 'keep', scores: { a: PASS, b: PASS } };
 const recording = { doc: 'a/page', gate, climb: 'a__page', commit: 'HEAD' };
 const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
 function commitFixture(message, date, add = true) {
@@ -34,11 +34,27 @@ function commitFixture(message, date, add = true) {
 }
 function initRepo() {
   git('init', '-q');
+  git('config', 'maintenance.auto', 'false'); // a detached maintenance run can race afterEach's removal
   return commitFixture('base');
+}
+// A judge transcript scoring `scores` in a Page column, one row per category.
+const transcript = (scores) => ['| Category | Page | Baseline |', '|---|---|---|',
+  ...Object.entries(scores).map(([key, value]) => `| ${key} | ${value} | 5 |`), '| **Average** | 9 | 5 |', ''].join('\n');
+// Records with Opus transcripts written from the gate's scores, then commits only the copied transcripts.
+function record(opts = recording, recorder = recordFromGate, commit = true) {
+  const dir = fs.mkdtempSync(path.join(root, '.git', 'run-')); // outside the work tree; removed with root
+  for (const [judge, scores] of Object.entries(opts.gate.scores)) fs.writeFileSync(path.join(dir, `opus-${judge}.md`), transcript(scores));
+  const entry = recorder({ root, ...opts, run: dir });
+  if (commit) {
+    git('add', RUNS_DIR);
+    git('-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-q', '--allow-empty', '-m', 'judge run');
+  }
+  return entry;
 }
 // A base without these sources, which stay on disk: they are new pages (R1).
 function baseWithout(...docs) {
   git('init', '-q');
+  git('config', 'maintenance.auto', 'false'); // a detached maintenance run can race afterEach's removal
   git('add', '-A');
   git('rm', '-q', '--cached', ...docs.map((doc) => `${VDOCS}/${doc}.mdx`));
   return commitFixture('base without new pages', undefined, false);
@@ -106,7 +122,7 @@ describe('score check', () => {
     expect(enforced.exitCode).toBe(1);
     expect(enforced.lines).toEqual([
       'a/page: missing', '::error::1 page(s) need a score.',
-      'Climb each page with the docs climb kit, then: node scripts/record-page-score.js --doc <doc> --gate <gate.json> --climb <folder>',
+      'Climb each page with the docs climb kit, then: node scripts/record-page-score.js --doc <doc> --gate <gate.json> --climb <folder> --run <judge run dir>',
     ]);
     const warning = run({ ...options, now: new Date('2026-11-15T23:59:00Z') });
     expect(warning.exitCode).toBe(0);
@@ -132,7 +148,7 @@ describe('score check', () => {
     expect(result.exitCode).toBe(1);
     expect(result.lines).toEqual([
       'error-codes/E1: missing', '::error::1 page(s) need a score.',
-      'For error-codes pages, record the template score: node scripts/record-page-score.js --group error-codes --gate <gate.json> --climb <folder> --sample <10 judged pages, comma-separated>',
+      'For error-codes pages, record the template score: node scripts/record-page-score.js --group error-codes --gate <gate.json> --climb <folder> --run <judge run dir> --sample <10 judged pages, comma-separated>',
     ]);
   });
 
@@ -284,7 +300,7 @@ describe('malformed entries', () => {
       'score language is not a number from 0 to 10'],
     ['an array entry', () => [], 'not an object'],
   ])('fails cleanly on %s', (name, mutate, problem) => {
-    const entry = recordFromGate({ root, ...recording });
+    const entry = record();
     saveScores(root, { 'a/page': mutate(entry) });
     let result;
     expect(() => { result = run(options); }).not.toThrow();
@@ -293,7 +309,7 @@ describe('malformed entries', () => {
     expect(result.lines[0]).toBe('a/page: missing');
   });
   it('rejects a stored mean that differs from the scores', () => {
-    const entry = recordFromGate({ root, ...recording, gate: { ...gate, scores: { a: seven(8) } } });
+    const entry = record({ ...recording, gate: { ...gate, scores: { a: seven(8), b: seven(8) } } });
     saveScores(root, { 'a/page': { ...entry, mean: 8.36 } });
     const result = run(options);
     expect(result.exitCode).toBe(1);
@@ -320,7 +336,7 @@ describe('score integrity', () => {
   it.each([true, false])('evaluates a recorded change, with changed doc listed: %s', (withDoc) => {
     fs.appendFileSync(path.join(root, VDOCS, 'a/page.mdx'), '\nEdited');
     commitFixture('edit page');
-    recordFromGate({ root, ...recording });
+    record();
     if (withDoc) options.changedFiles.push(`${VDOCS}/a/page.mdx`);
     const result = run(options);
     expect(result.exitCode).toBe(0);
@@ -378,7 +394,7 @@ describe('score integrity', () => {
     expect(run(options).exitCode).toBe(0);
   });
   it.each([false, true])('allows entry removal only when the source is deleted: %s', (deleted) => {
-    recordFromGate({ root, ...recording });
+    record();
     options.base = commitFixture('score');
     if (deleted) fs.unlinkSync(path.join(root, VDOCS, 'a/page.mdx'));
     saveScores(root, {});
@@ -388,7 +404,7 @@ describe('score integrity', () => {
     expect(run(options).exitCode).toBe(deleted ? 0 : 1);
   });
   it('allows only the group prune shape without rechecking provenance', () => {
-    const entry = recordGroup({ root, ...recording, group: 'error-codes', sample: ['error-codes/E1'] });
+    const entry = record({ ...recording, group: 'error-codes', sample: ['error-codes/E1'] }, recordGroup);
     delete entry.commit;
     saveScores(root, { 'error-codes': entry });
     options.base = commitFixture('seed group');
@@ -400,7 +416,7 @@ describe('score integrity', () => {
       .toEqual(['error-codes: no judged commit']);
   });
   it('rejects removing a still-existing page from a group entry', () => {
-    const entry = recordGroup({ root, ...recording, group: 'error-codes', sample: ['error-codes/E1'] });
+    const entry = record({ ...recording, group: 'error-codes', sample: ['error-codes/E1'] }, recordGroup);
     options.base = commitFixture('score group');
     delete entry.pages['error-codes/E2'];
     saveScores(root, { 'error-codes': entry });
@@ -409,7 +425,7 @@ describe('score integrity', () => {
     expect(run(options).exitCode).toBe(1);
   });
   it('checks group hashes in sorted order and evaluates every changed group page', () => {
-    const entry = recordGroup({ root, ...recording, group: 'error-codes', sample: ['error-codes/E1'] });
+    const entry = record({ ...recording, group: 'error-codes', sample: ['error-codes/E1'] }, recordGroup);
     expect(run(options).lines.slice(0, 2)).toEqual(['error-codes/E1: ok', 'error-codes/E2: ok']);
     const bad = 'sha256:' + '0'.repeat(64);
     entry.pages = { 'error-codes/E2': bad, 'error-codes/E1': bad };
@@ -422,7 +438,7 @@ describe('score integrity', () => {
       .toEqual({ errors: ['error-codes: malformed entry (bad group pages)'], docs: [], invalid: ['error-codes'] });
   });
   it('rejects a carry from an entry already stale on the base', () => {
-    recordFromGate({ root, ...recording });
+    record();
     fs.appendFileSync(path.join(root, VDOCS, 'a/page.mdx'), '\nEdited after scoring');
     options.base = commitFixture('stale on base');
     git('mv', `${VDOCS}/a/page.mdx`, `${VDOCS}/a/renamed.mdx`);
@@ -433,9 +449,9 @@ describe('score integrity', () => {
     expect(result.lines.filter((line) => line.startsWith('::error::page-scores.json')))
       .toEqual(['::error::page-scores.json: a/renamed: carried from a/page but that entry was already stale on the base']);
   });
-  it.each(['valid', 'scores', 'source', 'missing base', 'old present'])(
+  it.each(['valid', 'scores', 'judge run', 'source', 'missing base', 'old present'])(
     'checks carried entries: %s', (kind) => {
-      const old = recordFromGate({ root, ...recording });
+      const old = record();
       options.base = commitFixture('score before rename');
       git('mv', `${VDOCS}/a/page.mdx`, `${VDOCS}/a/renamed.mdx`);
       if (kind === 'source') fs.appendFileSync(path.join(root, VDOCS, 'a/renamed.mdx'), '\nEdited');
@@ -444,10 +460,12 @@ describe('score integrity', () => {
       const entries = loadScores(root);
       if (kind === 'scores') { entry.scores.accuracy = 9; entry.mean = meanOf(entry.scores); }
       if (kind === 'missing base') entry.carriedFrom = 'nope';
+      if (kind === 'judge run') entry.judgeRun[0].column = 'Edited';
+      if (kind === 'valid') expect(entry.judgeRun).toEqual(old.judgeRun);
       if (kind === 'old present') entries['a/page'] = old;
       entries['a/renamed'] = entry;
       saveScores(root, entries);
-      const reasons = { scores: 'its scores differ', source: 'the page source changed',
+      const reasons = { scores: 'its scores differ', 'judge run': 'its scores differ', source: 'the page source changed',
         'missing base': 'that entry is not on the base', 'old present': 'the old entry is still present' };
       const result = run(options);
       expect(result.exitCode).toBe(kind === 'valid' ? 0 : 1);
@@ -457,11 +475,62 @@ describe('score integrity', () => {
     });
 });
 
+describe('judge run binding', () => {
+  beforeEach(() => {
+    options.base = initRepo();
+    options.changedFiles = ['page-scores.json'];
+  });
+  const errors = (result) => result.lines.filter((line) => line.startsWith('::error::page-scores.json'));
+  const runFile = (judge) => `${RUNS_DIR}/a__page/r2/${judge}.md`;
+  it('passes an honest record with its runs committed', () => {
+    record();
+    const result = run(options);
+    expect(result.exitCode).toBe(0);
+    expect(result.lines[0]).toBe('a/page: ok');
+    expect(errors(result)).toEqual([]);
+  });
+  it.each([
+    ['no judge run', (entry) => ({ hash: entry.hash, judged: '2026-11-20', round: 2, judges: ['opus-a', 'opus-b'],
+      scores: PASS, mean: meanOf(PASS), climb: 'anything', commit: entry.commit }), 'no judge run'],
+    ['a run file not committed', (entry) => entry, `judge run file ${runFile('opus-a')} is not committed`],
+    ['a sha256 mismatch', (entry) => { entry.judgeRun[1].sha256 = 'sha256:' + '0'.repeat(64); return entry; },
+      `judge run file ${runFile('opus-b')} does not match its sha256`],
+    ['a climb mismatch', (entry) => ({ ...entry, climb: 'other' }), `judge run ${runFile('opus-a')} is not for climb other round 2`],
+    ['a round mismatch', (entry) => ({ ...entry, round: 3 }), `judge run ${runFile('opus-a')} is not for climb a__page round 3`],
+    ['scores edited', (entry) => { entry.scores['task clarity'] = 9; return { ...entry, mean: meanOf(entry.scores) }; },
+      'scores differ from the judge run (task clarity: 9 vs 8)'],
+    ['judges edited', (entry) => ({ ...entry, judges: ['opus-a'] }), 'judges differ from the judge run'],
+    ['a Baseline column', (entry) => { entry.judgeRun[0].column = 'Baseline'; return entry; },
+      `judge run ${runFile('opus-a')} has no page column`],
+    ['a column not in the table', (entry) => { entry.judgeRun[1].column = 'Nope'; return entry; },
+      `judge run file ${runFile('opus-b')}: no column "Nope"`],
+  ])('rejects forgery: %s', (name, mutate, problem) => {
+    const entry = record(recording, recordFromGate, name !== 'a run file not committed');
+    saveScores(root, { 'a/page': mutate(entry) });
+    const result = run(options);
+    expect(result.exitCode).toBe(1);
+    expect(errors(result)).toEqual([`::error::page-scores.json: a/page: ${problem}`]);
+  });
+  it.each(['edited', 'deleted', 'edited with its entry'])('fails an entry whose committed run file was %s', (kind) => {
+    record();
+    options.base = commitFixture('score');
+    if (kind === 'deleted') git('rm', '-q', runFile('opus-a'));
+    else fs.appendFileSync(path.join(root, runFile('opus-a')), '\nEdited after recording');
+    if (kind === 'edited with its entry') saveScores(root, { 'a/page': { ...loadScores(root)['a/page'], judged: '2026-11-17' } });
+    commitFixture('tamper');
+    const result = run({ ...options, changedFiles: kind === 'edited with its entry' ? [runFile('opus-a'), 'page-scores.json'] : [runFile('opus-a')] });
+    expect(result.exitCode).toBe(1);
+    expect(errors(result)).toEqual([`::error::page-scores.json: a/page: judge run file ${runFile('opus-a')} ${
+      kind === 'deleted' ? 'is not committed' : 'does not match its sha256'}`]);
+    expect(run({ ...options, changedFiles: [] }).exitCode).toBe(0);
+  });
+});
+
 describe('ratchet rules', () => {
   const day = 24 * 60 * 60 * 1000;
   const ago = (days) => new Date(now - days * day).toISOString();
   const pageFile = () => path.join(root, VDOCS, 'a/page.mdx');
-  const scored = (scores) => ({ ...recording, gate: { round: 2, state: 'keep', scores: { a: scores } } });
+  const scored = (scores, round = 2) => ({ ...recording, gate: { round, state: 'keep', scores: { a: scores, b: scores } } });
   const granted = () => {
     options.event = { pull_request: { labels: [{ name: 'score-exception' }], body } };
     options.exceptionEvents = [{ actor: 'kilbot', at: recent }];
@@ -471,7 +540,7 @@ describe('ratchet rules', () => {
   // Base: a/page recorded with these scores at the base commit, page-scores.json committed.
   function recordedBase(scores) {
     initRepo();
-    recordFromGate({ root, ...scored(scores) });
+    record(scored(scores));
     options.base = commitFixture('score');
   }
 
@@ -480,7 +549,7 @@ describe('ratchet rules', () => {
     options.changedFiles = [`${VDOCS}/a/page.mdx`];
     if (kind !== 'missing') {
       commitFixture('add page');
-      recordFromGate({ root, ...scored(kind === 'ok' ? PASS : seven(6)) });
+      record(scored(kind === 'ok' ? PASS : seven(6)));
       options.changedFiles.push('page-scores.json');
     }
     if (kind === 'waived') granted();
@@ -510,7 +579,7 @@ describe('ratchet rules', () => {
     ['mean 8.0 with an exception', seven(8), 0, 'a/page: drop (mean 8 is more than 0.3 below the previous 8.6)'],
   ])('R2: a changed entry may not drop far (%s)', (name, scores, exitCode, line) => {
     recordedBase(seven(8.6));
-    recordFromGate({ root, ...scored(scores) });
+    record(scored(scores, 3));
     options.changedFiles = ['page-scores.json'];
     if (name.includes('exception')) granted();
     const result = run(options);
@@ -562,10 +631,10 @@ describe('ratchet rules', () => {
 
   it('R2: measures the drop from scores, never the stored means', () => {
     initRepo();
-    recordFromGate({ root, ...scored(seven(8.5)) });
+    record(scored(seven(8.5)));
     saveScores(root, { 'a/page': { ...loadScores(root)['a/page'], mean: 8 } });
     options.base = commitFixture('score with a hand-set mean');
-    recordFromGate({ root, ...scored(seven(8.1)) });
+    record(scored(seven(8.1), 3));
     options.changedFiles = ['page-scores.json'];
     const result = run(options);
     expect(result.exitCode).toBe(1);

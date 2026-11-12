@@ -3,7 +3,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const {
   VDOCS, referencedPaths, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource, groupOf, pageHash,
-  meanOf, REQUIRED_CATEGORIES,
+  meanOf, REQUIRED_CATEGORIES, RUNS_DIR, JUDGES, sha256Of, runPath, parseJudgeTable, runScores,
 } = require('./lib/page-scores');
 
 // Warn-only before this UTC date, then failures exit 1 (front desk ruling 2026-11-12: required from 2026-11-16).
@@ -105,7 +105,40 @@ function entryProblem(entry) {
   return isHash(entry.hash) ? null : 'bad hash';
 }
 
-function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, base) }) {
+// The committed transcript bytes at HEAD when they match the recorded sha256, else the problem.
+function committedRun(root, file, sha256) {
+  let bytes;
+  try {
+    bytes = execFileSync('git', ['show', `HEAD:${file}`], { cwd: root, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 });
+  } catch { return { problem: `judge run file ${file} is not committed` }; }
+  return sha256Of(bytes) === sha256 ? { text: bytes.toString('utf8') } : { problem: `judge run file ${file} does not match its sha256` };
+}
+
+// The first problem binding an entry to its committed Opus judge transcripts, or null.
+function judgeRunProblem(root, entry) {
+  const run = entry.judgeRun;
+  if (!Array.isArray(run) || run.length !== JUDGES.length || !run.every((item, i) => isPlain(item) && item.judge === JUDGES[i])) {
+    return 'no judge run';
+  }
+  if (!same(entry.judges, JUDGES)) return 'judges differ from the judge run';
+  const texts = [];
+  for (const { judge, path: file, sha256, column } of run) {
+    if (file !== runPath(entry.climb, entry.round, judge)) return `judge run ${file} is not for climb ${entry.climb} round ${entry.round}`;
+    const { text, problem } = committedRun(root, file, sha256);
+    if (problem) return problem;
+    if (typeof column !== 'string' || !column || /baseline/i.test(column)) return `judge run ${file} has no page column`;
+    texts.push(text);
+  }
+  const categories = Object.keys(entry.scores);
+  for (const [i, { path: file, column }] of run.entries()) {
+    try { parseJudgeTable(texts[i], column, categories); } catch (error) { return `judge run file ${file}: ${error.message}`; }
+  }
+  const recomputed = runScores(texts, run.map(({ column }) => column), categories);
+  const key = categories.find((category) => entry.scores[category] !== recomputed[category]);
+  return key === undefined ? null : `scores differ from the judge run (${key}: ${entry.scores[key]} vs ${recomputed[key]})`;
+}
+
+function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, base), changedFiles = [] }) {
   const errors = [];
   const docs = [];
   const invalid = [];
@@ -151,12 +184,15 @@ function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, ba
       errors.push(`${key}: ${group ? bad + ' ' : ''}hash does not match the judged commit`);
       continue;
     }
-    if (old) {
+    if (!old) {
+      const problem = judgeRunProblem(root, entry);
+      if (problem) errors.push(`${key}: ${problem}`);
+    } else {
       if (!baseEntries[old] || baseEntries[old].group) {
         errors.push(`${key}: carried from ${old} but that entry is not on the base`);
       } else if (Object.hasOwn(entries, old)) {
         errors.push(`${key}: carried from ${old} but the old entry is still present`);
-      } else if (['scores', 'mean', 'round', 'climb', 'judged', 'judges'].some((field) => !same(entry[field], baseEntries[old][field]))) {
+      } else if (['scores', 'mean', 'round', 'climb', 'judged', 'judges', 'judgeRun'].some((field) => !same(entry[field], baseEntries[old][field]))) {
         errors.push(`${key}: carried from ${old} but its scores differ`);
       } else if (docSource(root, old, base) && pageHash(root, old, base) !== baseEntries[old].hash) {
         errors.push(`${key}: carried from ${old} but that entry was already stale on the base`);
@@ -168,6 +204,15 @@ function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, ba
           errors.push(`${key}: carried from ${old} but the page source changed`);
         }
       }
+    }
+  }
+  // A committed transcript edited or deleted after recording fails its entry, even when page-scores.json is unchanged.
+  for (const [key, entry] of Object.entries(entries)) {
+    if (!isPlain(entry) || !Array.isArray(entry.judgeRun) || invalid.includes(key)) continue;
+    for (const item of entry.judgeRun) {
+      if (!isPlain(item) || !changedFiles.includes(item.path)) continue;
+      const { problem } = committedRun(root, item.path, item.sha256);
+      if (problem && !errors.includes(`${key}: ${problem}`)) errors.push(`${key}: ${problem}`);
     }
   }
   return { errors, docs, invalid };
@@ -223,7 +268,8 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
     if (exitCode) lines.push('::error::page-scores.json is malformed; fix it in this PR.');
     return { exitCode, lines };
   }
-  const integrity = changedFiles.includes('page-scores.json') ? checkIntegrity({ root, base, entries, baseEntries }) : { errors: [], docs: [], invalid: [] };
+  const integrity = changedFiles.some((file) => file === 'page-scores.json' || file.startsWith(RUNS_DIR + '/'))
+    ? checkIntegrity({ root, base, entries, baseEntries, changedFiles }) : { errors: [], docs: [], invalid: [] };
   entries = Object.fromEntries(Object.entries(entries).filter(([key]) => !integrity.invalid.includes(key)));
   const docs = [...new Set([...affectedDocs(root, changedFiles), ...integrity.docs])].sort();
   const results = docs.map((doc) => evaluate(root, doc, entries));
@@ -280,10 +326,10 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
         exitCode = 1;
       }
       if (failing.some(({ doc }) => !groupOf(doc))) {
-        lines.push('Climb each page with the docs climb kit, then: node scripts/record-page-score.js --doc <doc> --gate <gate.json> --climb <folder>');
+        lines.push('Climb each page with the docs climb kit, then: node scripts/record-page-score.js --doc <doc> --gate <gate.json> --climb <folder> --run <judge run dir>');
       }
       for (const group of new Set(failing.map(({ doc }) => groupOf(doc)).filter(Boolean))) {
-        lines.push(`For ${group} pages, record the template score: node scripts/record-page-score.js --group ${group} --gate <gate.json> --climb <folder> --sample <10 judged pages, comma-separated>`);
+        lines.push(`For ${group} pages, record the template score: node scripts/record-page-score.js --group ${group} --gate <gate.json> --climb <folder> --run <judge run dir> --sample <10 judged pages, comma-separated>`);
       }
     }
   }
@@ -338,6 +384,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  allDocs, affectedDocs, baseScores, checkIntegrity, checkException, staleSince, run, entryProblem, exceptionEventsFromApi,
+  allDocs, affectedDocs, baseScores, checkIntegrity, checkException, staleSince, run, entryProblem, exceptionEventsFromApi, judgeRunProblem,
   ENFORCE_FROM, MEAN_DROP, STALE_DAYS, GATE_FILES, HASH_DEFINITION,
 };

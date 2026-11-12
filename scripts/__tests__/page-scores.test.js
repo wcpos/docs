@@ -5,17 +5,27 @@ const { execFileSync, spawnSync } = require('child_process');
 const {
   VDOCS, SCORES_FILE, docSource, referencedPaths, hashInputs, pageHash, groupOf,
   loadScores, saveScores, meanOf, belowFloor, evaluate, resolveCommit,
+  REQUIRED_CATEGORIES, sha256Of, pageColumn, parseJudgeTable, runScores,
 } = require('../lib/page-scores');
 const { recordFromGate, recordGroup, seed, carry, prune } = require('../record-page-score');
 
 const fixtures = path.join(__dirname, 'fixtures/page-scores');
 const fixture = path.join(fixtures, 'repo');
-const gate = { state: 'continue', round: 17, scores: { a: { x: 8, y: 7 }, b: { x: 7.5, y: 9 } } };
+// The fixture judge run: opus-a heads the page column "Tips (page)", opus-b "Page".
+const run = path.join(fixtures, 'runs');
+const transcript = (judge) => fs.readFileSync(path.join(run, `${judge}.md`), 'utf8');
+const scores = (...values) => Object.fromEntries(REQUIRED_CATEGORIES.map((key, i) => [key, values[i]]));
+const A = scores(8, 8.5, 9, 8, 9, 8.5, 9);
+const B = scores(8.5, 8, 8.5, 9, 8, 9, 8);
+const MIN = scores(8, 8, 8.5, 8, 8, 8.5, 8);
+const gate = { state: 'continue', round: 17, scores: { a: A, b: B } };
 const judged = '2026-11-12';
 let root;
 
 function initRepo() {
   execFileSync('git', ['init', '-q'], { cwd: root });
+  // A detached auto-maintenance run after a commit can write into .git while afterEach removes it.
+  execFileSync('git', ['config', 'maintenance.auto', 'false'], { cwd: root });
   execFileSync('git', ['add', '-A'], { cwd: root });
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-qm', 'base'], { cwd: root });
 }
@@ -124,7 +134,7 @@ describe('commit hashes and provenance', () => {
   });
 
   it('requires a commit and records its hash despite uncommitted edits', () => {
-    const options = { root, doc: 'a/page', gate, climb: 'x' };
+    const options = { root, doc: 'a/page', gate, climb: 'x', run };
     expect(() => recordFromGate(options)).toThrow('--commit <judged commit> is required');
     const sha = resolveCommit(root, 'HEAD');
     fs.appendFileSync(docSource(root, 'a/page'), '\nchanged');
@@ -138,7 +148,7 @@ describe('commit hashes and provenance', () => {
   });
 
   it('takes group membership, sample checks and page hashes from the commit', () => {
-    const options = { root, group: 'error-codes', gate, climb: 'x', sample: ['error-codes/E1'] };
+    const options = { root, group: 'error-codes', gate, climb: 'x', sample: ['error-codes/E1'], run };
     expect(() => recordGroup(options)).toThrow('--commit <judged commit> is required');
     const sha = resolveCommit(root, 'HEAD');
     fs.unlinkSync(docSource(root, 'error-codes/E1'));
@@ -189,7 +199,7 @@ describe('score maintenance', () => {
   beforeEach(initRepo);
 
   it('carries a renamed page and preserves its judgment without a gate', () => {
-    const original = recordFromGate({ root, doc: 'a/page', gate, climb: 'x', judged, commit: 'HEAD' });
+    const original = recordFromGate({ root, doc: 'a/page', gate, climb: 'x', judged, commit: 'HEAD', run });
     execFileSync('git', ['mv', `${VDOCS}/a/page.mdx`, `${VDOCS}/a/renamed.mdx`], { cwd: root });
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-qm', 'rename'], { cwd: root });
     const sha = resolveCommit(root, 'HEAD');
@@ -206,8 +216,8 @@ describe('score maintenance', () => {
   });
 
   it('prunes missing entries and group pages using the disk', () => {
-    const page = recordFromGate({ root, doc: 'a/page', gate, climb: 'x', commit: 'HEAD' });
-    const group = recordGroup({ root, group: 'error-codes', gate, climb: 'x', commit: 'HEAD', sample: ['error-codes/E1'] });
+    const page = recordFromGate({ root, doc: 'a/page', gate, climb: 'x', commit: 'HEAD', run });
+    const group = recordGroup({ root, group: 'error-codes', gate, climb: 'x', commit: 'HEAD', sample: ['error-codes/E1'], run });
     saveScores(root, { 'a/page': page, 'a/_part': page, 'error-codes': group });
     fs.unlinkSync(docSource(root, 'a/page'));
     fs.unlinkSync(docSource(root, 'error-codes/E1'));
@@ -279,14 +289,68 @@ describe('recording scores', () => {
     expect(stdout).toHaveBeenCalledWith('seeded 0, skipped 1');
   });
 
-  it('min-merges judges and preserves existing entries', () => {
+  it('min-merges judges, copies the transcripts and preserves existing entries', () => {
     saveScores(root, { existing: { scores: { x: 9 } } });
-    const entry = recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate, climb: 'a__page', judged });
+    const entry = recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate, climb: 'a__page', judged, run });
     expect(entry).toEqual({
       hash: pageHash(root, 'a/page'), judged, round: 17,
-      judges: ['opus-a', 'opus-b'], scores: { x: 7.5, y: 7 }, mean: 7.25, climb: 'a__page', commit: resolveCommit(root, 'HEAD'),
+      judges: ['opus-a', 'opus-b'], scores: MIN, mean: 8.14, climb: 'a__page', commit: resolveCommit(root, 'HEAD'),
+      judgeRun: [
+        { judge: 'opus-a', path: 'page-scores/runs/a__page/r17/opus-a.md', sha256: sha256Of(transcript('opus-a')), column: 'Tips (page)' },
+        { judge: 'opus-b', path: 'page-scores/runs/a__page/r17/opus-b.md', sha256: sha256Of(transcript('opus-b')), column: 'Page' },
+      ],
     });
+    for (const judge of ['opus-a', 'opus-b']) {
+      expect(fs.readFileSync(path.join(root, `page-scores/runs/a__page/r17/${judge}.md`), 'utf8')).toBe(transcript(judge));
+    }
     expect(loadScores(root)).toEqual({ existing: { scores: { x: 9 } }, 'a/page': entry });
+  });
+
+  it('takes an explicit page column when a judge heads it differently', () => {
+    const split = path.join(root, 'split-run');
+    fs.mkdirSync(split);
+    fs.writeFileSync(path.join(split, 'opus-a.md'), transcript('opus-a'));
+    fs.writeFileSync(path.join(split, 'opus-b.md'), transcript('opus-b').replace('**Page**', 'Tips'));
+    const options = { root, commit: 'HEAD', doc: 'a/page', gate, climb: 'a__page', run: split };
+    expect(() => recordFromGate(options))
+      .toThrow(`cannot find the page column in ${path.join(split, 'opus-b.md')}; pass --column-b`);
+    expect(recordFromGate({ ...options, columns: { 'opus-b': 'Tips' } }).judgeRun.map(({ column }) => column))
+      .toEqual(['Tips (page)', 'Tips']);
+    fs.rmSync(path.join(root, 'page-scores'), { recursive: true });
+    const gateFile = path.join(root, 'gate.json');
+    fs.writeFileSync(gateFile, JSON.stringify(gate));
+    execFileSync(process.execPath, [path.resolve(__dirname, '../record-page-score.js'), '--root', root, '--commit', 'HEAD',
+      '--doc', 'a/page', '--gate', gateFile, '--climb', 'a__page', '--run', split, '--column-a', 'Tips (page)', '--column-b', 'Tips']);
+    expect(loadScores(root)['a/page'].judgeRun.map(({ column }) => column)).toEqual(['Tips (page)', 'Tips']);
+  });
+
+  const otherTarget = (options) => {
+    fs.mkdirSync(path.join(root, 'page-scores/runs/x/r17'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'page-scores/runs/x/r17/opus-b.md'), 'other');
+    return options;
+  };
+  it.each([
+    ['a missing run', (options) => ({ ...options, run: undefined }),
+      '--run <judge run dir with opus-a.md and opus-b.md> is required'],
+    ['gate judges a and fable', (options) => ({ ...options, gate: { ...gate, scores: { a: A, fable: B } } }),
+      'gate scores must come from Opus judges a and b, not a, fable'],
+    ['a missing opus-b.md', (options) => {
+      fs.mkdirSync(path.join(root, 'half'));
+      fs.writeFileSync(path.join(root, 'half/opus-a.md'), transcript('opus-a'));
+      return { ...options, run: path.join(root, 'half') };
+    }, 'needs opus-a.md and opus-b.md'],
+    ['a gate mismatch', (options) => ({ ...options, gate: { ...gate, scores: { a: A, b: { ...B, 'task clarity': 7.5 } } } }),
+      'judge files do not match the gate scores: task clarity 8 vs 7.5'],
+    ['a Baseline column', (options) => ({ ...options, columns: { 'opus-a': 'Baseline' } }),
+      'the page column cannot be the Baseline'],
+    ['an existing target with other content', otherTarget,
+      'page-scores/runs/x/r17/opus-b.md already exists with different content'],
+  ])('refuses %s without writing', (name, mutate, message) => {
+    const options = mutate({ root, commit: 'HEAD', doc: 'a/page', gate, climb: 'x', run });
+    expect(() => recordFromGate(options)).toThrow(message);
+    expect(() => recordGroup({ ...options, group: 'error-codes', sample: ['error-codes/E1'] })).toThrow(message);
+    expect(loadScores(root)).toEqual({});
+    expect(fs.existsSync(path.join(root, 'page-scores/runs/x/r17/opus-a.md'))).toBe(false);
   });
 
   it.each(['revert', 'error', 'frozen'])('refuses gate state %s without writing', (state) => {
@@ -306,7 +370,7 @@ describe('recording scores', () => {
   it('refuses a missing source and defaults judged to the UTC date', () => {
     expect(() => recordFromGate({ root, commit: 'HEAD', doc: 'nope', gate, climb: 'x' })).toThrow('nope');
     const dates = [new Date().toISOString().slice(0, 10)];
-    const entry = recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate, climb: 'x' });
+    const entry = recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate, climb: 'x', run });
     dates.push(new Date().toISOString().slice(0, 10));
     expect(dates).toContain(entry.judged);
     expect(entry.commit).toBe(resolveCommit(root, 'HEAD'));
@@ -314,13 +378,15 @@ describe('recording scores', () => {
 
   it('writes every group page and keeps the sample and existing entries', () => {
     saveScores(root, { existing: {} });
-    const entry = recordGroup({ root, commit: 'HEAD', group: 'error-codes', gate, climb: 'errors', sample: ['error-codes/E1'], judged });
+    const entry = recordGroup({ root, commit: 'HEAD', group: 'error-codes', gate, climb: 'errors', sample: ['error-codes/E1'], judged, run });
     expect(entry).toEqual({
       group: true, pages: {
         'error-codes/E1': pageHash(root, 'error-codes/E1'),
         'error-codes/E2': pageHash(root, 'error-codes/E2'),
       }, sample: ['error-codes/E1'], judged, round: 17, judges: ['opus-a', 'opus-b'],
-      scores: { x: 7.5, y: 7 }, mean: 7.25, climb: 'errors', commit: resolveCommit(root, 'HEAD'),
+      scores: MIN, mean: 8.14, climb: 'errors', commit: resolveCommit(root, 'HEAD'),
+      judgeRun: ['opus-a', 'opus-b'].map((judge) => ({ judge, path: `page-scores/runs/errors/r17/${judge}.md`,
+        sha256: sha256Of(transcript(judge)), column: judge === 'opus-a' ? 'Tips (page)' : 'Page' })),
     });
     expect(loadScores(root)).toEqual({ existing: {}, 'error-codes': entry });
   });
@@ -362,11 +428,11 @@ describe('score persistence and CLI', () => {
     const seedFile = path.join(root, 'seed.json');
     fs.writeFileSync(gateFile, JSON.stringify(gate));
     execFileSync(process.execPath, [script, '--root', root, '--commit', 'HEAD', '--doc', 'a/page', '--gate', gateFile,
-      '--climb', 'a__page', '--judged', judged]);
+      '--climb', 'a__page', '--judged', judged, '--run', run]);
     expect(loadScores(root)['a/page'].judged).toBe(judged);
     expect(loadScores(root)['a/page'].commit).toBe(resolveCommit(root, 'HEAD'));
     execFileSync(process.execPath, [script, '--root', root, '--commit', 'HEAD', '--group', 'error-codes', '--gate', gateFile,
-      '--climb', 'errors', '--sample', 'error-codes/E1,error-codes/E2', '--judged', judged]);
+      '--climb', 'errors', '--sample', 'error-codes/E1,error-codes/E2', '--judged', judged, '--run', run]);
     expect(loadScores(root)['error-codes'].sample).toEqual(['error-codes/E1', 'error-codes/E2']);
     expect(loadScores(root)['error-codes'].commit).toBe(resolveCommit(root, 'HEAD'));
     fs.writeFileSync(seedFile, JSON.stringify({ 'a/page': {
@@ -382,5 +448,39 @@ describe('score persistence and CLI', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toBe('Cannot record gate state: revert\n');
     expect(result.stdout).toBe('');
+  });
+});
+
+describe('judge transcripts', () => {
+  it('reads bold and /10 values from the named column of the first table, skipping the Average row', () => {
+    expect(parseJudgeTable(transcript('opus-a'), 'Tips (page)', REQUIRED_CATEGORIES)).toEqual(A);
+    expect(parseJudgeTable(transcript('opus-b'), 'Page', REQUIRED_CATEGORIES)).toEqual(B);
+    expect(parseJudgeTable(transcript('opus-a'), 'Baseline', ['visuals', 'language'])).toEqual({ visuals: 5, language: 6.5 });
+    expect(runScores([transcript('opus-a'), transcript('opus-b')], ['Tips (page)', 'Page'], REQUIRED_CATEGORIES)).toEqual(MIN);
+  });
+
+  const table = (...lines) => ['Intro', ...lines, ''].join('\n');
+  it.each([
+    ['no table', table('| Category | Page |', 'not a separator', '| Task clarity | 8 |'), 'Page', 'no Markdown table'],
+    ['no column', transcript('opus-a'), 'Nope', 'no column "Nope"'],
+    ['two matching columns', table('| Category | Page | **Page** |', '|---|---|---|', '| Task | 8 | 9 |'), 'Page',
+      'more than one column "Page"'],
+    ['an unreadable value', table('| Category | Page |', '|---|---|', '| Task clarity | **eleven** |'), 'Page',
+      'cannot read the task clarity score "**eleven**"'],
+    ['a value above 10', table('| Category | Page |', '|---|---|', '| Task clarity | 11/10 |'), 'Page',
+      'cannot read the task clarity score "11/10"'],
+    ['a missing row', transcript('opus-b'), 'Page', 'no row for admin setup'],
+  ])('fails on %s', (name, text, column, message) => {
+    expect(() => parseJudgeTable(text, column, name === 'a missing row' ? [...REQUIRED_CATEGORIES, 'admin setup'] : ['task clarity']))
+      .toThrow(message);
+  });
+
+  it.each([
+    ['Tips (page)', transcript('opus-a')],
+    ['Page', transcript('opus-b')],
+    [null, '| Category | Taking a Payment | Baseline |\n|---|---|---|\n| Task | 8 | 6 |'],
+    [null, '| Category | Tips (page) | Square (page) |\n|---|---|---|\n| Task | 8 | 6 |'],
+  ])('finds the page column %j', (column, text) => {
+    expect(pageColumn(text)).toBe(column);
   });
 });

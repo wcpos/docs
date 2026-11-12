@@ -18,6 +18,59 @@ const GROUPS = { 'error-codes': 'error-codes/' };
 // The climb kit's gate.py CATEGORIES (category -> keyword); part S2 parses judge tables with them.
 const CATEGORY_KEYWORDS = { 'task clarity': 'task', language: 'language', visuals: 'visual', structure: 'structure', layering: 'layering', consistency: 'consisten', accuracy: 'accura' };
 const REQUIRED_CATEGORIES = Object.keys(CATEGORY_KEYWORDS);
+// Judge transcripts are committed here so the gate can recompute each entry's scores (ruling 2026-11-12).
+const RUNS_DIR = 'page-scores/runs';
+// The front desk requires two Opus judges for every recorded score.
+const JUDGES = ['opus-a', 'opus-b'];
+
+const sha256Of = (buffer) => 'sha256:' + crypto.createHash('sha256').update(buffer).digest('hex');
+const runPath = (climb, round, judge) => `${RUNS_DIR}/${climb}/r${round}/${judge}.md`;
+const cleanCell = (cell) => cell.replace(/[*`_]/g, '');
+
+// The first Markdown table's rows as trimmed cells, as the climb kit's gate.py reads them.
+function tableRows(text) {
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trimStart().startsWith('|'));
+  let end = start;
+  while (start !== -1 && end < lines.length && lines[end].trimStart().startsWith('|')) end++;
+  const table = start === -1 ? [] : lines.slice(start, end);
+  if (table.length < 3 || !/^[\s|:-]+$/.test(table[1])) throw new Error('no Markdown table');
+  return table.map((line) => line.trim().replace(/^\|+|\|+$/g, '').split('|').map((cell) => cell.trim()));
+}
+
+// The single header cell naming the judged page, or null when none or several do.
+function pageColumn(text) {
+  const matches = tableRows(text)[0].map(cleanCell)
+    .filter((cell, i) => i > 0 && (cell.toLowerCase() === 'page' || cell.toLowerCase().endsWith('(page)')));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function parseJudgeTable(text, column, categories) {
+  const [header, , ...rows] = tableRows(text);
+  const indexes = header.map(cleanCell).flatMap((cell, i) => (i > 0 && cell === column ? [i] : []));
+  if (!indexes.length) throw new Error(`no column "${column}"`);
+  if (indexes.length > 1) throw new Error(`more than one column "${column}"`);
+  const scores = {};
+  for (const row of rows) {
+    const label = cleanCell(row[0]).toLowerCase();
+    const key = categories.find((category) =>
+      label.includes(Object.hasOwn(CATEGORY_KEYWORDS, category) ? CATEGORY_KEYWORDS[category] : category));
+    if (key === undefined || Object.hasOwn(scores, key)) continue;
+    const raw = row[indexes[0]] ?? '';
+    const match = cleanCell(raw).match(/^\s*(\d+(?:\.\d+)?)\s*(?:\/\s*10)?\s*$/);
+    if (!match || !(Number(match[1]) >= 1 && Number(match[1]) <= 10)) throw new Error(`cannot read the ${key} score "${raw}"`);
+    scores[key] = Number(match[1]);
+  }
+  const missing = categories.filter((key) => !Object.hasOwn(scores, key));
+  if (missing.length) throw new Error(`no row for ${missing.join(', ')}`);
+  return scores;
+}
+
+// Per-category minimum across the judges' transcripts.
+function runScores(texts, columns, categories) {
+  const parsed = texts.map((text, i) => parseJudgeTable(text, columns[i], categories));
+  return Object.fromEntries(categories.map((key) => [key, Math.min(...parsed.map((scores) => scores[key]))]));
+}
 
 function reader(root, commit) {
   if (commit !== null) {
@@ -149,4 +202,5 @@ function evaluate(root, doc, entries) {
 module.exports = {
   VDOCS, IMG, IMG_ROOTS, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS, CATEGORY_KEYWORDS, REQUIRED_CATEGORIES, resolveCommit,
   docSource, referencedPaths, hashInputs, pageHash, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
+  RUNS_DIR, JUDGES, sha256Of, runPath, pageColumn, parseJudgeTable, runScores,
 };
