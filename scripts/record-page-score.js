@@ -100,6 +100,8 @@ function carry({ root, carry: old, doc, commit }) {
   const entries = loadScores(root);
   if (!entries[old]) throw new Error(`No entry to carry: ${old}`);
   if (!docSource(root, doc, commit)) throw new Error(`No source for doc at ${commit}: ${doc}`);
+  if (entries[doc]) throw new Error(`cannot carry onto ${doc}: it already has a score`);
+  if (docSource(root, old, commit)) throw new Error(`cannot carry from ${old}: its page still exists at ${commit}`);
   const entry = { ...entries[old], hash: pageHash(root, doc, commit), commit, carriedFrom: old };
   entries[doc] = entry;
   delete entries[old];

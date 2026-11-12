@@ -496,6 +496,64 @@ describe('score integrity', () => {
       expect(result.lines.filter((line) => line.startsWith('::error::page-scores.json'))).toEqual(kind === 'valid'
         ? [] : [`::error::page-scores.json: a/renamed: carried from ${entry.carriedFrom} but ${reasons[kind]}`]);
     });
+  // Moves entry `old` to `doc` as carry would, without the recorder's refusals.
+  function handCarry(old, doc) {
+    const entries = loadScores(root);
+    const commit = resolveCommit(root, 'HEAD');
+    entries[doc] = { ...entries[old], hash: pageHash(root, doc, commit), commit, carriedFrom: old };
+    delete entries[old];
+    saveScores(root, entries);
+  }
+  const integrityErrors = (result) => result.lines.filter((line) => line.startsWith('::error::page-scores.json'));
+  it('rejects a carry from a copied page whose original still exists', () => {
+    record();
+    options.base = commitFixture('score');
+    fs.copyFileSync(path.join(root, VDOCS, 'a/page.mdx'), path.join(root, VDOCS, 'a/copy.mdx'));
+    commitFixture('copy');
+    expect(() => carry({ root, carry: 'a/page', doc: 'a/copy', commit: 'HEAD' }))
+      .toThrow('cannot carry from a/page: its page still exists at');
+    handCarry('a/page', 'a/copy');
+    const result = run(options);
+    expect(result.exitCode).toBe(1);
+    expect(integrityErrors(result)).toEqual(expect.arrayContaining([
+      '::error::page-scores.json: a/page: entry removed while its page exists',
+      '::error::page-scores.json: a/copy: carried from a/page but a/page still exists',
+    ]));
+  });
+  it.each([true, false])('checks every hash input of a carried page, partial edited: %s', (edited) => {
+    record();
+    options.base = commitFixture('score');
+    git('mv', `${VDOCS}/a`, `${VDOCS}/moved`);
+    commitFixture('move the page and its partial');
+    if (edited) {
+      fs.appendFileSync(path.join(root, VDOCS, 'moved/_part.mdx'), '\nEdited');
+      commitFixture('edit partial');
+    }
+    carry({ root, carry: 'a/page', doc: 'moved/page', commit: 'HEAD' });
+    const result = run(options);
+    expect(result.exitCode).toBe(edited ? 1 : 0);
+    expect(result.lines).toContain('moved/page: ok');
+    expect(integrityErrors(result)).toEqual(edited
+      ? ['::error::page-scores.json: moved/page: carried from a/page but the page source changed'] : []);
+  });
+  it('rejects a carry onto a page that already has a score on the base', () => {
+    const scored = (doc, value) => ({ ...recording, doc, climb: doc.replace('/', '__'),
+      gate: { round: 2, state: 'keep', scores: { a: seven(value), b: seven(value) } } });
+    fs.copyFileSync(path.join(root, VDOCS, 'a/page.mdx'), path.join(root, VDOCS, 'a/other.mdx'));
+    commitFixture('other page');
+    record(scored('a/page', 8.5));
+    record(scored('a/other', 9.5));
+    options.base = commitFixture('score both');
+    fs.unlinkSync(path.join(root, VDOCS, 'a/page.mdx'));
+    commitFixture('delete page');
+    expect(() => carry({ root, carry: 'a/page', doc: 'a/other', commit: 'HEAD' }))
+      .toThrow('cannot carry onto a/other: it already has a score');
+    handCarry('a/page', 'a/other');
+    const result = run(options);
+    expect(result.exitCode).toBe(1);
+    expect(integrityErrors(result))
+      .toEqual(['::error::page-scores.json: a/other: carried onto a page that already has a score on the base']);
+  });
 });
 
 describe('judge run binding', () => {

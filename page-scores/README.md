@@ -20,7 +20,9 @@
   group, climb, round and judge, so another page's transcripts copied byte for byte fail. The recorded column must
   be the transcript's first score column. A changed, deleted or renamed-away transcript fails its entry even when
   `page-scores.json` is unchanged. An entry may not be removed while its page exists. A carry must keep the old
-  entry's scores and judge run, and the page source must be unchanged.
+  entry's scores and judge run. It needs the old page gone (a copy is not a rename) and the destination unscored
+  on the base, and every hash input must have identical content: the source, each import by its path relative to
+  the source, and each image.
 - **Gate-file guard.** A pull request that edits anything under `scripts/` or `.github/workflows/page-scores.yml`
   fails unless it has the score exception below. The translation tooling the pipeline edits weekly is exempt: the
   files in `TRANSLATION_TOOLING`, `scripts/docs-translation/`, and `scripts/__tests__/docs-translation-*.test.js`.

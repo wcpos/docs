@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const {
-  VDOCS, SCORES_FILE, docSource, referencedPaths, hashInputs, pageHash, groupOf,
+  VDOCS, SCORES_FILE, docSource, referencedPaths, hashInputs, pageHash, pageContent, groupOf,
   loadScores, saveScores, meanOf, belowFloor, evaluate, resolveCommit,
   REQUIRED_CATEGORIES, sha256Of, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores,
 } = require('../lib/page-scores');
@@ -87,6 +87,21 @@ describe('page-score inputs and hashes', () => {
       'static/img/2.x/a/deep/extra.png', 'static/img/2.x/a/manifest.json',
       'static/img/2.x/a/shot.png', `${VDOCS}/a/page.mdx`,
     ]);
+  });
+
+  it('gives the same content list for the same page at another path, until one import byte changes', () => {
+    fs.cpSync(path.join(root, VDOCS, 'a'), path.join(root, VDOCS, 'moved/deeper'), { recursive: true });
+    const content = pageContent(root, 'a/page');
+    expect(content.map(([label]) => label)).toEqual([
+      'import:./_part.mdx', 'source', 'static/img/2.x/a/deep/extra.png', 'static/img/2.x/a/manifest.json', 'static/img/2.x/a/shot.png',
+    ]);
+    expect(content.every(([, hex]) => /^[0-9a-f]{64}$/.test(hex))).toBe(true);
+    expect(pageContent(root, 'moved/deeper/page')).toEqual(content);
+    const part = path.join(root, VDOCS, 'moved/deeper/_part.mdx');
+    const bytes = fs.readFileSync(part);
+    bytes[0] ^= 1;
+    fs.writeFileSync(part, bytes);
+    expect(pageContent(root, 'moved/deeper/page')).not.toEqual(content);
   });
 
   it('prefers mdx, falls back to md and returns null for a missing source', () => {

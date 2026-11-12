@@ -163,6 +163,18 @@ function pageHash(root, doc, commit = null) {
   return 'sha256:' + hash.digest('hex');
 }
 
+// Two pages have the same content exactly when their pageContent lists are deep-equal.
+function pageContent(root, doc, commit = null) {
+  const sourceRel = path.relative(root, docSource(root, doc, commit)).split(path.sep).join('/');
+  const { imports } = referencedPaths(root, doc, commit);
+  const input = reader(root, commit);
+  const label = (file) => (file === sourceRel ? 'source'
+    : imports.includes(file) ? 'import:./' + path.posix.relative(path.posix.dirname(sourceRel), file) : file);
+  return hashInputs(root, doc, commit)
+    .map((file) => [label(file), crypto.createHash('sha256').update(input.read(file)).digest('hex')])
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
 function groupOf(doc) {
   return Object.keys(GROUPS).find((group) => doc.startsWith(GROUPS[group])) || null;
 }
@@ -208,6 +220,6 @@ function evaluate(root, doc, entries) {
 
 module.exports = {
   VDOCS, IMG, IMG_ROOTS, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS, CATEGORY_KEYWORDS, REQUIRED_CATEGORIES, resolveCommit,
-  OPTIONAL_CATEGORIES, docSource, referencedPaths, hashInputs, pageHash, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
+  OPTIONAL_CATEGORIES, docSource, referencedPaths, hashInputs, pageHash, pageContent, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
   RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores,
 };

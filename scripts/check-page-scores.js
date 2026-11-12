@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
-  VDOCS, referencedPaths, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource, groupOf, pageHash,
+  VDOCS, referencedPaths, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource, groupOf, pageHash, pageContent,
   meanOf, REQUIRED_CATEGORIES, OPTIONAL_CATEGORIES, RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores,
 } = require('./lib/page-scores.js');
 
@@ -165,8 +165,10 @@ function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, ba
   const docs = [];
   const invalid = [];
   for (const [key, entry] of Object.entries(baseEntries)) {
-    if (!Object.hasOwn(entries, key) && (entry?.group || docSource(root, key)) &&
-        !Object.values(entries).some((value) => value?.carriedFrom === key)) {
+    // A carry exempts a removed entry only when its page is gone (a copy keeps the original's score in place).
+    const exists = docSource(root, key);
+    if (!Object.hasOwn(entries, key) && (entry?.group || exists) &&
+        (exists || !Object.values(entries).some((value) => value?.carriedFrom === key))) {
       errors.push(`${key}: entry removed while its page exists`);
     }
   }
@@ -210,21 +212,21 @@ function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, ba
       const problem = judgeRunProblem(root, key, entry);
       if (problem) errors.push(`${key}: ${problem}`);
     } else {
-      if (!baseEntries[old] || baseEntries[old].group) {
+      if (previous) {
+        errors.push(`${key}: carried onto a page that already has a score on the base`);
+      } else if (!baseEntries[old] || baseEntries[old].group) {
         errors.push(`${key}: carried from ${old} but that entry is not on the base`);
       } else if (Object.hasOwn(entries, old)) {
         errors.push(`${key}: carried from ${old} but the old entry is still present`);
+      } else if (docSource(root, old)) {
+        errors.push(`${key}: carried from ${old} but ${old} still exists`);
       } else if (['scores', 'mean', 'round', 'climb', 'judged', 'judges', 'judgeRun'].some((field) => !same(entry[field], baseEntries[old][field]))) {
         errors.push(`${key}: carried from ${old} but its scores differ`);
       } else if (docSource(root, old, base) && pageHash(root, old, base) !== baseEntries[old].hash) {
         errors.push(`${key}: carried from ${old} but that entry was already stale on the base`);
-      } else {
-        const source = docSource(root, key, commit);
-        const oldSource = docSource(root, old, base);
-        if (!source || !oldSource || !execFileSync('git', ['show', `${commit}:${path.relative(root, source)}`], { cwd: root, stdio: 'pipe' })
-          .equals(execFileSync('git', ['show', `${base}:${path.relative(root, oldSource)}`], { cwd: root, stdio: 'pipe' }))) {
-          errors.push(`${key}: carried from ${old} but the page source changed`);
-        }
+      } else if (!docSource(root, old, base) || !same(pageContent(root, key, commit), pageContent(root, old, base))) {
+        // Every hash input must be unchanged: the source, each import by its relative path, and each image.
+        errors.push(`${key}: carried from ${old} but the page source changed`);
       }
     }
   }
