@@ -1,0 +1,41 @@
+name: Page scores
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+
+concurrency:
+  group: page-scores-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  page-scores:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.13.1'
+
+      - name: Read score-exception label events
+        if: contains(github.event.pull_request.labels.*.name, 'score-exception')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/events" --paginate --jq '.[] | select(.event == "labeled" and .label.name == "score-exception") | {actor: .actor.login, at: .created_at}' > "$RUNNER_TEMP/score-exception.jsonl"
+
+      - name: Check page scores
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+          SCORE_EXCEPTION_EVENT: ${{ runner.temp }}/score-exception.jsonl
+        run: node scripts/check-page-scores.js --changed
