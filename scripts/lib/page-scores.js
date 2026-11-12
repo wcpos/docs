@@ -27,8 +27,9 @@ function reader(root, commit) {
       isFile: (rel) => type(rel) === 'blob',
       isDir: (rel) => type(rel) === 'tree',
       listFiles: (relDir) => execFileSync('git', ['ls-tree', '-r', '--name-only', commit, '--', relDir + '/'],
-        { cwd: root }).toString().trim().split('\n').filter(Boolean),
-      read: (rel) => execFileSync('git', ['show', `${commit}:${rel}`], { cwd: root }),
+        { cwd: root, maxBuffer: 256 * 1024 * 1024 }).toString().trim().split('\n').filter(Boolean),
+      // Large screenshots exceed execFileSync's default 1 MiB buffer.
+      read: (rel) => execFileSync('git', ['show', `${commit}:${rel}`], { cwd: root, maxBuffer: 256 * 1024 * 1024 }),
     };
   }
   function listFiles(relDir) {

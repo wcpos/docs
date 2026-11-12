@@ -93,6 +93,13 @@ describe('page-score inputs and hashes', () => {
 describe('commit hashes and provenance', () => {
   beforeEach(initRepo);
 
+  it('hashes committed screenshots larger than the default exec buffer', () => {
+    fs.writeFileSync(path.join(root, 'static/img/2.x/a/shot.png'), Buffer.alloc(2 * 1024 * 1024, 42));
+    execFileSync('git', ['add', '-A'], { cwd: root });
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-qm', 'large screenshot'], { cwd: root });
+    expect(pageHash(root, 'a/page', resolveCommit(root, 'HEAD'))).toBe(pageHash(root, 'a/page'));
+  });
+
   it.each([`${VDOCS}/a/page.mdx`, `${VDOCS}/a/_part.mdx`, 'static/img/2.x/a/shot.png'])(
     'keeps the commit hash when %s changes on disk', (file) => {
       const sha = resolveCommit(root, 'HEAD');
