@@ -132,7 +132,6 @@ const UNTRANSLATED_PROP_ALLOWLIST = new Set([
   'Mercado Pago Terminal',
   'Windcave Terminal',
   'PayArc Terminal',
-  'Authorize.net Tap to Pay',
   'Smart Coupons',
   'StoreApps Smart Coupons',
   'ATUM Multi-Inventory',
