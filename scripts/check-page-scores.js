@@ -3,6 +3,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const {
   VDOCS, referencedPaths, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource, groupOf, pageHash,
+  meanOf, REQUIRED_CATEGORIES,
 } = require('./lib/page-scores');
 
 // Warn-only before this UTC date, then failures exit 1 (front desk ruling 2026-11-12: required from 2026-11-16).
@@ -15,6 +16,12 @@ const EXCEPTION_LABEL = 'score-exception';
 // Only the front desk applies the label, as kilbot; each use expires 24 h after it was applied (ruling 2026-11-12).
 const EXCEPTION_ACTOR = 'kilbot';
 const EXCEPTION_HOURS = 24;
+// The hash definition changed, so when no commit matches a stored hash the 7 days start at the change's merge (ruling 2026-11-12).
+const HASH_DEFINITION = 'scripts/lib/page-scores.js';
+// FIX-FIRST ruling 2026-11-12: a PR editing the gate itself needs the score-exception label from kilbot.
+const GATE_FILES = ['scripts/check-page-scores.js', 'scripts/record-page-score.js', 'scripts/lib/page-scores.js', '.github/workflows/page-scores.yml'];
+const isHash = (hash) => typeof hash === 'string' && /^sha256:[0-9a-f]{64}$/.test(hash);
+const isPlain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 function allDocs(root) {
   const docs = [];
@@ -49,8 +56,11 @@ function affectedDocs(root, changedFiles) {
 function baseScores(root, base) {
   if (!base) return {};
   try {
-    return JSON.parse(execFileSync('git', ['show', `${base}:page-scores.json`], { cwd: root, stdio: 'pipe' }));
+    execFileSync('git', ['cat-file', '-e', `${base}:page-scores.json`], { cwd: root, stdio: 'pipe' });
   } catch { return {}; }
+  const value = JSON.parse(execFileSync('git', ['show', `${base}:page-scores.json`], { cwd: root, stdio: 'pipe' }));
+  if (!isPlain(value)) throw new Error('not an object');
+  return value;
 }
 
 // Start of the newest run of first-parent commits that left the stored hash; now when only uncommitted edits did.
@@ -59,7 +69,7 @@ function staleSince(root, doc, expected, now) {
   const source = path.relative(root, docSource(root, doc)).split(path.sep).join('/');
   let log;
   try {
-    log = execFileSync('git', ['log', '--first-parent', '-n', '50', '--format=%H %cI', 'HEAD', '--', source, ...imgDirs, ...imports],
+    log = execFileSync('git', ['log', '--first-parent', '--format=%H %cI', 'HEAD', '--', source, ...imgDirs, ...imports],
       { cwd: root, stdio: 'pipe' }).toString().trim();
   } catch { return now; }
   if (!log) return now;
@@ -68,7 +78,10 @@ function staleSince(root, doc, expected, now) {
     if (docSource(root, doc, commit) && pageHash(root, doc, commit) === expected) return since || now;
     since = new Date(date);
   }
-  return since;
+  try {
+    return new Date(execFileSync('git', ['log', '--first-parent', '-1', '--format=%cI', 'HEAD', '--', HASH_DEFINITION],
+      { cwd: root, stdio: 'pipe' }).toString().trim() || now);
+  } catch { return now; }
 }
 
 function same(a, b) {
@@ -78,13 +91,27 @@ function same(a, b) {
   return JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
 }
 
-function checkIntegrity({ root, base, entries }) {
-  const baseEntries = baseScores(root, base);
+// The first shape problem of a changed entry, or null.
+function entryProblem(entry) {
+  if (!isPlain(entry)) return 'not an object';
+  if (!isPlain(entry.scores)) return 'no scores';
+  const bad = Object.keys(entry.scores).find((key) => !(Number.isFinite(entry.scores[key]) && entry.scores[key] >= 0 && entry.scores[key] <= 10));
+  if (bad !== undefined) return `score ${bad} is not a number from 0 to 10`;
+  const missing = REQUIRED_CATEGORIES.find((key) => !Object.hasOwn(entry.scores, key));
+  if (missing !== undefined) return `no ${missing} score`;
+  const mean = meanOf(entry.scores);
+  if (entry.mean !== mean) return `stored mean ${entry.mean} differs from its category scores (${mean})`;
+  if (entry.group === true) return isPlain(entry.pages) && Object.values(entry.pages).every(isHash) ? null : 'bad group pages';
+  return isHash(entry.hash) ? null : 'bad hash';
+}
+
+function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, base) }) {
   const errors = [];
   const docs = [];
+  const invalid = [];
   for (const [key, entry] of Object.entries(baseEntries)) {
-    if (!Object.hasOwn(entries, key) && (entry.group || docSource(root, key)) &&
-        !Object.values(entries).some((value) => value.carriedFrom === key)) {
+    if (!Object.hasOwn(entries, key) && (entry?.group || docSource(root, key)) &&
+        !Object.values(entries).some((value) => value?.carriedFrom === key)) {
       errors.push(`${key}: entry removed while its page exists`);
     }
   }
@@ -92,9 +119,15 @@ function checkIntegrity({ root, base, entries }) {
     const previous = baseEntries[key];
     if (same(entry, previous)) continue;
     if (previous?.group && same(entry, { ...previous, pages: Object.fromEntries(
-      Object.entries(previous.pages).filter(([page]) => docSource(root, page)),
+      Object.entries(previous.pages || {}).filter(([page]) => docSource(root, page)),
     ) })) continue;
-    docs.push(...(entry.group ? Object.keys(entry.pages) : [key]));
+    const problem = entryProblem(entry);
+    if (problem) { errors.push(`${key}: malformed entry (${problem})`); invalid.push(key); continue; }
+    const group = entry.group === true;
+    docs.push(...(group ? Object.keys(entry.pages) : [key]));
+    for (const page of Object.keys(group && previous?.group && isPlain(previous.pages) ? previous.pages : {})) {
+      if (!Object.hasOwn(entry.pages, page) && docSource(root, page)) errors.push(`${key}: ${page} removed from the group while its page exists`);
+    }
     if (typeof entry.climb !== 'string' || !entry.climb || !Number.isInteger(entry.round) || entry.round < 1) {
       errors.push(`${key}: no climb round`);
       continue;
@@ -111,11 +144,11 @@ function checkIntegrity({ root, base, entries }) {
       errors.push(`${key}: judged commit ${commit} is not in this branch's history`);
       continue;
     }
-    const pages = entry.group ? entry.pages : { [key]: entry.hash };
+    const pages = group ? entry.pages : { [key]: entry.hash };
     const bad = Object.keys(pages).sort().find((page) =>
       !docSource(root, page, commit) || pageHash(root, page, commit) !== pages[page]);
     if (bad !== undefined) {
-      errors.push(`${key}: ${entry.group ? bad + ' ' : ''}hash does not match the judged commit`);
+      errors.push(`${key}: ${group ? bad + ' ' : ''}hash does not match the judged commit`);
       continue;
     }
     if (old) {
@@ -125,6 +158,8 @@ function checkIntegrity({ root, base, entries }) {
         errors.push(`${key}: carried from ${old} but the old entry is still present`);
       } else if (['scores', 'mean', 'round', 'climb', 'judged', 'judges'].some((field) => !same(entry[field], baseEntries[old][field]))) {
         errors.push(`${key}: carried from ${old} but its scores differ`);
+      } else if (docSource(root, old, base) && pageHash(root, old, base) !== baseEntries[old].hash) {
+        errors.push(`${key}: carried from ${old} but that entry was already stale on the base`);
       } else {
         const source = docSource(root, key, commit);
         const oldSource = docSource(root, old, base);
@@ -135,7 +170,7 @@ function checkIntegrity({ root, base, entries }) {
       }
     }
   }
-  return { errors, docs };
+  return { errors, docs, invalid };
 }
 
 function checkException({ event, exceptionEvents, now, issueLookup = () => null }) {
@@ -165,19 +200,33 @@ function checkException({ event, exceptionEvents, now, issueLookup = () => null 
   return { granted: true, reason: '' };
 }
 
+// Label events from the API only, never a file in the PR; [] when gh or a line fails.
+function exceptionEventsFromApi(repo, pr, exec = execFileSync) {
+  try {
+    return exec('gh', ['api', `repos/${repo}/issues/${pr}/events`, '--paginate', '--jq',
+      '.[] | select(.event == "labeled" and .label.name == "score-exception") | {actor: .actor.login, at: .created_at}'],
+    { encoding: 'utf8', stdio: 'pipe' }).split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
+  } catch { return []; }
+}
+
 function run({ root, changedFiles, event, exceptionEvents, now, base, issueLookup }) {
+  let baseEntries;
+  try { baseEntries = baseScores(root, base); } catch (error) {
+    return { exitCode: 1, lines: [`::error::page-scores.json on the base is unreadable: ${error.message}`] };
+  }
+  const enforced = now.toISOString().slice(0, 10) >= ENFORCE_FROM;
   let entries;
-  try { entries = loadScores(root); } catch (error) {
+  try { entries = loadScores(root); if (!isPlain(entries)) throw new SyntaxError('not an object'); } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
     const lines = [`::warning::page-scores.json is malformed: ${error.message}`];
     const exitCode = changedFiles.includes('page-scores.json') && now.toISOString().slice(0, 10) >= ENFORCE_FROM ? 1 : 0;
     if (exitCode) lines.push('::error::page-scores.json is malformed; fix it in this PR.');
     return { exitCode, lines };
   }
-  const integrity = changedFiles.includes('page-scores.json') ? checkIntegrity({ root, base, entries }) : { errors: [], docs: [] };
+  const integrity = changedFiles.includes('page-scores.json') ? checkIntegrity({ root, base, entries, baseEntries }) : { errors: [], docs: [], invalid: [] };
+  entries = Object.fromEntries(Object.entries(entries).filter(([key]) => !integrity.invalid.includes(key)));
   const docs = [...new Set([...affectedDocs(root, changedFiles), ...integrity.docs])].sort();
   const results = docs.map((doc) => evaluate(root, doc, entries));
-  const baseEntries = baseScores(root, base);
   const changed = new Set(integrity.docs);
   const failing = [];
   const warning = [];
@@ -190,10 +239,12 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
     } else if (changed.has(doc)) {
       // R2: a changed entry must clear the floor and keep its mean within MEAN_DROP of the previous record.
       const previous = baseEntries[entry.carriedFrom || groupOf(doc) || doc];
-      if (typeof previous?.mean === 'number' && Math.round((previous.mean - entry.mean) * 100) > Math.round(MEAN_DROP * 100)) {
+      const mean = meanOf(entry.scores);
+      const before = isPlain(previous?.scores) && Object.values(previous.scores).some(Number.isFinite) ? meanOf(previous.scores) : NaN;
+      if (Math.round((before - mean) * 100) > Math.round(MEAN_DROP * 100)) {
         fails = true;
         result.status = 'drop';
-        result.reasons = [`mean ${entry.mean} is more than ${MEAN_DROP} below the previous ${previous.mean}`];
+        result.reasons = [`mean ${mean} is more than ${MEAN_DROP} below the previous ${before}`];
       }
     } else if (result.status === 'stale' && !belowFloor(entry.scores).length) {
       // R3: a passing page made stale warns for STALE_DAYS, then fails until re-scored.
@@ -209,20 +260,19 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
   }
   const lines = results.map(({ doc, status, reasons }) =>
     `${doc}: ${status}` + (reasons.length ? ` (${reasons.join('; ')})` : ''));
-  lines.push(...integrity.errors.map((error) => `::error::page-scores.json: ${error}`));
+  lines.push(...integrity.errors.map((error) => `::${enforced ? 'error' : 'warning'}::page-scores.json: ${error}`));
   if (warning.length) {
     lines.push(`::warning::${warning.length} page(s) not blocking yet (unscored, below the floor, or stale under ${STALE_DAYS} days): ${warning.map(({ doc }) => doc).join(', ')}. Climb them when you can.`);
   }
-  let exitCode = integrity.errors.length ? 1 : 0;
+  let exitCode = integrity.errors.length && enforced ? 1 : 0;
   if (!docs.length) lines.push('No 2.x docs changed.');
+  const gateEdits = changedFiles.filter((file) => GATE_FILES.includes(file));
+  const ex = failing.length || gateEdits.length ? checkException({ event, exceptionEvents, now, issueLookup }) : null;
+  if (ex && !ex.granted && event?.pull_request?.labels?.some((label) => label.name === EXCEPTION_LABEL)) lines.push('::notice::' + ex.reason);
   if (failing.length) {
-    const ex = checkException({ event, exceptionEvents, now, issueLookup });
     if (ex.granted) {
       lines.push(`::warning::score-exception granted; waived: ${failing.map(({ doc }) => doc).join(', ')}. Re-score them within 24 h.`);
     } else {
-      if (event?.pull_request?.labels?.some((label) => label.name === EXCEPTION_LABEL)) {
-        lines.push('::notice::' + ex.reason);
-      }
       if (now.toISOString().slice(0, 10) < ENFORCE_FROM) {
         lines.push(`::warning::${failing.length} page(s) need a score (warn mode until ${ENFORCE_FROM}).`);
       } else {
@@ -237,14 +287,29 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
       }
     }
   }
+  if (gateEdits.length) {
+    lines.push(ex.granted ? `::warning::score-exception granted; gate edits waived: ${gateEdits.join(', ')}.`
+      : `::${enforced ? 'error' : 'warning'}::this PR edits the score gate (${gateEdits.join(', ')}); it needs the score-exception label from kilbot.`);
+    if (!ex.granted && enforced) exitCode = 1;
+  }
   const values = Object.values(entries);
   if (values.length) {
-    const share = values.filter(({ scores }) => belowFloor(scores).length === 0).length / values.length;
+    const share = values.filter((value) => belowFloor(value?.scores).length === 0).length / values.length;
     if (share >= RATCHET_SHARE && MEAN_FLOOR < 8.5) {
       lines.push(`::notice::${Math.round(share * 100)}% of scored pages pass the floor: raise it to 8.5 (ruling 2026-11-12).`);
     }
   }
   return { exitCode, lines };
+}
+
+// A shallow clone or a missing merge base fails on any date.
+function mergeBase(root, baseRef) {
+  if (execFileSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: root, encoding: 'utf8' }).trim() === 'true') {
+    return { failure: '::error::page-scores needs the full git history; this clone is shallow (check out with fetch-depth: 0).' };
+  }
+  try { return { base: execFileSync('git', ['merge-base', baseRef, 'HEAD'], { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim() }; } catch {
+    return { failure: `::error::cannot find a merge base for ${baseRef} and HEAD.` };
+  }
 }
 
 if (require.main === module) {
@@ -253,27 +318,26 @@ if (require.main === module) {
   const nowIndex = args.indexOf('--now');
   const now = nowIndex === -1 ? new Date() : new Date(args[nowIndex + 1]);
   const baseRef = process.env.BASE_REF || 'origin/main';
-  const base = execFileSync('git', ['merge-base', baseRef, 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-  const changedFiles = execFileSync('git', [
+  const { base, failure } = mergeBase(root, baseRef);
+  const changedFiles = failure ? [] : execFileSync('git', [
     'diff', '--name-only', '--diff-filter=ACMRD', `${baseRef}...HEAD`,
   ], { cwd: root, encoding: 'utf8' }).split('\n').map((line) => line.trim()).filter(Boolean);
   const eventFile = process.env.GITHUB_EVENT_PATH;
   const event = eventFile && fs.existsSync(eventFile) ? JSON.parse(fs.readFileSync(eventFile, 'utf8')) : null;
-  const exceptionFile = process.env.SCORE_EXCEPTION_EVENT;
-  const exceptionEvents = exceptionFile && fs.existsSync(exceptionFile)
-    ? fs.readFileSync(exceptionFile, 'utf8').split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line))
-    : [];
+  const exceptionEvents = event?.pull_request?.labels?.some((label) => label.name === EXCEPTION_LABEL)
+    ? exceptionEventsFromApi(process.env.GITHUB_REPOSITORY || 'wcpos/docs', event.pull_request.number) : [];
   const issueLookup = (n) => {
     try {
       return JSON.parse(execFileSync('gh', ['api', `repos/wcpos/docs/issues/${n}`, '--jq', '{state: .state, pr: (.pull_request != null)}'],
         { encoding: 'utf8', stdio: 'pipe' }));
     } catch { return null; }
   };
-  const result = run({ root, changedFiles, event, exceptionEvents, now, base, issueLookup });
+  const result = failure ? { exitCode: 1, lines: [failure] } : run({ root, changedFiles, event, exceptionEvents, now, base, issueLookup });
   for (const line of result.lines) console.log(line);
   process.exitCode = result.exitCode;
 }
 
 module.exports = {
-  allDocs, affectedDocs, baseScores, checkIntegrity, checkException, staleSince, run, ENFORCE_FROM, MEAN_DROP, STALE_DAYS,
+  allDocs, affectedDocs, baseScores, checkIntegrity, checkException, staleSince, run, entryProblem, exceptionEventsFromApi,
+  ENFORCE_FROM, MEAN_DROP, STALE_DAYS, GATE_FILES, HASH_DEFINITION,
 };

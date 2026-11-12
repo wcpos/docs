@@ -1,20 +1,29 @@
 /* global describe, it, expect, beforeEach, afterEach */
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
-const { VDOCS, pageHash, saveScores, loadScores, resolveCommit } = require('../lib/page-scores');
+const { execFileSync, spawnSync } = require('child_process');
+const {
+  VDOCS, pageHash, saveScores, loadScores, resolveCommit, meanOf, REQUIRED_CATEGORIES,
+} = require('../lib/page-scores');
 const { recordFromGate, recordGroup, carry } = require('../record-page-score');
 const {
   allDocs, affectedDocs, baseScores, checkIntegrity, checkException, staleSince, run, ENFORCE_FROM,
+  GATE_FILES, exceptionEventsFromApi,
 } = require('../check-page-scores');
 
 const fixtures = path.join(__dirname, 'fixtures/page-scores');
+const script = path.join(__dirname, '../check-page-scores.js');
 const now = new Date('2026-11-16T00:00:00Z');
 const recent = '2026-11-15T22:00:00Z';
 const body = 'x\n## Score exception\nFixes a fact. Tracking: #123\n## Other';
 let root;
 let options;
-const gate = { round: 2, state: 'keep', scores: { a: { x: 8.5, y: 8 } } };
+// Every required category at `value`, with overrides.
+const seven = (value, overrides = {}) => ({
+  ...Object.fromEntries(REQUIRED_CATEGORIES.map((key) => [key, value])), ...overrides,
+});
+const PASS = seven(8.5, { 'task clarity': 8 });
+const gate = { round: 2, state: 'keep', scores: { a: PASS } };
 const recording = { doc: 'a/page', gate, climb: 'a__page', commit: 'HEAD' };
 const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
 function commitFixture(message, date, add = true) {
@@ -233,10 +242,73 @@ describe('malformed scores', () => {
     expect(result.lines[0]).toMatch(/^::warning::page-scores.json is malformed: .+/);
     expect(result.lines.slice(1)).toEqual(exitCode ? ['::error::page-scores.json is malformed; fix it in this PR.'] : []);
   });
-  it.each(['malformed', 'missing', 'undefined'])('returns empty base scores for %s', (kind) => {
-    if (kind === 'malformed') fs.writeFileSync(path.join(root, 'page-scores.json'), '{');
+  it.each(['missing', 'undefined'])('returns empty base scores for %s', (kind) => {
     const base = initRepo();
     expect(baseScores(root, kind === 'undefined' ? undefined : base)).toEqual({});
+  });
+  it.each([['{', /^::error::page-scores.json on the base is unreadable: .+/], ['[]', 'not an object']])(
+    'fails on any date when the base file is %s', (text, message) => {
+      fs.writeFileSync(path.join(root, 'page-scores.json'), text);
+      options.base = initRepo();
+      saveScores(root, {});
+      for (const date of [now, new Date('2026-11-01T00:00:00Z')]) {
+        const result = run({ ...options, now: date });
+        expect(result.exitCode).toBe(1);
+        expect(result.lines).toHaveLength(1);
+        expect(result.lines[0]).toMatch(typeof message === 'string'
+          ? `::error::page-scores.json on the base is unreadable: ${message}` : message);
+      }
+    });
+  it.each(['null', '[]', '5'])('treats a top-level %s like a syntax error', (text) => {
+    fs.writeFileSync(path.join(root, 'page-scores.json'), text);
+    const result = run({ ...options, changedFiles: ['page-scores.json'] });
+    expect(result).toEqual({ exitCode: 1, lines: [
+      '::warning::page-scores.json is malformed: not an object', '::error::page-scores.json is malformed; fix it in this PR.',
+    ] });
+  });
+});
+
+describe('malformed entries', () => {
+  beforeEach(() => {
+    options.base = initRepo();
+    options.changedFiles = ['page-scores.json', `${VDOCS}/a/page.mdx`];
+  });
+  // Each case keeps the stored mean consistent wherever meanOf is finite, so only the named check can fire.
+  const withMean = (entry) => (Number.isFinite(meanOf(entry.scores)) ? { ...entry, mean: meanOf(entry.scores) } : entry);
+  it.each([
+    ['a string score', (entry) => withMean({ ...entry, scores: { ...entry.scores, 'task clarity': 'x' } }),
+      'score task clarity is not a number from 0 to 10'],
+    ['a null entry', () => null, 'not an object'],
+    ['a missing category', (entry) => { delete entry.scores.accuracy; return withMean(entry); }, 'no accuracy score'],
+    ['a score of 11', (entry) => withMean({ ...entry, scores: { ...entry.scores, language: 11 } }),
+      'score language is not a number from 0 to 10'],
+    ['an array entry', () => [], 'not an object'],
+  ])('fails cleanly on %s', (name, mutate, problem) => {
+    const entry = recordFromGate({ root, ...recording });
+    saveScores(root, { 'a/page': mutate(entry) });
+    let result;
+    expect(() => { result = run(options); }).not.toThrow();
+    expect(result.exitCode).toBe(1);
+    expect(result.lines).toContain(`::error::page-scores.json: a/page: malformed entry (${problem})`);
+    expect(result.lines[0]).toBe('a/page: missing');
+  });
+  it('rejects a stored mean that differs from the scores', () => {
+    const entry = recordFromGate({ root, ...recording, gate: { ...gate, scores: { a: seven(8) } } });
+    saveScores(root, { 'a/page': { ...entry, mean: 8.36 } });
+    const result = run(options);
+    expect(result.exitCode).toBe(1);
+    expect(result.lines).toContain('::error::page-scores.json: a/page: malformed entry (stored mean 8.36 differs from its category scores (8))');
+  });
+  it('survives null entries on the base and in the current file', () => {
+    saveScores(root, { 'a/page': null });
+    options.base = commitFixture('null base entry');
+    saveScores(root, { z: null });
+    let result;
+    expect(() => { result = run(options); }).not.toThrow();
+    expect(result.lines.filter((line) => line.startsWith('::error::page-scores.json'))).toEqual([
+      '::error::page-scores.json: a/page: entry removed while its page exists',
+      '::error::page-scores.json: z: malformed entry (not an object)',
+    ]);
   });
 });
 
@@ -258,7 +330,7 @@ describe('score integrity', () => {
   });
   it.each(['no commit', 'no climb', 'unknown commit', 'side branch', 'disk hash'])(
     'rejects forgery: %s', (kind) => {
-      const entry = { climb: 'a__page', round: 2, commit: options.base, hash: pageHash(root, 'a/page'), scores: { x: 8 } };
+      const entry = { climb: 'a__page', round: 2, commit: options.base, hash: pageHash(root, 'a/page'), scores: seven(8), mean: 8 };
       let reason;
       if (kind === 'no commit') { delete entry.commit; reason = 'no judged commit'; }
       if (kind === 'no climb') { delete entry.climb; reason = 'no climb round'; }
@@ -281,8 +353,8 @@ describe('score integrity', () => {
       expect(result.lines.filter((line) => line.startsWith('::error::page-scores.json')))
         .toEqual([`::error::page-scores.json: a/page: ${reason}`]);
     });
-  it.each(['warn', 'exception'])('enforces integrity despite %s', (mode) => {
-    saveScores(root, { 'a/page': { climb: 'a__page', round: 2, hash: pageHash(root, 'a/page'), scores: { x: 6 } } });
+  it.each(['warn', 'exception'])('integrity obeys the enforcement date but no exception (%s)', (mode) => {
+    saveScores(root, { 'a/page': { climb: 'a__page', round: 2, hash: pageHash(root, 'a/page'), scores: seven(6), mean: 6 } });
     if (mode === 'warn') options.now = new Date('2026-11-15T12:00:00Z');
     else {
       options.event = { pull_request: { labels: [{ name: 'score-exception' }], body } };
@@ -290,8 +362,8 @@ describe('score integrity', () => {
       options.issueLookup = () => ({ state: 'open', pr: false });
     }
     const result = run(options);
-    expect(result.exitCode).toBe(1);
-    expect(result.lines).toContain('::error::page-scores.json: a/page: no judged commit');
+    expect(result.exitCode).toBe(mode === 'warn' ? 0 : 1);
+    expect(result.lines).toContain(`::${mode === 'warn' ? 'warning' : 'error'}::page-scores.json: a/page: no judged commit`);
     expect(result.lines.some((line) => line.startsWith(mode === 'warn'
       ? '::warning::1 page(s)' : '::warning::score-exception granted'))).toBe(true);
   });
@@ -300,9 +372,9 @@ describe('score integrity', () => {
     saveScores(root, { 'a/page': entry });
     options.base = commitFixture('seed');
     expect(baseScores(root, options.base)).toEqual({ 'a/page': entry });
-    expect(checkIntegrity({ ...options, entries: loadScores(root) })).toEqual({ errors: [], docs: [] });
+    expect(checkIntegrity({ ...options, entries: loadScores(root) })).toEqual({ errors: [], docs: [], invalid: [] });
     saveScores(root, { 'a/page': { scores: { y: 9, x: 8 }, hash: entry.hash, seeded: true } });
-    expect(checkIntegrity({ ...options, entries: loadScores(root) })).toEqual({ errors: [], docs: [] });
+    expect(checkIntegrity({ ...options, entries: loadScores(root) })).toEqual({ errors: [], docs: [], invalid: [] });
     expect(run(options).exitCode).toBe(0);
   });
   it.each([false, true])('allows entry removal only when the source is deleted: %s', (deleted) => {
@@ -311,7 +383,7 @@ describe('score integrity', () => {
     if (deleted) fs.unlinkSync(path.join(root, VDOCS, 'a/page.mdx'));
     saveScores(root, {});
     expect(checkIntegrity({ ...options, entries: {} })).toEqual({
-      errors: deleted ? [] : ['a/page: entry removed while its page exists'], docs: [],
+      errors: deleted ? [] : ['a/page: entry removed while its page exists'], docs: [], invalid: [],
     });
     expect(run(options).exitCode).toBe(deleted ? 0 : 1);
   });
@@ -322,19 +394,44 @@ describe('score integrity', () => {
     options.base = commitFixture('seed group');
     fs.unlinkSync(path.join(root, VDOCS, 'error-codes/E2.mdx'));
     delete entry.pages['error-codes/E2'];
-    expect(checkIntegrity({ ...options, entries: { 'error-codes': entry } })).toEqual({ errors: [], docs: [] });
-    entry.mean = 9;
+    expect(checkIntegrity({ ...options, entries: { 'error-codes': entry } })).toEqual({ errors: [], docs: [], invalid: [] });
+    entry.round = 3;
     expect(checkIntegrity({ ...options, entries: { 'error-codes': entry } }).errors)
       .toEqual(['error-codes: no judged commit']);
+  });
+  it('rejects removing a still-existing page from a group entry', () => {
+    const entry = recordGroup({ root, ...recording, group: 'error-codes', sample: ['error-codes/E1'] });
+    options.base = commitFixture('score group');
+    delete entry.pages['error-codes/E2'];
+    saveScores(root, { 'error-codes': entry });
+    expect(checkIntegrity({ ...options, entries: loadScores(root) }).errors)
+      .toEqual(['error-codes: error-codes/E2 removed from the group while its page exists']);
+    expect(run(options).exitCode).toBe(1);
   });
   it('checks group hashes in sorted order and evaluates every changed group page', () => {
     const entry = recordGroup({ root, ...recording, group: 'error-codes', sample: ['error-codes/E1'] });
     expect(run(options).lines.slice(0, 2)).toEqual(['error-codes/E1: ok', 'error-codes/E2: ok']);
-    entry.pages = { 'error-codes/E2': 'bad', 'error-codes/E1': 'bad' };
+    const bad = 'sha256:' + '0'.repeat(64);
+    entry.pages = { 'error-codes/E2': bad, 'error-codes/E1': bad };
     expect(checkIntegrity({ ...options, entries: { 'error-codes': entry } })).toEqual({
       errors: ['error-codes: error-codes/E1 hash does not match the judged commit'],
-      docs: ['error-codes/E2', 'error-codes/E1'],
+      docs: ['error-codes/E2', 'error-codes/E1'], invalid: [],
     });
+    entry.pages['error-codes/E1'] = 'bad';
+    expect(checkIntegrity({ ...options, entries: { 'error-codes': entry } }))
+      .toEqual({ errors: ['error-codes: malformed entry (bad group pages)'], docs: [], invalid: ['error-codes'] });
+  });
+  it('rejects a carry from an entry already stale on the base', () => {
+    recordFromGate({ root, ...recording });
+    fs.appendFileSync(path.join(root, VDOCS, 'a/page.mdx'), '\nEdited after scoring');
+    options.base = commitFixture('stale on base');
+    git('mv', `${VDOCS}/a/page.mdx`, `${VDOCS}/a/renamed.mdx`);
+    commitFixture('rename');
+    carry({ root, carry: 'a/page', doc: 'a/renamed', commit: 'HEAD' });
+    const result = run(options);
+    expect(result.exitCode).toBe(1);
+    expect(result.lines.filter((line) => line.startsWith('::error::page-scores.json')))
+      .toEqual(['::error::page-scores.json: a/renamed: carried from a/page but that entry was already stale on the base']);
   });
   it.each(['valid', 'scores', 'source', 'missing base', 'old present'])(
     'checks carried entries: %s', (kind) => {
@@ -345,7 +442,7 @@ describe('score integrity', () => {
       commitFixture('rename');
       const entry = carry({ root, carry: 'a/page', doc: 'a/renamed', commit: 'HEAD' });
       const entries = loadScores(root);
-      if (kind === 'scores') entry.scores.x = 9;
+      if (kind === 'scores') { entry.scores.accuracy = 9; entry.mean = meanOf(entry.scores); }
       if (kind === 'missing base') entry.carriedFrom = 'nope';
       if (kind === 'old present') entries['a/page'] = old;
       entries['a/renamed'] = entry;
@@ -383,7 +480,7 @@ describe('ratchet rules', () => {
     options.changedFiles = [`${VDOCS}/a/page.mdx`];
     if (kind !== 'missing') {
       commitFixture('add page');
-      recordFromGate({ root, ...scored(kind === 'ok' ? { x: 8.5, y: 8 } : { x: 6 }) });
+      recordFromGate({ root, ...scored(kind === 'ok' ? PASS : seven(6)) });
       options.changedFiles.push('page-scores.json');
     }
     if (kind === 'waived') granted();
@@ -394,7 +491,7 @@ describe('ratchet rules', () => {
   });
 
   it('R1: a page carried from an entry on the base is not new', () => {
-    recordedBase({ x: 8.5, y: 8 });
+    recordedBase(PASS);
     git('mv', `${VDOCS}/a/page.mdx`, `${VDOCS}/a/renamed.mdx`);
     commitFixture('rename');
     carry({ root, carry: 'a/page', doc: 'a/renamed', commit: 'HEAD' });
@@ -405,14 +502,14 @@ describe('ratchet rules', () => {
   });
 
   it.each([
-    ['mean 8.4', { x: 8.4, y: 8.4 }, 0, 'a/page: ok'],
-    ['mean exactly 8.3', { x: 8.3, y: 8.3 }, 0, 'a/page: ok'],
-    ['mean 8.29', { x: 8.29, y: 8.29 }, 1, 'a/page: drop (mean 8.29 is more than 0.3 below the previous 8.6)'],
-    ['a category at 7', { x: 7, y: 9.8 }, 0, 'a/page: ok'],
-    ['a category at 6.5', { x: 6.5, y: 10, z: 9.5 }, 1, 'a/page: below (x 6.5 < 7.0)'],
-    ['mean 8.0 with an exception', { x: 8, y: 8 }, 0, 'a/page: drop (mean 8 is more than 0.3 below the previous 8.6)'],
+    ['mean 8.4', seven(8.4), 0, 'a/page: ok'],
+    ['mean exactly 8.3', seven(8.3), 0, 'a/page: ok'],
+    ['mean 8.29', seven(8.29), 1, 'a/page: drop (mean 8.29 is more than 0.3 below the previous 8.6)'],
+    ['a category at 7', seven(8.6, { 'task clarity': 7 }), 0, 'a/page: ok'],
+    ['a category at 6.5', seven(10, { 'task clarity': 6.5 }), 1, 'a/page: below (task clarity 6.5 < 7.0)'],
+    ['mean 8.0 with an exception', seven(8), 0, 'a/page: drop (mean 8 is more than 0.3 below the previous 8.6)'],
   ])('R2: a changed entry may not drop far (%s)', (name, scores, exitCode, line) => {
-    recordedBase({ x: 8.6, y: 8.6 });
+    recordedBase(seven(8.6));
     recordFromGate({ root, ...scored(scores) });
     options.changedFiles = ['page-scores.json'];
     if (name.includes('exception')) granted();
@@ -435,7 +532,7 @@ describe('ratchet rules', () => {
   });
 
   it.each([[3, 0], [8, 1], [7, 1]])('R3: a passing page edited %i days ago exits %i', (days, exitCode) => {
-    recordedBase({ x: 8.5, y: 8 });
+    recordedBase(PASS);
     fs.appendFileSync(pageFile(), '\nEdited');
     commitFixture('edit', ago(days));
     const result = run(options);
@@ -445,7 +542,7 @@ describe('ratchet rules', () => {
   });
 
   it('dates stale-since from the newest run of edits', () => {
-    recordedBase({ x: 8.5, y: 8 });
+    recordedBase(PASS);
     const recorded = fs.readFileSync(pageFile());
     fs.appendFileSync(pageFile(), '\nFirst edit');
     commitFixture('edit', ago(10));
@@ -458,9 +555,44 @@ describe('ratchet rules', () => {
   });
 
   it('dates an uncommitted edit from now', () => {
-    recordedBase({ x: 8.5, y: 8 });
+    recordedBase(PASS);
     fs.appendFileSync(pageFile(), '\nUncommitted');
     expect(staleSince(root, 'a/page', loadScores(root)['a/page'].hash, now)).toBe(now);
+  });
+
+  it('R2: measures the drop from scores, never the stored means', () => {
+    initRepo();
+    recordFromGate({ root, ...scored(seven(8.5)) });
+    saveScores(root, { 'a/page': { ...loadScores(root)['a/page'], mean: 8 } });
+    options.base = commitFixture('score with a hand-set mean');
+    recordFromGate({ root, ...scored(seven(8.1)) });
+    options.changedFiles = ['page-scores.json'];
+    const result = run(options);
+    expect(result.exitCode).toBe(1);
+    expect(result.lines[0]).toBe('a/page: drop (mean 8.1 is more than 0.3 below the previous 8.5)');
+  });
+
+  it('walks past 50 edits to the matching commit', () => {
+    recordedBase(PASS);
+    const first = new Date(now - 60 * day);
+    for (let i = 0; i < 52; i++) {
+      fs.appendFileSync(pageFile(), `\nEdit ${i}`);
+      commitFixture(`edit ${i}`, new Date(first.getTime() + i * 60 * 1000).toISOString());
+    }
+    expect(staleSince(root, 'a/page', loadScores(root)['a/page'].hash, now)).toEqual(first);
+  }, 120000);
+
+  it.each([true, false])('dates a hash no commit matches from the hash definition change (committed: %s)', (committed) => {
+    options.base = initRepo();
+    if (committed) {
+      fs.mkdirSync(path.join(root, 'scripts/lib'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'scripts/lib/page-scores.js'), '// hash definition\n');
+      commitFixture('hash definition', ago(20));
+    }
+    fs.appendFileSync(pageFile(), '\nEdited');
+    commitFixture('edit', ago(3));
+    const since = staleSince(root, 'a/page', 'sha256:' + '0'.repeat(64), now);
+    expect(since).toEqual(committed ? new Date(ago(20)) : now);
   });
 
   it('R3: a below-floor page made stale warns however old the edit', () => {
@@ -490,13 +622,85 @@ describe('ratchet and workflow', () => {
     if (passing === 8) expect(result.lines).toEqual(['No 2.x docs changed.']);
   });
 
-  it('paginates label events, has no paths filter and keeps PR text out of run and env', () => {
+  it('reads no label events file, has no paths filter and keeps PR text out of run and env', () => {
     const workflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/page-scores.yml'), 'utf8');
-    expect(workflow).toContain('--paginate');
+    expect(workflow).not.toContain('SCORE_EXCEPTION_EVENT');
+    expect(workflow).not.toContain('Read score-exception label events');
     expect(workflow).not.toMatch(/^\s*paths:/m);
     for (const line of workflow.split('\n').filter((line) => /run:|env:/.test(line))) {
       expect(line).not.toMatch(/pull_request\.(body|title)/);
     }
     expect(workflow).not.toMatch(/pull_request\.(body|title)/);
+  });
+});
+
+describe('gate edits', () => {
+  const grant = { event: { pull_request: { labels: [{ name: 'score-exception' }], body } },
+    exceptionEvents: [{ actor: 'kilbot', at: recent }], issueLookup: () => ({ state: 'open', pr: false }) };
+  it.each(GATE_FILES)('needs the kilbot exception to edit %s', (file) => {
+    options.changedFiles = [file];
+    const text = `this PR edits the score gate (${file}); it needs the score-exception label from kilbot.`;
+    const enforced = run(options);
+    expect(enforced.exitCode).toBe(1);
+    expect(enforced.lines).toContain(`::error::${text}`);
+    const before = run({ ...options, now: new Date('2026-11-15T00:00:00Z') });
+    expect(before.exitCode).toBe(0);
+    expect(before.lines).toContain(`::warning::${text}`);
+    const granted = run({ ...options, ...grant });
+    expect(granted.exitCode).toBe(0);
+    expect(granted.lines).toContain(`::warning::score-exception granted; gate edits waived: ${file}.`);
+  });
+  it('gives the refusal notice once for failing docs and gate edits together', () => {
+    options.base = baseWithout('a/page');
+    options.changedFiles = [`${VDOCS}/a/page.mdx`, ...GATE_FILES];
+    const result = run({ ...options, ...grant, exceptionEvents: [{ actor: 'someone', at: recent }] });
+    expect(result.exitCode).toBe(1);
+    expect(result.lines.filter((line) => line.startsWith('::notice::'))).toEqual(['::notice::label not applied by kilbot']);
+    expect(result.lines).toContain(`::error::this PR edits the score gate (${GATE_FILES.join(', ')}); it needs the score-exception label from kilbot.`);
+  });
+  it('reads label events from the API, paginated, and returns [] on any failure', () => {
+    const calls = [];
+    const exec = (...args) => { calls.push(args); return '{"actor":"kilbot","at":"a"}\n{"actor":"x","at":"b"}\n'; };
+    expect(exceptionEventsFromApi('wcpos/docs', 7, exec)).toEqual([{ actor: 'kilbot', at: 'a' }, { actor: 'x', at: 'b' }]);
+    expect(calls).toEqual([['gh', ['api', 'repos/wcpos/docs/issues/7/events', '--paginate', '--jq',
+      '.[] | select(.event == "labeled" and .label.name == "score-exception") | {actor: .actor.login, at: .created_at}'],
+    { encoding: 'utf8', stdio: 'pipe' }]]);
+    expect(exceptionEventsFromApi('wcpos/docs', 7, () => { throw new Error('gh failed'); })).toEqual([]);
+    expect(exceptionEventsFromApi('wcpos/docs', 7, () => 'not json')).toEqual([]);
+  });
+});
+
+describe('command line', () => {
+  const temps = [];
+  const tempDir = (prefix) => { const dir = fs.mkdtempSync(path.join(fixtures, prefix)); temps.push(dir); return dir; };
+  afterEach(() => { for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+  const cli = (cwd, env) => spawnSync(process.execPath, [script, '--now', '2026-11-16T00:00:00Z'],
+    { cwd, encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: '', SCORE_EXCEPTION_EVENT: '', ...env } });
+
+  it('ignores a SCORE_EXCEPTION_EVENT file: label events come from the API only', () => {
+    const base = baseWithout('a/page');
+    commitFixture('add page');
+    const bin = tempDir('bin-');
+    fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const eventPath = path.join(bin, 'event.json');
+    fs.writeFileSync(eventPath, JSON.stringify({ pull_request: { number: 1, labels: [{ name: 'score-exception' }], body } }));
+    const eventsPath = path.join(bin, 'events.jsonl');
+    fs.writeFileSync(eventsPath, JSON.stringify({ actor: 'kilbot', at: recent }) + '\n');
+    const result = cli(root, {
+      BASE_REF: base, GITHUB_EVENT_PATH: eventPath, SCORE_EXCEPTION_EVENT: eventsPath, PATH: `${bin}:${process.env.PATH}`,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('a/page: missing\n');
+    expect(result.stdout).toContain('::notice::label not applied by kilbot\n');
+  });
+  it('fails clearly in a shallow clone', () => {
+    initRepo();
+    fs.appendFileSync(path.join(root, VDOCS, 'a/page.mdx'), '\nEdited');
+    commitFixture('edit');
+    const clone = tempDir('tmp-shallow-');
+    execFileSync('git', ['clone', '-q', '--depth', '1', `file://${root}`, clone], { stdio: 'pipe' });
+    const result = cli(clone, { BASE_REF: 'HEAD' });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('::error::page-scores needs the full git history; this clone is shallow (check out with fetch-depth: 0).\n');
   });
 });

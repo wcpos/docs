@@ -15,6 +15,9 @@ const CATEGORY_FLOOR = 7.0;
 const RATCHET_SHARE = 0.9;
 // Error-code pages share one templated score (ruling 2026-11-12).
 const GROUPS = { 'error-codes': 'error-codes/' };
+// The climb kit's gate.py CATEGORIES (category -> keyword); part S2 parses judge tables with them.
+const CATEGORY_KEYWORDS = { 'task clarity': 'task', language: 'language', visuals: 'visual', structure: 'structure', layering: 'layering', consistency: 'consisten', accuracy: 'accura' };
+const REQUIRED_CATEGORIES = Object.keys(CATEGORY_KEYWORDS);
 
 function reader(root, commit) {
   if (commit !== null) {
@@ -144,6 +147,6 @@ function evaluate(root, doc, entries) {
 }
 
 module.exports = {
-  VDOCS, IMG, IMG_ROOTS, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS, resolveCommit,
+  VDOCS, IMG, IMG_ROOTS, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS, CATEGORY_KEYWORDS, REQUIRED_CATEGORIES, resolveCommit,
   docSource, referencedPaths, hashInputs, pageHash, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
 };
