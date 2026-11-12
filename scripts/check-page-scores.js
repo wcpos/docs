@@ -3,7 +3,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
   VDOCS, referencedPaths, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource, groupOf, pageHash, pageContent,
-  meanOf, REQUIRED_CATEGORIES, OPTIONAL_CATEGORIES, RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores,
+  meanOf, REQUIRED_CATEGORIES, OPTIONAL_CATEGORIES, RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores, scoredOptional,
 } = require('./lib/page-scores.js');
 
 // Warn-only before this UTC date, then failures exit 1 (front desk ruling 2026-11-12: required from 2026-11-16).
@@ -152,6 +152,9 @@ function judgeRunProblem(root, doc, entry) {
     texts.push(body);
   }
   const categories = Object.keys(entry.scores);
+  // An optional category the judges scored cannot be dropped from the entry.
+  const dropped = texts.flatMap(scoredOptional).find((category) => !categories.includes(category));
+  if (dropped !== undefined) return `judge run scores ${dropped} but the entry has no ${dropped} score`;
   for (const [i, { path: file, column }] of run.entries()) {
     try { parseJudgeTable(texts[i], column, categories); } catch (error) { return `judge run file ${file}: ${error.message}`; }
   }
@@ -295,7 +298,8 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
   const integrity = changedFiles.some((file) => file === 'page-scores.json' || file.startsWith(RUNS_DIR + '/'))
     ? checkIntegrity({ root, base, entries, baseEntries, changedFiles }) : { errors: [], docs: [], invalid: [] };
   entries = Object.fromEntries(Object.entries(entries).filter(([key]) => !integrity.invalid.includes(key) && !shape.some((bad) => bad.key === key)));
-  const docs = [...new Set([...affectedDocs(root, changedFiles), ...integrity.docs])].sort();
+  // A page deleted in this PR has nothing to evaluate; its entry's integrity errors are already reported.
+  const docs = [...new Set([...affectedDocs(root, changedFiles), ...integrity.docs])].sort().filter((doc) => docSource(root, doc));
   const results = docs.map((doc) => evaluate(root, doc, entries));
   const changed = new Set(integrity.docs);
   const failing = [];

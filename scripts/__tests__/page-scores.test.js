@@ -389,6 +389,20 @@ describe('recording scores', () => {
     }
   });
 
+  it('recorder refuses gate scores that drop an admin setup row the judge files carry', () => {
+    const admin = path.join(root, 'admin-run');
+    fs.mkdirSync(admin);
+    for (const judge of ['opus-a', 'opus-b']) {
+      fs.writeFileSync(path.join(admin, `${judge}.md`), transcript(judge).replace('| **Average** |', '| **Admin setup** | 5 | 6 | 9 |\n| **Average** |'));
+    }
+    const message = 'judge files score admin setup but the gate scores have none';
+    expect(() => recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate, climb: 'a__page', run: admin })).toThrow(message);
+    expect(() => recordGroup({ root, commit: 'HEAD', group: 'error-codes', gate, climb: 'error-codes', sample: ['error-codes/E1'], run: admin }))
+      .toThrow(message);
+    expect(loadScores(root)).toEqual({});
+    expect(fs.existsSync(path.join(root, 'page-scores'))).toBe(false);
+  });
+
   it.each(['revert', 'error', 'frozen'])('refuses gate state %s without writing', (state) => {
     expect(() => recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate: { ...gate, state }, climb: 'x' }))
       .toThrow(state);

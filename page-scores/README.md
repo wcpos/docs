@@ -22,7 +22,9 @@
   `page-scores.json` is unchanged. An entry may not be removed while its page exists. A carry must keep the old
   entry's scores and judge run. It needs the old page gone (a copy is not a rename) and the destination unscored
   on the base, and every hash input must have identical content: the source, each import by its path relative to
-  the source, and each image.
+  the source, and each image. When a transcript's table has an `admin setup` row, the entry must carry that
+  score, so a low optional score cannot be dropped. A page deleted in the same pull request is not evaluated; its
+  entry's integrity checks still run.
 - **Gate-file guard.** A pull request that edits anything under `scripts/` or `.github/workflows/page-scores.yml`
   fails unless it has the score exception below. The translation tooling the pipeline edits weekly is exempt: the
   files in `TRANSLATION_TOOLING`, `scripts/docs-translation/`, and `scripts/__tests__/docs-translation-*.test.js`.
@@ -54,7 +56,8 @@ The recorder refuses a `--climb` that is not the page's. It reads each transcrip
 judges put the page under review, and refuses a transcript whose first column is missing or a Baseline. It checks
 that the transcripts give the same scores as the gate file, copies them behind a header line to
 `page-scores/runs/<climb>/r<round>/opus-a.md` and `opus-b.md`, and records their path, sha256 (of the stored file,
-header included) and column in the entry. Commit the copied transcripts with `page-scores.json`.
+header included) and column in the entry. It refuses gate scores that leave out an `admin setup` row the
+transcripts carry. Commit the copied transcripts with `page-scores.json`.
 
 ## Exceptions
 
@@ -75,6 +78,8 @@ header included) and column in the entry. Commit the copied transcripts with `pa
 - A seeded entry's `judges` field says `opus-a`, but 111 of the 135 seeded entries were judged by GPT-6 Astra in the
   climb kit (an `astra.md` transcript). Treat a seeded entry's `judges` as unverified. Recording the page again with
   `--run` replaces it.
+- If a carried page is copied again and the original then deleted, both copies keep the score. This is a known
+  limit, not yet fixed.
 
 ## Limit: the workflow runs from the pull request
 

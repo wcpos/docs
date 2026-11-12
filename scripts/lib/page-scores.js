@@ -73,6 +73,13 @@ function parseJudgeTable(text, column, categories) {
   return scores;
 }
 
+// The optional categories the first table has a data row for, matched as parseJudgeTable matches them; [] if no table.
+function scoredOptional(text) {
+  let rows;
+  try { [, , ...rows] = tableRows(text); } catch { return []; }
+  return OPTIONAL_CATEGORIES.filter((category) => rows.some((row) => cleanCell(row[0]).toLowerCase().includes(category)));
+}
+
 // Per-category minimum across the judges' transcripts.
 function runScores(texts, columns, categories) {
   const parsed = texts.map((text, i) => parseJudgeTable(text, columns[i], categories));
@@ -221,5 +228,5 @@ function evaluate(root, doc, entries) {
 module.exports = {
   VDOCS, IMG, IMG_ROOTS, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS, CATEGORY_KEYWORDS, REQUIRED_CATEGORIES, resolveCommit,
   OPTIONAL_CATEGORIES, docSource, referencedPaths, hashInputs, pageHash, pageContent, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
-  RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores,
+  RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores, scoredOptional,
 };

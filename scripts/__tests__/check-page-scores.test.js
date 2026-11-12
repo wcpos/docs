@@ -426,6 +426,25 @@ describe('score integrity', () => {
     });
     expect(run(options).exitCode).toBe(deleted ? 0 : 1);
   });
+  it('does not crash when a recorded page is deleted in the same PR', () => {
+    record();
+    git('rm', '-q', `${VDOCS}/a/page.mdx`);
+    commitFixture('delete page');
+    options.changedFiles.push(`${VDOCS}/a/page.mdx`);
+    let result;
+    expect(() => { result = run(options); }).not.toThrow();
+    expect(result.lines.filter((line) => /^a\/page: (missing|stale|ok)/.test(line))).toEqual([]);
+    expect(result.lines.some((line) => line.startsWith('::error::page-scores.json'))).toBe(false);
+  });
+  it('does not crash when a group member is deleted', () => {
+    record(groupRecording, recordGroup);
+    git('rm', '-q', `${VDOCS}/error-codes/E2.mdx`);
+    commitFixture('delete group member');
+    let result;
+    expect(() => { result = run(options); }).not.toThrow();
+    expect(result.lines.filter((line) => /^error-codes\/E2: (missing|stale|ok)/.test(line))).toEqual([]);
+    expect(result.lines).toContain('error-codes/E1: ok');
+  });
   it('allows only the group prune shape without rechecking provenance', () => {
     const entry = record(groupRecording, recordGroup);
     delete entry.commit;
@@ -569,6 +588,22 @@ describe('judge run binding', () => {
     expect(result.exitCode).toBe(0);
     expect(result.lines[0]).toBe('a/page: ok');
     expect(errors(result)).toEqual([]);
+  });
+  const adminRecording = { ...recording, gate: { ...gate, scores: { a: { ...PASS, 'admin setup': 5 }, b: { ...PASS, 'admin setup': 5 } } } };
+  it('rejects an entry that drops an admin setup score its judge run carries', () => {
+    const entry = record(adminRecording);
+    delete entry.scores['admin setup'];
+    saveScores(root, { 'a/page': { ...entry, mean: meanOf(entry.scores) } });
+    const result = run(options);
+    expect(result.exitCode).toBe(1);
+    expect(errors(result)).toEqual(['::error::page-scores.json: a/page: judge run scores admin setup but the entry has no admin setup score']);
+  });
+  it('passes an entry that carries the admin setup score its judge run has', () => {
+    const entry = record(adminRecording);
+    expect(entry.scores['admin setup']).toBe(5);
+    const result = run(options);
+    expect(errors(result)).toEqual([]);
+    expect(result.lines[0]).toBe('a/page: below (admin setup 5 < 7.0)');
   });
   it.each([
     ['no judge run', (entry) => ({ hash: entry.hash, judged: '2026-11-20', round: 2, judges: ['opus-a', 'opus-b'],

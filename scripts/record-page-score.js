@@ -3,7 +3,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
   VDOCS, GROUPS, docSource, pageHash, loadScores, saveScores, meanOf, resolveCommit,
-  JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, runScores,
+  JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, runScores, scoredOptional,
 } = require('./lib/page-scores.js');
 
 function gateEntry(gate, climb, judged = new Date().toISOString().slice(0, 10)) {
@@ -45,6 +45,8 @@ function bindRun({ root, gate, climb, run, key }, scores) {
     return column;
   });
   const categories = Object.keys(scores);
+  const dropped = bytes.flatMap((buffer) => scoredOptional(String(buffer))).find((category) => !categories.includes(category));
+  if (dropped !== undefined) throw new Error(`judge files score ${dropped} but the gate scores have none`);
   const parsed = runScores(bytes.map(String), columnOf, categories);
   const bad = categories.find((key) => parsed[key] !== scores[key]);
   if (bad !== undefined) throw new Error(`judge files do not match the gate scores: ${bad} ${parsed[bad]} vs ${scores[bad]}`);
