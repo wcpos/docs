@@ -163,6 +163,7 @@ describe('findUntranslatedProps', () => {
       '<LinkCard title="Mercado Pago Terminal" />',
       '<LinkCard title="Windcave Terminal" />',
       '<LinkCard title="PayArc Terminal" />',
+      '<LinkCard title="Authorize.net Tap to Pay" />',
       '<LinkCard title="Email Invoice" />',
       '',
     ].join('\n');
@@ -333,6 +334,7 @@ Cambia a Twenty Twenty-Four para descartar un conflicto de tema.
       '<LinkCard title="Mercado Pago Terminal" />',
       '<LinkCard title="Windcave Terminal" />',
       '<LinkCard title="PayArc Terminal" />',
+      '<LinkCard title="Authorize.net Tap to Pay" />',
       '<LinkCard title="Email Invoice" />',
       '',
     ].join('\n');
