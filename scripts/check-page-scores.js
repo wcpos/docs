@@ -33,7 +33,7 @@ function allDocs(root) {
 // Within the allowed trees, match the doc source, an exact import, or any path under a referenced image dir.
 function affectedDocs(root, changedFiles) {
   const changed = new Set(changedFiles.filter((file) =>
-    file.startsWith(VDOCS + '/') || file.startsWith('static/img/2.x/')));
+    file.startsWith(VDOCS + '/') || Object.values(require('./lib/page-scores').IMG_ROOTS).some((dir) => file.startsWith(dir + '/'))));
   return allDocs(root).filter((doc) => {
     const { imgDirs, imports } = referencedPaths(root, doc);
     const source = path.relative(root, docSource(root, doc)).split(path.sep).join('/');

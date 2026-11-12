@@ -1,9 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execFileSync } = require('child_process');
 
 const VDOCS = 'versioned_docs/version-2.x';
 const IMG = 'static/img/2.x';
+// Image trees a page's hash covers: its 2.x screenshots and the printer wizard's shared images.
+const IMG_ROOTS = { '2.x': 'static/img/2.x', 'printer-wizard': 'static/img/printer-wizard' };
 const SCORES_FILE = 'page-scores.json';
 // Floor ruled by the front desk 2026-11-12 (PLAN-B3): page mean >= 8.0 and no category < 7.0.
 // Ratchet: when 90% of entries pass, the floor moves to 8.5 (target stays 9.0); change these constants then.
@@ -13,23 +16,59 @@ const RATCHET_SHARE = 0.9;
 // Error-code pages share one templated score (ruling 2026-11-12).
 const GROUPS = { 'error-codes': 'error-codes/' };
 
-function docSource(root, doc) {
+function reader(root, commit) {
+  if (commit !== null) {
+    const type = (rel) => {
+      try {
+        return execFileSync('git', ['cat-file', '-t', `${commit}:${rel}`], { cwd: root, stdio: 'pipe' }).toString().trim();
+      } catch { return null; }
+    };
+    return {
+      isFile: (rel) => type(rel) === 'blob',
+      isDir: (rel) => type(rel) === 'tree',
+      listFiles: (relDir) => execFileSync('git', ['ls-tree', '-r', '--name-only', commit, '--', relDir + '/'],
+        { cwd: root }).toString().trim().split('\n').filter(Boolean),
+      read: (rel) => execFileSync('git', ['show', `${commit}:${rel}`], { cwd: root }),
+    };
+  }
+  function listFiles(relDir) {
+    return fs.readdirSync(path.resolve(root, relDir), { withFileTypes: true }).flatMap((item) => {
+      const rel = path.posix.join(relDir, item.name);
+      return item.isDirectory() ? listFiles(rel) : item.isFile() ? [rel] : [];
+    });
+  }
+  return {
+    isFile: (rel) => fs.existsSync(path.resolve(root, rel)) && fs.statSync(path.resolve(root, rel)).isFile(),
+    isDir: (rel) => fs.existsSync(path.resolve(root, rel)) && fs.statSync(path.resolve(root, rel)).isDirectory(),
+    listFiles,
+    read: (rel) => fs.readFileSync(path.resolve(root, rel)),
+  };
+}
+
+function resolveCommit(root, ref) {
+  try {
+    return execFileSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], { cwd: root, stdio: 'pipe' }).toString().trim();
+  } catch { throw new Error(`Unknown commit: ${ref}`); }
+}
+
+function docSource(root, doc, commit = null) {
+  const source = reader(root, commit);
   for (const ext of ['.mdx', '.md']) {
-    const file = path.resolve(root, VDOCS, doc + ext);
-    if (fs.existsSync(file) && fs.statSync(file).isFile()) return file;
+    const rel = path.posix.join(VDOCS, doc + ext);
+    if (source.isFile(rel)) return path.resolve(root, rel);
   }
   return null;
 }
 
-function referencedPaths(root, doc) {
-  const source = docSource(root, doc);
-  const text = fs.readFileSync(source, 'utf8');
+function referencedPaths(root, doc, commit = null) {
+  const source = docSource(root, doc, commit);
+  const text = reader(root, commit).read(path.relative(root, source).split(path.sep).join('/')).toString('utf8');
   const imgDirs = new Set();
   const imports = new Set();
-  for (const match of text.matchAll(/(?:@site\/static|)\/img\/2\.x\/([^\s"'`)\]}]+)/g)) {
-    const p = match[1].replace(/[.,;:]+$/, '');
+  for (const match of text.matchAll(/(?:@site\/static|)\/img\/(2\.x|printer-wizard)\/([^\s"'`)\]}]+)/g)) {
+    const p = match[2].replace(/[.,;:]+$/, '');
     const dir = /\.[a-z0-9]+$/i.test(path.basename(p)) ? path.dirname(p) : p;
-    if (dir !== '.') imgDirs.add(path.relative(root, path.resolve(root, IMG, dir)).split(path.sep).join('/'));
+    if (dir !== '.' || match[1] === 'printer-wizard') imgDirs.add(path.relative(root, path.resolve(root, IMG_ROOTS[match[1]], dir)).split(path.sep).join('/'));
   }
   for (const match of text.matchAll(/from\s+['"](\.\/[^'"]+)['"]/g)) {
     imports.add(path.relative(root, path.resolve(path.dirname(source), match[1])).split(path.sep).join('/'));
@@ -37,32 +76,25 @@ function referencedPaths(root, doc) {
   return { imgDirs: [...imgDirs].sort(), imports: [...imports].sort() };
 }
 
-function hashInputs(root, doc) {
-  const source = docSource(root, doc);
-  const { imgDirs, imports } = referencedPaths(root, doc);
-  const files = new Set([source]);
-  function walk(dir) {
-    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-      const file = path.join(dir, item.name);
-      if (item.isDirectory()) walk(file);
-      else if (item.isFile()) files.add(file);
-    }
-  }
+function hashInputs(root, doc, commit = null) {
+  const source = docSource(root, doc, commit);
+  const { imgDirs, imports } = referencedPaths(root, doc, commit);
+  const input = reader(root, commit);
+  const files = new Set([path.relative(root, source).split(path.sep).join('/')]);
   for (const dir of imgDirs) {
-    const full = path.resolve(root, dir);
-    if (fs.existsSync(full) && fs.statSync(full).isDirectory()) walk(full);
+    if (input.isDir(dir)) for (const file of input.listFiles(dir)) files.add(file);
   }
   for (const imported of imports) {
-    const file = path.resolve(root, imported);
-    if (fs.existsSync(file) && fs.statSync(file).isFile()) files.add(file);
+    if (input.isFile(imported)) files.add(imported);
   }
-  return [...files].map((file) => path.relative(root, file).split(path.sep).join('/')).sort();
+  return [...files].sort();
 }
 
-function pageHash(root, doc) {
+function pageHash(root, doc, commit = null) {
   const hash = crypto.createHash('sha256');
-  for (const file of hashInputs(root, doc)) {
-    hash.update(file).update('\0').update(fs.readFileSync(path.join(root, file))).update('\0');
+  const input = reader(root, commit);
+  for (const file of hashInputs(root, doc, commit)) {
+    hash.update(file).update('\0').update(input.read(file)).update('\0');
   }
   return 'sha256:' + hash.digest('hex');
 }
@@ -111,6 +143,6 @@ function evaluate(root, doc, entries) {
 }
 
 module.exports = {
-  VDOCS, IMG, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS,
+  VDOCS, IMG, IMG_ROOTS, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS, resolveCommit,
   docSource, referencedPaths, hashInputs, pageHash, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
 };

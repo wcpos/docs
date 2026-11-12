@@ -19,6 +19,11 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe('affected docs', () => {
+  it('selects a doc referencing a printer wizard image', () => {
+    fs.appendFileSync(path.join(root, VDOCS, 'a/page.mdx'), '\n![printer](/img/printer-wizard/x.png)');
+    expect(affectedDocs(root, ['static/img/printer-wizard/x.png'])).toEqual(['a/page']);
+  });
+
   it.each(['static/img/2.x/a/shot.png', `${VDOCS}/a/_part.mdx`])(
     'selects dependent docs when %s is deleted', (file) => {
       fs.unlinkSync(path.join(root, file));

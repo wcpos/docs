@@ -4,15 +4,21 @@ const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const {
   VDOCS, SCORES_FILE, docSource, referencedPaths, hashInputs, pageHash, groupOf,
-  loadScores, saveScores, meanOf, belowFloor, evaluate,
+  loadScores, saveScores, meanOf, belowFloor, evaluate, resolveCommit,
 } = require('../lib/page-scores');
-const { recordFromGate, recordGroup, seed } = require('../record-page-score');
+const { recordFromGate, recordGroup, seed, carry, prune } = require('../record-page-score');
 
 const fixtures = path.join(__dirname, 'fixtures/page-scores');
 const fixture = path.join(fixtures, 'repo');
 const gate = { state: 'continue', round: 17, scores: { a: { x: 8, y: 7 }, b: { x: 7.5, y: 9 } } };
 const judged = '2026-11-12';
 let root;
+
+function initRepo() {
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  execFileSync('git', ['add', '-A'], { cwd: root });
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-qm', 'base'], { cwd: root });
+}
 
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(fixtures, 'tmp-'));
@@ -84,6 +90,133 @@ describe('page-score inputs and hashes', () => {
   });
 });
 
+describe('commit hashes and provenance', () => {
+  beforeEach(initRepo);
+
+  it.each([`${VDOCS}/a/page.mdx`, `${VDOCS}/a/_part.mdx`, 'static/img/2.x/a/shot.png'])(
+    'keeps the commit hash when %s changes on disk', (file) => {
+      const sha = resolveCommit(root, 'HEAD');
+      const hash = pageHash(root, 'a/page');
+      expect(sha).toMatch(/^[a-f0-9]{40}$/);
+      expect(pageHash(root, 'a/page', sha)).toBe(hash);
+      fs.appendFileSync(path.join(root, file), '\nchanged');
+      expect(pageHash(root, 'a/page')).not.toBe(hash);
+      expect(pageHash(root, 'a/page', sha)).toBe(hash);
+    });
+
+  it('reads deleted sources, imports and image directories from the commit', () => {
+    const sha = resolveCommit(root, 'HEAD');
+    const inputs = hashInputs(root, 'a/page');
+    const hash = pageHash(root, 'a/page');
+    fs.rmSync(path.join(root, 'static/img/2.x/a'), { recursive: true });
+    fs.rmSync(path.join(root, VDOCS, 'a'), { recursive: true });
+    expect(docSource(root, 'a/page')).toBeNull();
+    expect(docSource(root, 'a/page', sha)).toBe(path.join(root, VDOCS, 'a/page.mdx'));
+    expect(hashInputs(root, 'a/page', sha)).toEqual(inputs);
+    expect(pageHash(root, 'a/page', sha)).toBe(hash);
+  });
+
+  it('requires a commit and records its hash despite uncommitted edits', () => {
+    const options = { root, doc: 'a/page', gate, climb: 'x' };
+    expect(() => recordFromGate(options)).toThrow('--commit <judged commit> is required');
+    const sha = resolveCommit(root, 'HEAD');
+    fs.appendFileSync(docSource(root, 'a/page'), '\nchanged');
+    const entry = recordFromGate({ ...options, commit: 'HEAD' });
+    expect(entry.commit).toBe(sha);
+    expect(entry.hash).toBe(pageHash(root, 'a/page', sha));
+    expect(entry.hash).not.toBe(pageHash(root, 'a/page'));
+    fs.writeFileSync(path.join(root, VDOCS, 'new.mdx'), '# New');
+    expect(() => recordFromGate({ ...options, doc: 'new', commit: sha }))
+      .toThrow(`No source for doc at ${sha}: new`);
+  });
+
+  it('takes group membership, sample checks and page hashes from the commit', () => {
+    const options = { root, group: 'error-codes', gate, climb: 'x', sample: ['error-codes/E1'] };
+    expect(() => recordGroup(options)).toThrow('--commit <judged commit> is required');
+    const sha = resolveCommit(root, 'HEAD');
+    fs.unlinkSync(docSource(root, 'error-codes/E1'));
+    fs.appendFileSync(docSource(root, 'error-codes/E2'), '\nchanged');
+    fs.writeFileSync(path.join(root, VDOCS, 'error-codes/new.mdx'), '# New');
+    const entry = recordGroup({ ...options, commit: 'HEAD' });
+    expect(entry.commit).toBe(sha);
+    expect(entry.pages).toEqual({
+      'error-codes/E1': pageHash(root, 'error-codes/E1', sha),
+      'error-codes/E2': pageHash(root, 'error-codes/E2', sha),
+    });
+    expect(() => recordGroup({ ...options, commit: sha, sample: ['error-codes/new'] }))
+      .toThrow('Sample doc is not in group error-codes: error-codes/new');
+  });
+
+  it.each([undefined, '', 42])('requires a non-empty climb string: %j', (climb) => {
+    expect(() => recordFromGate({ root, doc: 'a/page', gate, climb, commit: 'HEAD' }))
+      .toThrow('--climb <climb folder> is required');
+    expect(() => recordGroup({ root, group: 'error-codes', gate, climb, commit: 'HEAD', sample: ['error-codes/E1'] }))
+      .toThrow('--climb <climb folder> is required');
+    expect(loadScores(root)).toEqual({});
+  });
+
+  it('rejects an unknown commit', () => {
+    expect(() => resolveCommit(root, 'nope')).toThrow('Unknown commit: nope');
+  });
+});
+
+describe('printer wizard images', () => {
+  it.each(['/img/printer-wizard/x.png', '@site/static/img/printer-wizard/x.png'])(
+    'includes the shared image tree for %s on disk and at a commit', (ref) => {
+      fs.appendFileSync(docSource(root, 'a/page'), `\n![printer](${ref})`);
+      initRepo();
+      const sha = resolveCommit(root, 'HEAD');
+      for (const commit of [null, sha]) {
+        expect(referencedPaths(root, 'a/page', commit).imgDirs)
+          .toEqual(['static/img/2.x/a', 'static/img/printer-wizard']);
+        expect(hashInputs(root, 'a/page', commit)).toContain('static/img/printer-wizard/x.png');
+      }
+      const hash = pageHash(root, 'a/page', sha);
+      fs.appendFileSync(path.join(root, 'static/img/printer-wizard/x.png'), 'changed');
+      expect(pageHash(root, 'a/page')).not.toBe(hash);
+      expect(pageHash(root, 'a/page', sha)).toBe(hash);
+    });
+});
+
+describe('score maintenance', () => {
+  beforeEach(initRepo);
+
+  it('carries a renamed page and preserves its judgment without a gate', () => {
+    const original = recordFromGate({ root, doc: 'a/page', gate, climb: 'x', judged, commit: 'HEAD' });
+    execFileSync('git', ['mv', `${VDOCS}/a/page.mdx`, `${VDOCS}/a/renamed.mdx`], { cwd: root });
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-qm', 'rename'], { cwd: root });
+    const sha = resolveCommit(root, 'HEAD');
+    fs.unlinkSync(docSource(root, 'a/renamed'));
+    execFileSync(process.execPath, [path.resolve(__dirname, '../record-page-score.js'), '--root', root,
+      '--carry', 'a/page', '--doc', 'a/renamed', '--commit', 'HEAD']);
+    expect(loadScores(root)).toEqual({ 'a/renamed': {
+      ...original, hash: pageHash(root, 'a/renamed', sha), commit: sha, carriedFrom: 'a/page',
+    } });
+    expect(() => carry({ root, carry: 'missing', doc: 'a/renamed', commit: sha }))
+      .toThrow('No entry to carry: missing');
+    expect(() => carry({ root, carry: 'a/renamed', doc: 'missing', commit: sha }))
+      .toThrow(`No source for doc at ${sha}: missing`);
+  });
+
+  it('prunes missing entries and group pages using the disk', () => {
+    const page = recordFromGate({ root, doc: 'a/page', gate, climb: 'x', commit: 'HEAD' });
+    const group = recordGroup({ root, group: 'error-codes', gate, climb: 'x', commit: 'HEAD', sample: ['error-codes/E1'] });
+    saveScores(root, { 'a/page': page, 'a/_part': page, 'error-codes': group });
+    fs.unlinkSync(docSource(root, 'a/page'));
+    fs.unlinkSync(docSource(root, 'error-codes/E1'));
+    const stdout = vi.spyOn(console, 'log').mockImplementation(() => {});
+    prune({ root });
+    expect(stdout).toHaveBeenCalledWith('pruned 1 entries, 1 group pages');
+    expect(loadScores(root)).toEqual({ 'a/_part': page, 'error-codes': {
+      ...group, pages: { 'error-codes/E2': group.pages['error-codes/E2'] },
+    } });
+    fs.unlinkSync(docSource(root, 'a/_part'));
+    expect(execFileSync(process.execPath, [path.resolve(__dirname, '../record-page-score.js'), '--prune'],
+      { cwd: root, encoding: 'utf8' })).toBe('pruned 1 entries, 0 group pages\n');
+    expect(Object.keys(loadScores(root))).toEqual(['error-codes']);
+  });
+});
+
 describe('score floors and evaluation', () => {
   it.each([{}, undefined])('rejects empty or missing scores: %j', (scores) => {
     expect(belowFloor(scores)).toEqual(['no scores']);
@@ -120,9 +253,11 @@ describe('score floors and evaluation', () => {
 });
 
 describe('recording scores', () => {
+  beforeEach(initRepo);
+
   it('refuses judges with no categories without saving an entry', () => {
     expect(() => recordFromGate({
-      root, doc: 'a/page', gate: { ...gate, scores: { a: {}, b: {} } }, climb: 'x',
+      root, commit: 'HEAD', doc: 'a/page', gate: { ...gate, scores: { a: {}, b: {} } }, climb: 'x',
     })).toThrow('Gate scores have no categories');
     expect(loadScores(root)).toEqual({});
   });
@@ -139,51 +274,52 @@ describe('recording scores', () => {
 
   it('min-merges judges and preserves existing entries', () => {
     saveScores(root, { existing: { scores: { x: 9 } } });
-    const entry = recordFromGate({ root, doc: 'a/page', gate, climb: 'a__page', judged });
+    const entry = recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate, climb: 'a__page', judged });
     expect(entry).toEqual({
       hash: pageHash(root, 'a/page'), judged, round: 17,
-      judges: ['opus-a', 'opus-b'], scores: { x: 7.5, y: 7 }, mean: 7.25, climb: 'a__page',
+      judges: ['opus-a', 'opus-b'], scores: { x: 7.5, y: 7 }, mean: 7.25, climb: 'a__page', commit: resolveCommit(root, 'HEAD'),
     });
     expect(loadScores(root)).toEqual({ existing: { scores: { x: 9 } }, 'a/page': entry });
   });
 
   it.each(['revert', 'error', 'frozen'])('refuses gate state %s without writing', (state) => {
-    expect(() => recordFromGate({ root, doc: 'a/page', gate: { ...gate, state }, climb: 'x' }))
+    expect(() => recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate: { ...gate, state }, climb: 'x' }))
       .toThrow(state);
     expect(loadScores(root)).toEqual({});
   });
 
   it.each([{}, { a: { x: 8 }, b: { y: 9 } }, { a: { x: 8 }, b: { x: 9, y: 9 } }])(
     'refuses empty or incomplete judge scores: %j', (scores) => {
-      expect(() => recordFromGate({ root, doc: 'a/page', gate: { ...gate, scores }, climb: 'x' }))
+      expect(() => recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate: { ...gate, scores }, climb: 'x' }))
         .toThrow(/empty|missing/);
       expect(loadScores(root)).toEqual({});
     }
   );
 
   it('refuses a missing source and defaults judged to the UTC date', () => {
-    expect(() => recordFromGate({ root, doc: 'nope', gate, climb: 'x' })).toThrow('nope');
+    expect(() => recordFromGate({ root, commit: 'HEAD', doc: 'nope', gate, climb: 'x' })).toThrow('nope');
     const dates = [new Date().toISOString().slice(0, 10)];
-    const entry = recordFromGate({ root, doc: 'a/page', gate, climb: 'x' });
+    const entry = recordFromGate({ root, commit: 'HEAD', doc: 'a/page', gate, climb: 'x' });
     dates.push(new Date().toISOString().slice(0, 10));
     expect(dates).toContain(entry.judged);
+    expect(entry.commit).toBe(resolveCommit(root, 'HEAD'));
   });
 
   it('writes every group page and keeps the sample and existing entries', () => {
     saveScores(root, { existing: {} });
-    const entry = recordGroup({ root, group: 'error-codes', gate, climb: 'errors', sample: ['error-codes/E1'], judged });
+    const entry = recordGroup({ root, commit: 'HEAD', group: 'error-codes', gate, climb: 'errors', sample: ['error-codes/E1'], judged });
     expect(entry).toEqual({
       group: true, pages: {
         'error-codes/E1': pageHash(root, 'error-codes/E1'),
         'error-codes/E2': pageHash(root, 'error-codes/E2'),
       }, sample: ['error-codes/E1'], judged, round: 17, judges: ['opus-a', 'opus-b'],
-      scores: { x: 7.5, y: 7 }, mean: 7.25, climb: 'errors',
+      scores: { x: 7.5, y: 7 }, mean: 7.25, climb: 'errors', commit: resolveCommit(root, 'HEAD'),
     });
     expect(loadScores(root)).toEqual({ existing: {}, 'error-codes': entry });
   });
 
   it.each([[], ['a/page'], ['error-codes/missing']])('refuses an invalid group sample: %j', (sample) => {
-    expect(() => recordGroup({ root, group: 'error-codes', gate, climb: 'x', sample }))
+    expect(() => recordGroup({ root, commit: 'HEAD', group: 'error-codes', gate, climb: 'x', sample }))
       .toThrow(/sample|Sample/);
     expect(loadScores(root)).toEqual({});
   });
@@ -213,16 +349,19 @@ describe('score persistence and CLI', () => {
   });
 
   it('runs all three CLI modes with --root and reports refusal on one stderr line', () => {
+    initRepo();
     const script = path.resolve(__dirname, '../record-page-score.js');
     const gateFile = path.join(root, 'gate.json');
     const seedFile = path.join(root, 'seed.json');
     fs.writeFileSync(gateFile, JSON.stringify(gate));
-    execFileSync(process.execPath, [script, '--root', root, '--doc', 'a/page', '--gate', gateFile,
+    execFileSync(process.execPath, [script, '--root', root, '--commit', 'HEAD', '--doc', 'a/page', '--gate', gateFile,
       '--climb', 'a__page', '--judged', judged]);
     expect(loadScores(root)['a/page'].judged).toBe(judged);
-    execFileSync(process.execPath, [script, '--root', root, '--group', 'error-codes', '--gate', gateFile,
+    expect(loadScores(root)['a/page'].commit).toBe(resolveCommit(root, 'HEAD'));
+    execFileSync(process.execPath, [script, '--root', root, '--commit', 'HEAD', '--group', 'error-codes', '--gate', gateFile,
       '--climb', 'errors', '--sample', 'error-codes/E1,error-codes/E2', '--judged', judged]);
     expect(loadScores(root)['error-codes'].sample).toEqual(['error-codes/E1', 'error-codes/E2']);
+    expect(loadScores(root)['error-codes'].commit).toBe(resolveCommit(root, 'HEAD'));
     fs.writeFileSync(seedFile, JSON.stringify({ 'a/page': {
       round: 1, judged, judges: ['opus-a'], scores: { x: 9 }, climb: 'seed',
     } }));
@@ -231,7 +370,7 @@ describe('score persistence and CLI', () => {
     expect(loadScores(root)['a/page'].seeded).toBe(true);
     expect(loadScores(root)['error-codes'].group).toBe(true);
     fs.writeFileSync(gateFile, JSON.stringify({ ...gate, state: 'revert' }));
-    const result = spawnSync(process.execPath, [script, '--root', root, '--doc', 'a/page',
+    const result = spawnSync(process.execPath, [script, '--root', root, '--commit', 'HEAD', '--doc', 'a/page',
       '--gate', gateFile, '--climb', 'x'], { encoding: 'utf8' });
     expect(result.status).toBe(1);
     expect(result.stderr).toBe('Cannot record gate state: revert\n');
