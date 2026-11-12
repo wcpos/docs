@@ -4,7 +4,9 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { VDOCS, pageHash, saveScores, loadScores, resolveCommit } = require('../lib/page-scores');
 const { recordFromGate, recordGroup, carry } = require('../record-page-score');
-const { allDocs, affectedDocs, baseScores, checkIntegrity, checkException, run, ENFORCE_FROM } = require('../check-page-scores');
+const {
+  allDocs, affectedDocs, baseScores, checkIntegrity, checkException, staleSince, run, ENFORCE_FROM,
+} = require('../check-page-scores');
 
 const fixtures = path.join(__dirname, 'fixtures/page-scores');
 const now = new Date('2026-11-16T00:00:00Z');
@@ -15,15 +17,24 @@ let options;
 const gate = { round: 2, state: 'keep', scores: { a: { x: 8.5, y: 8 } } };
 const recording = { doc: 'a/page', gate, climb: 'a__page', commit: 'HEAD' };
 const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
-function commitFixture(message) {
-  git('add', '-A');
-  git('-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-qm', message);
+function commitFixture(message, date, add = true) {
+  if (add) git('add', '-A');
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-qm', message],
+    { cwd: root, stdio: 'pipe', env: date ? { ...process.env, GIT_COMMITTER_DATE: date } : process.env });
   return resolveCommit(root, 'HEAD');
 }
 function initRepo() {
   git('init', '-q');
   return commitFixture('base');
 }
+// A base without these sources, which stay on disk: they are new pages (R1).
+function baseWithout(...docs) {
+  git('init', '-q');
+  git('add', '-A');
+  git('rm', '-q', '--cached', ...docs.map((doc) => `${VDOCS}/${doc}.mdx`));
+  return commitFixture('base without new pages', undefined, false);
+}
+const newPagesBase = () => { options.base = baseWithout('a/page', 'error-codes/E1', 'error-codes/E2'); };
 
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(fixtures, 'tmp-'));
@@ -75,6 +86,7 @@ describe('affected docs', () => {
 });
 
 describe('score check', () => {
+  beforeEach(newPagesBase);
   it('reports no affected docs', () => {
     expect(run({ ...options, changedFiles: [] })).toEqual({ exitCode: 0, lines: ['No 2.x docs changed.'] });
   });
@@ -125,6 +137,7 @@ describe('score check', () => {
 });
 
 describe('score exceptions', () => {
+  beforeEach(newPagesBase);
   beforeEach(() => {
     options.event = { pull_request: { labels: [{ name: 'score-exception' }], body } };
     options.exceptionEvents = [{ actor: 'kilbot', at: recent }];
@@ -177,6 +190,7 @@ describe('score exceptions', () => {
 });
 
 describe('exception tracking issues', () => {
+  beforeEach(newPagesBase);
   beforeEach(() => {
     options.event = { pull_request: { labels: [{ name: 'score-exception' }], body } };
     options.exceptionEvents = [{ actor: 'kilbot', at: recent }];
@@ -344,6 +358,119 @@ describe('score integrity', () => {
       expect(result.lines.filter((line) => line.startsWith('::error::page-scores.json'))).toEqual(kind === 'valid'
         ? [] : [`::error::page-scores.json: a/renamed: carried from ${entry.carriedFrom} but ${reasons[kind]}`]);
     });
+});
+
+describe('ratchet rules', () => {
+  const day = 24 * 60 * 60 * 1000;
+  const ago = (days) => new Date(now - days * day).toISOString();
+  const pageFile = () => path.join(root, VDOCS, 'a/page.mdx');
+  const scored = (scores) => ({ ...recording, gate: { round: 2, state: 'keep', scores: { a: scores } } });
+  const granted = () => {
+    options.event = { pull_request: { labels: [{ name: 'score-exception' }], body } };
+    options.exceptionEvents = [{ actor: 'kilbot', at: recent }];
+    options.issueLookup = () => ({ state: 'open', pr: false });
+  };
+  const notBlocking = (docs) => `::warning::${docs.length} page(s) not blocking yet (unscored, below the floor, or stale under 7 days): ${docs.join(', ')}. Climb them when you can.`;
+  // Base: a/page recorded with these scores at the base commit, page-scores.json committed.
+  function recordedBase(scores) {
+    initRepo();
+    recordFromGate({ root, ...scored(scores) });
+    options.base = commitFixture('score');
+  }
+
+  it.each(['missing', 'ok', 'below', 'waived'])('R1: a new page must clear the floor (%s)', (kind) => {
+    options.base = baseWithout('a/page');
+    options.changedFiles = [`${VDOCS}/a/page.mdx`];
+    if (kind !== 'missing') {
+      commitFixture('add page');
+      recordFromGate({ root, ...scored(kind === 'ok' ? { x: 8.5, y: 8 } : { x: 6 }) });
+      options.changedFiles.push('page-scores.json');
+    }
+    if (kind === 'waived') granted();
+    const result = run(options);
+    expect(result.exitCode).toBe(kind === 'ok' || kind === 'waived' ? 0 : 1);
+    if (kind === 'ok') expect(result.lines).toContain('a/page: ok');
+    if (kind === 'waived') expect(result.lines).toContain('::warning::score-exception granted; waived: a/page. Re-score them within 24 h.');
+  });
+
+  it('R1: a page carried from an entry on the base is not new', () => {
+    recordedBase({ x: 8.5, y: 8 });
+    git('mv', `${VDOCS}/a/page.mdx`, `${VDOCS}/a/renamed.mdx`);
+    commitFixture('rename');
+    carry({ root, carry: 'a/page', doc: 'a/renamed', commit: 'HEAD' });
+    options.changedFiles = ['page-scores.json', `${VDOCS}/a/page.mdx`, `${VDOCS}/a/renamed.mdx`];
+    const result = run(options);
+    expect(result.exitCode).toBe(0);
+    expect(result.lines).toContain('a/renamed: ok');
+  });
+
+  it.each([
+    ['mean 8.4', { x: 8.4, y: 8.4 }, 0, 'a/page: ok'],
+    ['mean exactly 8.3', { x: 8.3, y: 8.3 }, 0, 'a/page: ok'],
+    ['mean 8.29', { x: 8.29, y: 8.29 }, 1, 'a/page: drop (mean 8.29 is more than 0.3 below the previous 8.6)'],
+    ['a category at 7', { x: 7, y: 9.8 }, 0, 'a/page: ok'],
+    ['a category at 6.5', { x: 6.5, y: 10, z: 9.5 }, 1, 'a/page: below (x 6.5 < 7.0)'],
+    ['mean 8.0 with an exception', { x: 8, y: 8 }, 0, 'a/page: drop (mean 8 is more than 0.3 below the previous 8.6)'],
+  ])('R2: a changed entry may not drop far (%s)', (name, scores, exitCode, line) => {
+    recordedBase({ x: 8.6, y: 8.6 });
+    recordFromGate({ root, ...scored(scores) });
+    options.changedFiles = ['page-scores.json'];
+    if (name.includes('exception')) granted();
+    const result = run(options);
+    expect(result.exitCode).toBe(exitCode);
+    expect(result.lines[0]).toBe(line);
+  });
+
+  it.each(['missing', 'below'])('R3: an unchanged %s page warns', (kind) => {
+    if (kind === 'below') recordedBase({ x: 6 });
+    else {
+      options.base = initRepo();
+      fs.appendFileSync(pageFile(), '\nEdited');
+      commitFixture('edit');
+    }
+    const result = run(options);
+    expect(result.exitCode).toBe(0);
+    expect(result.lines[0]).toBe(kind === 'below' ? 'a/page: below (mean 6 < 8.0; x 6 < 7.0)' : 'a/page: missing');
+    expect(result.lines).toContain(notBlocking(['a/page']));
+  });
+
+  it.each([[3, 0], [8, 1], [7, 1]])('R3: a passing page edited %i days ago exits %i', (days, exitCode) => {
+    recordedBase({ x: 8.5, y: 8 });
+    fs.appendFileSync(pageFile(), '\nEdited');
+    commitFixture('edit', ago(days));
+    const result = run(options);
+    expect(result.exitCode).toBe(exitCode);
+    expect(result.lines[0]).toBe(`a/page: stale (stale since ${ago(days).slice(0, 10)}, fails from ${ago(days - 7).slice(0, 10)})`);
+    expect(result.lines.includes(notBlocking(['a/page']))).toBe(exitCode === 0);
+  });
+
+  it('dates stale-since from the newest run of edits', () => {
+    recordedBase({ x: 8.5, y: 8 });
+    const recorded = fs.readFileSync(pageFile());
+    fs.appendFileSync(pageFile(), '\nFirst edit');
+    commitFixture('edit', ago(10));
+    fs.writeFileSync(pageFile(), recorded);
+    commitFixture('revert', ago(9));
+    fs.appendFileSync(pageFile(), '\nSecond edit');
+    commitFixture('edit again', ago(2));
+    expect(staleSince(root, 'a/page', loadScores(root)['a/page'].hash, now)).toEqual(new Date(ago(2)));
+    expect(run(options).exitCode).toBe(0);
+  });
+
+  it('dates an uncommitted edit from now', () => {
+    recordedBase({ x: 8.5, y: 8 });
+    fs.appendFileSync(pageFile(), '\nUncommitted');
+    expect(staleSince(root, 'a/page', loadScores(root)['a/page'].hash, now)).toBe(now);
+  });
+
+  it('R3: a below-floor page made stale warns however old the edit', () => {
+    recordedBase({ x: 6 });
+    fs.appendFileSync(pageFile(), '\nEdited');
+    commitFixture('edit', ago(30));
+    const result = run(options);
+    expect(result.exitCode).toBe(0);
+    expect(result.lines).toEqual(['a/page: stale', notBlocking(['a/page'])]);
+  });
 });
 
 describe('ratchet and workflow', () => {

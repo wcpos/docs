@@ -7,6 +7,10 @@ const {
 
 // Warn-only before this UTC date, then failures exit 1 (front desk ruling 2026-11-12: required from 2026-11-16).
 const ENFORCE_FROM = '2026-11-16';
+// Ratchet ruled by the front desk 2026-11-12: a changed entry's mean may drop at most this far below its previous record.
+const MEAN_DROP = 0.3;
+// A passing page made stale by an edit warns this many days from its stale-since date, then fails until re-scored (ruling 2026-11-12).
+const STALE_DAYS = 7;
 const EXCEPTION_LABEL = 'score-exception';
 // Only the front desk applies the label, as kilbot; each use expires 24 h after it was applied (ruling 2026-11-12).
 const EXCEPTION_ACTOR = 'kilbot';
@@ -47,6 +51,24 @@ function baseScores(root, base) {
   try {
     return JSON.parse(execFileSync('git', ['show', `${base}:page-scores.json`], { cwd: root, stdio: 'pipe' }));
   } catch { return {}; }
+}
+
+// Start of the newest run of first-parent commits that left the stored hash; now when only uncommitted edits did.
+function staleSince(root, doc, expected, now) {
+  const { imgDirs, imports } = referencedPaths(root, doc);
+  const source = path.relative(root, docSource(root, doc)).split(path.sep).join('/');
+  let log;
+  try {
+    log = execFileSync('git', ['log', '--first-parent', '-n', '50', '--format=%H %cI', 'HEAD', '--', source, ...imgDirs, ...imports],
+      { cwd: root, stdio: 'pipe' }).toString().trim();
+  } catch { return now; }
+  if (!log) return now;
+  let since = null;
+  for (const [commit, date] of log.split('\n').map((line) => line.split(' '))) {
+    if (docSource(root, doc, commit) && pageHash(root, doc, commit) === expected) return since || now;
+    since = new Date(date);
+  }
+  return since;
 }
 
 function same(a, b) {
@@ -155,10 +177,42 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
   const integrity = changedFiles.includes('page-scores.json') ? checkIntegrity({ root, base, entries }) : { errors: [], docs: [] };
   const docs = [...new Set([...affectedDocs(root, changedFiles), ...integrity.docs])].sort();
   const results = docs.map((doc) => evaluate(root, doc, entries));
-  const failing = results.filter((result) => result.status !== 'ok');
+  const baseEntries = baseScores(root, base);
+  const changed = new Set(integrity.docs);
+  const failing = [];
+  const warning = [];
+  for (const result of results) {
+    const { doc } = result;
+    const entry = entries[groupOf(doc) || doc];
+    let fails = result.status !== 'ok';
+    if (base && !docSource(root, doc, base) && !(entry?.carriedFrom && docSource(root, entry.carriedFrom, base))) {
+      // R1: a new page must clear the floor.
+    } else if (changed.has(doc)) {
+      // R2: a changed entry must clear the floor and keep its mean within MEAN_DROP of the previous record.
+      const previous = baseEntries[entry.carriedFrom || groupOf(doc) || doc];
+      if (typeof previous?.mean === 'number' && Math.round((previous.mean - entry.mean) * 100) > Math.round(MEAN_DROP * 100)) {
+        fails = true;
+        result.status = 'drop';
+        result.reasons = [`mean ${entry.mean} is more than ${MEAN_DROP} below the previous ${previous.mean}`];
+      }
+    } else if (result.status === 'stale' && !belowFloor(entry.scores).length) {
+      // R3: a passing page made stale warns for STALE_DAYS, then fails until re-scored.
+      const since = staleSince(root, doc, groupOf(doc) ? entry.pages[doc] : entry.hash, now);
+      const until = new Date(since.getTime() + STALE_DAYS * 24 * 60 * 60 * 1000);
+      result.reasons.push(`stale since ${since.toISOString().slice(0, 10)}, fails from ${until.toISOString().slice(0, 10)}`);
+      fails = now >= until;
+    } else {
+      fails = false;
+    }
+    if (fails) failing.push(result);
+    else if (result.status !== 'ok') warning.push(result);
+  }
   const lines = results.map(({ doc, status, reasons }) =>
     `${doc}: ${status}` + (reasons.length ? ` (${reasons.join('; ')})` : ''));
   lines.push(...integrity.errors.map((error) => `::error::page-scores.json: ${error}`));
+  if (warning.length) {
+    lines.push(`::warning::${warning.length} page(s) not blocking yet (unscored, below the floor, or stale under ${STALE_DAYS} days): ${warning.map(({ doc }) => doc).join(', ')}. Climb them when you can.`);
+  }
   let exitCode = integrity.errors.length ? 1 : 0;
   if (!docs.length) lines.push('No 2.x docs changed.');
   if (failing.length) {
@@ -220,4 +274,6 @@ if (require.main === module) {
   process.exitCode = result.exitCode;
 }
 
-module.exports = { allDocs, affectedDocs, baseScores, checkIntegrity, checkException, run, ENFORCE_FROM };
+module.exports = {
+  allDocs, affectedDocs, baseScores, checkIntegrity, checkException, staleSince, run, ENFORCE_FROM, MEAN_DROP, STALE_DAYS,
+};
