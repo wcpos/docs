@@ -21,9 +21,25 @@ function docSource(root, doc) {
   return null;
 }
 
-function hashInputs(root, doc) {
+function referencedPaths(root, doc) {
   const source = docSource(root, doc);
   const text = fs.readFileSync(source, 'utf8');
+  const imgDirs = new Set();
+  const imports = new Set();
+  for (const match of text.matchAll(/(?:@site\/static|)\/img\/2\.x\/([^\s"'`)\]}]+)/g)) {
+    const p = match[1].replace(/[.,;:]+$/, '');
+    const dir = /\.[a-z0-9]+$/i.test(path.basename(p)) ? path.dirname(p) : p;
+    if (dir !== '.') imgDirs.add(path.relative(root, path.resolve(root, IMG, dir)).split(path.sep).join('/'));
+  }
+  for (const match of text.matchAll(/from\s+['"](\.\/[^'"]+)['"]/g)) {
+    imports.add(path.relative(root, path.resolve(path.dirname(source), match[1])).split(path.sep).join('/'));
+  }
+  return { imgDirs: [...imgDirs].sort(), imports: [...imports].sort() };
+}
+
+function hashInputs(root, doc) {
+  const source = docSource(root, doc);
+  const { imgDirs, imports } = referencedPaths(root, doc);
   const files = new Set([source]);
   function walk(dir) {
     for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -32,14 +48,12 @@ function hashInputs(root, doc) {
       else if (item.isFile()) files.add(file);
     }
   }
-  for (const match of text.matchAll(/(?:@site\/static|)\/img\/2\.x\/([^\s"'`)\]}]+)/g)) {
-    const p = match[1].replace(/[.,;:]+$/, '');
-    const dir = /\.[a-z0-9]+$/i.test(path.basename(p)) ? path.dirname(p) : p;
-    const full = path.resolve(root, IMG, dir);
-    if (dir !== '.' && fs.existsSync(full) && fs.statSync(full).isDirectory()) walk(full);
+  for (const dir of imgDirs) {
+    const full = path.resolve(root, dir);
+    if (fs.existsSync(full) && fs.statSync(full).isDirectory()) walk(full);
   }
-  for (const match of text.matchAll(/from\s+['"](\.\/[^'"]+)['"]/g)) {
-    const file = path.resolve(path.dirname(source), match[1]);
+  for (const imported of imports) {
+    const file = path.resolve(root, imported);
     if (fs.existsSync(file) && fs.statSync(file).isFile()) files.add(file);
   }
   return [...files].map((file) => path.relative(root, file).split(path.sep).join('/')).sort();
@@ -73,6 +87,7 @@ function meanOf(scores) {
 }
 
 function belowFloor(scores) {
+  if (!scores || !Object.keys(scores).length) return ['no scores'];
   const reasons = [];
   const mean = meanOf(scores);
   if (mean < MEAN_FLOOR) reasons.push(`mean ${mean} < ${MEAN_FLOOR.toFixed(1)}`);
@@ -97,5 +112,5 @@ function evaluate(root, doc, entries) {
 
 module.exports = {
   VDOCS, IMG, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS,
-  docSource, hashInputs, pageHash, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
+  docSource, referencedPaths, hashInputs, pageHash, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
 };

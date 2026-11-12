@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const {
-  VDOCS, SCORES_FILE, docSource, hashInputs, pageHash, groupOf,
+  VDOCS, SCORES_FILE, docSource, referencedPaths, hashInputs, pageHash, groupOf,
   loadScores, saveScores, meanOf, belowFloor, evaluate,
 } = require('../lib/page-scores');
 const { recordFromGate, recordGroup, seed } = require('../record-page-score');
@@ -24,6 +24,17 @@ afterEach(() => {
 });
 
 describe('page-score inputs and hashes', () => {
+  it('lists sorted references even when their targets do not exist, skipping the image root', () => {
+    fs.writeFileSync(docSource(root, 'a/page'), [
+      '/img/2.x/missing/shot.png', '@site/static/img/2.x/a/shot.png', '/img/2.x/root.png',
+      "import Missing from './absent.mdx'", "import Part from './_part.mdx'",
+    ].join('\n'));
+    expect(referencedPaths(root, 'a/page')).toEqual({
+      imgDirs: ['static/img/2.x/a', 'static/img/2.x/missing'],
+      imports: [`${VDOCS}/a/_part.mdx`, `${VDOCS}/a/absent.mdx`],
+    });
+  });
+
   it('lists exactly the source, relative import and all referenced directory files', () => {
     expect(hashInputs(root, 'a/page')).toEqual([
       'static/img/2.x/a/deep/extra.png',
@@ -74,6 +85,10 @@ describe('page-score inputs and hashes', () => {
 });
 
 describe('score floors and evaluation', () => {
+  it.each([{}, undefined])('rejects empty or missing scores: %j', (scores) => {
+    expect(belowFloor(scores)).toEqual(['no scores']);
+  });
+
   it('checks the mean first, then categories in key order, with inclusive floors', () => {
     expect(belowFloor({ x: 8, y: 8 })).toEqual([]);
     expect(belowFloor({ x: 9, y: 6.5 })).toEqual(['mean 7.75 < 8.0', 'y 6.5 < 7.0']);
@@ -105,6 +120,23 @@ describe('score floors and evaluation', () => {
 });
 
 describe('recording scores', () => {
+  it('refuses judges with no categories without saving an entry', () => {
+    expect(() => recordFromGate({
+      root, doc: 'a/page', gate: { ...gate, scores: { a: {}, b: {} } }, climb: 'x',
+    })).toThrow('Gate scores have no categories');
+    expect(loadScores(root)).toEqual({});
+  });
+
+  it.each([{}, undefined])('skips seed values with empty or missing scores: %j', (scores) => {
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stdout = vi.spyOn(console, 'log').mockImplementation(() => {});
+    saveScores(root, { 'a/page': { scores: { x: 8 } } });
+    expect(seed({ root, seed: { 'a/page': { scores } } })).toEqual({ seeded: 0, skipped: 1 });
+    expect(loadScores(root)).toEqual({ 'a/page': { scores: { x: 8 } } });
+    expect(stderr).toHaveBeenCalledWith('No scores for doc: a/page');
+    expect(stdout).toHaveBeenCalledWith('seeded 0, skipped 1');
+  });
+
   it('min-merges judges and preserves existing entries', () => {
     saveScores(root, { existing: { scores: { x: 9 } } });
     const entry = recordFromGate({ root, doc: 'a/page', gate, climb: 'a__page', judged });

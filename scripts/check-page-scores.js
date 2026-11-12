@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const {
-  VDOCS, hashInputs, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource,
+  VDOCS, referencedPaths, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource, groupOf,
 } = require('./lib/page-scores');
 
 // Warn-only before this UTC date, then failures exit 1 (front desk ruling 2026-11-12: required from 2026-11-16).
@@ -30,10 +30,16 @@ function allDocs(root) {
   return docs.sort();
 }
 
+// Within the allowed trees, match the doc source, an exact import, or any path under a referenced image dir.
 function affectedDocs(root, changedFiles) {
   const changed = new Set(changedFiles.filter((file) =>
     file.startsWith(VDOCS + '/') || file.startsWith('static/img/2.x/')));
-  return allDocs(root).filter((doc) => hashInputs(root, doc).some((file) => changed.has(file)));
+  return allDocs(root).filter((doc) => {
+    const { imgDirs, imports } = referencedPaths(root, doc);
+    const source = path.relative(root, docSource(root, doc)).split(path.sep).join('/');
+    return changed.has(source) || imports.some((file) => changed.has(file)) ||
+      [...changed].some((file) => imgDirs.some((dir) => file.startsWith(dir + '/')));
+  });
 }
 
 function checkException({ event, exceptionEvents, now }) {
@@ -81,7 +87,12 @@ function run({ root, changedFiles, event, exceptionEvents, now }) {
         lines.push(`::error::${failing.length} page(s) need a score.`);
         exitCode = 1;
       }
-      lines.push('Climb each page with the docs climb kit, then: node scripts/record-page-score.js --doc <doc> --gate <gate.json> --climb <folder>');
+      if (failing.some(({ doc }) => !groupOf(doc))) {
+        lines.push('Climb each page with the docs climb kit, then: node scripts/record-page-score.js --doc <doc> --gate <gate.json> --climb <folder>');
+      }
+      for (const group of new Set(failing.map(({ doc }) => groupOf(doc)).filter(Boolean))) {
+        lines.push(`For ${group} pages, record the template score: node scripts/record-page-score.js --group ${group} --gate <gate.json> --climb <folder> --sample <10 judged pages, comma-separated>`);
+      }
     }
   }
   const values = Object.values(entries);
@@ -101,7 +112,7 @@ if (require.main === module) {
   const now = nowIndex === -1 ? new Date() : new Date(args[nowIndex + 1]);
   const baseRef = process.env.BASE_REF || 'origin/main';
   const changedFiles = execFileSync('git', [
-    'diff', '--name-only', '--diff-filter=ACMR', `${baseRef}...HEAD`,
+    'diff', '--name-only', '--diff-filter=ACMRD', `${baseRef}...HEAD`,
   ], { cwd: root, encoding: 'utf8' }).split('\n').map((line) => line.trim()).filter(Boolean);
   const eventFile = process.env.GITHUB_EVENT_PATH;
   const event = eventFile && fs.existsSync(eventFile) ? JSON.parse(fs.readFileSync(eventFile, 'utf8')) : null;

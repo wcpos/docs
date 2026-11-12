@@ -19,6 +19,13 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe('affected docs', () => {
+  it.each(['static/img/2.x/a/shot.png', `${VDOCS}/a/_part.mdx`])(
+    'selects dependent docs when %s is deleted', (file) => {
+      fs.unlinkSync(path.join(root, file));
+      expect(affectedDocs(root, [file])).toEqual(['a/page']);
+    }
+  );
+
   it.each([
     [`${VDOCS}/a/page.mdx`, ['a/page']],
     ['static/img/2.x/a/shot.png', ['a/page']],
@@ -70,6 +77,7 @@ describe('score check', () => {
   it.each([
     ['ok', { x: 8 }, 0, 'a/page: ok'],
     ['below', { x: 6 }, 1, 'a/page: below (mean 6 < 8.0; x 6 < 7.0)'],
+    ['below', {}, 1, 'a/page: below (no scores)'],
     ['stale', { x: 8 }, 1, 'a/page: stale'],
   ])('reports %s scores', (status, scores, exitCode, line) => {
     saveScores(root, { 'a/page': { hash: pageHash(root, 'a/page'), scores } });
@@ -77,6 +85,23 @@ describe('score check', () => {
     const result = run(options);
     expect(result.exitCode).toBe(exitCode);
     expect(result.lines[0]).toBe(line);
+  });
+
+  it('gives only the template hint for a failing grouped page', () => {
+    const result = run({ ...options, changedFiles: [`${VDOCS}/error-codes/E1.mdx`] });
+    expect(result.exitCode).toBe(1);
+    expect(result.lines).toEqual([
+      'error-codes/E1: missing', '::error::1 page(s) need a score.',
+      'For error-codes pages, record the template score: node scripts/record-page-score.js --group error-codes --gate <gate.json> --climb <folder> --sample <10 judged pages, comma-separated>',
+    ]);
+  });
+
+  it('gives both hints once for mixed failing docs', () => {
+    const result = run({ ...options, changedFiles: [
+      `${VDOCS}/a/page.mdx`, `${VDOCS}/error-codes/E1.mdx`, `${VDOCS}/error-codes/E2.mdx`,
+    ] });
+    expect(result.lines.filter((line) => line.includes(' --doc '))).toHaveLength(1);
+    expect(result.lines.filter((line) => line.includes(' --group error-codes '))).toHaveLength(1);
   });
 });
 

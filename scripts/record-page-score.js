@@ -11,6 +11,7 @@ function gateEntry(gate, climb, judged = new Date().toISOString().slice(0, 10)) 
   const judges = Object.keys(gate.scores || {});
   if (!judges.length) throw new Error('Gate scores are empty');
   const categories = [...new Set(judges.flatMap((judge) => Object.keys(gate.scores[judge])))];
+  if (!categories.length) throw new Error('Gate scores have no categories');
   const scores = {};
   for (const category of categories) {
     if (judges.some((judge) => !Object.hasOwn(gate.scores[judge], category))) {
@@ -64,6 +65,11 @@ function seed({ root, seed }) {
   for (const [doc, value] of Object.entries(seed)) {
     if (!docSource(root, doc)) {
       console.error(`No source for doc: ${doc}`);
+      summary.skipped++;
+      continue;
+    }
+    if (!value.scores || !Object.keys(value.scores).length) {
+      console.error(`No scores for doc: ${doc}`);
       summary.skipped++;
       continue;
     }
