@@ -3,7 +3,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
   VDOCS, referencedPaths, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource, groupOf, pageHash, pageContent,
-  meanOf, REQUIRED_CATEGORIES, OPTIONAL_CATEGORIES, RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores, scoredOptional,
+  meanOf, REQUIRED_CATEGORIES, OPTIONAL_CATEGORIES, RUNS_DIR, JUDGES, GROUPS, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores, scoredOptional,
 } = require('./lib/page-scores.js');
 
 // Warn-only before this UTC date, then failures exit 1 (front desk ruling 2026-11-12: required from 2026-11-16).
@@ -126,7 +126,7 @@ function same(a, b) {
 }
 
 // The first shape problem of a changed entry, or null.
-function entryProblem(entry) {
+function entryProblem(entry, key) {
   if (!isPlain(entry)) return 'not an object';
   if (!isPlain(entry.scores)) return 'no scores';
   const bad = Object.keys(entry.scores).find((key) => !(Number.isFinite(entry.scores[key]) && entry.scores[key] >= 0 && entry.scores[key] <= 10));
@@ -137,6 +137,8 @@ function entryProblem(entry) {
   if (unknown !== undefined) return `unknown score ${unknown}`;
   const mean = meanOf(entry.scores);
   if (entry.mean !== mean) return `stored mean ${entry.mean} differs from its category scores (${mean})`;
+  if (Object.hasOwn(GROUPS, key) && entry.group !== true) return 'a group entry needs group: true';
+  if (!Object.hasOwn(GROUPS, key) && Object.hasOwn(entry, 'group')) return 'group is only for a group key';
   if (entry.group === true) return isPlain(entry.pages) && Object.values(entry.pages).every(isHash) ? null : 'bad group pages';
   return isHash(entry.hash) ? null : 'bad hash';
 }
@@ -199,7 +201,7 @@ function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, ba
     if (previous?.group && same(entry, { ...previous, pages: Object.fromEntries(
       Object.entries(previous.pages || {}).filter(([page]) => docSource(root, page)),
     ) })) continue;
-    const problem = entryProblem(entry);
+    const problem = entryProblem(entry, key);
     if (problem) { errors.push(`${key}: malformed entry (${problem})`); invalid.push(key); continue; }
     const group = entry.group === true;
     docs.push(...(group ? Object.keys(entry.pages) : [key]));
@@ -312,7 +314,7 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
     if (!(error instanceof SyntaxError)) throw error;
     return { exitCode: 1, lines: [`::error::page-scores.json is malformed: ${error.message}; fix it in this PR.`] };
   }
-  const shape = Object.entries(entries).flatMap(([key, entry]) => (entryProblem(entry) ? [{ key, error: `${key}: malformed entry (${entryProblem(entry)})` }] : []));
+  const shape = Object.entries(entries).flatMap(([key, entry]) => (entryProblem(entry, key) ? [{ key, error: `${key}: malformed entry (${entryProblem(entry, key)})` }] : []));
   const integrity = changedFiles.some((file) => file === 'page-scores.json' || file.startsWith(RUNS_DIR + '/'))
     ? checkIntegrity({ root, base, entries, baseEntries, changedFiles }) : { errors: [], docs: [], invalid: [] };
   entries = Object.fromEntries(Object.entries(entries).filter(([key]) => !integrity.invalid.includes(key) && !shape.some((bad) => bad.key === key)));

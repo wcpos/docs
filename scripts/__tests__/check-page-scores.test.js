@@ -329,7 +329,7 @@ describe('malformed entries', () => {
   });
   it('accepts the admin setup score the terminal pages carry, and no other extra', () => {
     const scores = seven(8, { 'admin setup': 8 });
-    expect(entryProblem({ hash: pageHash(root, 'a/page'), scores, mean: meanOf(scores) })).toBeNull();
+    expect(entryProblem({ hash: pageHash(root, 'a/page'), scores, mean: meanOf(scores) }, 'a/page')).toBeNull();
   });
   it('rejects a stored mean that differs from the scores', () => {
     const entry = record({ ...recording, gate: { ...gate, scores: { a: seven(8), b: seven(8) } } });
@@ -478,6 +478,27 @@ describe('score integrity', () => {
     entry.pages['error-codes/E1'] = 'bad';
     expect(checkIntegrity({ ...options, entries: { 'error-codes': entry } }))
       .toEqual({ errors: ['error-codes: malformed entry (bad group pages)'], docs: [], invalid: ['error-codes'] });
+  });
+  it('refuses the group flag on an ordinary page entry', () => {
+    const entry = { ...record(), group: true, pages: {} };
+    expect(checkIntegrity({ ...options, entries: { 'a/page': entry } }))
+      .toEqual({ errors: ['a/page: malformed entry (group is only for a group key)'], docs: [], invalid: ['a/page'] });
+    saveScores(root, { 'a/page': entry });
+    const result = run(options);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.lines).toContain('::error::page-scores.json: a/page: malformed entry (group is only for a group key)');
+  });
+  it('refuses a group key without the group flag', () => {
+    const entry = record(groupRecording, recordGroup);
+    delete entry.group;
+    expect(checkIntegrity({ ...options, entries: { 'error-codes': entry } }))
+      .toEqual({ errors: ['error-codes: malformed entry (a group entry needs group: true)'], docs: [], invalid: ['error-codes'] });
+  });
+  it('allows the group flag only on a group key', () => {
+    const scores = seven(8);
+    const entry = { hash: pageHash(root, 'a/page'), scores, mean: meanOf(scores) };
+    expect(entryProblem(entry, 'a/page')).toBeNull();
+    expect(entryProblem({ ...entry, group: false }, 'a/page')).toBe('group is only for a group key');
   });
   it('rejects a carry from an entry already stale on the base', () => {
     record();
