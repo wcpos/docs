@@ -9,18 +9,27 @@
 - **R1.** A new page must clear the floor.
 - **R2.** A changed entry must clear the floor, and its mean may drop at most 0.3 below its previous record.
 - **R3.** A passing page made stale by an edit warns for 7 days, then fails until it is scored again.
-- **Integrity.** Each changed entry must have all seven categories, a mean that equals its scores, a climb and
-  round, and a judged commit in the branch's history. Its page hashes must match that commit. Its scores must equal
+- **Shape.** Every entry needs a hash, all seven categories (plus `admin setup` on the terminal gateway pages, and
+  no other score) from 0 to 10, and a mean that equals its scores. A malformed `page-scores.json` or entry fails on
+  any date, whether or not the pull request changed it. When the base branch's file is malformed, the gate warns
+  and compares with the newest earlier commit whose file is well formed.
+- **Integrity.** Each changed entry must have a climb and round, and a judged commit in the branch's history. Its page hashes must match that commit. Its scores must equal
   the per-category minimum of the two Opus judge transcripts committed under `page-scores/runs/`, and those
-  transcripts must match the sha256 recorded in the entry. A changed transcript fails its entry even when
+  transcripts must match the sha256 recorded in the entry. The climb must be the page's own (`a/b/c` gives
+  `a__b__c`; a group uses its key). Each stored transcript starts with a header line naming the entry's doc or
+  group, climb, round and judge, so another page's transcripts copied byte for byte fail. The recorded column must
+  be the transcript's first score column. A changed, deleted or renamed-away transcript fails its entry even when
   `page-scores.json` is unchanged. An entry may not be removed while its page exists. A carry must keep the old
   entry's scores and judge run, and the page source must be unchanged.
-- **Gate-file guard.** A pull request that edits the gate's scripts or workflow fails unless it has the score
-  exception below.
+- **Gate-file guard.** A pull request that edits anything under `scripts/` or `.github/workflows/page-scores.yml`
+  fails unless it has the score exception below. The translation tooling the pipeline edits weekly is exempt: the
+  files in `TRANSLATION_TOOLING`, `scripts/docs-translation/`, and `scripts/__tests__/docs-translation-*.test.js`.
+  The changed-file list is taken without rename detection, so a moved file counts at its old path too.
 
 ## Recording a score
 
-Climb the page with the docs climb kit. Then record the gate result and the round's two judge transcripts.
+Climb the page with the docs climb kit, in the climb folder named after the page (for example
+`hardware__printers__setup-wizard`; the error-code template uses `error-codes`). Then record the gate result and the round's two judge transcripts.
 `--run` names the round's folder, which must hold `opus-a.md` and `opus-b.md`. `--commit` is the commit that was
 judged.
 
@@ -39,11 +48,11 @@ node scripts/record-page-score.js --carry <old doc> --doc <new doc> --commit <co
 node scripts/record-page-score.js --prune
 ```
 
-The recorder finds the page column in each transcript: the one header that is `Page` or ends with `(page)`. When a
-judge headed it some other way, name it with `--column-a <header>` or `--column-b <header>`. The recorder checks
-that the transcripts give the same scores as the gate file, copies them to
-`page-scores/runs/<climb>/r<round>/opus-a.md` and `opus-b.md`, and records their path, sha256 and column in the
-entry. Commit the copied transcripts with `page-scores.json`.
+The recorder refuses a `--climb` that is not the page's. It reads each transcript's first score column, where the
+judges put the page under review, and refuses a transcript whose first column is missing or a Baseline. It checks
+that the transcripts give the same scores as the gate file, copies them behind a header line to
+`page-scores/runs/<climb>/r<round>/opus-a.md` and `opus-b.md`, and records their path, sha256 (of the stored file,
+header included) and column in the entry. Commit the copied transcripts with `page-scores.json`.
 
 ## Exceptions
 
@@ -56,10 +65,9 @@ entry. Commit the copied transcripts with `page-scores.json`.
 
 - The gate proves that an entry's scores equal its committed transcripts, that the transcripts are unchanged since
   they were recorded, and that the page hashes match the judged commit.
-- It cannot prove that an Opus judge wrote the transcripts. Someone can write a transcript by hand. Only a reviewer
-  reading the diff under `page-scores/runs/` catches that.
-- The entry names the page column of each transcript. A reviewer should check that it is the page's own column and
-  not an anchor page's.
+- It cannot prove that an Opus judge wrote the transcripts. Someone can write a transcript by hand, header line
+  included, or reorder a table so an anchor page's column comes first. Only a reviewer reading the diff under
+  `page-scores/runs/` catches that.
 - Entries recorded before this binding are marked `seeded: true` and have no transcripts. They are grandfathered
   until they change.
 - A seeded entry's `judges` field says `opus-a`, but 111 of the 135 seeded entries were judged by GPT-6 Astra in the

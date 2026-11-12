@@ -1,3 +1,4 @@
+<!-- page-scores run: doc=hardware/printers/setup-wizard climb=hardware__printers__setup-wizard round=9 judge=opus-b -->
 | Category | Printer Setup Wizard | Baseline | Open the Register | Checkout | Product Panel | Square (cart) | Shopify (quick ref) |
 |---|---|---|---|---|---|---|---|
 | Task clarity | 7.5 | 7.5 | 8.5 | 8.5 | 8 | 5 | 7 |

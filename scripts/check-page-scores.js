@@ -1,10 +1,10 @@
-const fs = require('fs');
-const path = require('path');
-const { execFileSync } = require('child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const {
   VDOCS, referencedPaths, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource, groupOf, pageHash,
-  meanOf, REQUIRED_CATEGORIES, RUNS_DIR, JUDGES, sha256Of, runPath, parseJudgeTable, runScores,
-} = require('./lib/page-scores');
+  meanOf, REQUIRED_CATEGORIES, OPTIONAL_CATEGORIES, RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores,
+} = require('./lib/page-scores.js');
 
 // Warn-only before this UTC date, then failures exit 1 (front desk ruling 2026-11-12: required from 2026-11-16).
 const ENFORCE_FROM = '2026-11-16';
@@ -18,8 +18,17 @@ const EXCEPTION_ACTOR = 'kilbot';
 const EXCEPTION_HOURS = 24;
 // The hash definition changed, so when no commit matches a stored hash the 7 days start at the change's merge (ruling 2026-11-12).
 const HASH_DEFINITION = 'scripts/lib/page-scores.js';
-// FIX-FIRST ruling 2026-11-12: a PR editing the gate itself needs the score-exception label from kilbot.
-const GATE_FILES = ['scripts/check-page-scores.js', 'scripts/record-page-score.js', 'scripts/lib/page-scores.js', '.github/workflows/page-scores.yml'];
+// FIX-FIRST ruling 2026-11-12: a PR editing the gate (any of scripts/, which can change what it runs) needs the score-exception
+// label from kilbot. The front desk allowed the translation tooling on 2026-11-12 because the translation pipeline edits it weekly.
+const TRANSLATION_TOOLING = ['scripts/build-locales.js', 'scripts/build-ui-glossary.js', 'scripts/check-translation-completeness.js',
+  'scripts/check-translation-safety.js', 'scripts/sync-translations.js', 'scripts/translate-docs-local.sh', 'scripts/translation-context.md',
+  'scripts/__tests__/build-locales.test.js', 'scripts/__tests__/check-translation-completeness.test.js',
+  'scripts/__tests__/check-translation-safety.test.js', 'scripts/__tests__/translate-docs-local.test.js'];
+// Translation tooling by prefix: a path starting with `prefix` and ending with `suffix`.
+const TRANSLATION_PREFIXES = [{ prefix: 'scripts/docs-translation/', suffix: '' }, { prefix: 'scripts/__tests__/docs-translation-', suffix: '.test.js' }];
+const isGateFile = (file) => (file.startsWith('scripts/') || file === '.github/workflows/page-scores.yml') &&
+  !TRANSLATION_TOOLING.includes(file) &&
+  !TRANSLATION_PREFIXES.some(({ prefix, suffix }) => file.startsWith(prefix) && file.endsWith(suffix));
 const isHash = (hash) => typeof hash === 'string' && /^sha256:[0-9a-f]{64}$/.test(hash);
 const isPlain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -44,7 +53,7 @@ function allDocs(root) {
 // Within the allowed trees, match the doc source, an exact import, or any path under a referenced image dir.
 function affectedDocs(root, changedFiles) {
   const changed = new Set(changedFiles.filter((file) =>
-    file.startsWith(VDOCS + '/') || Object.values(require('./lib/page-scores').IMG_ROOTS).some((dir) => file.startsWith(dir + '/'))));
+    file.startsWith(VDOCS + '/') || Object.values(require('./lib/page-scores.js').IMG_ROOTS).some((dir) => file.startsWith(dir + '/'))));
   return allDocs(root).filter((doc) => {
     const { imgDirs, imports } = referencedPaths(root, doc);
     const source = path.relative(root, docSource(root, doc)).split(path.sep).join('/');
@@ -53,14 +62,21 @@ function affectedDocs(root, changedFiles) {
   });
 }
 
+// The base's entries; when the base file is malformed, those of the newest first-parent commit whose file parses, with a note.
 function baseScores(root, base) {
-  if (!base) return {};
+  if (!base) return { entries: {} };
   try {
     execFileSync('git', ['cat-file', '-e', `${base}:page-scores.json`], { cwd: root, stdio: 'pipe' });
-  } catch { return {}; }
-  const value = JSON.parse(execFileSync('git', ['show', `${base}:page-scores.json`], { cwd: root, stdio: 'pipe' }));
-  if (!isPlain(value)) throw new Error('not an object');
-  return value;
+  } catch { return { entries: {} }; }
+  const parsed = (commit) => {
+    const text = execFileSync('git', ['show', `${commit}:page-scores.json`], { cwd: root, stdio: 'pipe' });
+    try { const value = JSON.parse(text); return isPlain(value) ? value : null; } catch { return null; }
+  };
+  if (parsed(base)) return { entries: parsed(base) };
+  const log = execFileSync('git', ['log', '--first-parent', '--format=%H', base, '--', 'page-scores.json'], { cwd: root, encoding: 'utf8' });
+  // A commit that deleted the file cannot be shown; skip it.
+  const good = log.split('\n').filter(Boolean).find((commit) => { try { return parsed(commit); } catch { return false; } });
+  return { entries: good ? parsed(good) : {}, note: `page-scores.json on the base is malformed; comparing with ${good ? good.slice(0, 12) : 'no entries'}` };
 }
 
 // Start of the newest run of first-parent commits that left the stored hash; now when only uncommitted edits did.
@@ -99,6 +115,8 @@ function entryProblem(entry) {
   if (bad !== undefined) return `score ${bad} is not a number from 0 to 10`;
   const missing = REQUIRED_CATEGORIES.find((key) => !Object.hasOwn(entry.scores, key));
   if (missing !== undefined) return `no ${missing} score`;
+  const unknown = Object.keys(entry.scores).find((key) => !REQUIRED_CATEGORIES.includes(key) && !OPTIONAL_CATEGORIES.includes(key));
+  if (unknown !== undefined) return `unknown score ${unknown}`;
   const mean = meanOf(entry.scores);
   if (entry.mean !== mean) return `stored mean ${entry.mean} differs from its category scores (${mean})`;
   if (entry.group === true) return isPlain(entry.pages) && Object.values(entry.pages).every(isHash) ? null : 'bad group pages';
@@ -114,20 +132,24 @@ function committedRun(root, file, sha256) {
   return sha256Of(bytes) === sha256 ? { text: bytes.toString('utf8') } : { problem: `judge run file ${file} does not match its sha256` };
 }
 
-// The first problem binding an entry to its committed Opus judge transcripts, or null.
-function judgeRunProblem(root, entry) {
+// The first problem binding entry `doc` (a doc or group key) to its committed Opus judge transcripts, or null.
+function judgeRunProblem(root, doc, entry) {
   const run = entry.judgeRun;
   if (!Array.isArray(run) || run.length !== JUDGES.length || !run.every((item, i) => isPlain(item) && item.judge === JUDGES[i])) {
     return 'no judge run';
   }
   if (!same(entry.judges, JUDGES)) return 'judges differ from the judge run';
+  if (entry.climb !== climbOf(doc)) return `climb ${entry.climb} is not this page's (${climbOf(doc)})`;
   const texts = [];
   for (const { judge, path: file, sha256, column } of run) {
     if (file !== runPath(entry.climb, entry.round, judge)) return `judge run ${file} is not for climb ${entry.climb} round ${entry.round}`;
     const { text, problem } = committedRun(root, file, sha256);
     if (problem) return problem;
-    if (typeof column !== 'string' || !column || /baseline/i.test(column)) return `judge run ${file} has no page column`;
-    texts.push(text);
+    const [header, ...rest] = text.split('\n');
+    if (header.replace(/\r$/, '') !== runHeader({ doc, climb: entry.climb, round: entry.round, judge })) return `judge run file ${file} does not name this page`;
+    const body = rest.join('\n');
+    if (typeof column !== 'string' || column !== firstScoreColumn(body)) return `judge run ${file} column "${column}" is not the page's own column`;
+    texts.push(body);
   }
   const categories = Object.keys(entry.scores);
   for (const [i, { path: file, column }] of run.entries()) {
@@ -138,7 +160,7 @@ function judgeRunProblem(root, entry) {
   return key === undefined ? null : `scores differ from the judge run (${key}: ${entry.scores[key]} vs ${recomputed[key]})`;
 }
 
-function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, base), changedFiles = [] }) {
+function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, base).entries, changedFiles = [] }) {
   const errors = [];
   const docs = [];
   const invalid = [];
@@ -185,7 +207,7 @@ function checkIntegrity({ root, base, entries, baseEntries = baseScores(root, ba
       continue;
     }
     if (!old) {
-      const problem = judgeRunProblem(root, entry);
+      const problem = judgeRunProblem(root, key, entry);
       if (problem) errors.push(`${key}: ${problem}`);
     } else {
       if (!baseEntries[old] || baseEntries[old].group) {
@@ -256,21 +278,21 @@ function exceptionEventsFromApi(repo, pr, exec = execFileSync) {
 
 function run({ root, changedFiles, event, exceptionEvents, now, base, issueLookup }) {
   let baseEntries;
-  try { baseEntries = baseScores(root, base); } catch (error) {
+  let baseNote;
+  try { ({ entries: baseEntries, note: baseNote } = baseScores(root, base)); } catch (error) {
     return { exitCode: 1, lines: [`::error::page-scores.json on the base is unreadable: ${error.message}`] };
   }
   const enforced = now.toISOString().slice(0, 10) >= ENFORCE_FROM;
   let entries;
+  // A malformed head file or entry fails on any date, changed by this PR or not, so it cannot merge and brick later PRs.
   try { entries = loadScores(root); if (!isPlain(entries)) throw new SyntaxError('not an object'); } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
-    const lines = [`::warning::page-scores.json is malformed: ${error.message}`];
-    const exitCode = changedFiles.includes('page-scores.json') && now.toISOString().slice(0, 10) >= ENFORCE_FROM ? 1 : 0;
-    if (exitCode) lines.push('::error::page-scores.json is malformed; fix it in this PR.');
-    return { exitCode, lines };
+    return { exitCode: 1, lines: [`::error::page-scores.json is malformed: ${error.message}; fix it in this PR.`] };
   }
+  const shape = Object.entries(entries).flatMap(([key, entry]) => (entryProblem(entry) ? [{ key, error: `${key}: malformed entry (${entryProblem(entry)})` }] : []));
   const integrity = changedFiles.some((file) => file === 'page-scores.json' || file.startsWith(RUNS_DIR + '/'))
     ? checkIntegrity({ root, base, entries, baseEntries, changedFiles }) : { errors: [], docs: [], invalid: [] };
-  entries = Object.fromEntries(Object.entries(entries).filter(([key]) => !integrity.invalid.includes(key)));
+  entries = Object.fromEntries(Object.entries(entries).filter(([key]) => !integrity.invalid.includes(key) && !shape.some((bad) => bad.key === key)));
   const docs = [...new Set([...affectedDocs(root, changedFiles), ...integrity.docs])].sort();
   const results = docs.map((doc) => evaluate(root, doc, entries));
   const changed = new Set(integrity.docs);
@@ -306,13 +328,16 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
   }
   const lines = results.map(({ doc, status, reasons }) =>
     `${doc}: ${status}` + (reasons.length ? ` (${reasons.join('; ')})` : ''));
-  lines.push(...integrity.errors.map((error) => `::${enforced ? 'error' : 'warning'}::page-scores.json: ${error}`));
+  if (baseNote) lines.push(`::warning::${baseNote}`);
+  // Shape errors fail on any date; integrity repeats a changed entry's shape error, so that one prints once, as a shape error.
+  lines.push(...integrity.errors.filter((error) => !shape.some((bad) => bad.error === error)).map((error) => `::${enforced ? 'error' : 'warning'}::page-scores.json: ${error}`));
+  lines.push(...shape.map(({ error }) => `::error::page-scores.json: ${error}`));
   if (warning.length) {
     lines.push(`::warning::${warning.length} page(s) not blocking yet (unscored, below the floor, or stale under ${STALE_DAYS} days): ${warning.map(({ doc }) => doc).join(', ')}. Climb them when you can.`);
   }
-  let exitCode = integrity.errors.length && enforced ? 1 : 0;
+  let exitCode = shape.length || (integrity.errors.length && enforced) ? 1 : 0;
   if (!docs.length) lines.push('No 2.x docs changed.');
-  const gateEdits = changedFiles.filter((file) => GATE_FILES.includes(file));
+  const gateEdits = changedFiles.filter(isGateFile);
   const ex = failing.length || gateEdits.length ? checkException({ event, exceptionEvents, now, issueLookup }) : null;
   if (ex && !ex.granted && event?.pull_request?.labels?.some((label) => label.name === EXCEPTION_LABEL)) lines.push('::notice::' + ex.reason);
   if (failing.length) {
@@ -348,6 +373,12 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
   return { exitCode, lines };
 }
 
+// Without rename detection a moved file lists its old path too, so a renamed-away transcript or gate file is seen.
+function changedFilesOf(root, baseRef) {
+  return execFileSync('git', ['diff', '--name-only', '--no-renames', '--diff-filter=ACMRD', `${baseRef}...HEAD`],
+    { cwd: root, encoding: 'utf8' }).split('\n').map((line) => line.trim()).filter(Boolean);
+}
+
 // A shallow clone or a missing merge base fails on any date.
 function mergeBase(root, baseRef) {
   if (execFileSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: root, encoding: 'utf8' }).trim() === 'true') {
@@ -365,9 +396,7 @@ if (require.main === module) {
   const now = nowIndex === -1 ? new Date() : new Date(args[nowIndex + 1]);
   const baseRef = process.env.BASE_REF || 'origin/main';
   const { base, failure } = mergeBase(root, baseRef);
-  const changedFiles = failure ? [] : execFileSync('git', [
-    'diff', '--name-only', '--diff-filter=ACMRD', `${baseRef}...HEAD`,
-  ], { cwd: root, encoding: 'utf8' }).split('\n').map((line) => line.trim()).filter(Boolean);
+  const changedFiles = failure ? [] : changedFilesOf(root, baseRef);
   const eventFile = process.env.GITHUB_EVENT_PATH;
   const event = eventFile && fs.existsSync(eventFile) ? JSON.parse(fs.readFileSync(eventFile, 'utf8')) : null;
   const exceptionEvents = event?.pull_request?.labels?.some((label) => label.name === EXCEPTION_LABEL)
@@ -385,5 +414,5 @@ if (require.main === module) {
 
 module.exports = {
   allDocs, affectedDocs, baseScores, checkIntegrity, checkException, staleSince, run, entryProblem, exceptionEventsFromApi, judgeRunProblem,
-  ENFORCE_FROM, MEAN_DROP, STALE_DAYS, GATE_FILES, HASH_DEFINITION,
+  changedFilesOf, isGateFile, ENFORCE_FROM, MEAN_DROP, STALE_DAYS, TRANSLATION_TOOLING, TRANSLATION_PREFIXES, HASH_DEFINITION,
 };

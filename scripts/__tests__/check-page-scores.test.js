@@ -8,7 +8,7 @@ const {
 const { recordFromGate, recordGroup, carry } = require('../record-page-score');
 const {
   allDocs, affectedDocs, baseScores, checkIntegrity, checkException, staleSince, run, ENFORCE_FROM,
-  GATE_FILES, exceptionEventsFromApi,
+  TRANSLATION_TOOLING, isGateFile, changedFilesOf, entryProblem, exceptionEventsFromApi,
 } = require('../check-page-scores');
 
 const fixtures = path.join(__dirname, 'fixtures/page-scores');
@@ -25,6 +25,7 @@ const seven = (value, overrides = {}) => ({
 const PASS = seven(8.5, { 'task clarity': 8 });
 const gate = { round: 2, state: 'keep', scores: { a: PASS, b: PASS } };
 const recording = { doc: 'a/page', gate, climb: 'a__page', commit: 'HEAD' };
+const groupRecording = { ...recording, climb: 'error-codes', group: 'error-codes', sample: ['error-codes/E1'] };
 const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
 function commitFixture(message, date, add = true) {
   if (add) git('add', '-A');
@@ -37,9 +38,9 @@ function initRepo() {
   git('config', 'maintenance.auto', 'false'); // a detached maintenance run can race afterEach's removal
   return commitFixture('base');
 }
-// A judge transcript scoring `scores` in a Page column, one row per category.
-const transcript = (scores) => ['| Category | Page | Baseline |', '|---|---|---|',
-  ...Object.entries(scores).map(([key, value]) => `| ${key} | ${value} | 5 |`), '| **Average** | 9 | 5 |', ''].join('\n');
+// A judge transcript scoring `scores` in its first (Page) column, then a Baseline and a Checkout anchor at 9.
+const transcript = (scores) => ['| Category | Page | Baseline | Checkout |', '|---|---|---|---|',
+  ...Object.entries(scores).map(([key, value]) => `| ${key} | ${value} | 5 | 9 |`), '| **Average** | 9 | 5 | 9 |', ''].join('\n');
 // Records with Opus transcripts written from the gate's scores, then commits only the copied transcripts.
 function record(opts = recording, recorder = recordFromGate, commit = true) {
   const dir = fs.mkdtempSync(path.join(root, '.git', 'run-')); // outside the work tree; removed with root
@@ -131,12 +132,12 @@ describe('score check', () => {
   });
 
   it.each([
-    ['ok', { x: 8 }, 0, 'a/page: ok'],
-    ['below', { x: 6 }, 1, 'a/page: below (mean 6 < 8.0; x 6 < 7.0)'],
-    ['below', {}, 1, 'a/page: below (no scores)'],
-    ['stale', { x: 8 }, 1, 'a/page: stale'],
+    ['ok', seven(8), 0, 'a/page: ok'],
+    ['below', seven(8, { 'task clarity': 6 }), 1, 'a/page: below (mean 7.71 < 8.0; task clarity 6 < 7.0)'],
+    ['missing (malformed)', {}, 1, 'a/page: missing'],
+    ['stale', seven(8), 1, 'a/page: stale'],
   ])('reports %s scores', (status, scores, exitCode, line) => {
-    saveScores(root, { 'a/page': { hash: pageHash(root, 'a/page'), scores } });
+    saveScores(root, { 'a/page': { hash: pageHash(root, 'a/page'), scores, mean: meanOf(scores) } });
     if (status === 'stale') fs.appendFileSync(path.join(root, 'static/img/2.x/a/shot.png'), 'changed');
     const result = run(options);
     expect(result.exitCode).toBe(exitCode);
@@ -247,39 +248,56 @@ describe('exception tracking issues', () => {
 
 describe('malformed scores', () => {
   it.each([
-    ['2026-11-15T12:00:00Z', [`${VDOCS}/a/page.mdx`], 0],
-    ['2026-11-15T12:00:00Z', ['page-scores.json'], 0],
-    [now, [`${VDOCS}/a/page.mdx`], 0],
-    [now, ['page-scores.json'], 1],
-  ])('handles malformed scores at %s with changed %j', (date, changedFiles, exitCode) => {
+    ['2026-11-15T12:00:00Z', [`${VDOCS}/a/page.mdx`]],
+    ['2026-11-15T12:00:00Z', ['page-scores.json']],
+    ['2026-11-01T00:00:00Z', []],
+    [now, [`${VDOCS}/a/page.mdx`]],
+    [now, ['page-scores.json']],
+  ])('fails on a malformed head file at %s with changed %j', (date, changedFiles) => {
     fs.writeFileSync(path.join(root, 'page-scores.json'), '{');
     const result = run({ ...options, now: new Date(date), changedFiles });
-    expect(result.exitCode).toBe(exitCode);
-    expect(result.lines[0]).toMatch(/^::warning::page-scores.json is malformed: .+/);
-    expect(result.lines.slice(1)).toEqual(exitCode ? ['::error::page-scores.json is malformed; fix it in this PR.'] : []);
+    expect(result.exitCode).toBe(1);
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0]).toMatch(/^::error::page-scores\.json is malformed: .+; fix it in this PR\.$/);
   });
   it.each(['missing', 'undefined'])('returns empty base scores for %s', (kind) => {
     const base = initRepo();
-    expect(baseScores(root, kind === 'undefined' ? undefined : base)).toEqual({});
+    expect(baseScores(root, kind === 'undefined' ? undefined : base)).toEqual({ entries: {} });
   });
-  it.each([['{', /^::error::page-scores.json on the base is unreadable: .+/], ['[]', 'not an object']])(
-    'fails on any date when the base file is %s', (text, message) => {
-      fs.writeFileSync(path.join(root, 'page-scores.json'), text);
-      options.base = initRepo();
-      saveScores(root, {});
-      for (const date of [now, new Date('2026-11-01T00:00:00Z')]) {
-        const result = run({ ...options, now: date });
-        expect(result.exitCode).toBe(1);
-        expect(result.lines).toHaveLength(1);
-        expect(result.lines[0]).toMatch(typeof message === 'string'
-          ? `::error::page-scores.json on the base is unreadable: ${message}` : message);
-      }
-    });
+  it.each(['{', '[]'])('compares with the last good file when the base file is %s, on any date', (text) => {
+    initRepo();
+    const entry = { seeded: true, hash: pageHash(root, 'a/page'), scores: seven(8), mean: 8 };
+    saveScores(root, { 'a/page': entry });
+    const good = commitFixture('good scores');
+    fs.writeFileSync(path.join(root, 'page-scores.json'), text);
+    options.base = commitFixture('malformed scores');
+    saveScores(root, { 'a/page': entry });
+    commitFixture('restore the scores');
+    const note = `page-scores.json on the base is malformed; comparing with ${good.slice(0, 12)}`;
+    expect(baseScores(root, options.base)).toEqual({ entries: { 'a/page': entry }, note });
+    for (const date of [now, new Date('2026-11-01T00:00:00Z')]) {
+      const result = run({ ...options, now: date, changedFiles: ['page-scores.json'] });
+      expect(result.exitCode).toBe(0);
+      expect(result.lines).toContain(`::warning::${note}`);
+      expect(result.lines.some((line) => line.startsWith('::error::'))).toBe(false);
+    }
+  });
+  it('compares with no entries when no base commit has a good file', () => {
+    fs.writeFileSync(path.join(root, 'page-scores.json'), '{');
+    options.base = initRepo();
+    expect(baseScores(root, options.base)).toEqual({ entries: {}, note: 'page-scores.json on the base is malformed; comparing with no entries' });
+  });
   it.each(['null', '[]', '5'])('treats a top-level %s like a syntax error', (text) => {
     fs.writeFileSync(path.join(root, 'page-scores.json'), text);
     const result = run({ ...options, changedFiles: ['page-scores.json'] });
+    expect(result).toEqual({ exitCode: 1, lines: ['::error::page-scores.json is malformed: not an object; fix it in this PR.'] });
+  });
+  it('fails on any date for a malformed entry the PR did not change', () => {
+    saveScores(root, { 'a/page': { seeded: true, hash: pageHash(root, 'a/page'), scores: seven(8, { language: '8' }), mean: 8 } });
+    options.base = initRepo();
+    const result = run({ ...options, now: new Date('2026-11-01T00:00:00Z'), changedFiles: [] });
     expect(result).toEqual({ exitCode: 1, lines: [
-      '::warning::page-scores.json is malformed: not an object', '::error::page-scores.json is malformed; fix it in this PR.',
+      '::error::page-scores.json: a/page: malformed entry (score language is not a number from 0 to 10)', 'No 2.x docs changed.',
     ] });
   });
 });
@@ -299,6 +317,7 @@ describe('malformed entries', () => {
     ['a score of 11', (entry) => withMean({ ...entry, scores: { ...entry.scores, language: 11 } }),
       'score language is not a number from 0 to 10'],
     ['an array entry', () => [], 'not an object'],
+    ['an extra average score', (entry) => withMean({ ...entry, scores: { ...entry.scores, average: 7.21 } }), 'unknown score average'],
   ])('fails cleanly on %s', (name, mutate, problem) => {
     const entry = record();
     saveScores(root, { 'a/page': mutate(entry) });
@@ -307,6 +326,10 @@ describe('malformed entries', () => {
     expect(result.exitCode).toBe(1);
     expect(result.lines).toContain(`::error::page-scores.json: a/page: malformed entry (${problem})`);
     expect(result.lines[0]).toBe('a/page: missing');
+  });
+  it('accepts the admin setup score the terminal pages carry, and no other extra', () => {
+    const scores = seven(8, { 'admin setup': 8 });
+    expect(entryProblem({ hash: pageHash(root, 'a/page'), scores, mean: meanOf(scores) })).toBeNull();
   });
   it('rejects a stored mean that differs from the scores', () => {
     const entry = record({ ...recording, gate: { ...gate, scores: { a: seven(8), b: seven(8) } } });
@@ -384,12 +407,12 @@ describe('score integrity', () => {
       ? '::warning::1 page(s)' : '::warning::score-exception granted'))).toBe(true);
   });
   it('grandfathers unchanged seeded entries and ignores nested object key order', () => {
-    const entry = { seeded: true, hash: pageHash(root, 'a/page'), scores: { x: 8, y: 9 } };
+    const entry = { seeded: true, hash: pageHash(root, 'a/page'), scores: seven(8), mean: 8 };
     saveScores(root, { 'a/page': entry });
     options.base = commitFixture('seed');
-    expect(baseScores(root, options.base)).toEqual({ 'a/page': entry });
+    expect(baseScores(root, options.base)).toEqual({ entries: { 'a/page': entry } });
     expect(checkIntegrity({ ...options, entries: loadScores(root) })).toEqual({ errors: [], docs: [], invalid: [] });
-    saveScores(root, { 'a/page': { scores: { y: 9, x: 8 }, hash: entry.hash, seeded: true } });
+    saveScores(root, { 'a/page': { mean: 8, scores: Object.fromEntries(Object.entries(seven(8)).reverse()), hash: entry.hash, seeded: true } });
     expect(checkIntegrity({ ...options, entries: loadScores(root) })).toEqual({ errors: [], docs: [], invalid: [] });
     expect(run(options).exitCode).toBe(0);
   });
@@ -404,7 +427,7 @@ describe('score integrity', () => {
     expect(run(options).exitCode).toBe(deleted ? 0 : 1);
   });
   it('allows only the group prune shape without rechecking provenance', () => {
-    const entry = record({ ...recording, group: 'error-codes', sample: ['error-codes/E1'] }, recordGroup);
+    const entry = record(groupRecording, recordGroup);
     delete entry.commit;
     saveScores(root, { 'error-codes': entry });
     options.base = commitFixture('seed group');
@@ -416,7 +439,7 @@ describe('score integrity', () => {
       .toEqual(['error-codes: no judged commit']);
   });
   it('rejects removing a still-existing page from a group entry', () => {
-    const entry = record({ ...recording, group: 'error-codes', sample: ['error-codes/E1'] }, recordGroup);
+    const entry = record(groupRecording, recordGroup);
     options.base = commitFixture('score group');
     delete entry.pages['error-codes/E2'];
     saveScores(root, { 'error-codes': entry });
@@ -425,7 +448,7 @@ describe('score integrity', () => {
     expect(run(options).exitCode).toBe(1);
   });
   it('checks group hashes in sorted order and evaluates every changed group page', () => {
-    const entry = record({ ...recording, group: 'error-codes', sample: ['error-codes/E1'] }, recordGroup);
+    const entry = record(groupRecording, recordGroup);
     expect(run(options).lines.slice(0, 2)).toEqual(['error-codes/E1: ok', 'error-codes/E2: ok']);
     const bad = 'sha256:' + '0'.repeat(64);
     entry.pages = { 'error-codes/E2': bad, 'error-codes/E1': bad };
@@ -495,21 +518,59 @@ describe('judge run binding', () => {
     ['a run file not committed', (entry) => entry, `judge run file ${runFile('opus-a')} is not committed`],
     ['a sha256 mismatch', (entry) => { entry.judgeRun[1].sha256 = 'sha256:' + '0'.repeat(64); return entry; },
       `judge run file ${runFile('opus-b')} does not match its sha256`],
-    ['a climb mismatch', (entry) => ({ ...entry, climb: 'other' }), `judge run ${runFile('opus-a')} is not for climb other round 2`],
+    ['a climb mismatch', (entry) => ({ ...entry, climb: 'other' }), "climb other is not this page's (a__page)"],
     ['a round mismatch', (entry) => ({ ...entry, round: 3 }), `judge run ${runFile('opus-a')} is not for climb a__page round 3`],
     ['scores edited', (entry) => { entry.scores['task clarity'] = 9; return { ...entry, mean: meanOf(entry.scores) }; },
       'scores differ from the judge run (task clarity: 9 vs 8)'],
     ['judges edited', (entry) => ({ ...entry, judges: ['opus-a'] }), 'judges differ from the judge run'],
     ['a Baseline column', (entry) => { entry.judgeRun[0].column = 'Baseline'; return entry; },
-      `judge run ${runFile('opus-a')} has no page column`],
+      `judge run ${runFile('opus-a')} column "Baseline" is not the page's own column`],
     ['a column not in the table', (entry) => { entry.judgeRun[1].column = 'Nope'; return entry; },
-      `judge run file ${runFile('opus-b')}: no column "Nope"`],
+      `judge run ${runFile('opus-b')} column "Nope" is not the page's own column`],
+    ['an anchor column', (entry) => {
+      for (const item of entry.judgeRun) item.column = 'Checkout';
+      return { ...entry, scores: seven(9), mean: 9 };
+    }, `judge run ${runFile('opus-a')} column "Checkout" is not the page's own column`],
   ])('rejects forgery: %s', (name, mutate, problem) => {
     const entry = record(recording, recordFromGate, name !== 'a run file not committed');
     saveScores(root, { 'a/page': mutate(entry) });
     const result = run(options);
     expect(result.exitCode).toBe(1);
     expect(errors(result)).toEqual([`::error::page-scores.json: a/page: ${problem}`]);
+  });
+  it.each([
+    ['its climb', (entry) => entry, "b/other: climb a__page is not this page's (b__other)"],
+    ['byte-for-byte copies of its transcripts', (entry) => {
+      for (const item of entry.judgeRun) {
+        item.path = `${RUNS_DIR}/b__other/r2/${item.judge}.md`;
+        fs.mkdirSync(path.dirname(path.join(root, item.path)), { recursive: true });
+        fs.copyFileSync(path.join(root, runFile(item.judge)), path.join(root, item.path));
+      }
+      commitFixture('copy the runs');
+      return { ...entry, climb: 'b__other' };
+    }, `b/other: judge run file ${RUNS_DIR}/b__other/r2/opus-a.md does not name this page`],
+  ])("rejects another page's run reused with %s", (name, reuse, problem) => {
+    fs.mkdirSync(path.join(root, VDOCS, 'b'));
+    fs.writeFileSync(path.join(root, VDOCS, 'b/other.mdx'), '# Other\n');
+    options.base = commitFixture('add other page');
+    const entry = record();
+    saveScores(root, { 'b/other': reuse({ ...entry, hash: pageHash(root, 'b/other') }) });
+    const result = run(options);
+    expect(result.exitCode).toBe(1);
+    expect(errors(result)).toEqual([`::error::page-scores.json: ${problem}`]);
+  });
+  it('fails a renamed-away transcript, listing both paths of the move', () => {
+    record();
+    options.base = commitFixture('score');
+    git('checkout', '-qb', 'move-run');
+    const moved = `${RUNS_DIR}/a__page/r2/opus-a-moved.md`;
+    git('mv', runFile('opus-a'), moved);
+    commitFixture('move a run file');
+    const changedFiles = changedFilesOf(root, options.base);
+    expect([...changedFiles].sort()).toEqual([moved, runFile('opus-a')].sort());
+    const result = run({ ...options, changedFiles });
+    expect(result.exitCode).toBe(1);
+    expect(errors(result)).toEqual([`::error::page-scores.json: a/page: judge run file ${runFile('opus-a')} is not committed`]);
   });
   it.each(['edited', 'deleted', 'edited with its entry'])('fails an entry whose committed run file was %s', (kind) => {
     record();
@@ -588,7 +649,7 @@ describe('ratchet rules', () => {
   });
 
   it.each(['missing', 'below'])('R3: an unchanged %s page warns', (kind) => {
-    if (kind === 'below') recordedBase({ x: 6 });
+    if (kind === 'below') recordedBase(seven(8, { 'task clarity': 6 }));
     else {
       options.base = initRepo();
       fs.appendFileSync(pageFile(), '\nEdited');
@@ -596,7 +657,7 @@ describe('ratchet rules', () => {
     }
     const result = run(options);
     expect(result.exitCode).toBe(0);
-    expect(result.lines[0]).toBe(kind === 'below' ? 'a/page: below (mean 6 < 8.0; x 6 < 7.0)' : 'a/page: missing');
+    expect(result.lines[0]).toBe(kind === 'below' ? 'a/page: below (mean 7.71 < 8.0; task clarity 6 < 7.0)' : 'a/page: missing');
     expect(result.lines).toContain(notBlocking(['a/page']));
   });
 
@@ -665,7 +726,7 @@ describe('ratchet rules', () => {
   });
 
   it('R3: a below-floor page made stale warns however old the edit', () => {
-    recordedBase({ x: 6 });
+    recordedBase(seven(8, { 'task clarity': 6 }));
     fs.appendFileSync(pageFile(), '\nEdited');
     commitFixture('edit', ago(30));
     const result = run(options);
@@ -683,7 +744,7 @@ describe('ratchet and workflow', () => {
   it.each([9, 8])('checks the ratchet with %i of ten entries passing, even with no changed docs', (passing) => {
     const hash = pageHash(root, 'a/page');
     saveScores(root, Object.fromEntries(Array.from({ length: 10 }, (_, i) =>
-      [`page-${i}`, { hash, scores: { x: i < passing ? 8 : 6 } }])));
+      [`page-${i}`, { hash, scores: seven(i < passing ? 8 : 6), mean: i < passing ? 8 : 6 }])));
     const result = run({ ...options, changedFiles: [] });
     expect(result.exitCode).toBe(0);
     expect(result.lines.includes('::notice::90% of scored pages pass the floor: raise it to 8.5 (ruling 2026-11-12).'))
@@ -706,7 +767,31 @@ describe('ratchet and workflow', () => {
 describe('gate edits', () => {
   const grant = { event: { pull_request: { labels: [{ name: 'score-exception' }], body } },
     exceptionEvents: [{ actor: 'kilbot', at: recent }], issueLookup: () => ({ state: 'open', pr: false }) };
-  it.each(GATE_FILES)('needs the kilbot exception to edit %s', (file) => {
+  const gateFiles = ['scripts/check-page-scores.js', 'scripts/record-page-score.js', 'scripts/lib/page-scores.js',
+    '.github/workflows/page-scores.yml', 'scripts/lib/page-scores'];
+  it.each(['scripts/lib/page-scores', 'scripts/lib/other.js', 'scripts/new-tool.js', 'scripts/__tests__/check-page-scores.test.js',
+    '.github/workflows/page-scores.yml'])('treats %s as a gate file', (file) => expect(isGateFile(file)).toBe(true));
+  it.each([...TRANSLATION_TOOLING, 'scripts/docs-translation/apply.js', 'scripts/__tests__/docs-translation-apply.test.js', 'docs/foo.md'])(
+    'treats %s as outside the gate', (file) => expect(isGateFile(file)).toBe(false));
+  it('lists the old path of a renamed gate file', () => {
+    fs.mkdirSync(path.join(root, 'scripts/lib'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'scripts/lib/page-scores.js'), '// gate\n');
+    const base = initRepo();
+    git('checkout', '-qb', 'move-gate');
+    git('mv', 'scripts/lib/page-scores.js', 'scripts/lib/scores.js');
+    commitFixture('move the gate library');
+    const changedFiles = changedFilesOf(root, base);
+    expect(changedFiles).toContain('scripts/lib/page-scores.js');
+    expect(changedFiles.filter(isGateFile)).toContain('scripts/lib/page-scores.js');
+  });
+  it('requires only .js-suffixed relative paths and node: core modules in the gate scripts', () => {
+    for (const file of ['../check-page-scores.js', '../record-page-score.js', '../lib/page-scores.js']) {
+      const requires = [...fs.readFileSync(path.join(__dirname, file), 'utf8').matchAll(/require\(([^)]*)\)/g)].map((match) => match[1]);
+      expect(requires.length).toBeGreaterThan(0);
+      for (const spec of requires) expect(spec).toMatch(/^'(\.{1,2}\/.+\.js|node:[a-z_/]+)'$/);
+    }
+  });
+  it.each(gateFiles)('needs the kilbot exception to edit %s', (file) => {
     options.changedFiles = [file];
     const text = `this PR edits the score gate (${file}); it needs the score-exception label from kilbot.`;
     const enforced = run(options);
@@ -721,11 +806,11 @@ describe('gate edits', () => {
   });
   it('gives the refusal notice once for failing docs and gate edits together', () => {
     options.base = baseWithout('a/page');
-    options.changedFiles = [`${VDOCS}/a/page.mdx`, ...GATE_FILES];
+    options.changedFiles = [`${VDOCS}/a/page.mdx`, ...gateFiles];
     const result = run({ ...options, ...grant, exceptionEvents: [{ actor: 'someone', at: recent }] });
     expect(result.exitCode).toBe(1);
     expect(result.lines.filter((line) => line.startsWith('::notice::'))).toEqual(['::notice::label not applied by kilbot']);
-    expect(result.lines).toContain(`::error::this PR edits the score gate (${GATE_FILES.join(', ')}); it needs the score-exception label from kilbot.`);
+    expect(result.lines).toContain(`::error::this PR edits the score gate (${gateFiles.join(', ')}); it needs the score-exception label from kilbot.`);
   });
   it('reads label events from the API, paginated, and returns [] on any failure', () => {
     const calls = [];

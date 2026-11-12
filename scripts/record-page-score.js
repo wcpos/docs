@@ -1,10 +1,10 @@
-const fs = require('fs');
-const path = require('path');
-const { execFileSync } = require('child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const {
   VDOCS, GROUPS, docSource, pageHash, loadScores, saveScores, meanOf, resolveCommit,
-  JUDGES, sha256Of, runPath, pageColumn, runScores,
-} = require('./lib/page-scores');
+  JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, runScores,
+} = require('./lib/page-scores.js');
 
 function gateEntry(gate, climb, judged = new Date().toISOString().slice(0, 10)) {
   if (typeof climb !== 'string' || !climb) throw new Error('--climb <climb folder> is required');
@@ -28,8 +28,9 @@ function gateEntry(gate, climb, judged = new Date().toISOString().slice(0, 10)) 
   };
 }
 
-// Checks the judges' transcripts against the gate scores, then copies them under RUNS_DIR for the gate to recompute.
-function bindRun({ root, gate, climb, run, columns = {} }, scores) {
+// Checks the judges' transcripts against the gate scores, then copies them, behind a header naming entry `key`, under RUNS_DIR for the gate to recompute.
+function bindRun({ root, gate, climb, run, key }, scores) {
+  if (climb !== climbOf(key)) throw new Error(`--climb ${climb} is not this page's climb (${climbOf(key)})`);
   if (!run) throw new Error('--run <judge run dir with opus-a.md and opus-b.md> is required');
   const keys = Object.keys(gate.scores);
   if (keys.length !== 2 || !keys.includes('a') || !keys.includes('b')) {
@@ -39,40 +40,40 @@ function bindRun({ root, gate, climb, run, columns = {} }, scores) {
   if (!files.every((file) => fs.existsSync(file))) throw new Error(`--run ${run} needs opus-a.md and opus-b.md`);
   const bytes = files.map((file) => fs.readFileSync(file));
   const columnOf = JUDGES.map((judge, i) => {
-    const column = columns[judge] || pageColumn(bytes[i].toString('utf8'));
-    if (!column) throw new Error(`cannot find the page column in ${files[i]}; pass --column-${judge.slice(-1)}`);
-    if (/baseline/i.test(column)) throw new Error('the page column cannot be the Baseline');
+    const column = firstScoreColumn(bytes[i].toString('utf8'));
+    if (!column) throw new Error(`cannot find the page column in ${files[i]}`);
     return column;
   });
   const categories = Object.keys(scores);
   const parsed = runScores(bytes.map(String), columnOf, categories);
   const bad = categories.find((key) => parsed[key] !== scores[key]);
   if (bad !== undefined) throw new Error(`judge files do not match the gate scores: ${bad} ${parsed[bad]} vs ${scores[bad]}`);
-  const judgeRun = JUDGES.map((judge, i) => ({ judge, path: runPath(climb, gate.round, judge), sha256: sha256Of(bytes[i]), column: columnOf[i] }));
+  const stored = JUDGES.map((judge, i) => Buffer.concat([Buffer.from(runHeader({ doc: key, climb, round: gate.round, judge }) + '\n'), bytes[i]]));
+  const judgeRun = JUDGES.map((judge, i) => ({ judge, path: runPath(climb, gate.round, judge), sha256: sha256Of(stored[i]), column: columnOf[i] }));
   for (const [i, { path: target }] of judgeRun.entries()) {
     const file = path.join(root, target);
-    if (fs.existsSync(file) && !fs.readFileSync(file).equals(bytes[i])) throw new Error(`${target} already exists with different content`);
+    if (fs.existsSync(file) && !fs.readFileSync(file).equals(stored[i])) throw new Error(`${target} already exists with different content`);
   }
   for (const [i, { path: target }] of judgeRun.entries()) {
     fs.mkdirSync(path.dirname(path.join(root, target)), { recursive: true });
-    fs.writeFileSync(path.join(root, target), bytes[i]);
+    fs.writeFileSync(path.join(root, target), stored[i]);
   }
   return { judges: [...JUDGES], judgeRun };
 }
 
-function recordFromGate({ root, doc, gate, climb, judged, commit, run, columns }) {
+function recordFromGate({ root, doc, gate, climb, judged, commit, run }) {
   if (!commit) throw new Error('--commit <judged commit> is required');
   commit = resolveCommit(root, commit);
   if (!docSource(root, doc, commit)) throw new Error(`No source for doc at ${commit}: ${doc}`);
   const scored = gateEntry(gate, climb, judged);
-  const entry = { hash: pageHash(root, doc, commit), ...scored, commit, ...bindRun({ root, gate, climb, run, columns }, scored.scores) };
+  const entry = { hash: pageHash(root, doc, commit), ...scored, commit, ...bindRun({ root, gate, climb, run, key: doc }, scored.scores) };
   const entries = loadScores(root);
   entries[doc] = entry;
   saveScores(root, entries);
   return entry;
 }
 
-function recordGroup({ root, group, gate, climb, sample, judged, commit, run, columns }) {
+function recordGroup({ root, group, gate, climb, sample, judged, commit, run }) {
   if (!commit) throw new Error('--commit <judged commit> is required');
   commit = resolveCommit(root, commit);
   if (!GROUPS[group]) throw new Error(`Unknown group: ${group}`);
@@ -86,7 +87,7 @@ function recordGroup({ root, group, gate, climb, sample, judged, commit, run, co
     if (!docs.has(doc)) throw new Error(`Sample doc is not in group ${group}: ${doc}`);
   }
   for (const doc of [...docs].sort()) entry.pages[doc] = pageHash(root, doc, commit);
-  Object.assign(entry, bindRun({ root, gate, climb, run, columns }, entry.scores));
+  Object.assign(entry, bindRun({ root, gate, climb, run, key: group }, entry.scores));
   const entries = loadScores(root);
   entries[group] = entry;
   saveScores(root, entries);
@@ -159,8 +160,7 @@ if (require.main === module) {
     } else {
       if (!args.commit) throw new Error('--commit <judged commit> is required');
       const gate = JSON.parse(fs.readFileSync(args.gate, 'utf8'));
-      const columns = Object.fromEntries([['opus-a', args['column-a']], ['opus-b', args['column-b']]].filter(([, column]) => column));
-      const options = { root, gate, climb: args.climb, judged: args.judged, commit: args.commit, run: args.run, columns };
+      const options = { root, gate, climb: args.climb, judged: args.judged, commit: args.commit, run: args.run };
       if (args.group) {
         recordGroup({ ...options, group: args.group, sample: args.sample ? args.sample.split(',') : [] });
       } else {

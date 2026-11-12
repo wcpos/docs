@@ -1,7 +1,7 @@
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const { execFileSync } = require('child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 
 const VDOCS = 'versioned_docs/version-2.x';
 const IMG = 'static/img/2.x';
@@ -18,6 +18,8 @@ const GROUPS = { 'error-codes': 'error-codes/' };
 // The climb kit's gate.py CATEGORIES (category -> keyword); part S2 parses judge tables with them.
 const CATEGORY_KEYWORDS = { 'task clarity': 'task', language: 'language', visuals: 'visual', structure: 'structure', layering: 'layering', consistency: 'consisten', accuracy: 'accura' };
 const REQUIRED_CATEGORIES = Object.keys(CATEGORY_KEYWORDS);
+// Ruling 2026-11-12: the terminal gateway pages are also judged on Admin setup, bound by the same floor.
+const OPTIONAL_CATEGORIES = ['admin setup'];
 // Judge transcripts are committed here so the gate can recompute each entry's scores (ruling 2026-11-12).
 const RUNS_DIR = 'page-scores/runs';
 // The front desk requires two Opus judges for every recorded score.
@@ -26,6 +28,10 @@ const JUDGES = ['opus-a', 'opus-b'];
 const sha256Of = (buffer) => 'sha256:' + crypto.createHash('sha256').update(buffer).digest('hex');
 const runPath = (climb, round, judge) => `${RUNS_DIR}/${climb}/r${round}/${judge}.md`;
 const cleanCell = (cell) => cell.replace(/[*`_]/g, '');
+// An entry's climb folder: a group's key itself, else the doc key with every / as __.
+const climbOf = (key) => (Object.hasOwn(GROUPS, key) ? key : key.replaceAll('/', '__'));
+// The first line of a stored transcript: the entry key (doc or group), climb, round and judge it was recorded for.
+const runHeader = ({ doc, climb, round, judge }) => `<!-- page-scores run: doc=${doc} climb=${climb} round=${round} judge=${judge} -->`;
 
 // The first Markdown table's rows as trimmed cells, as the climb kit's gate.py reads them.
 function tableRows(text) {
@@ -38,11 +44,12 @@ function tableRows(text) {
   return table.map((line) => line.trim().replace(/^\|+|\|+$/g, '').split('|').map((cell) => cell.trim()));
 }
 
-// The single header cell naming the judged page, or null when none or several do.
-function pageColumn(text) {
-  const matches = tableRows(text)[0].map(cleanCell)
-    .filter((cell, i) => i > 0 && (cell.toLowerCase() === 'page' || cell.toLowerCase().endsWith('(page)')));
-  return matches.length === 1 ? matches[0] : null;
+// The first table's first score column, where every judge transcript puts the page under review; null if none or Baseline.
+function firstScoreColumn(text) {
+  let cell;
+  try { cell = tableRows(text)[0][1]; } catch { return null; }
+  const column = cleanCell(cell ?? '');
+  return !column || /baseline/i.test(column) ? null : column;
 }
 
 function parseJudgeTable(text, column, categories) {
@@ -201,6 +208,6 @@ function evaluate(root, doc, entries) {
 
 module.exports = {
   VDOCS, IMG, IMG_ROOTS, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS, CATEGORY_KEYWORDS, REQUIRED_CATEGORIES, resolveCommit,
-  docSource, referencedPaths, hashInputs, pageHash, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
-  RUNS_DIR, JUDGES, sha256Of, runPath, pageColumn, parseJudgeTable, runScores,
+  OPTIONAL_CATEGORIES, docSource, referencedPaths, hashInputs, pageHash, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
+  RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores,
 };
