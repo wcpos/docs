@@ -9,6 +9,7 @@
 - **R1.** A new page must clear the floor.
 - **R2.** A changed entry must clear the floor, and its mean may drop at most 0.3 below its previous record.
 - **R3.** A passing page made stale by an edit warns for 7 days, then fails until it is scored again.
+  The stale-since date follows the files the page referenced at each point in history, not only today's.
 - **Shape.** Every entry needs a hash, all seven categories (plus `admin setup` on the terminal gateway pages, and
   no other score) from 0 to 10, and a mean that equals its scores. A malformed `page-scores.json` or entry fails on
   any date, whether or not the pull request changed it. When the base branch's file is malformed, the gate warns

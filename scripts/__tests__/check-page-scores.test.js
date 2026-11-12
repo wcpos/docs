@@ -818,6 +818,44 @@ describe('ratchet rules', () => {
     expect(since).toEqual(committed ? new Date(ago(20)) : now);
   });
 
+  // The hash definition changes at ago(20), so a walk that misses the matching commit shows as ago(20).
+  // editBefore: edit the partial again at ago(9), before the drop; editAfter: edit it at ago(1), after the drop.
+  function partialThenDropped({ editBefore = false, editAfter = false } = {}) {
+    initRepo();
+    fs.mkdirSync(path.join(root, 'scripts/lib'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'scripts/lib/page-scores.js'), '// hash definition\n');
+    commitFixture('hash definition', ago(20));
+    const partFile = path.join(root, VDOCS, 'a/_part.mdx');
+    fs.appendFileSync(partFile, '\nEdited partial');
+    commitFixture('edit partial', ago(10));
+    const expected = pageHash(root, 'a/page');
+    if (editBefore) {
+      fs.appendFileSync(partFile, '\nEdited again');
+      commitFixture('edit partial again', ago(9));
+    }
+    const text = fs.readFileSync(pageFile(), 'utf8');
+    fs.writeFileSync(pageFile(), text.replace("import Part from './_part.mdx'\n", '').replace('<Part />\n', ''));
+    expect(fs.readFileSync(pageFile(), 'utf8')).not.toMatch(/Part/);
+    commitFixture('drop the partial', ago(2));
+    if (editAfter) {
+      fs.appendFileSync(partFile, '\nEdited after the drop');
+      commitFixture('edit the dropped partial', ago(1));
+    }
+    return staleSince(root, 'a/page', expected, now);
+  }
+
+  it('dates stale-since from the commit that dropped an import', () => {
+    expect(partialThenDropped()).toEqual(new Date(ago(2)));
+  });
+
+  it('dates stale-since from a later edit to a partial the page no longer imports', () => {
+    expect(partialThenDropped({ editBefore: true })).toEqual(new Date(ago(9)));
+  });
+
+  it('ignores edits to a partial after the page dropped it', () => {
+    expect(partialThenDropped({ editAfter: true })).toEqual(new Date(ago(2)));
+  });
+
   it('R3: a below-floor page made stale warns however old the edit', () => {
     recordedBase(seven(8, { 'task clarity': 6 }));
     fs.appendFileSync(pageFile(), '\nEdited');

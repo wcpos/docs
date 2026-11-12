@@ -80,19 +80,37 @@ function baseScores(root, base) {
 }
 
 // Start of the newest run of first-parent commits that left the stored hash; now when only uncommitted edits did.
+// The walk follows the paths the page referenced at each point in history: when a visited commit's parent referenced
+// a path not yet followed, the walk restarts from that parent with it added.
 function staleSince(root, doc, expected, now) {
   const { imgDirs, imports } = referencedPaths(root, doc);
-  const source = path.relative(root, docSource(root, doc)).split(path.sep).join('/');
+  const rel = (file) => path.relative(root, file).split(path.sep).join('/');
+  const followed = new Set([rel(docSource(root, doc)), ...imgDirs, ...imports]);
+  const gitLog = (start) => execFileSync('git', ['log', '--first-parent', '--format=%H %cI', start, '--', ...followed],
+    { cwd: root, stdio: 'pipe' }).toString().trim().split('\n').filter(Boolean).map((line) => line.split(' '));
   let log;
   try {
-    log = execFileSync('git', ['log', '--first-parent', '--format=%H %cI', 'HEAD', '--', source, ...imgDirs, ...imports],
-      { cwd: root, stdio: 'pipe' }).toString().trim();
+    log = gitLog('HEAD');
   } catch { return now; }
-  if (!log) return now;
+  if (!log.length) return now;
   let since = null;
-  for (const [commit, date] of log.split('\n').map((line) => line.split(' '))) {
+  const seen = new Set();
+  while (log.length) {
+    const [commit, date] = log.shift();
+    if (seen.has(commit)) continue;
+    seen.add(commit);
     if (docSource(root, doc, commit) && pageHash(root, doc, commit) === expected) return since || now;
     since = new Date(date);
+    let older = [];
+    try {
+      const parent = docSource(root, doc, commit + '^');
+      const old = parent && referencedPaths(root, doc, commit + '^');
+      if (parent) older = [rel(parent), ...old.imgDirs, ...old.imports];
+    } catch { /* a root commit has no parent: nothing to add */ }
+    if (older.some((file) => !followed.has(file))) {
+      older.forEach((file) => followed.add(file));
+      try { log = gitLog(commit + '^'); } catch { log = []; }
+    }
   }
   try {
     return new Date(execFileSync('git', ['log', '--first-parent', '-1', '--format=%cI', 'HEAD', '--', HASH_DEFINITION],
