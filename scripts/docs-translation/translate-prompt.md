@@ -47,6 +47,9 @@ Write exactly one JSON file per packet at the given results path:
 - Values are the translated text only, decoded: never wrap them in YAML/JSX quotes and
   never add escaping. The pipeline escapes for the context.
 - Keep the same number of lines as the source unit (usually one).
+- A `paragraph` unit may contain `<kbd>…</kbd>` and `<Icon … />`. Keep every tag exactly,
+  translate the text inside `<kbd>` as the app's label, and place the tags where your
+  locale's sentence needs them.
 
 ## What must stay identical
 

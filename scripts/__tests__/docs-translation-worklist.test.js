@@ -99,9 +99,9 @@ describe('MDX worklist', () => {
     commitFixtures();
     writeState(rootDir, { [TARGET]: { source: git('hash-object', DOC) } });
     const before = git('status', '--porcelain');
-    expect(schedule()).toEqual({ packets: [], plan: { targets: [], quarantined: [] }, summary: {
+    expect(schedule()).toEqual({ packets: [], plan: { targets: [], quarantined: [], held_unaligned: [] }, summary: {
       total: 0, packets: 0, targets: { translate: 0, refresh: 0, record: 0, unchanged: 1, deferred: 0 },
-      deferred_units: 0, locales: {}, quarantined: 0,
+      deferred_units: 0, locales: {}, quarantined: 0, held_unaligned: 0,
     } });
     expect(git('status', '--porcelain')).toBe(before);
   });
@@ -114,7 +114,7 @@ describe('MDX worklist', () => {
     expect(summary.targets.record).toBe(1);
     expect(packets).toEqual([]);
     expect(plan.targets).toEqual([{ target: TARGET, source: DOC, locale: 'de', kind: 'mdx', status: 'record',
-      source_blob: git('hash-object', DOC), pending: [], reasons: { missing: 0, changed: 0, english: 0, unpaired: 0, render: 0 } }]);
+      source_blob: git('hash-object', DOC), pending: [], reasons: { missing: 0, changed: 0, unaligned: 0, english: 0, unpaired: 0, render: 0 } }]);
   });
 
   it('schedules only the edited paragraph using positions across mixed MDX unit types', () => {
@@ -171,7 +171,7 @@ describe('MDX worklist', () => {
     const [entry] = schedule().plan.targets;
     expect(entry).toMatchObject({ status: 'translate', pending: [0] });
     expect(entry.reused).toEqual({ 1: '为您的顾客打印收据。' });
-    expect(entry.reasons).toEqual({ missing: 0, changed: 0, english: 0, unpaired: 0, render: 1 });
+    expect(entry.reasons).toEqual({ missing: 0, changed: 0, unaligned: 0, english: 0, unpaired: 0, render: 1 });
   });
 
   it('reuses short prose and allowlisted terms even when identical to English', () => {
@@ -242,6 +242,50 @@ describe('MDX worklist', () => {
     write(DOC, '# Guide\n');
     expect(recoverTranslations({ file: TARGET, locale: 'de', oldEnglishPath: DOC, oldEnglish: english, target }).unpairedTarget).toBe(0);
     expect(schedule().plan.targets[0]).toMatchObject({ status: 'refresh', pending: [], reused: { 0: 'Anleitung' } });
+  });
+});
+
+describe('unaligned units', () => {
+  const LAST = 'Close the register at the end of the day.';
+  const BADGE_EN = `# Manage your store\n\n${PARAGRAPH}\n\nClick the badge (<Badge type="x" />) to open it.\n\n${LAST}\n`;
+  const BADGE_DE = '# Verwalten Sie Ihren Shop\n\nÖffnen Sie die Einstellungen, um Ihren Shop einzurichten.\n\nÖffnen Sie es mit dem Abzeichen (<Badge type="x" />).\n\nSchließen Sie die Kasse am Ende des Tages.\n';
+
+  it('holds a target whose English is unchanged but whose units do not align', () => {
+    addDoc(DOC, BADGE_EN, BADGE_DE);
+    commitFixtures();
+    writeState(rootDir, { [TARGET]: { source: git('hash-object', DOC) } });
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const { plan, packets, summary } = schedule();
+    expect(plan.targets).toEqual([]);
+    expect(plan.held_unaligned).toEqual([{ target: TARGET, source: DOC, locale: 'de', unaligned: 2, pending_other: 0 }]);
+    expect(summary.held_unaligned).toBe(1);
+    expect(packets).toEqual([]);
+    expect(stderr).toHaveBeenCalledWith(`holding ${TARGET}: 2 units unaligned, English unchanged\n`);
+  });
+
+  it('plans unaligned units beside changed ones when the English changed elsewhere', () => {
+    addDoc(DOC, BADGE_EN, BADGE_DE);
+    commitFixtures();
+    writeState(rootDir, { [TARGET]: { source: git('hash-object', DOC) } });
+    write(DOC, BADGE_EN.replace(LAST, 'Close the register before you go home.'));
+    const { plan, summary } = schedule();
+    expect(plan.targets[0]).toMatchObject({ status: 'translate', pending: [2, 3, 4] });
+    expect(plan.targets[0].reasons).toMatchObject({ changed: 1, unaligned: 2 });
+    expect(plan.held_unaligned).toEqual([]);
+    expect(summary.held_unaligned).toBe(0);
+  });
+
+  it('plans nothing for a kbd page whose ja lines start with <kbd> (docs#1006 shape)', () => {
+    const english = '# Scanner setup\n\n1. Tap <kbd>Save scanner</kbd> to finish the wizard.\n\nOpen <kbd>Settings</kbd> → <kbd>Barcode Scanning</kbd> to test it.\n\nThe scanner is ready to use.\n';
+    const japanese = '# スキャナーの設定\n\n1. <kbd>スキャナーを保存</kbd> をタップしてウィザードを完了します。\n\n<kbd>設定</kbd> → <kbd>バーコードスキャン</kbd> を開いてテストします。\n\nスキャナーを使用する準備ができました。\n';
+    addDoc(DOC, english, japanese, ['ja']);
+    commitFixtures();
+    writeState(rootDir, { [sourceToTranslatedPath(DOC, 'ja')]: { source: git('hash-object', DOC) } });
+    const { plan, packets, summary } = schedule({ locales: ['ja'] });
+    expect(plan.targets).toEqual([]);
+    expect(plan.held_unaligned).toEqual([]);
+    expect(packets).toEqual([]);
+    expect(summary).toMatchObject({ total: 0, held_unaligned: 0, targets: { unchanged: 1 } });
   });
 });
 
@@ -600,7 +644,7 @@ describe('worklist CLI', () => {
     runCli(args);
     expect(JSON.parse(stdout.mock.calls[1][0]).total).toBe(0);
     expect(fs.readdirSync(out)).toEqual(['keep.txt']);
-    expect(JSON.parse(fs.readFileSync(planFile, 'utf8'))).toEqual({ targets: [], quarantined: [] });
+    expect(JSON.parse(fs.readFileSync(planFile, 'utf8'))).toEqual({ targets: [], quarantined: [], held_unaligned: [] });
   });
 
   it('writes the plan with --first pages taken ahead of other groups', () => {

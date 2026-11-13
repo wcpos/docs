@@ -71,11 +71,11 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
   ].filter(file => !exclude.test(file)).sort();
   const selectedLocales = LOCALES.filter(locale => locales.includes(locale));
   const groups = [];
-  const plan = { targets: [], quarantined: [] };
+  const plan = { targets: [], quarantined: [], held_unaligned: [] };
   const summary = {
     total: 0, packets: 0,
     targets: { translate: 0, refresh: 0, record: 0, unchanged: 0, deferred: 0 },
-    deferred_units: 0, locales: {}, quarantined: 0,
+    deferred_units: 0, locales: {}, quarantined: 0, held_unaligned: 0,
   };
   // An open i18n-round branch owns the pages it translates until it merges, so other runs skip them.
   // GitHub deletes a round branch on merge and the caller fetches with --prune, so the hold lifts by itself.
@@ -116,12 +116,12 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
         try { targetJson = JSON.parse(targetText); } catch { targetJson = undefined; }
       }
       const oldJson = kind === 'json' && old.text !== null ? JSON.parse(old.text) : null;
-      const { translations: recovered = new Map(), unpairedTarget = 0 } = kind === 'mdx' && old.text !== null ? recoverTranslations({
+      const { translations: recovered = new Map(), unpairedTarget = 0, oldKeys = new Set() } = kind === 'mdx' && old.text !== null ? recoverTranslations({
         file: target, locale, oldEnglishPath: source, oldEnglish: old.text, target: targetText,
       }) : {};
       const pending = [];
       const reused = {};
-      const reasons = { missing: 0, changed: 0, english: 0, unpaired: 0, render: 0 };
+      const reasons = { missing: 0, changed: 0, unaligned: 0, english: 0, unpaired: 0, render: 0 };
       let quarantined = 0;
       for (const [position, unit] of units.entries()) {
         const key = keys[position];
@@ -150,7 +150,8 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
           }
           const significant = kind === 'json' ? /\p{L}/u.test(unit.source)
             : isSignificantProse(lineToProse(unit.source)) && !UNTRANSLATED_PROP_ALLOWLIST.has(unit.source.trim());
-          if (translation === undefined || translation === null) reason = 'changed';
+          // A key the old English already had did not change; its translation just did not align.
+          if (translation === undefined || translation === null) reason = oldKeys.has(key) ? 'unaligned' : 'changed';
           else if (translation === unit.source && significant && !saved.same?.includes(hash)) reason = 'english';
         }
         // Resend reused units whose bold renders as literal ** (the regex skips the parser for most).
@@ -169,11 +170,19 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
         for (const index of Object.keys(reused)) delete reused[index];
         reasons.unpaired = pending.length;
       }
+      // English unchanged since the target was built: re-translating would only replace a good
+      // translation the aligner failed to pair, so hold the target and report it instead.
+      if (exists && old.blob === currentBlob && reasons.unaligned > 0) {
+        plan.held_unaligned.push({ target, source, locale, unaligned: reasons.unaligned, pending_other: pending.length - reasons.unaligned });
+        summary.held_unaligned += 1;
+        process.stderr.write(`holding ${target}: ${reasons.unaligned} units unaligned, English unchanged\n`);
+        continue;
+      }
       const entry = { target, source, locale, kind, status, source_blob: currentBlob, pending };
       if (status !== 'record') entry.reused = reused;
       entry.reasons = reasons;
       if (status === 'translate') {
-        const priority = kind === 'json' ? 0 : reasons.unpaired ? 4 : reasons.changed ? 1 : reasons.missing ? 3 : 2;
+        const priority = kind === 'json' ? 0 : reasons.unpaired ? 4 : reasons.changed || reasons.unaligned ? 1 : reasons.missing ? 3 : 2;
         group.priority = Math.min(group.priority, priority);
         group.count += pending.length;
         group.targets.push({ entry, units: units.filter(unit => pending.includes(unit.index)), exists });
