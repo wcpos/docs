@@ -143,6 +143,12 @@ function alignUnitsByLine(oldParsed, targetParsed) {
   return pairs;
 }
 
+// Line pairing needs the blank lines at the same indexes too: a shifted line must not pair with its neighbour's translation.
+function sameLineShape(a, b) {
+  const [linesA, linesB] = [a.split('\n'), b.split('\n')];
+  return linesA.length === linesB.length && linesA.every((line, index) => (line.trim() === '') === (linesB[index].trim() === ''));
+}
+
 // Arabic writes 1 and 2 as the singular or dual form (دقيقة واحدة "1 minute",
 // نطاقين "2 domains"), so an ar translation may drop a standalone 1 or 2. A run
 // joined to another digit run by . , : / - (1.11, 4.2, 1/2, 10:1) is not standalone.
@@ -195,7 +201,7 @@ function recoverTranslations({ file, locale, oldEnglishPath, oldEnglish, target 
   let rejected = 0;
   const rejectedKeys = new Set();
   let unpairedTarget = targetParsed.units.filter(unit => /\p{L}/u.test(decodeDocsUnitSource(targetParsed, unit))).length;
-  const pairs = oldEnglish.split('\n').length === target.split('\n').length
+  const pairs = sameLineShape(oldEnglish, target)
     ? alignUnitsByLine(oldParsed, targetParsed)
     : alignUnits(oldParsed.units, targetParsed.units);
   for (const [oldIndex, targetIndex] of pairs) {

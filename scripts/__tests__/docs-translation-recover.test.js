@@ -345,4 +345,12 @@ describe('recoverTranslations line-anchored alignment', () => {
     ]));
     expect(result).toMatchObject({ paired: 3, rejected: 0, unpairedTarget: 0 });
   });
+
+  it('does not pair by line when the blank lines moved', () => {
+    const oldEnglish = '# Title\n\nFirst sentence.\nSecond sentence.\n\nThird sentence.\n';
+    const target = '# Titel\n\nErster Satz. Zweiter Satz.\nDritter Satz.\n\n\n';
+    const result = recoverTranslations({ file: 'de.mdx', locale: 'de', oldEnglishPath: 'en.mdx', oldEnglish, target });
+    expect(result.translations.get(unitKey({ type: 'paragraph' }, 'Second sentence.'))).not.toBe('Dritter Satz.');
+    expect(result.translations.get(unitKey({ type: 'paragraph' }, 'Third sentence.'))).not.toBe('Dritter Satz.');
+  });
 });
