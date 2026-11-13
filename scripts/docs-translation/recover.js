@@ -193,6 +193,7 @@ function recoverTranslations({ file, locale, oldEnglishPath, oldEnglish, target 
   const translations = new Map();
   let paired = 0;
   let rejected = 0;
+  const rejectedKeys = new Set();
   let unpairedTarget = targetParsed.units.filter(unit => /\p{L}/u.test(decodeDocsUnitSource(targetParsed, unit))).length;
   const pairs = oldEnglish.split('\n').length === target.split('\n').length
     ? alignUnitsByLine(oldParsed, targetParsed)
@@ -200,19 +201,21 @@ function recoverTranslations({ file, locale, oldEnglishPath, oldEnglish, target 
   for (const [oldIndex, targetIndex] of pairs) {
     const oldUnit = oldParsed.units[oldIndex];
     const source = decodeDocsUnitSource(oldParsed, oldUnit);
+    const key = unitKey(oldUnit, source);
     const translation = decodeDocsUnitSource(targetParsed, targetParsed.units[targetIndex]);
     unpairedTarget -= Number(/\p{L}/u.test(translation));
     if (pairLooksRight({ source, translation, locale, file })) {
-      const key = unitKey(oldUnit, source);
       if (!translations.has(key)) translations.set(key, translation);
       paired += 1;
     } else {
       rejected += 1;
+      rejectedKeys.add(key);
     }
   }
-  // Every old-English key: worklist tells "English changed" from "unchanged but not aligned".
+  // Every old-English key: worklist tells "English changed" from "unchanged but not aligned";
+  // a rejected pair is neither, its existing translation is re-translated.
   const oldKeys = new Set(oldParsed.units.map((unit) => unitKey(unit, decodeDocsUnitSource(oldParsed, unit))));
-  return { translations, paired, rejected, unpairedTarget, oldKeys };
+  return { translations, paired, rejected, unpairedTarget, oldKeys, rejectedKeys };
 }
 
 module.exports = {

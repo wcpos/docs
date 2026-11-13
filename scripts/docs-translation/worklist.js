@@ -116,7 +116,7 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
         try { targetJson = JSON.parse(targetText); } catch { targetJson = undefined; }
       }
       const oldJson = kind === 'json' && old.text !== null ? JSON.parse(old.text) : null;
-      const { translations: recovered = new Map(), unpairedTarget = 0, oldKeys = new Set() } = kind === 'mdx' && old.text !== null ? recoverTranslations({
+      const { translations: recovered = new Map(), unpairedTarget = 0, oldKeys = new Set(), rejectedKeys = new Set() } = kind === 'mdx' && old.text !== null ? recoverTranslations({
         file: target, locale, oldEnglishPath: source, oldEnglish: old.text, target: targetText,
       }) : {};
       const pending = [];
@@ -151,7 +151,8 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
           const significant = kind === 'json' ? /\p{L}/u.test(unit.source)
             : isSignificantProse(lineToProse(unit.source)) && !UNTRANSLATED_PROP_ALLOWLIST.has(unit.source.trim());
           // A key the old English already had did not change; its translation just did not align.
-          if (translation === undefined || translation === null) reason = oldKeys.has(key) ? 'unaligned' : 'changed';
+          // A rejected pair aligned but its translation is broken, so it is re-translated as changed.
+          if (translation === undefined || translation === null) reason = oldKeys.has(key) && !rejectedKeys.has(key) ? 'unaligned' : 'changed';
           else if (translation === unit.source && significant && !saved.same?.includes(hash)) reason = 'english';
         }
         // Resend reused units whose bold renders as literal ** (the regex skips the parser for most).

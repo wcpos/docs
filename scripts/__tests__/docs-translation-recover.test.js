@@ -225,6 +225,7 @@ describe('recoverTranslations', () => {
       translations: new Map(isRow ? [[unitKey({ type: 'paragraph' }, source), row]] : []),
       paired: isRow ? 1 : 0, rejected: 0, unpairedTarget: isRow ? 0 : 1,
       oldKeys: new Set([unitKey({ type: 'paragraph' }, source)]),
+      rejectedKeys: new Set(),
     });
   });
 
@@ -266,6 +267,16 @@ Espere 20 días.
     expect(applied).toBe(target.replace('Espere 20 días.', 'Wait 10 days.'));
   });
 
+  it('reports the key of every rejected pair', () => {
+    const source = 'Wait 20 days before you retry.';
+    const result = recoverTranslations({
+      file: 'de.mdx', locale: 'de', oldEnglishPath: 'en.mdx',
+      oldEnglish: `${source}\n`, target: 'Warten Sie einige Tage, bevor Sie es erneut versuchen.\n',
+    });
+    expect(result).toMatchObject({ paired: 0, rejected: 1, translations: new Map() });
+    expect(result.rejectedKeys).toEqual(new Set([unitKey({ type: 'paragraph' }, source)]));
+  });
+
   it('keeps the first accepted value for repeated keys while counting every accepted pair', () => {
     const result = recoverTranslations({
       file: 'es.mdx', locale: 'es', oldEnglishPath: 'en.mdx',
@@ -274,6 +285,7 @@ Espere 20 días.
     expect(result).toEqual({
       translations: new Map([['paragraph\0\0\0Hello.', 'Hola.']]), paired: 2, rejected: 0, unpairedTarget: 0,
       oldKeys: new Set(['paragraph\0\0\0Hello.']),
+      rejectedKeys: new Set(),
     });
   });
 
@@ -285,6 +297,7 @@ Espere 20 días.
     expect(result).toEqual({
       translations: new Map(), paired: 0, rejected: 0, unpairedTarget: 2,
       oldKeys: new Set(['paragraph\0\0\0One.', 'paragraph\0\0\0Two.', 'paragraph\0\0\0Three.']),
+      rejectedKeys: new Set(),
     });
   });
 

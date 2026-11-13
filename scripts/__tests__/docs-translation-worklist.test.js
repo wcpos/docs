@@ -275,6 +275,19 @@ describe('unaligned units', () => {
     expect(summary.held_unaligned).toBe(0);
   });
 
+  it('re-translates a unit whose existing translation was rejected, even with the English unchanged', () => {
+    const english = `# Manage your store\n\n${PARAGRAPH}\n\nWait 20 days before you retry.\n\n${LAST}\n`;
+    const german = '# Verwalten Sie Ihren Shop\n\nÖffnen Sie die Einstellungen, um Ihren Shop einzurichten.\n\nWarten Sie einige Tage, bevor Sie es erneut versuchen.\n\nSchließen Sie die Kasse am Ende des Tages.\n';
+    addDoc(DOC, english, german);
+    commitFixtures();
+    writeState(rootDir, { [TARGET]: { source: git('hash-object', DOC) } });
+    const { plan } = schedule();
+    expect(plan.targets).toHaveLength(1);
+    expect(plan.targets[0]).toMatchObject({ target: TARGET, status: 'translate', pending: [2] });
+    expect(plan.targets[0].reasons).toMatchObject({ changed: 1, unaligned: 0 });
+    expect(plan.held_unaligned).toEqual([]);
+  });
+
   it('plans nothing for a kbd page whose ja lines start with <kbd> (docs#1006 shape)', () => {
     const english = '# Scanner setup\n\n1. Tap <kbd>Save scanner</kbd> to finish the wizard.\n\nOpen <kbd>Settings</kbd> → <kbd>Barcode Scanning</kbd> to test it.\n\nThe scanner is ready to use.\n';
     const japanese = '# スキャナーの設定\n\n1. <kbd>スキャナーを保存</kbd> をタップしてウィザードを完了します。\n\n<kbd>設定</kbd> → <kbd>バーコードスキャン</kbd> を開いてテストします。\n\nスキャナーを使用する準備ができました。\n';
