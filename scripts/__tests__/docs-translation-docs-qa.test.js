@@ -883,3 +883,28 @@ describe('validateDocsMdxStructure review hardening', () => {
     expect(issues.some((issue) => issue.code === 'duplicate_heading_anchor')).toBe(false);
   });
 });
+
+describe('validateDocsMdxStructure inline tags', () => {
+  const KBD = 'Open <kbd>Settings</kbd> → <kbd>Barcode Scanning</kbd> and scan into the **test panel**.';
+  const ICON = 'Click the sliders icon (<Icon name="sliders" />) to customise visible columns.';
+  const fires = (source, translated, locale = 'de') => validateDocsMdxStructure(source, translated, 'test.mdx', locale)
+    .some((issue) => issue.code === 'inline_tag_changed');
+
+  it.each([
+    ['a dropped </kbd>', KBD, 'Öffnen Sie <kbd>Einstellungen → <kbd>Barcode-Scannen</kbd> und scannen Sie im **Testfeld**.'],
+    ['an altered Icon attribute', ICON, 'Klicken Sie auf das Schieberegler-Symbol (<Icon name="slider" />), um Spalten anzupassen.'],
+    ['an added <kbd>', ICON, 'Klicken Sie auf <kbd>Schieberegler</kbd> (<Icon name="sliders" />), um Spalten anzupassen.'],
+  ])('fires for %s', (_name, source, translated) => {
+    expect(fires(source, translated)).toBe(true);
+  });
+
+  it('does not fire for a ja reorder that keeps every tag', () => {
+    expect(fires(KBD, '<kbd>設定</kbd> → <kbd>バーコードスキャン</kbd> を開き、**テストパネル**でスキャンします。', 'ja')).toBe(false);
+  });
+
+  it('does not compare <kbd> inside an inline code span', () => {
+    const source = 'Wrap keys in `<kbd>` tags, e.g. `<kbd>Enter</kbd>`.';
+    expect(fires(source, 'Umschließen Sie Tasten mit `<kbd>`-Tags.')).toBe(false);
+    expect(fires(`${source}\n\n\`\`\`html\n<kbd>Enter</kbd>\n\`\`\`\n`, 'Umschließen Sie Tasten mit `<kbd>`-Tags.\n\n```html\n```\n')).toBe(false);
+  });
+});
