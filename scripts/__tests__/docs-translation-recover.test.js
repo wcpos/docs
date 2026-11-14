@@ -76,10 +76,10 @@ describe('unit identity', () => {
     expect(unitKey({ type: 'jsx_attr', attr: 'alt' }, 'Hello')).toBe('jsx_attr\0\0alt\0Hello');
   });
 
-  it('fingerprints ordered markdown and HTML destinations, retaining duplicates', () => {
+  it('fingerprints sorted markdown and HTML destinations, retaining duplicates', () => {
     const source = '[One](/one "title") <a href="/two">Two</a> ![Image](/image) <img src="/four" /> [Again](/one)';
     expect(unitFingerprint({ type: 'paragraph', source })).toBe(
-      JSON.stringify(['paragraph', '', '', ['/one', '/two', '/image', '/four', '/one'], 0]),
+      JSON.stringify(['paragraph', '', '', ['/four', '/image', '/one', '/one', '/two'], 0]),
     );
     expect(unitFingerprint({ type: 'frontmatter', key: 'title', source: 'Hello' })).toBe(
       JSON.stringify(['frontmatter', 'title', '', [], 0]),
@@ -197,6 +197,7 @@ describe('pairLooksRight', () => {
     expect([...STRUCTURAL_ISSUE_CODES]).toEqual([
       'code_block_changed', 'import_changed', 'link_url_changed', 'inline_code_changed',
       'inline_code_punctuation_changed', 'inline_code_spacing_changed', 'protected_term_removed',
+      'inline_tag_changed',
     ]);
   });
 });
@@ -223,6 +224,8 @@ describe('recoverTranslations', () => {
     expect(result).toEqual({
       translations: new Map(isRow ? [[unitKey({ type: 'paragraph' }, source), row]] : []),
       paired: isRow ? 1 : 0, rejected: 0, unpairedTarget: isRow ? 0 : 1,
+      oldKeys: new Set([unitKey({ type: 'paragraph' }, source)]),
+      rejectedKeys: new Set(),
     });
   });
 
@@ -264,12 +267,26 @@ Espere 20 días.
     expect(applied).toBe(target.replace('Espere 20 días.', 'Wait 10 days.'));
   });
 
+  it('reports the key of every rejected pair', () => {
+    const source = 'Wait 20 days before you retry.';
+    const result = recoverTranslations({
+      file: 'de.mdx', locale: 'de', oldEnglishPath: 'en.mdx',
+      oldEnglish: `${source}\n`, target: 'Warten Sie einige Tage, bevor Sie es erneut versuchen.\n',
+    });
+    expect(result).toMatchObject({ paired: 0, rejected: 1, translations: new Map() });
+    expect(result.rejectedKeys).toEqual(new Set([unitKey({ type: 'paragraph' }, source)]));
+  });
+
   it('keeps the first accepted value for repeated keys while counting every accepted pair', () => {
     const result = recoverTranslations({
       file: 'es.mdx', locale: 'es', oldEnglishPath: 'en.mdx',
       oldEnglish: 'Hello.\n\nHello.\n', target: 'Hola.\n\nSaludos.\n',
     });
-    expect(result).toEqual({ translations: new Map([['paragraph\0\0\0Hello.', 'Hola.']]), paired: 2, rejected: 0, unpairedTarget: 0 });
+    expect(result).toEqual({
+      translations: new Map([['paragraph\0\0\0Hello.', 'Hola.']]), paired: 2, rejected: 0, unpairedTarget: 0,
+      oldKeys: new Set(['paragraph\0\0\0Hello.']),
+      rejectedKeys: new Set(),
+    });
   });
 
   it('does not count unaligned units as rejected pairs', () => {
@@ -277,7 +294,11 @@ Espere 20 días.
       file: 'es.mdx', locale: 'es', oldEnglishPath: 'en.mdx',
       oldEnglish: 'One.\n\nTwo.\n\nThree.\n', target: 'Uno.\n\nTres.\n',
     });
-    expect(result).toEqual({ translations: new Map(), paired: 0, rejected: 0, unpairedTarget: 2 });
+    expect(result).toEqual({
+      translations: new Map(), paired: 0, rejected: 0, unpairedTarget: 2,
+      oldKeys: new Set(['paragraph\0\0\0One.', 'paragraph\0\0\0Two.', 'paragraph\0\0\0Three.']),
+      rejectedKeys: new Set(),
+    });
   });
 
   it.each([
@@ -290,5 +311,46 @@ Espere 20 días.
       oldEnglish: '# Start\n\nRead [help](/help).\n', target: `# Inicio\n\nLea [ayuda](/help).\n\n${extra}\n`,
     });
     expect(result).toMatchObject({ paired: 2, rejected: 0, unpairedTarget });
+  });
+});
+
+describe('recoverTranslations line-anchored alignment', () => {
+  const english = Array.from({ length: 30 }, (_, index) => `Paragraph ${index + 1} explains one setting.`);
+  const german = Array.from({ length: 30 }, (_, index) => `Absatz ${index + 1} erklärt eine Einstellung.`);
+  english[4] = 'Click the badge (<Badge type="x" />) to open it.';
+  german[4] = 'Öffnen Sie es mit dem Abzeichen (<Badge type="x" />).';
+
+  it('pairs every other line when one line has a different unit count', () => {
+    const oldEnglish = english.join('\n');
+    const result = recoverTranslations({ file: 'de.mdx', locale: 'de', oldEnglishPath: 'en.mdx', oldEnglish, target: german.join('\n') });
+    const parsed = parseDocsMdxUnits('en.mdx', oldEnglish);
+    const keyOf = (unit) => unitKey(unit, decodeDocsUnitSource(parsed, unit));
+    const lineOf = (unit) => oldEnglish.slice(0, unit.range.start).split('\n').length - 1;
+    expect(parsed.units.filter((unit) => lineOf(unit) === 4)).toHaveLength(2);
+    for (const unit of parsed.units) {
+      expect(result.translations.get(keyOf(unit))).toBe(lineOf(unit) === 4 ? undefined : german[lineOf(unit)]);
+    }
+    expect(result.translations.size).toBe(29);
+    expect(result.oldKeys).toEqual(new Set(parsed.units.map(keyOf)));
+  });
+
+  it('pairs a unit whose two links are swapped in the translation', () => {
+    const oldEnglish = 'Read [the guide](/guide) and [the FAQ](/faq) first.\n\nOpen the settings page.\n\nSave your changes.\n';
+    const target = 'Lesen Sie zuerst [die FAQ](/faq) und [die Anleitung](/guide).\n\nÖffnen Sie die Einstellungen.\n\nSpeichern Sie Ihre Änderungen.\n';
+    const result = recoverTranslations({ file: 'de.mdx', locale: 'de', oldEnglishPath: 'en.mdx', oldEnglish, target });
+    expect(result.translations).toEqual(new Map([
+      [unitKey({ type: 'paragraph' }, 'Read [the guide](/guide) and [the FAQ](/faq) first.'), 'Lesen Sie zuerst [die FAQ](/faq) und [die Anleitung](/guide).'],
+      [unitKey({ type: 'paragraph' }, 'Open the settings page.'), 'Öffnen Sie die Einstellungen.'],
+      [unitKey({ type: 'paragraph' }, 'Save your changes.'), 'Speichern Sie Ihre Änderungen.'],
+    ]));
+    expect(result).toMatchObject({ paired: 3, rejected: 0, unpairedTarget: 0 });
+  });
+
+  it('does not pair by line when the blank lines moved', () => {
+    const oldEnglish = '# Title\n\nFirst sentence.\nSecond sentence.\n\nThird sentence.\n';
+    const target = '# Titel\n\nErster Satz. Zweiter Satz.\nDritter Satz.\n\n\n';
+    const result = recoverTranslations({ file: 'de.mdx', locale: 'de', oldEnglishPath: 'en.mdx', oldEnglish, target });
+    expect(result.translations.get(unitKey({ type: 'paragraph' }, 'Second sentence.'))).not.toBe('Dritter Satz.');
+    expect(result.translations.get(unitKey({ type: 'paragraph' }, 'Third sentence.'))).not.toBe('Dritter Satz.');
   });
 });

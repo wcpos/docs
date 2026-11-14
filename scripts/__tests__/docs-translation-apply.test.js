@@ -440,6 +440,14 @@ describe('applyResults render check', () => {
     expect(output.writes).toEqual([]);
     expect(output.report.rejected_details).toEqual([{ target: TARGET, unit: 'u0', reason: expect.stringContaining('mdx_parse') }]);
   });
+
+  it('rejects a kbd unit whose translation drops a tag', () => {
+    write(SOURCE, 'Open <kbd>Settings</kbd> → <kbd>Barcode Scanning</kbd> to test the scanner.\n');
+    siblings('Öffnen Sie <kbd>Einstellungen</kbd> → <kbd>Barcode-Scannen</kbd>, um den Scanner zu testen.\n');
+    const output = apply({ ...ENTRY, pending: [0] }, [result(['Öffnen Sie <kbd>Einstellungen</kbd> → Barcode-Scannen, um den Scanner zu testen.'])]);
+    expect(output.writes).toEqual([]);
+    expect(output.report.rejected_details).toEqual([{ target: TARGET, unit: 'u0', reason: 'inline_tag_changed' }]);
+  });
 });
 
 describe('applyResults JSON', () => {

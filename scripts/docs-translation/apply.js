@@ -255,7 +255,7 @@ function runCli(argv) {
     counts.set(locale, (counts.get(locale) ?? 0) + 1);
   }
   const markdown = [
-    `Applied: ${applied}; rejected: ${rejected}; warnings: ${warnings}; missing: ${missing}; files written: ${writes.length}; incomplete: ${report.files_incomplete.length}; quarantined: ${plan.quarantined?.length ?? 0}.`,
+    `Applied: ${applied}; rejected: ${rejected}; warnings: ${warnings}; missing: ${missing}; files written: ${writes.length}; incomplete: ${report.files_incomplete.length}; quarantined: ${plan.quarantined?.length ?? 0}; held: ${plan.held_unaligned?.length ?? 0}.`,
     '', '| Locale | Files written |', '| --- | --- |',
     ...[...counts].map(([locale, count]) => `| ${locale} | ${count} |`),
     '', '## Rejected units', '', '| Target | Unit | Reason |', '| --- | --- | --- |',
@@ -264,6 +264,8 @@ function runCli(argv) {
     ...report.warning_details.slice(0, 50).map(item => `| ${item.target} | ${item.unit} | ${item.codes.join(', ')} |`),
     '', '## Quarantined units', '', '| Target | Unit | Attempts | English |', '| --- | --- | --- | --- |',
     ...(plan.quarantined ?? []).slice(0, 50).map(item => `| ${item.target} | ${item.unit} | ${item.attempts} | ${item.source.slice(0, 120).replaceAll('|', '\\|').replaceAll('\n', ' ')} |`),
+    '', '## Held (English unchanged, units unaligned)', '', '| Target | Unaligned |', '| --- | --- |',
+    ...(plan.held_unaligned ?? []).slice(0, 50).map(item => `| ${item.target} | ${item.unaligned} |`),
     '', '## Held-back sources', '', ...report.sources_held_back.map(source => `- ${source}`), '',
   ].join('\n');
   for (const [file, content] of [[options['--report'], JSON.stringify(report, null, 2) + '\n'], [options['--report-md'], markdown]]) {
