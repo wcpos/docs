@@ -401,11 +401,12 @@ Body text.
   });
 
   it('still splits a line around a real inline tag outside code', () => {
-    const mdx = 'Press the sync button (<Icon name="arrow-rotate-right" />) and choose `Clear`.\n';
+    // A non-allowlisted tag (an allowlisted <Icon /> keeps the line whole since docs-translate-recover).
+    const mdx = 'Press the sync button (<Badge name="arrow-rotate-right" />) and choose `Clear`.\n';
     const parsed = parseDocsMdxUnits('docs/example.mdx', mdx);
 
     expect(parsed.units.length).toBeGreaterThan(1);
-    expect(parsed.units.some((unit) => unit.source.includes('<Icon'))).toBe(false);
+    expect(parsed.units.some((unit) => unit.source.includes('<Badge'))).toBe(false);
   });
 
   it('keeps a real JSX tag with a template-literal attribute out of the units', () => {
@@ -1153,5 +1154,39 @@ describe('MDX comment and export blocks', () => {
     expect(
       parsed.units.some((unit) => unit.type === 'paragraph' && unit.source.startsWith('WCPOS is a point of sale (POS) for WooCommerce.')),
     ).toBe(true);
+  });
+});
+
+describe('allowlisted inline tags keep the line as one unit', () => {
+  const units = (mdx) => parseDocsMdxUnits('docs/kbd.mdx', mdx).units.map((unit) => [unit.type, unit.source]);
+  const KBD_ITEM = 'If it types but WCPOS ignores it: open <kbd>Settings</kbd> → <kbd>Barcode Scanning</kbd> and scan into the **test panel**.';
+
+  it('keeps a kbd list item as one unit after the list marker', () => {
+    expect(units(`4. ${KBD_ITEM}\n`)).toStrictEqual([['paragraph', KBD_ITEM]]);
+  });
+
+  it('keeps a line with an Icon that has no translatable attribute as one unit', () => {
+    const line = 'Click the sliders icon (<Icon name="sliders" />) to customise visible columns.';
+    expect(units(`${line}\n`)).toStrictEqual([['paragraph', line]]);
+  });
+
+  it('treats a translated line that starts with kbd as prose, not a JSX opening', () => {
+    expect(units('<kbd>स्कैनर सहेजें</kbd> पर टैप करें।\n\nअगली पंक्ति गद्य है।\n')).toStrictEqual([
+      ['paragraph', '<kbd>स्कैनर सहेजें</kbd> पर टैप करें।'],
+      ['paragraph', 'अगली पंक्ति गद्य है।'],
+    ]);
+  });
+
+  it('keeps today\'s units for a kbd with attributes and an Icon with a title', () => {
+    expect(units('<kbd class="k">X</kbd> then\n')).toStrictEqual([['paragraph', 'X'], ['paragraph', 'then']]);
+    expect(units('<Icon name="a" title="Open" /> here\n')).toStrictEqual([['jsx_attr', 'Open'], ['paragraph', 'here']]);
+  });
+
+  it('round-trips a whole-line kbd translation', () => {
+    const parsed = parseDocsMdxUnits('docs/kbd.mdx', `# Test\n\n4. ${KBD_ITEM}\n`);
+    const translation = 'WCPOS が無視する場合: <kbd>設定</kbd> → <kbd>バーコードスキャン</kbd> を開き、**テストパネル**でスキャンします。';
+    const output = applyDocsMdxTranslations(parsed, new Map([[parsed.units[1].id, translation]]));
+    expect(output).toBe(`# Test\n\n4. ${translation}\n`);
+    expect(parseDocsMdxUnits('docs/kbd.mdx', output).units.map((unit) => unit.source)).toStrictEqual(['Test', translation]);
   });
 });

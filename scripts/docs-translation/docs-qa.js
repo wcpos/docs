@@ -164,6 +164,25 @@ function extractInlineCodeRanges(line) {
   return ranges;
 }
 
+// JSX attributes whose values are visible text; mdx-units extracts each as its own unit.
+const TRANSLATABLE_JSX_ATTRS = new Set(['alt', 'title', 'description', 'label', 'question', 'summary', 'placeholder', 'caption', 'scaleLabel', 'why']);
+
+// Inline tags a prose line may carry and still be ONE translation unit (mdx-units), and that a
+// translation must keep exactly (inline_tag_changed): bare <kbd> and </kbd>, and a self-closing
+// <Icon … /> with double-quoted attributes, none translatable (an Icon with title= keeps splitting).
+function isAllowlistedInlineTag(tag) {
+  if (tag === '<kbd>' || tag === '</kbd>') return true;
+  const icon = /^<Icon((?:\s+[A-Za-z][\w-]*="[^"]*")*)\s*\/>$/.exec(tag);
+  return icon !== null && [...icon[1].matchAll(/\s([A-Za-z][\w-]*)="[^"]*"/g)].every((match) => !TRANSLATABLE_JSX_ATTRS.has(match[1]));
+}
+
+// Sorted multiset: SOV locales move the tags within the sentence.
+function extractAllowlistedInlineTags(maskedSource) {
+  return maskedSource.split('\n')
+    .flatMap((line) => stripInlineCodeSpans(line).match(/<\/?kbd>|<Icon\b[^<>]*\/>/g) ?? [])
+    .filter(isAllowlistedInlineTag).sort();
+}
+
 function rangeOverlapsAny(range, ranges) {
   return ranges.some((candidate) => range.start < candidate.end && candidate.start < range.end);
 }
@@ -1052,6 +1071,10 @@ function validateDocsMdxStructure(source, translated, file, locale) {
     issues.push(issue('link_url_changed', file, 'Markdown link URLs changed.'));
   }
 
+  if (!sameList(extractAllowlistedInlineTags(sourceWithoutCodeBlocks), extractAllowlistedInlineTags(translatedWithoutCodeBlocks))) {
+    issues.push(issue('inline_tag_changed', file, 'Inline <kbd> or <Icon /> tags changed.'));
+  }
+
   if (!inlineCodeSpansCompatible(extractInlineCodeSpans(sourceWithoutCodeBlocks), extractInlineCodeSpans(translatedWithoutCodeBlocks), locale)) {
     issues.push(issue('inline_code_changed', file, 'Inline code spans changed.'));
   }
@@ -1139,6 +1162,8 @@ function findDuplicateHeadingAnchors(source) {
 
 module.exports = {
   isSpaceSensitiveLetter,
+  isAllowlistedInlineTag,
+  TRANSLATABLE_JSX_ATTRS,
   normalizeAdminBreadcrumbInlineCode,
   DOCS_LOCALE_PROFILES,
   validateProtectedTermsInText,
