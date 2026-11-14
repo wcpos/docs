@@ -4,6 +4,7 @@ const { validateDocsMdxStructure, validateProtectedTermsInText } = require('./do
 const STRUCTURAL_ISSUE_CODES = new Set([
   'code_block_changed', 'import_changed', 'link_url_changed', 'inline_code_changed',
   'inline_code_punctuation_changed', 'inline_code_spacing_changed', 'protected_term_removed',
+  'inline_tag_changed',
 ]);
 const CJK_LOCALES = new Set(['ja', 'ko', 'zh-CN']);
 
@@ -50,7 +51,8 @@ function tableCellCount(text) {
 }
 
 function unitFingerprint(unit) {
-  const urls = Array.from(unit.source.matchAll(/\]\(([^\s)]+)|\b(?:href|src)="([^"]*)"/g), (match) => match[1] ?? match[2]);
+  // Sorted: a translation may reorder a unit's links, which is still the same unit.
+  const urls = Array.from(unit.source.matchAll(/\]\(([^\s)]+)|\b(?:href|src)="([^"]*)"/g), (match) => match[1] ?? match[2]).sort();
   return JSON.stringify([unit.type, unit.key ?? '', unit.attr ?? '', urls, tableCellCount(unit.source)]);
 }
 
@@ -111,6 +113,42 @@ function alignUnits(oldUnits, targetUnits) {
   return pairs;
 }
 
+// Same line count: a line pairs only with its own line, and only when its units match one for one,
+// so one line whose unit count changed cannot cost the pairs of every other line.
+function alignUnitsByLine(oldParsed, targetParsed) {
+  const byLine = (parsed) => {
+    const lines = new Map();
+    const lineOf = [];
+    for (let offset = 0, line = 0; offset <= parsed.source.length; offset += 1) {
+      lineOf[offset] = line;
+      if (parsed.source[offset] === '\n') line += 1;
+    }
+    parsed.units.forEach((unit, index) => {
+      const line = lineOf[unit.range.start];
+      if (!lines.has(line)) lines.set(line, []);
+      lines.get(line).push(index);
+    });
+    return lines;
+  };
+  const targetLines = byLine(targetParsed);
+  const pairs = [];
+  for (const [line, oldIndexes] of byLine(oldParsed)) {
+    const targetIndexes = targetLines.get(line) ?? [];
+    if (oldIndexes.length === targetIndexes.length && oldIndexes.every((a, index) => (
+      unitFingerprint(oldParsed.units[a]) === unitFingerprint(targetParsed.units[targetIndexes[index]])
+    ))) {
+      oldIndexes.forEach((a, index) => pairs.push([a, targetIndexes[index]]));
+    }
+  }
+  return pairs;
+}
+
+// Line pairing needs the blank lines at the same indexes too: a shifted line must not pair with its neighbour's translation.
+function sameLineShape(a, b) {
+  const [linesA, linesB] = [a.split('\n'), b.split('\n')];
+  return linesA.length === linesB.length && linesA.every((line, index) => (line.trim() === '') === (linesB[index].trim() === ''));
+}
+
 // Arabic writes 1 and 2 as the singular or dual form (دقيقة واحدة "1 minute",
 // نطاقين "2 domains"), so an ar translation may drop a standalone 1 or 2. A run
 // joined to another digit run by . , : / - (1.11, 4.2, 1/2, 10:1) is not standalone.
@@ -161,21 +199,29 @@ function recoverTranslations({ file, locale, oldEnglishPath, oldEnglish, target 
   const translations = new Map();
   let paired = 0;
   let rejected = 0;
+  const rejectedKeys = new Set();
   let unpairedTarget = targetParsed.units.filter(unit => /\p{L}/u.test(decodeDocsUnitSource(targetParsed, unit))).length;
-  for (const [oldIndex, targetIndex] of alignUnits(oldParsed.units, targetParsed.units)) {
+  const pairs = sameLineShape(oldEnglish, target)
+    ? alignUnitsByLine(oldParsed, targetParsed)
+    : alignUnits(oldParsed.units, targetParsed.units);
+  for (const [oldIndex, targetIndex] of pairs) {
     const oldUnit = oldParsed.units[oldIndex];
     const source = decodeDocsUnitSource(oldParsed, oldUnit);
+    const key = unitKey(oldUnit, source);
     const translation = decodeDocsUnitSource(targetParsed, targetParsed.units[targetIndex]);
     unpairedTarget -= Number(/\p{L}/u.test(translation));
     if (pairLooksRight({ source, translation, locale, file })) {
-      const key = unitKey(oldUnit, source);
       if (!translations.has(key)) translations.set(key, translation);
       paired += 1;
     } else {
       rejected += 1;
+      rejectedKeys.add(key);
     }
   }
-  return { translations, paired, rejected, unpairedTarget };
+  // Every old-English key: worklist tells "English changed" from "unchanged but not aligned";
+  // a rejected pair is neither, its existing translation is re-translated.
+  const oldKeys = new Set(oldParsed.units.map((unit) => unitKey(unit, decodeDocsUnitSource(oldParsed, unit))));
+  return { translations, paired, rejected, unpairedTarget, oldKeys, rejectedKeys };
 }
 
 module.exports = {
