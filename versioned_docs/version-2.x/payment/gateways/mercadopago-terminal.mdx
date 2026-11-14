@@ -1,11 +1,13 @@
 ---
 title: Mercado Pago
 slug: /hardware/card-readers/mercado-pago
-description: "Take card payments on a Mercado Pago Point Smart terminal from the POS checkout, and set up the Mercado Pago Terminal extension in WP Admin."
+description: "Take card payments on a Mercado Pago Point terminal from the WCPOS checkout, refund them, and set up the Mercado Pago Terminal extension in WP Admin."
 ---
 
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
 import RequirementsList from '@site/src/components/RequirementsList';
 import RequirementItem from '@site/src/components/RequirementItem';
 import JourneyShot from '@site/src/components/JourneyShot';
@@ -13,311 +15,283 @@ import manifest from '@site/static/img/2.x/payment/gateways/mercadopago-terminal
 
 # Mercado Pago Terminal Gateway
 
-The till sends the order total to a Mercado Pago **Point Smart** terminal, the customer pays on the terminal, and the sale finishes on its own when Mercado Pago confirms it. This page is in two parts: [taking a payment](#take-payment) at the till, and [setting it up](#setup) in WP Admin.
+Mercado Pago Terminal sends a sale from the till to a Mercado Pago **Point** terminal. The customer pays on the terminal, and the till records the payment once Mercado Pago confirms it.
 
-:::warning Beta: run a test payment first
-This extension is new. No card payment or refund has been completed with it yet, so take a small payment and refund it before you rely on it.
+This page starts at the till. Store admins: [Set up Mercado Pago Terminal](#setup) covers the access token, the webhook, the terminals and how to check it worked.
+
+:::info Pro Feature
+Mercado Pago Terminal needs [WCPOS Pro](../../getting-started/pro-license.mdx) 2.0 or later, and version 1.0 or later of the extension.
+:::
+
+:::warning Take a test payment first
+**Version 1.0 hasn't been run on a real Point terminal or a Mercado Pago account yet.** Before you take a customer's card, take a small payment on your own card and refund it.
 
 <details>
-<summary>What has been tried so far</summary>
+<summary>What has and hasn't been tested</summary>
 
-On a live account and a real Point Smart, listing terminals, switching a terminal to PDV mode, and creating and cancelling a payment for it through Mercado Pago have worked. Whether the payment then shows on the terminal, a paid card payment, Mercado Pago's notification for a paid order, refunds, and Mercado Pago's sandbox (**Test** mode) have not been tried yet.
+Version 1.0 has been tested against a stand-in for Mercado Pago, built from Mercado Pago's documentation. Version 0.1, on a live account and a real Point Smart, listed the terminals, switched one to PDV mode, and created and cancelled a payment. Not yet tried with either version: a paid card payment, a decline, cancelling on the terminal, Mercado Pago's notifications, refunds, and Mercado Pago's sandbox.
 
 </details>
 :::
 
-{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves the payment panel, logs and support bundle into Pro, refuses unsigned webhooks and moves the webhook to /wp-json/wcpos/v2/payments/webhook?provider=mercadopago; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
-
-## Take a payment {#take-payment}
-
-You need [WCPOS Pro](../../getting-started/pro-license.mdx) and a store that's online, because the payment runs on your store's own payment page, inside the POS. Someone with WP Admin access [sets the gateway up](#setup) first.
+## Take a card payment {#take-payment}
 
 :::note Open the register first
-With **Open and close the register** switched on, the till won't record a payment while the register is closed, and a card you've already taken would have to be refunded. See [Checkout](../../pos/checkout/index.mdx).
+With **Open and close the register** switched on, the till won't record a payment while the register is closed, and a card you've already taken would have to be refunded. See [Registers](../../settings/wp-admin/registers.mdx#one-register) for the setting.
 :::
 
-The terminal runs from the **Legacy** tab of the checkout. In the shot below Mercado Pago isn't set up, so the list shows other gateways, with **Card** chosen. On your store, **Mercado Pago Terminal** is in that list:
+1. Press **Checkout** in the cart and tap the **Mercado Pago Terminal** tile on the **Payments** tab. Your store may have given it another name.
+2. Look above the keypad. If you see **Choose a terminal**, tap the terminal at your counter. If you see **Terminal:** and a name, that's the one this till uses; press **Change** to pick another. The till remembers your choice.
+3. To take part of the balance on the card, type the amount. The rest stays due for another payment. **Full balance** puts the whole amount back.
+4. Press **Send … to Mercado Pago Terminal**. The till says **Starting the terminal…**, then **Waiting for the customer on the terminal**, with the steps **Sent**, **On terminal** and **Captured**. **Approved** stays dark: Mercado Pago takes the money in one step.
+5. The customer pays on the terminal. When the payment is captured and nothing is left to pay, the receipt opens. If some is left, take it with another tile.
 
-<JourneyShot manifest={manifest} device="tablet" step={1} offsets={[[92, 0], [-34, 150], [-24, 0]]} alt="The checkout's Legacy tab on a store without Mercado Pago set up: the tab itself, the store's payment page inside the POS with the order total and its list of other gateways, and the Process Payment button">
+The terminal doesn't print a ticket. Print or email the POS receipt as usual; see [Receipts at Checkout](../../receipts/at-checkout.mdx). There's no tip on the terminal.
 
-1. **Legacy** tab — opens your store's own payment page inside the POS.
-2. **Your store's payment page** — the order total and the store's gateways. **Mercado Pago Terminal** is in this list once it's set up. Choose it and its panel opens beneath it, with **Terminal** and **Start Terminal Payment**.
-3. **Process Payment** — not needed for Mercado Pago: the sale finishes on its own when the payment is confirmed.
+### Cancel a payment {#cancel}
 
-</JourneyShot>
+**Cancel on terminal** works only until the payment appears on the terminal's screen. Once the customer can see it, the till can't take it back:
 
-1. Build the cart and press **Checkout**.
-2. Open the **Legacy** tab. Your store's payment page opens inside the POS. See [The Legacy Tab](../../pos/checkout/legacy-tab.mdx).
-3. Choose **Mercado Pago Terminal**. Your store may have given it another name.
-4. Check the terminal under **Terminal**. The default terminal is already chosen; when the terminal is locked, you can't change it.
-5. Press **Start Terminal Payment**. The panel says **Sending to terminal…**, then **Waiting for terminal…**, and the full order total goes to that terminal.
-6. The customer pays on the terminal. The panel says **Customer is paying on the terminal…** while they do. If it says **Confirm the payment on the terminal.**, finish the step the terminal is asking for.
-7. When Mercado Pago confirms the payment, the panel says **Payment complete — finishing order…** and the POS moves on to the receipt.
+1. **Cancel the payment on the terminal itself**, or ask the customer not to pay.
+2. Wait for the till. It may stay on **Cancelling — waiting for the terminal to confirm** while it checks. The customer can still pay until the terminal cancels, so don't take payment another way yet.
+3. The till shows **Payment cancelled** once the terminal cancels. If nobody cancels, Mercado Pago drops the payment after 5 minutes, and the till shows **Payment failed: Timed out on the terminal**.
 
-You don't need **Process Payment** at the foot of the Legacy tab: the sale finishes on its own when Mercado Pago confirms. Pressed before then, it only says the order hasn't been paid yet.
-
-The terminal is always charged the whole order, so it can't share a sale with another method. Once a payment has been taken on the order, the Legacy tab can't be used; [cancel that payment](../../pos/checkout/cancelling-a-payment.mdx) first.
-
-### Cancel or wait {#payment-controls}
-
-- **Cancel Terminal Payment** replaces **Start Terminal Payment** while a payment runs. It works only until the terminal picks the payment up. After that the panel says **The payment is already on the terminal. Cancel it on the terminal, or wait for it to expire.**
-- **A payment expires** on Mercado Pago's side 5 minutes after you start it. The panel keeps checking, so a payment the customer finishes before then still completes the sale.
-- **Reloading the page** picks up the payment already in progress, with **Cancel Terminal Payment** showing.
-- **If the till closed** during a payment, don't charge the card again. Your store is built to finish a paid order on its own, from Mercado Pago's notification and from a check it runs every 5 minutes, but that has not been run live yet. Open the order, and the payment in your Mercado Pago account, and check whether it was paid.
-
-## After the sale {#receipts}
-
-The terminal doesn't print a ticket. Print or email the POS receipt as usual; see [Receipts at Checkout](../../receipts/at-checkout.mdx).
-
-The order records the payment with Mercado Pago's order ID as its transaction ID.
-
-## Refunds {#refunds}
-
-In WP Admin, open the order, click **Refund**, enter the amount and press **Refund … via Mercado Pago Terminal**. The whole order goes back as a full refund; any smaller amount as a partial refund. Mercado Pago allows refunds up to **90 days** after the payment.
-
-Some card acquirers only allow refunds on the terminal. If Mercado Pago refuses the refund, refund on the Point terminal, then record the refund in WooCommerce with **Refund manually**. See [Refunds](../../pos/refunds.mdx).
+If the till offers **Release this payment**, Mercado Pago accepted the cancel but hasn't confirmed it yet. Released doesn't mean cancelled: press it only once a manager has checked your Mercado Pago account and found no approved payment for the order.
 
 ## If something goes wrong {#goes-wrong}
 
-The panel's status line tells you what happened. Open the one that starts with the same words.
+### When the customer may have paid {#may-have-paid}
 
-### The payment won't start {#wont-start}
+:::warning Don't take the payment again
+In these cases the card may already be charged. A manager checks your Mercado Pago account first, where the payment is listed as **Order #** and the order number.
+:::
 
-<details>
-<summary>Select a terminal first.</summary>
+**The card was charged, but the order didn't finish.** Mercado Pago took the money, but the till couldn't finish the order. Don't charge again. Reload the app, and the till tries again to finish the sale; if the order is still open, a manager finishes it. See [Card charged, order not finished](../../pos/checkout/troubleshooting.mdx#card-charged-order-open).
 
-Pick a terminal under **Terminal**, then press **Start Terminal Payment** again.
+**Payment failed: The terminal confirmed a different amount.** The terminal took an amount other than the one the till sent, so the till didn't record it, but the card may be charged. Ask a manager to find the payment in Mercado Pago and compare it with the order.
 
-</details>
+**The till closed or lost its connection during a payment.** Don't send the payment again from another till. With the [webhook](#webhook) set up, your store records a payment Mercado Pago confirms even with the till closed. Open the order: if it still shows unpaid, a manager checks Mercado Pago before you take payment again.
 
-<details>
-<summary>Terminal … is in STANDALONE mode.</summary>
+### Other messages {#other-messages}
 
-The terminal can't take payments from the till yet. Ask whoever set up the gateway to [switch it to PDV](#terminals) and restart it.
+<Accordion>
+  <AccordionItem question="Payment failed: Card declined">
 
-</details>
+  Press **Try again** to send it to the terminal again, or **Choose another way** to pay with another tile.
 
-<details>
-<summary>No terminals found on this Mercado Pago account. / Could not load terminals.</summary>
+  </AccordionItem>
+  <AccordionItem question="Payment failed: followed by a code">
 
-The store can't list its terminals. Ask whoever set up the gateway to check the [diagnostics](#settings).
+  Mercado Pago refused the payment and gave a reason the till doesn't translate, so it shows Mercado Pago's own code. Press **Try again**, or **Choose another way**. If the same code keeps coming back, send the [support bundle](#logs-and-support-bundle) with the order number.
 
-</details>
+  </AccordionItem>
+  <AccordionItem question="The terminal is still busy with an earlier order">
 
-<details>
-<summary>Mercado Pago Terminal is disabled.</summary>
+  The terminal is holding another payment. Finish or cancel it on the terminal, then press **Try again**.
 
-The gateway is switched off for the POS. Ask whoever runs WP Admin to [turn it on](#turn-on).
+  </AccordionItem>
+  <AccordionItem question="Payment failed: Timed out on the terminal">
 
-</details>
+  No one paid within 5 minutes. Check the terminal, then press **Try again**.
 
-<details>
-<summary>Mercado Pago Terminal request failed.</summary>
+  </AccordionItem>
+  <AccordionItem question="The Mercado Pago Terminal tile is greyed out or missing">
 
-The till couldn't reach your store or Mercado Pago. If the customer may have paid, check the order and your Mercado Pago account before starting another payment. Otherwise check the connection and try again. If it keeps happening, send the [support bundle](#logs-and-support-bundle).
+  Under the tiles, the till says why. See [When a tile can't be used](../index.mdx#unavailable-tiles) for every reason.
 
-</details>
+  - **In use by order #…** — the terminal is busy with another order's payment. Finish or cancel that one, or press **Change** and pick another terminal.
+  - **Needs a connection** — the till is offline. A terminal payment goes through your store, so take another kind of payment or wait for the connection.
+  - **No terminals set up for Mercado Pago Terminal** — none of your terminals is in **PDV** mode. A manager [switches them to PDV](#terminals).
+  - **No tile at all** — the gateway has no access token, or isn't switched on in WCPOS. A manager checks [the setup](#setup).
 
-### The payment stalls or fails {#stalls}
+  </AccordionItem>
+</Accordion>
 
-Before you start again, look at the terminal. **Never charge the card twice**: if the customer may have paid, check the order and your Mercado Pago account first.
+## Refund a Mercado Pago payment {#refunds}
 
-<details>
-<summary>Still waiting for the terminal.</summary>
+A refund goes back through Mercado Pago to the customer's card, for the full amount or part of it.
 
-A minute has passed with no answer. If the terminal shows the payment, let the customer finish; if not, press **Cancel Terminal Payment** and start again.
+1. In the POS, open the order's refund. See [Refunds](../../pos/refunds.mdx).
+2. Choose **Refund to Mercado Pago Terminal** and press **Process Refund**.
+3. Your store asks Mercado Pago for the refund and adds the result to the order notes.
 
-</details>
+A refund in WP Admin, with WooCommerce's **Refund … via Mercado Pago Terminal** button, works the same way. Sales taken with version 0.1 refund the same way too.
 
-<details>
-<summary>The payment is already on the terminal.</summary>
+<Accordion>
+  <AccordionItem question="A refund stays pending">
 
-Cancel it on the terminal, or wait the 5 minutes for it to expire. The panel keeps checking, so if the customer pays anyway, the sale still finishes.
+  Mercado Pago hadn't finished the refund when it answered, and your store may not update it on its own. Find the refund in your Mercado Pago account before you refund again: if it went through, the customer has their money.
 
-</details>
+  </AccordionItem>
+  <AccordionItem question="Mercado Pago refuses the refund">
 
-<details>
-<summary>Payment failed.</summary>
+  Some card acquirers only allow refunds on the terminal. Refund on the Point terminal or in your Mercado Pago account, then record it in WooCommerce with **Refund … manually**.
 
-The card or the payment was refused. Press **Start Terminal Payment** to try again, or take another method.
+  </AccordionItem>
+  <AccordionItem question="I refunded on the terminal or in Mercado Pago">
 
-</details>
+  Your store isn't told about refunds made there, so the order still shows the full payment. Record the refund in WooCommerce with **Refund … manually**, so no money goes back twice.
 
-<details>
-<summary>The payment expired on the terminal.</summary>
+  </AccordionItem>
+</Accordion>
 
-Five minutes passed. Press **Start Terminal Payment** again.
+## Set up Mercado Pago Terminal {#setup}
 
-</details>
+An administrator does this once per store in WP Admin, then picks a terminal on each till. Your store reaches each terminal through Mercado Pago over the internet, so there's nothing to pair, and any till can use any of your terminals.
 
-<details>
-<summary>Timed out waiting for the terminal.</summary>
-
-Six minutes passed with no result, and the till asks Mercado Pago to cancel the payment. Check the terminal before you start again.
-
-</details>
-
-<details>
-<summary>Mercado Pago reported a payment that does not match this order.</summary>
-
-The payment didn't match this order, for example its total or currency changed. Don't charge the card again. Check the order notes and the payment in your Mercado Pago account, and call your manager.
-
-</details>
-
-<details>
-<summary>Messages while setting up</summary>
-
-**Access token rejected by Mercado Pago (HTTP 401).** The token is wrong or out of date. Copy a fresh one from **Your integrations** → **Credentials** in Mercado Pago and save it in **Access token**.
-
-**Access token is not allowed to use Point (HTTP 403).** The application behind the token can't use Point. Check the application in **Your integrations**.
-
-**Could not reach Mercado Pago.** The store couldn't connect. Check the token, then reload the settings page.
-
-**No Point terminals are linked to this Mercado Pago account yet.** Log in on the terminal with this Mercado Pago account, then switch it to PDV and restart it.
-
-**Default terminal is a text box, not a list.** The terminal list couldn't be loaded. Check the token and the diagnostics, then reload the settings page.
-
-**Live mode is selected but the access token is a test token (TEST-…).** Payments would go to Mercado Pago's sandbox. Paste your production token, or switch **Mode** back to **Test**.
-
-**Last verified webhook: never.** Mercado Pago hasn't sent a signed notification yet. Check the webhook URL and the **Webhook secret**. The payment panel still completes payments while it stays open.
-
-**Mercado Pago refused the refund.** Some acquirers only allow refunds on the terminal: refund there, then record it with **Refund manually**.
-
-**Activation is refused.** The server needs **PHP 7.4** or newer.
-
-</details>
-
-## Set it up {#setup}
-
-This part is for whoever runs the store's WP Admin. Check [what you need](#requirements) before step 1.
-
-### What you need {#requirements}
+### Requirements {#requirements}
 
 <RequirementsList>
-  <RequirementItem label="Mercado Pago Account">A seller account in Argentina, Brazil, Mexico, Uruguay, Colombia, Chile or Peru, with an application and its access token</RequirementItem>
-  <RequirementItem label="Terminal">A Mercado Pago Point Smart 1 or 2, in PDV mode</RequirementItem>
-  <RequirementItem label="Connection">Online only. The store sends each payment to the terminal over the internet, so any till can use any terminal and picks one at checkout</RequirementItem>
-  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
-  <RequirementItem label="Server">WordPress 5.2 or newer, WooCommerce, and PHP 7.4 or newer</RequirementItem>
-  <RequirementItem label="Currency">The same currency as your Mercado Pago account</RequirementItem>
+  <RequirementItem label="Mercado Pago Account">A seller account with Point, and an application under **Your integrations** with its access token</RequirementItem>
+  <RequirementItem label="Terminal">A Mercado Pago Point terminal, such as a Point Smart, logged in with the same account</RequirementItem>
+  <RequirementItem label="Currency">Your store's currency must be your Mercado Pago account's currency. Nothing is converted</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro 2.0 or later, and version 1.0 or later of the extension</RequirementItem>
+  <RequirementItem label="Server">WordPress 6.0 or newer, WooCommerce, and PHP 7.4 or newer. Your site must be reachable from the internet for the webhook</RequirementItem>
 </RequirementsList>
 
-### 1. Install the extension {#install}
+If your currency has no cents, such as Chilean pesos, set **Number of decimals** to **0** under `WooCommerce > Settings > General`. Mercado Pago refuses amounts with decimals on those accounts.
 
-Open `WP Admin > POS > Settings > Extensions`, find **Mercado Pago Terminal for WooCommerce** and click **Install**. WCPOS downloads it, installs it and activates it in one go. See [Installing an Extension](../../extensions/index.mdx#installing-an-extension).
+### Install the extension {#install}
 
-Without the directory, download the **plugin zip** (not the source-code zip) from the [GitHub releases page](https://github.com/wcpos/mercadopago-terminal-for-woocommerce/releases), upload it with **Upload Plugin** in `Plugins > Add Plugin`, then activate it. WooCommerce must be active.
+Open `WP Admin > POS > Settings > Extensions`, find **Mercado Pago Terminal for WooCommerce**, install it and activate it. You need version 1.0 or later; version 0.1 is for WCPOS before 2.0. See [Extensions](../../extensions/index.mdx#installing-an-extension).
 
-### 2. Get ready in Mercado Pago {#mercado-pago-account}
+You can also upload the **plugin zip** (not the source-code zip) from the [GitHub releases page](https://github.com/wcpos/mercadopago-terminal-for-woocommerce/releases) under `Plugins > Add Plugin > Upload Plugin`.
 
-1. Create an application under **Your integrations** and activate its production credentials. Mercado Pago asks for your industry and website, and for you to accept the terms and pass a reCAPTCHA.
-2. Create a **Store** and a **POS** in Mercado Pago. The extension doesn't create them for you.
-3. Link your Point Smart terminal: log in on the terminal with the same Mercado Pago account.
+Without WCPOS Pro 2.0, WP Admin shows *Mercado Pago Terminal requires WooCommerce POS Pro 2.0 or newer.* and the gateway isn't added.
 
-### 3. Fill in the gateway settings {#gateway-settings}
+### Enter your access token {#credentials}
 
-1. Go to `WP Admin > WooCommerce > Settings > Payments` and open **Mercado Pago Terminal**.
-2. Choose **Mode**: **Test** (the default) drives Mercado Pago's sandbox virtual terminal; **Live** drives real terminals.
-3. Paste the **Access token** (`APP_USR-…`) from your application under **Your integrations** → **Credentials**. Use the token that matches **Mode**.
-4. If your currency has no cents, such as Chilean pesos, set **Number of decimals** to **0** under `WooCommerce > Settings > General`. Mercado Pago refuses amounts with decimals on those accounts, and the extension sends whole amounts only when this setting is 0.
-5. Save.
+In Mercado Pago, open **Your integrations**, create an application if you have none, and copy its **access token** from **Credentials**. Then go to `WP Admin > WooCommerce > Settings > Payments` and open **Mercado Pago Terminal**.
 
-### 4. Add the webhook (recommended) {#webhook}
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[80, 0], [410, 0], [850, 0], [410, 0], [410, 0]]} maxWidth={720} alt="WP Admin, Mercado Pago Terminal settings: Enable unticked, Title Mercado Pago Terminal, the default Description, Mode Test and an empty Access token">
 
-The webhook lets Mercado Pago tell your store when a payment is done. It is meant to finish a paid order even if the till was closed, but that hasn't been run live yet: [check the order](#payment-controls) before charging again. Without the webhook, the payment panel still completes payments while it stays open.
+1. **Enable** — leave it unticked. It offers the gateway on your online store; the POS has [its own switch](#enable).
+2. **Title** — the tile's name at the till.
+3. **Description** — shown under the title on the store's payment page.
+4. **Mode** — a label for your own records. The access token decides whether payments are real: a production token takes real money, a test token doesn't, whichever **Mode** says.
+5. **Access token** — paste it here. Once saved, the field stays blank: leave it blank to keep the saved token.
 
-1. In Mercado Pago, open **Your integrations** → your application → **Webhooks**.
-2. Add the webhook URL shown under **Webhook secret** in the gateway settings. It ends in `admin-ajax.php?action=mptfwc_webhook`.
-3. Select the **Order (Mercado Pago)** event and save.
-4. Copy the **secret signature** into **Webhook secret**, and save. With the secret saved, the store refuses any notification that isn't signed with it. Without a secret, the store still acts on Mercado Pago's notifications but can't check that they came from Mercado Pago, and **Last verified webhook** stays at **never**.
+</JourneyShot>
 
-### 5. Set up your terminals {#terminals}
+Below them is **Webhook secret**. Leave it for now and click **Save changes**.
 
-1. Reload the settings page. The **Default terminal** list and the **Terminals** table now show your account's terminals.
-2. Terminals ship in **STANDALONE** mode. For each one, click **Switch to PDV**, then **restart the terminal**. Mercado Pago needs the restart.
-3. Choose a **Default terminal**.
-4. Optional: limit **Enabled terminals** to the ones cashiers may pick. Leave it empty to allow all; the default is always allowed.
-5. Optional: tick **Lock terminal selection** so cashiers always use the default terminal.
-6. Save.
+### Add the webhook {#webhook}
 
-### 6. Turn it on for the POS {#turn-on}
+The webhook lets Mercado Pago tell your store as soon as a payment ends. Payments still work without it, because the till and your store keep asking Mercado Pago, but set it up so a paid order finishes even if the till closed.
 
-Go to `WP Admin > POS > Settings > Checkout`, find **Mercado Pago Terminal** and switch **Enabled** on. See [Enabling a Gateway](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+1. Copy the webhook URL from the description under **Webhook secret**. It ends in `wp-json/wcpos/v2/payments/webhook?provider=mercadopago`.
+2. In Mercado Pago, open **Your integrations**, your application, then **Webhooks**. Add the URL and select the **Order (Mercado Pago)** event.
+3. Copy the **secret signature** Mercado Pago shows, paste it into **Webhook secret** and click **Save changes**.
 
-Leave **Enable/Disable** in the WooCommerce settings off unless you want it online too. The POS uses the gateway once it is enabled here, whether that box is ticked or not.
+Your store refuses any notification that isn't signed with that secret, so a webhook without the secret does nothing.
+
+### Switch your terminals to PDV {#terminals}
+
+Point terminals ship in **STANDALONE** mode, where they can't take payments from a till. Only terminals in **PDV** mode are offered at checkout.
+
+1. Log in on each terminal with the same Mercado Pago account, if you haven't.
+2. Reload the Mercado Pago Terminal settings page. Under **Mercado Pago diagnostics**, a table lists each terminal with its **ID**, **Terminal** name and **Mode**.
+3. Click **Switch to PDV** on each terminal in **STANDALONE** mode, then **restart that terminal**. Mercado Pago needs the restart.
+
+The table lists up to 50 terminals.
+
+### Switch it on in WCPOS {#enable}
+
+Go to `WP Admin > POS > Settings > Checkout`, find **Mercado Pago Terminal** in the **Gateways** table and switch **Enabled** on. That screen saves as you go; there's no Save button.
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[172, 0], [-26, 0]]} maxWidth={720} alt="WP Admin, POS Settings, Checkout: three rows of the Gateways table, Cash on delivery, Mercado Pago Terminal and Mollie Terminal, all switched off">
+
+1. **Mercado Pago Terminal** — the extension's row in the **Gateways** table.
+2. **Enabled** — the switch beside the gateway ID; switch it on. The till shows the **Mercado Pago Terminal** tile once it reloads.
+
+</JourneyShot>
+
+Leave **Enable** on the WooCommerce settings page off. The POS uses the gateway once **Enabled** is on here, whether that box is ticked or not. See [Checkout Settings](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+### Choose each till's terminal {#till-terminal}
+
+On each till, open **Settings > Card readers**. Your terminals are listed under **Smart readers**, by the name Mercado Pago gives them: **Online** in PDV mode, **Offline** in STANDALONE mode. Press **Use this reader** on the terminal at that counter; its row shows **Selected**. The cashier can still press **Change** at checkout.
+
+With only one terminal in PDV mode there's nothing to choose: it's already **Selected** on every till. See [Choose a smart reader](../../hardware/card-readers/index.mdx#smart-readers).
+
+### Check it worked {#check}
+
+1. On the Mercado Pago Terminal settings page, **Mercado Pago diagnostics** reads *Credentials accepted. Restart the terminal after switching to PDV.* That means Mercado Pago accepted the access token. *Mercado Pago access token is missing.* means none is saved; any other message is Mercado Pago's answer to the token.
+2. Each terminal you'll use shows **PDV** under **Mode**.
+3. On a till, reload the POS and press **Checkout**. The **Mercado Pago Terminal** tile is among the ways to pay, with your terminals above the keypad.
+4. Take a small sale on your own card, then refund it.
+
+### Upgrading from version 0.1 {#upgrade}
+
+- Update WCPOS, WCPOS Pro and the app to 2.0 first, then the extension.
+- **Add the new webhook** and its secret: see [Add the webhook](#webhook). The 0.1 webhook address is gone, and notifications without a signature are refused.
+- A payment in progress during the upgrade carries over. Nothing is charged twice.
+- These 0.1 settings are gone: **Default terminal**, **Enabled terminals**, **Lock terminal selection**, **Checkout debug logs** and **Log level**. Tills now choose their terminal under **Settings > Card readers**.
+- **Mode** no longer picks the environment: check that the saved access token is the one you mean to use.
+- The payment now runs on the **Payments** tab. The **Legacy** tab still works, for the whole balance only.
+- Sales taken by 0.1 refund as usual: see [Refund a Mercado Pago payment](#refunds).
 
 ## Settings reference {#settings}
 
-On `WP Admin > WooCommerce > Settings > Payments > Mercado Pago Terminal`. The steps above cover the ones you need; open the list for every setting and its default.
-
-<details>
-<summary>All 11 settings, and the diagnostics</summary>
+On `WP Admin > WooCommerce > Settings > Payments > Mercado Pago Terminal`:
 
 | Setting | What it does |
 |---|---|
-| **Enable/Disable** | Offers the gateway on the online store too. Off by default. The POS has its own switch, under `POS > Settings > Checkout` |
-| **Title** | The name cashiers choose on the payment page. Defaults to `Mercado Pago Terminal` |
-| **Description** | The line shown under the title. Defaults to `Pay in person on a Mercado Pago Point terminal.` |
-| **Mode** | **Test** (default) drives the sandbox virtual terminal; **Live** drives real terminals |
-| **Access token** | From your application under Your integrations → Credentials. Once saved it isn't shown again, only its last four characters; leave it blank to keep it |
-| **Webhook secret** | The secret signature from Mercado Pago's webhook settings. Saved and shown like the token |
-| **Default terminal** | The terminal chosen at the start. A list fetched from your account, or a text box when the list can't be loaded |
-| **Enabled terminals** | The terminals cashiers may pick. Empty allows all; the default is always allowed. Hidden when the list can't be loaded |
-| **Lock terminal selection** | Cashiers can't change the terminal: the default is always used. Needs a default terminal |
-| **Checkout debug logs** | Shows **Show logs**, **Copy** and **Clear** on the payment panel. Off by default; turn it on when gathering logs for support. Payments are logged either way |
-| **Log level** | **Off**, **Errors only** or **Debug** (the default) |
-
-Under the settings, **Mercado Pago Terminal diagnostics** shows the API check with the number of terminals and how many are in PDV mode, the last verified webhook, the active environment, whether the token and secret are set, the default terminal, the webhook URL and a link to the logs. The **Terminals** table lists each terminal's ID, label and operating mode, with **Switch to PDV** where it is needed.
-
-</details>
+| **Enable** | Offers the gateway on your online store's checkout. Leave it off; the POS has its own switch under `POS > Settings > Checkout` |
+| **Title** | The tile's name at the till. Defaults to `Mercado Pago Terminal` |
+| **Description** | Defaults to `Pay in person on a Mercado Pago Point terminal.` |
+| **Mode** | **Test** (default) or **Live**. A label only: the access token decides whether payments are real, whatever the field's own description says |
+| **Access token** | From your application under **Your integrations** → **Credentials**. Never shown once saved, only its last characters; leave it blank to keep it. Finish open payments before you replace it |
+| **Webhook secret** | The secret signature from your application's webhook in Mercado Pago. Its description shows your store's webhook URL. Saved and shown like the token |
 
 ## Logs and support bundle {#logs-and-support-bundle}
 
-Logs are in `WP Admin > WooCommerce > Status > Logs`, under the source `mercadopago-terminal`. **Log level** starts on **Debug**, which records every request to Mercado Pago and every answer, every webhook and every change in a payment's state, with tokens, signatures and card numbers removed.
+At the foot of the settings page are the support bundle, the diagnostics line and a link to the logs.
 
-When a payment fails, click **Download support bundle** on the gateway's settings page and send the `.txt` file to support with the **order number**. Nothing in it can be used to take payments.
+<JourneyShot manifest={manifest} device="desktop" step={3} offsets={[[260, 0], [80, 0], [-20, 0]]} maxWidth={720} alt="WP Admin, foot of the Mercado Pago Terminal settings on a store not set up yet: Support bundle with its Download support bundle button, Mercado Pago diagnostics with the line Mercado Pago access token is missing, and View logs">
 
-<details>
-<summary>What the support bundle holds</summary>
+1. **Diagnostics line** — *Mercado Pago access token is missing.* on this store, which isn't set up. Yours should read *Credentials accepted.*, with your terminals listed under it.
+2. **View logs** — opens `WooCommerce > Status > Logs`, source `mercadopago-terminal`.
+3. **Download support bundle** — a file for WCPOS support.
 
-- Your store's setup: the extension, WordPress, WooCommerce, PHP and WCPOS versions, and whether HPOS is on.
-- The gateway settings, with the access token and webhook secret masked.
-- Your terminals and their operating modes.
-- Payment attempts from the 10 most recent orders that used the terminal.
-- The last 500 lines of the `mercadopago-terminal` log.
+</JourneyShot>
 
-</details>
+The logs record each request to Mercado Pago and its reply, with the token and card numbers removed.
+
+When a payment goes wrong, click **Download support bundle** and send the file to WCPOS support with the **order number**. WCPOS Pro adds this button: the bundle covers every POS payment provider on your site, with secrets and card numbers removed. It also says when your store last received a signed webhook.
 
 ## What it doesn't do {#scope-and-limitations}
 
-- Part-payments: the terminal is always charged the whole order.
-- Tips.
-- A store priced in a different currency from the Mercado Pago account: the order won't complete.
-- Printing a ticket on the terminal.
-- The online store's block checkout.
+- Tips, or authorising now and capturing later.
+- Print a ticket on the terminal.
+- Take payments on terminals in **STANDALONE** mode.
+- Record refunds made on the terminal or in Mercado Pago.
+- Convert currencies: the store and the Mercado Pago account must use the same one.
+- More than 50 terminals per account.
+- Set a store-wide default terminal, or limit which terminals tills may use, from WP Admin. Each till picks its own.
 - HPOS (WooCommerce's order tables): the extension doesn't declare support for it yet.
 
 <details>
 <summary>How it works, for developers</summary>
 
-The gateway uses Mercado Pago's **Orders API** for Point (`POST /v1/orders` with `type: point`). Starting a payment saves an idempotency key and an external reference on the order, then creates a Mercado Pago order for the order total on the chosen terminal, with a 5-minute expiry (filter `mptfwc_order_expiration_time`). A retry after a timeout reuses the key, so it can't charge twice.
+The gateway uses Mercado Pago's **Orders API** for Point (`POST /v1/orders` with `type: point`), through WCPOS Pro's payment providers. Each payment creates a Mercado Pago order for the amount on the till, with the terminal ID, `print_on_terminal: no_ticket`, an external reference for the payment and an idempotency key, so a retry can't charge twice. The order expires after 5 minutes (filter `mptfwc_order_expiration_time`).
 
-The panel asks for the status every 2 seconds (filter `mptfwc_poll_interval_ms`) and gives up after 6 minutes. The webhook (`x-signature`, HMAC-SHA256) and a scheduled check every 5 minutes can also complete the order; the webhook body is never trusted, and the order is always fetched again from Mercado Pago.
+The till asks for the status every 2 seconds. The webhook, `wp-json/wcpos/v2/payments/webhook?provider=mercadopago`, must carry a valid `x-signature` (HMAC-SHA256 with the webhook secret); its body is never trusted, and the store fetches the order from Mercado Pago again. WooCommerce POS checks unanswered payments every 10 minutes as a backstop.
 
-The order completes only when the Mercado Pago order names it, was created by this store for it, is a `point` order, matches its total and currency, and used the attempt's terminal. Completion runs once, under a per-order lock. The transaction ID is the Mercado Pago order ID.
+Terminals come from `/terminals/v1/list`; only those in PDV mode count as online. The filters `mptfwc_order_payload` and `mptfwc_poll_interval_ms` from version 0.1 are gone.
 
 </details>
 
 ## Related Documentation {#related-documentation}
 
+- [Card readers](../../hardware/card-readers/index.mdx)
 - [The Legacy Tab](../../pos/checkout/legacy-tab.mdx)
-- [Checkout](../../pos/checkout/index.mdx)
+- [Refunds](../../pos/refunds.mdx)
 - [Checkout Settings](../../settings/wp-admin/checkout.mdx)
-- [Extensions](../../extensions/index.mdx)
 - [Report an issue on GitHub](https://github.com/wcpos/mercadopago-terminal-for-woocommerce/issues). For your account, credentials and terminals, contact Mercado Pago.
 
 <LinkCards>
-  <LinkCard to="/sell/take-payment/legacy-tab" title="The Legacy Tab" description="Gateways that take payment on the store's own payment page" />
+  <LinkCard to="/hardware/card-readers" title="Card readers" description="Pick the terminal each till pays with" />
   <LinkCard to="/settings/checkout" title="Checkout Settings" description="Turn gateways on for the POS" />
   <LinkCard to="/settings/checkout/payment-gateways" title="All Gateways" description="The other card terminals WCPOS works with" />
 </LinkCards>
