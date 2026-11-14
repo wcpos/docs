@@ -1,8 +1,9 @@
 const { createHash } = require('node:crypto');
-const { isSpaceSensitiveLetter } = require('./docs-qa');
+// docs-qa owns the inline-tag allowlist and the attribute set it reads, so the parser and the
+// inline_tag_changed check never disagree.
+const { isSpaceSensitiveLetter, isAllowlistedInlineTag, TRANSLATABLE_JSX_ATTRS } = require('./docs-qa');
 
 const TRANSLATABLE_FRONTMATTER_KEYS = new Set(['title', 'sidebar_label', 'description']);
-const TRANSLATABLE_JSX_ATTRS = new Set(['alt', 'title', 'description', 'label', 'question', 'summary', 'placeholder', 'caption', 'scaleLabel', 'why']);
 // Object keys whose string values are visible text inside a component's
 // expression props (e.g. `facsimile={[{ left: "…", right: "…" }]}`).
 const TRANSLATABLE_JSX_OBJECT_KEYS = new Set(['left', 'right', 'desc', 'label']);
@@ -504,6 +505,42 @@ function parseDocsMdxUnits(filePath, source) {
     const imageMatches = markdownImageMatches(lineNoNewline).filter((imageMatch) => !overlapsAnyRange(imageMatch, protectedInlineRanges));
     const markdownTextMatches = [...linkMatches, ...imageMatches].sort((a, b) => a.start - b.start || a.end - b.end);
     const hasMarkdownTitle = markdownTextMatches.some((linkMatch) => markdownTitleMatch(lineNoNewline, linkMatch.textEnd + 2, linkMatch.end - 1) !== undefined);
+
+    // A prose line whose only tags are allowlisted (<kbd>…</kbd>, <Icon … />) stays one unit, so the
+    // model translates the whole sentence and places the tags itself (SOV locales move them). It is
+    // prose even when it starts with a tag, so it never opens a JSX block.
+    if (!inJsxBlock && tagRanges.length > 0 && imageMatches.length === 0 && !hasMarkdownTitle) {
+      let kbdOpenEnd;
+      let allowed = true;
+      for (const range of tagRanges) {
+        const tag = lineNoNewline.slice(range.start, range.end);
+        if (!isAllowlistedInlineTag(tag)) allowed = false;
+        else if (tag === '<kbd>') {
+          if (kbdOpenEnd !== undefined) allowed = false;
+          kbdOpenEnd = range.end;
+        } else if (tag === '</kbd>') {
+          if (kbdOpenEnd === undefined || lineNoNewline.slice(kbdOpenEnd, range.start).trim() === '') allowed = false;
+          kbdOpenEnd = undefined;
+        }
+      }
+      // Blank code and tags in place (length-preserving, so overlapping ranges are safe).
+      let outside = lineNoNewline;
+      for (const range of protectedInlineRanges) {
+        outside = outside.slice(0, range.start) + ' '.repeat(range.end - range.start) + outside.slice(range.end);
+      }
+      if (allowed && kbdOpenEnd === undefined && /\p{L}/u.test(outside)) {
+        const textChunk = trimTextRange(lineNoNewline, markdownControlPrefixEnd(lineNoNewline), lineNoNewline.length);
+        if (textChunk !== undefined) {
+          addUnit({
+            type: 'paragraph',
+            source: textChunk.source,
+            start: lineStart + textChunk.start,
+            end: lineStart + textChunk.end,
+          });
+        }
+        continue;
+      }
+    }
 
     if ((linkMatches.length > 0 || codeRanges.length > 0) && imageMatches.length === 0 && tagRanges.length === 0 && !hasMarkdownTitle) {
       const textChunk = trimTextRange(lineNoNewline, markdownControlPrefixEnd(lineNoNewline), lineNoNewline.length);
