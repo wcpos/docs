@@ -1,266 +1,296 @@
 ---
 title: Windcave
 slug: /hardware/card-readers/windcave
-description: "POSのチェックアウトからWindcave端末でカード決済を受け付ける方法と、WP AdminでWindcave Terminal拡張機能（HIT）を設定する方法を説明します。"
+description: "WCPOSのチェックアウトからWindcave端末でカード決済を受け付け、払い戻しを行い、WP AdminでWindcave Terminal拡張機能（HIT）を設定する方法を説明します。"
 ---
 
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
 import RequirementsList from '@site/src/components/RequirementsList';
 import RequirementItem from '@site/src/components/RequirementItem';
 import JourneyShot from '@site/src/components/JourneyShot';
-import manifest from '@site/static/img/2.x/payment/gateways/windcave-terminal-0.1/en/manifest.json';
+import manifest from '@site/static/img/2.x/payment/gateways/windcave-terminal/en/manifest.json';
 
 # Windcave Terminalゲートウェイ {#windcave-terminal-gateway}
 
-レジが注文合計をWindcave端末へ送信し、お客様が端末で支払います。Windcaveが承認すると、販売は自動的に完了します。この拡張機能のインストールとレジでの利用には、どちらも[WCPOS Pro](../../getting-started/pro-license.mdx)が必要です。このページでは、レジで[支払いを受け付ける方法](#take-payment)と、WP Adminで[設定する方法](#setup)を説明します。
+Windcave Terminalは、レジからWindcave端末へ販売情報を送信します。お客様が端末で支払い、Windcaveの確認後にレジへ支払いが記録されます。
+
+このページではレジでの操作から説明します。店舗の管理者向けの[Windcave Terminalの設定](#setup)では、認証情報やWP Adminの設定、動作確認の方法を説明します。
+
+:::info Pro機能
+Windcave Terminalを使うには、[WCPOS Pro](../../getting-started/pro-license.mdx) 2.0以降と、拡張機能のバージョン1.0以降が必要です。
+:::
 
 :::warning Windcaveの認証はまだ取得していません
-**テスト決済専用です。** 現時点では、お客様の実際の支払いには使わないでください。Windcaveの**UAT**（テスト）認証情報のみを使用してください。
+**テスト決済のみ：Windcaveでは、まだ実際のお客様のカードを使わないでください。** WindcaveはPOS連携をすべて審査してから実決済を許可しますが、この連携はまだ承認されていません。
 
 <details>
-<summary>その理由と、まだテストされていない点</summary>
+<summary>まだテストされていない点</summary>
 
-Windcaveでは、すべてのPOS連携に対し、実際の決済を受け付ける前にQA認証に合格することを求めています。この連携はまだ合格していません。また、Windcaveアカウントや実機の端末を使った動作確認もまだ行われていません。以下の手順は、WindcaveのHITドキュメントと拡張機能のコードに基づいています。
+この拡張機能は、まだ実機のWindcave端末で動作していません。Windcaveのドキュメントをもとに作成したHITサービスの代替環境で、決済と払い戻しをテストしました。利用を始める前に、少額のUAT販売を行い、払い戻しも試してください。
 
 </details>
 :::
 
-{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves Station selection and logs into Pro and adds refunds; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
+## カード決済を受け付ける {#take-payment}
 
-## 支払いを受け付ける {#take-payment}
-
-開始前の準備：決済はPOS内に表示されるストアの支払いページで行われるため、ストアがオンラインである必要があります。また、WP Adminにアクセスできる担当者が[ゲートウェイを設定](#setup)しておく必要があります。**レジの開閉**が有効な場合は、先に[レジを開いて](../../pos/register/index.mdx#open)ください。
-
-:::info Windcaveでは全額を支払います
-端末では常に注文全額を決済するため、1件の販売を別の決済方法と分けて支払うことはできません。
+:::note 先にレジを開いてください
+**レジの開閉**が有効な場合、レジが閉じている間は支払いを記録できません。すでに受け付けたカード決済は払い戻しが必要になります。この設定については[レジ](../../settings/wp-admin/registers.mdx#one-register)をご覧ください。
 :::
 
-1. 商品をカートに追加して、**チェックアウト**を押します。
-2. **レガシー**タブを開きます。POS内にストアの支払いページが開きます。[レガシータブ](../../pos/checkout/legacy-tab.mdx)をご覧ください。
+1. カートで**チェックアウト**を押し、**Payments**タブにある**Windcave Terminal**のタイルをタップします。端末で署名を求められる場合は、代わりに**Legacy**タブを使います。[端末から質問された場合](#terminal-questions)をご覧ください。
+2. キーパッドの上を確認します。**Choose a terminal**と表示されている場合は、レジカウンターにある端末の**Station ID**をタップします。これはWindcaveが各端末に付ける名前で、たとえば`DOCS-STATION-1`です。**Terminal:** とIDが表示されていれば、そのレジで使う端末です。別の端末を選ぶには**Change**を押します。レジは選択を記憶します。
+3. カードで残額の一部を支払うには、金額を入力します。残りは別の支払い方法で精算するまで未払いのままです。
+4. **Send … to Windcave Terminal**を押します。レジには4段階の進行状況、**Sent**、**On terminal**、**Approved**、**Captured**が表示されます。Capturedになると決済が完了しています。
+5. お客様は端末でカードをタッチ、挿入、またはスワイプします。決済が完了し、支払う残額がなければレシートが開きます。残額がある場合は、別のタイルで支払いを受け付けます。
 
-   <details>
-   <summary>タブに「全額払いのみ」と表示される場合</summary>
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[105, 0], [-40, 0], [190, 0], [-45, 0], [0, 0], [85, 0]]} maxWidth={720} alt="45.00ドルの販売でPaymentsタブを開いたCheckout画面：Windcave Terminalタイルが選択され、Choose a terminalの下に2つのStation ID、その下にFull balanceが表示されている。端末を選ぶまでSend $45.00 to Windcave Terminalボタンは無効">
 
-   注文に対してすでに支払いを受け付けているため、このタブでは支払いページを開けません。Windcaveを使うには、先に[その支払いをキャンセル](../../pos/checkout/cancelling-a-payment.mdx)してください。
-
-   </details>
-
-3. **Windcave Terminal**を選択します。店舗で別の名前に変更されている場合もあります。
-4. **端末**で使用する端末を選びます。端末が1台の場合や、既定の端末に固定されている場合は、すでに選択されています。2台以上あり、既定の端末がない場合は、選択が必要です。
-5. **端末決済を開始**を押します。パネルに**端末に送信中…** と表示され、注文合計の全額がその端末に送信されます。
-6. お客様が端末でカードをタッチ、挿入、またはスワイプします。端末に表示される内容は、ボタンとともにパネルにも表示されます。端末から署名の確認を求められたら、パネルで**はい**または**いいえ**を選びます。
-7. Windcaveが承認すると、パネルに**支払い完了 — 注文を完了しています…** と表示され、POSがレシート画面に進みます。
-
-レガシータブの下部にある**支払いを処理**は不要です。端末が承認すると、販売は自動的に完了します。
-
-### 支払いを中止または保留する {#payment-controls}
-
-:::warning 保留にした支払いも成立することがあります
-別の方法で支払いを受け付ける前に、端末を確認してください。支払いが承認されたと表示されている場合は、お客様に再度請求しないでください。判断できない場合は、管理者に確認してください。
-:::
-
-- 支払いの処理中は、**端末決済を開始**の代わりに**端末決済をキャンセル**が表示されます。端末に**キャンセル**ボタンが表示されているときに押すと、端末側でそのボタンが押されます。キャンセルできないときは、パネルにその旨が表示されます。端末自体でキャンセルするか、支払いを保留にしてください。
-- 支払いの開始から5分間応答がない場合や、端末でキャンセルできない場合は、**支払いを保留**が表示されます。これはWindcave側の支払いを**キャンセルする操作ではありません**。別の方法で支払いを受け付ける前に、端末に支払いの拒否またはキャンセルが表示されていることを確認してください。待機中、画面が空白、または状況が不明な場合は、まず管理者にWindcaveポータルでの確認を依頼してください。
-- **ページを再読み込み**すると、進行中の支払いの処理が再開され、**端末決済をキャンセル**が表示されます。
-
-<details>
-<summary>支払いを保留にした後の動作</summary>
-
-レジを閉じた後も、店舗側で10分ごとにWindcaveへ支払い状況の確認が続けられます。別の方法で注文の支払いが済んだ後にWindcaveが承認した場合は、その旨のメモが注文に追加されます。その支払いをWindcaveポータルで払い戻してください。
-
-</details>
-
-## 問題が発生した場合 {#goes-wrong}
-
-これらのメッセージが表示された場合、お客様がすでに支払っている可能性があります。再度支払いを受け付ける前に、内容を確認してください。
-
-### 端末からの応答待ちがタイムアウトした {#timed-out}
-
-結果が返らないまま5分が経過し、パネルでの確認が停止しています。まず端末を確認してから、次の操作を行ってください。
-
-- **支払いが承認されたと表示されている。** 再度請求しないでください。ページを再読み込みすると、パネルが支払いの処理を再開し、販売を完了します。それでも販売が完了しない場合は、管理者に注文メモとWindcaveポータルの確認を依頼してください。
-- **支払いが拒否またはキャンセルされたと表示されている。** **端末決済をキャンセル**または**支払いを保留**を押してから、再度支払いを受け付けてください。
-- **画面が空白、待機中、または状況が判断できない。** まだ別の支払いを受け付けないでください。まず管理者にWindcaveポータルでの確認を依頼してください。[警告](#payment-controls)をご覧ください。
-
-### この注文はすでに別の支払いで支払い済みです {#already-paid}
-
-端末は承認しましたが、注文はすでに別の方法で支払い済みだったため、お客様は二重に支払っています。再試行しないでください。Windcaveポータルで端末決済を払い戻してください。対象の支払いは注文メモで確認できます。
-
-### 端末決済を検証できませんでした {#not-verified}
-
-注文合計の変更などにより、Windcaveが承認した支払いをこの注文に適用できませんでした。カードに再度請求しないでください。問題が解決するまで、開始ボタンを押しても同じメッセージが表示されます。まず注文メモとWindcaveポータルを確認し、管理者に連絡してください。
-
-<details>
-<summary>支払いの拒否、端末の使用中、端末の未選択、その他のメッセージ</summary>
-
-**先に端末を選択してください。** **端末**で端末を選び、もう一度**端末決済を開始**を押してください。
-
-**支払いが拒否されました**、端末固有の拒否メッセージ、または**Windcaveが支払いを拒否しました（コード …）** が表示された場合は、**端末決済を開始**を押して再試行するか、別の決済方法で受け付けてください。
-
-**端末はまだ前の取引を処理中です。** 端末でその取引を完了またはキャンセルしてから、もう一度開始してください。
-
-**Windcaveにこの取引の記録がありません。支払いをやり直してください。** 支払いの要求がWindcaveに届いていません。もう一度**端末決済を開始**を押してください。
-
-**Windcaveからコード … が返されました：ステーションIDとHITの設定を確認してください。** Windcaveが要求を拒否しました。ステーションIDの誤りがよくある原因です。ゲートウェイを設定した担当者に[設定](#settings)の確認を依頼するか、支払いを保留にしてください。
-
-**この支払いはUATで開始されました**（または**本番環境**）。支払いの処理中に誰かが**環境**を変更しました。元に戻して支払いを完了するか、Windcaveポータルで確認してください。
-
-</details>
-
-<details>
-<summary>設定中のメッセージ</summary>
-
-**Windcave HITの認証情報が設定されていません。** **HITユーザー名**または**HITキー**が空欄です。両方を入力して保存し、**環境**がその認証情報と一致していることを確認してください。
-
-**端末**一覧に**ステーションIDが設定されていません**と表示される場合は、Windcaveから提供されたステーションIDを1行に1つずつ追加して保存してください。
-
-**有効化が拒否される。** サーバーには**PHP 7.4**以降とPHPのDOM拡張機能（**php-xml**）が必要です。ホスティング会社に有効化を依頼してください。
-
-</details>
-
-## 販売後 {#receipts}
-
-Windcaveから端末のレシートテキストが送信されると、注文に**非公開メモ**として保存されます。POSには、通常どおり独自のレシートが表示されます。
-
-## 払い戻し {#refunds}
-
-このバージョンはWooCommerceからの払い戻しに対応していません。Windcaveポータル（Payline）または端末で払い戻してから、WooCommerceの注文に手動で払い戻しを記録してください。[払い戻し](../../pos/refunds.mdx)をご覧ください。
-
-## 設定する {#setup}
-
-ここからは、店舗のWP Adminを管理する担当者向けの説明です。次の4つを順に行ってください。
-
-1. 拡張機能ディレクトリから[拡張機能をインストール](#install)します。
-2. Windcaveから[HIT認証情報を取得](#credentials)します。
-3. [ゲートウェイの設定を入力](#gateway-settings)します。
-4. [POS用に有効にします](#enable)。
-
-### 拡張機能をインストールする {#install}
-
-`WP Admin > POS > 設定 > 拡張機能`を開き、**Windcave Terminal for WooCommerce**を探して**インストール**をクリックします。WCPOSがダウンロード、インストール、有効化をまとめて行います。[拡張機能のインストール](../../extensions/index.mdx#installing-an-extension)をご覧ください。
-
-<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[700, 0], [-42, 0], [-40, 0]]} alt="WP AdminのPOS設定にある拡張機能でwindcaveを検索した画面：バージョン0.1.1のWindcave Terminal for WooCommerceのカードとインストールボタン">
-
-1. **拡張機能を検索** — `windcave`と入力してカードを探します。
-2. **Windcave Terminal for WooCommerce** — 拡張機能と、ディレクトリからインストールされるバージョンです。
-3. **インストール** — ダウンロード、インストール、有効化を行います。WCPOS Proが必要です。
+1. **Windcave Terminal** — タップすると枠線が付くタイルです。
+2. **Choose a terminal**の下にある**Station IDs** — カウンターの端末をタップします。このレジで端末を選択すると、この行には**Terminal:** とそのID、**Change**が表示されます。
+3. **To pay** — 今回の支払い金額です。残額の一部だけをカードで支払う場合は、より小さい金額を入力します。
+4. **Full balance** — 未払いの全額を**To pay**に戻します。
+5. **Send … to Windcave Terminal** — 端末で決済を開始します。端末を選ぶまでは無効です。
+6. **Legacy** — 独自の支払いページを持つゲートウェイ用の別の支払いタブです。端末で署名を求められる場合に使います。
 
 </JourneyShot>
 
-ディレクトリを使わない場合は、[GitHubのリリースページ](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases)から**プラグインのzip**（ソースコードのzipではありません）をダウンロードし、`プラグイン > Add Plugin`の**プラグインのアップロード**からアップロードして有効化します。WooCommerceが有効になっている必要があります。
+4つのステップの下にある**Details**を開くと、支払いと送信先のStationのログが表示されます。端末でチップ、追加料金、キャッシュアウトはできません。
 
-### WindcaveからHIT認証情報を取得する {#credentials}
+### 端末から質問された場合 {#terminal-questions}
 
-Windcaveに、**HITユーザー名**、**HITキー**、端末ごとの**ステーションID**の発行を依頼してください。開発用アカウントには、Windcaveの[連携要件フォーム](https://www.windcave.com/merchant-attended-developer-hit)を利用してください。
+端末が処理を中断して、たとえばお客様の署名が一致するかを尋ねることがあります。このバージョンでは、**Payments**タブに質問が表示されません。**Legacy**タブには表示されます。
 
-UATと本番環境では認証情報が異なります。Windcaveがこの連携を認証するまでは、UATの認証情報を使ってください。
+1. **Legacy**タブを開き、**Windcave Terminal**を選択します。[Legacyタブ](../../pos/checkout/legacy-tab.mdx)をご覧ください。
+2. そこで決済を開始します。注文全額を1回で支払います。
+3. 端末から質問されると、支払いページには端末固有のボタン（**YES**や**NO**など）とともに質問が表示されます。回答を押してください。
 
-### ゲートウェイの設定を入力する {#gateway-settings}
+### 決済をキャンセルする {#cancel}
 
-1. `WP Admin > WooCommerce > 設定 > 支払い`に移動し、**Windcave Terminal**を開きます。
-2. **環境**は既定の**UAT（テスト）** のままにします。**本番環境**は、認証取得後に本番用の認証情報で利用します。
-3. **HITユーザー名**と**HITキー**を入力します。
-4. **ステーションID**を1行に1つずつ入力します。
-5. 任意：**既定のステーションID**を設定し、レジ係が常にその端末を使うように**端末の選択を固定**にチェックを入れます。
-6. **ベンダーID**は空欄のままにします。認証の際にWindcaveから発行されます。
-7. 任意：**結果通知（FPRN）** にチェックを入れます。レジ側の確認を補うため、結果が確定した際にWindcaveからも店舗へ通知されるようになります。
-8. 保存します。
+お客様が支払う前に**Cancel on terminal**を押します。端末自体に**CANCEL**が表示されている間だけ操作できます。表示されていない場合、レジには*現在、端末からキャンセルできません。端末でキャンセルしてください。*と表示されます。
 
-接続テストのボタンはありません。認証情報とステーションIDは最初の決済で確認されるため、UAT端末でテスト決済を行ってください。
+キャンセルは要求を送る操作です。カード情報がすでに読み取られている場合、決済が完了することがあります。レジには**Cancelling — waiting for the terminal to confirm**と表示され、結果が出るまで確認が続きます。別の方法で支払いを受け付ける前に、結果を待ってください。
 
-### POS用に有効にする {#enable}
+レジが応答を受け取れない場合、**Release this payment**が表示されます。解放してもキャンセルされたことにはなりません。管理者がWindcaveポータルを確認し、注文に対する承認済み決済がないと確認した後にだけ押してください。その後、別の方法で注文の支払いを受け付けられますが、店舗は端末の確認を続けます。
 
-`WP Admin > POS > 設定 > 支払い`に移動し、**Windcave Terminal**を探して**有効**をオンにします。[ゲートウェイの有効化](../../settings/wp-admin/checkout.mdx#enabling-a-gateway)をご覧ください。
+## 問題が発生した場合 {#goes-wrong}
 
-WooCommerce設定の**有効化/無効化**はオフのままにしてください。そのチェックボックスの状態にかかわらず、ここで**有効**をオンにすれば、POSでゲートウェイを利用できます。
+### お客様が支払った可能性がある場合 {#may-have-paid}
+
+:::warning 決済をもう一度受け付けないでください
+次の2つのケースでは、カードに請求済みの可能性があります。管理者はまずWindcaveポータルで、注文番号から販売を確認してください。
+:::
+
+**端末の結果を確認できませんでした。再度支払いを受け付ける前にWindcaveを確認してください。** レジがすでに送信した決済を再確認しましたが、Windcaveから明確な回答を得られませんでした。管理者がポータルで販売を検索し、見つからなかった場合にだけ、もう一度支払いを受け付けてください。
+
+**決済に失敗しました：端末で確認された金額が異なります。** 端末がレジから送られた金額とは異なる金額を承認したため、レジには記録されていませんが、カードに請求された可能性があります。別の決済を受け付けないでください。管理者にポータルで注文番号から販売を探し、端末で受け付けた金額と注文金額を比較してもらってください。
+
+### その他のメッセージ {#other-messages}
+
+<Accordion>
+  <AccordionItem question="決済に失敗しました：カードが拒否されました">
+
+  **Try again**を押して端末に再送信するか、**Choose another way**を押して別のタイルで支払います。
+
+  </AccordionItem>
+  <AccordionItem question="端末は前の取引をまだ処理中です">
+
+  Stationは別の決済で使用中です。端末でその決済を完了またはキャンセルしてから、**Try again**を押してください。
+
+  </AccordionItem>
+  <AccordionItem question="送信直後に決済に失敗する">
+
+  拡張機能は、新しい決済がWindcaveに登録されるまで30秒待ちます。その時点でWindcaveに記録がなければ、拡張機能は未送信として扱い、決済は失敗します。端末の電源とネット接続、設定にStation IDが入力されていることを確認してから、**Try again**を押してください。
+
+  </AccordionItem>
+  <AccordionItem question="端末が質問している間、レジが待ち続ける">
+
+  **Payments**タブには端末からの質問が表示されないため、決済が終了するまで待機します。**Cancel on terminal**を押すか、端末でキャンセルしてから、**Legacy**タブで決済を受け付けます。[端末から質問された場合](#terminal-questions)をご覧ください。
+
+  </AccordionItem>
+  <AccordionItem question="タイムアウト — 決済はキャンセルされました">
+
+  5分以内に支払いがありませんでした。端末を確認してから、**Try again**を押してください。
+
+  </AccordionItem>
+  <AccordionItem question="Windcave Terminalのタイルがグレー表示または表示されない">
+
+  レジにはタイルの下に理由が表示されます。理由の一覧は[タイルを使用できない場合](../index.mdx#unavailable-tiles)をご覧ください。
+
+  - **注文 #… で使用中** — Stationは別の注文の決済で使用中です。その決済を完了またはキャンセルするか、**Change**を押して別のStationを選択してください。
+  - **接続が必要です** — レジがオフラインです。端末決済は店舗経由で行うため、別の支払い方法を使うか、接続が戻るまで待ってください。
+  - **タイルが表示されない** — ゲートウェイに**HIT username**、**HIT key**、または**Station IDs**が設定されていないか、WCPOSで有効になっていません。管理者に[設定](#setup)を確認してもらってください。
+
+  </AccordionItem>
+</Accordion>
+
+## Windcave決済を払い戻す {#refunds}
+
+払い戻しは、販売を受け付けたStationを通じてWindcaveへ送信されます。全額または一部を払い戻せます。
+
+1. POSで注文の払い戻しを開きます。[払い戻し](../../pos/refunds.mdx)をご覧ください。
+2. **Refund to Windcave Terminal**を選び、**Process Refund**を押します。
+3. 店舗はWindcaveの応答を最大20秒待ち、その結果を注文メモに追加します。
+
+WooCommerceの**Refund … via Windcave Terminal**ボタンを使ったWP Adminからの払い戻しも、同じように処理されます。
+
+払い戻しが**pending**のままの場合は、もう一度払い戻す前にWindcaveポータルで確認してください。
+
+<Accordion>
+  <AccordionItem question="払い戻しが保留中のままになる">
+
+  Windcaveが20秒以内に応答しなかったか、要求と異なる金額を承認しました。店舗は再試行しません。Windcaveポータルで払い戻しを確認してください。処理済みならお客様に返金されています。未処理なら、もう一度払い戻してください。
+
+  </AccordionItem>
+  <AccordionItem question="バージョン0.1で受け付けた販売を払い戻せない">
+
+  払い戻しが停止し、*この販売を払い戻す前にPOS設定で既定のStationを設定してください。*と表示されます。拡張機能のバージョン0.1は販売を受け付けたStationを記録しなかったため、バージョン1.0では店舗全体の既定Stationを使って払い戻します。現在、各レジは**Settings > Card readers**でStationを選びますが、WCPOS 2.0には店舗全体の既定値がまだありません。Windcaveポータルまたは端末で販売を払い戻し、WooCommerceでは**Refund … manually**を使って記録してください。
+
+  </AccordionItem>
+</Accordion>
+
+## Windcave Terminalを設定する {#setup}
+
+管理者が店舗ごとにWP Adminで一度設定し、その後、各レジでStationを選びます。店舗から各端末にはインターネット経由でWindcaveを通じて接続するため、ペアリングは不要です。どのレジからでも任意の端末を使えます。
+
+### 要件 {#requirements}
+
+HIT認証情報（**HIT username**と**HIT key**）と、各端末の**Station ID**が必要です。これらはすべてWindcaveが発行し、WP Adminから検索したり作成したりすることはできません。Windcaveに連絡して、**UAT**用HIT認証情報と各端末のStation IDを依頼するか、開発用アカウントにはWindcaveの[Integration Requirementsフォーム](https://www.windcave.com/merchant-attended-developer-hit)を利用してください。UATと本番環境にはそれぞれ別のユーザー名とキーが必要です。連携の認証後、Windcaveから**Vendor ID**が発行されます。
+
+<RequirementsList>
+  <RequirementItem label="Windcaveアカウント">HIT認証情報と端末ごとのStation ID。Windcaveが連携を認証するまではUAT認証情報を使用</RequirementItem>
+  <RequirementItem label="端末">HIT決済に対応するWindcave端末</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro 2.0以降と、拡張機能のバージョン1.0以降</RequirementItem>
+  <RequirementItem label="サーバー">WooCommerce、およびDOM拡張機能（php-xml）を備えたPHP 7.4以降</RequirementItem>
+</RequirementsList>
+
+### 拡張機能をインストールする {#install}
+
+`WP Admin > POS > 設定 > 拡張機能`を開き、**Windcave Terminal for WooCommerce**を探してインストールし、有効化します。バージョン1.0以降が必要です。バージョン0.1はWCPOS 2.0より前のバージョン用です。[拡張機能](../../extensions/index.mdx#installing-an-extension)をご覧ください。
+
+[GitHubリリースページ](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases)から**プラグインzip**（ソースコードzipではありません）をダウンロードし、`プラグイン > Add Plugin > プラグインのアップロード`からアップロードすることもできます。
+
+WCPOS Pro 2.0がない場合、WP Adminには*Windcave Terminal requires WooCommerce POS Pro 2.0 or newer.*と表示され、ゲートウェイは追加されません。PHP 7.4未満、またはDOM拡張機能がない場合は有効化できません。ホスティング会社に**php-xml**を有効にするよう依頼してください。
+
+### HIT認証情報を入力する {#credentials}
+
+`WP Admin > WooCommerce > 設定 > 支払い`に移動し、**Windcave Terminal**を開きます。
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[410, 0], [410, 0], [410, 0], [850, 0], [410, 0], [410, 0]]} maxWidth={720} alt="WP AdminのWindcave Terminal設定：環境はUAT（テスト）、HIT username、HIT key、Station IDs、Vendor IDは空欄、POS nameはWCPOS">
+
+1. **Environment** — 既定の**UAT (testing)** のままにします。**Production**は、Windcaveによる連携認証後に本番用認証情報とともに使います。
+2. **HIT username** — 選択した環境用にWindcaveから発行されたものです。
+3. **HIT key** — Windcaveから発行されます。保存後はこの欄が空になります。保存済みのキーを保持する場合は、空欄のままにしてください。
+4. **Station IDs** — 端末ごとに1つ、1行に1つ入力します。Windcaveが発行するもので、自動検出はされません。
+5. **Vendor ID** — Windcaveから発行されるまでは空欄にします。
+6. **POS name** — Windcave側で使われるPOSの名前です。既定値は`WCPOS`です。
+
+</JourneyShot>
+
+その下にある**Result notifications (FPRN)** は任意です。有効にすると、レジによる確認を補うため、結果が確定したときにWindcaveからも店舗へ通知されます。利用するには、サイトがインターネットからアクセス可能である必要があります。
+
+**Save changes**をクリックします。
+
+### WCPOSで有効にする {#enable}
+
+`WP Admin > POS > 設定 > 支払い`を開き、**Gateways**テーブルから**Windcave Terminal**を探し、**Enabled**をオンにします。この画面では変更が随時保存されるため、保存ボタンはありません。
+
+WooCommerce設定ページの**Enable/Disable**はオフのままにします。ここで**Enabled**をオンにすれば、そのチェックボックスの状態にかかわらず、POSでゲートウェイを使えます。[チェックアウト設定](../../settings/wp-admin/checkout.mdx#enabling-a-gateway)をご覧ください。
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[172, 0], [-26, 0]]} maxWidth={720} alt="WP AdminのPOS設定、Checkout画面：Gatewaysテーブルの2行。Vipps MobilePayはオン、Windcave Terminalはオフ">
+
+1. **Windcave Terminal** — **Gateways**テーブルにある拡張機能の行です。
+2. **Enabled** — ゲートウェイIDの横にあるスイッチです。オンにすると、レジを再読み込みした後に**Windcave Terminal**タイルが表示されます。
+
+</JourneyShot>
+
+### 各レジのStationを選ぶ {#till-terminal}
+
+各レジで**Settings > Card readers**を開きます。入力したStation IDはすべて**Smart readers**の下にリーダーとして一覧表示され、状態は**Online**です。拡張機能はWindcaveに端末の電源状態を問い合わせません。カウンターにあるStationの**Use this reader**を押します。その行に**Selected**と表示されます。レジ係はチェックアウト時に**Change**を押して変更することもできます。
+
+Stationが1つだけの場合、選択は不要です。すべてのレジですでに**Selected**になっています。[スマートリーダーを選ぶ](../../hardware/card-readers/index.mdx#smart-readers)をご覧ください。
+
+### 動作を確認する {#check}
+
+1. Windcave Terminalの設定ページに戻ると、設定の下に`uat: HIT credentials configured (not verified).`と表示されます。ユーザー名とキーが保存されていることを示しますが、Windcaveがそれらを受け付けたことを意味しません。`HIT credentials missing.`は、どちらかが未入力であることを示します。
+2. レジでPOSを再読み込みし、**チェックアウト**を押します。支払い方法の1つとして**Windcave Terminal**タイルが表示されます。タップすると、キーパッドの上にStation IDが表示されます。**Choose a terminal**の下、または**Terminal:** とそのレジで使う端末として表示されます。
+3. UAT端末で少額の販売を行い、払い戻してください。接続テスト用のボタンはありません。この最初の販売で認証情報とStation IDを確認します。
+
+### バージョン0.1からアップグレードする {#upgrade}
+
+- まずWCPOS、WCPOS Pro、アプリを2.0に更新し、その後に拡張機能を更新します。
+- アップグレード中の決済は引き継がれます。二重に請求されることはありません。
+- バージョン0.1で保留にした決済は、注文が未払いのままであれば引き継がれます。それ以外の場合、注文には*Windcave TxnRef … was set aside before the 1.0.0 upgrade and is no longer followed automatically.*というメモが追加されます。Windcaveポータルで決済を確認してください。承認済みなら、ポータルで払い戻すか、注文に手動で記録してください。
+- バージョン0.1の次の設定は削除されました：**Default Station ID**、**Lock terminal selection**、**Checkout logs**、**Log level**。現在、各レジは**Settings > Card readers**でStationを選びます。
+- 保留機能も削除され、端末のレシートテキストは注文の非公開メモに追加されなくなりました。
+- バージョン0.1で受け付けた販売の払い戻しについては、[Windcave決済を払い戻す](#refunds)をご覧ください。
 
 ## 設定リファレンス {#settings}
 
-設定は`WP Admin > WooCommerce > 設定 > 支払い > Windcave Terminal`にあります。必要な設定は上記の手順で説明しています。すべての設定と既定値は、一覧を開いて確認してください。
-
-<details>
-<summary>全15項目の設定</summary>
+`WP Admin > WooCommerce > 設定 > 支払い > Windcave Terminal`を開きます。
 
 | 設定 | 機能 |
 |---|---|
-| **有効化/無効化** | オンラインストアにもゲートウェイを表示します。オフのままにしてください。オンラインでは、既存の注文の支払いページでのみ決済でき、通常のチェックアウトでは利用できません。既定ではオフです。POSには`POS > 設定 > 支払い`に専用のスイッチがあります |
-| **タイトル** | 支払いページでレジ係が選ぶ名前です。既定値は`Windcave Terminal`です |
-| **説明** | タイトルの下に表示される説明文です。既定値は`Pay in person on the Windcave terminal.`です |
-| **環境** | **UAT（テスト）** （既定）または**本番環境**です。それぞれに専用のHIT認証情報があり、本番環境にはWindcaveの認証が必要です |
+| **Enable/Disable** | オンラインストアのチェックアウトでゲートウェイを利用可能にします。オフのままにしてください。POSには`POS > 設定 > 支払い`に専用のスイッチがあります |
+| **Title** | レジに表示されるタイル名です。既定値は`Windcave Terminal`です |
+| **Description** | 既定値は`Pay in person on the Windcave terminal.`です |
+| **Environment** | **UAT (testing)**（既定）または**Production**です。それぞれに専用のHIT認証情報があり、本番環境にはWindcaveの認証が必要です。決済は開始時の環境で常に確認されます |
 | **HITユーザー名** | 選択した環境用にWindcaveから発行されます |
-| **HITキー** | 選択した環境用にWindcaveから発行されます |
-| **ステーションID** | 端末ごとのステーションIDを1行に1つずつ入力します。Windcaveから発行されるもので、自動検出はされません |
-| **既定のステーションID** | 最初に選択される端末です。端末が選択されていない場合にも使われます |
-| **端末の選択を固定** | レジ係は端末を変更できず、常に既定の端末が使われます。既定の端末が設定されている場合のみ有効です |
-| **ベンダーID** | 認証の際にWindcaveから発行されます。それまでは空欄にしてください |
+| **HIT key** | Windcaveが発行します。保存後は表示されません。保持する場合は空欄のままにしてください |
+| **Station IDs** | 端末ごとに1つ、1行に1つ入力します。重複は削除されます |
+| **Vendor ID** | 認証時にWindcaveと取り決めます。それまでは空欄にしてください |
 | **POS名** | Windcave側で使われるPOSの名前です。既定値は`WCPOS`です |
 | **結果通知（FPRN）** | レジ側の確認を補うため、結果が確定した際にWindcaveからも店舗へ通知します。既定ではオフです |
-| **チェックアウトログ** | 支払いパネルに**ログを表示**、**コピー**、**クリア**を表示します。既定ではオフです |
-| **ログレベル** | **オフ**、**エラーのみ**、または**デバッグ**（既定）です |
-| **サポート** | **サポートバンドルをダウンロード**と、ログへのリンクです |
-
-</details>
 
 ## ログとサポートバンドル {#logs-and-support-bundle}
 
-ログは`WP Admin > WooCommerce > Status > ログ`のソース`windcave-terminal`にあります。**ログレベル**の初期設定は**デバッグ**で、Windcaveへのすべての要求と応答を記録します。HITキーとカード番号はマスクされます。
+設定ページの下部には、サポートバンドル、認証情報の状態、ログへのリンクがあります。
 
-決済が失敗した場合は、ゲートウェイの設定ページで**サポートバンドルをダウンロード**をクリックし、`.json`ファイルを**注文番号**とともにサポートへ送ってください。
+<JourneyShot manifest={manifest} device="desktop" step={3} offsets={[[200, 0], [80, 0], [-20, 0]]} maxWidth={720} alt="まだ設定されていない店舗のWindcave Terminal設定ページ下部にあるWP Admin画面：Download support bundleボタン付きのSupport bundle、uat: HIT credentials missingの表示、View logs">
 
-<details>
-<summary>サポートバンドルに含まれる内容</summary>
+1. **Credentials line** — この未設定の店舗では`HIT credentials missing.`と表示されます。設定済みの場合は`HIT credentials configured (not verified).`と表示されます。
+2. **View logs** — `WooCommerce > Status > ログ`を開きます。ソースは`windcave-terminal`です。
+3. **Download support bundle** — WCPOSサポートに送るファイルです。
 
-- 店舗の構成：WordPress、WooCommerce、PHP、拡張機能のバージョン、環境、端末数。
-- ゲートウェイの設定。HITキーはマスクされ、HITユーザー名は先頭の3文字のみが含まれます。
-- 直近の最大20件の注文の決済試行。レシートは含まれません。
-- 最新2つの`windcave-terminal`ログファイルの末尾1,000行。カード番号をマスクした端末のレシートテキストが含まれる場合があります。
+</JourneyShot>
 
-WooCommerceがログをデータベースに保存している場合、バンドルにログの行は含まれません。`WooCommerce > Status > ログ`からエクスポートして、一緒に送ってください。
+ログにはWindcaveへの各リクエストと応答が記録されます。HITキーとカード番号はマスキングされます。
 
-</details>
-
-## 要件 {#requirements}
-
-<RequirementsList>
-  <RequirementItem label="Windcaveアカウント">HITユーザー名、HITキー、端末ごとのステーションID。実際の決済にはWindcaveの認証が必要です</RequirementItem>
-  <RequirementItem label="端末">HIT決済に対応するWindcave端末</RequirementItem>
-  <RequirementItem label="接続">オンライン専用です。店舗がインターネット経由で各決済を端末に送信するため、どのレジからでも任意の端末を利用でき、チェックアウト時に端末を選択します</RequirementItem>
-  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
-  <RequirementItem label="サーバー">WordPress 5.2以降、WooCommerce、およびDOM拡張機能（php-xml）を備えたPHP 7.4以降</RequirementItem>
-  <RequirementItem label="通貨">小数点以下2桁の通貨</RequirementItem>
-</RequirementsList>
+決済に問題が起きた場合は、**Download support bundle**をクリックしてファイルを**order number**とともにWCPOSサポートへ送ってください。このボタンはWCPOS Proで追加されます。バンドルにはサイト上のすべてのPOS決済プロバイダーが含まれ、秘密情報とカード番号は削除されます。
 
 ## 対応していない機能 {#scope-and-limitations}
 
-- WooCommerceからの払い戻し。
-- チップ、追加手数料、キャッシュアウト。
-- 小数点以下が2桁ではない通貨。
-- 一部の金額のみの支払い。端末では常に注文全額を決済します。
+- Windcaveが連携を認証するまでの実決済。
+- チップ、追加料金、キャッシュアウト、またはオーソリ後に後から売上を確定する処理。
+- **Payments**タブで端末からの質問に回答すること。**Legacy**タブを使ってください。
 - 端末の自動検出。ステーションIDは1つずつ入力します。
-- オンラインストアの通常のチェックアウト。オンラインでは、既存の注文の支払いページでのみ決済できます。
+- 最初の決済前にHIT認証情報を確認すること。
 
 <details>
 <summary>開発者向けの仕組み</summary>
 
-このゲートウェイは、HTTPS経由でWindcaveの**HIT（ホスト起点の取引）** を使用します。**環境**でUATまたは本番環境のエンドポイントを選び、各端末は**ステーションID**で指定します。
+このゲートウェイはHTTPS経由でWindcaveの**HIT（Host Initiated Transaction）** を使用します。UATには`uat.windcave.com`、本番環境には`sec.windcave.com`を使います。各端末は**Station ID**で指定します。
 
-支払いを開始すると、取引参照が注文に記録され、注文合計と通貨を指定したPurchaseが送信されます。パネルは1.5秒ごとにWindcaveへ状態を問い合わせ、端末の表示テキストと有効なボタンを再現します。**結果通知（FPRN）** がオンの場合は、結果が確定した際にWindcaveからも店舗へ通知されます。
+決済では、レジの金額と、加盟店参照としての`Order #`および注文番号を含むPurchaseが送信されます。その後、WCPOS Proは完了まで状態を確認します。レジが再度要求した場合、拡張機能は別のPurchaseを開始せず、同じ取引参照を先に照会します。Windcaveに30秒以内に登録されないPurchaseは、未送信として扱われます。
 
-注文が完了するのは、結果が承認され、注文に記録された決済試行と一致した場合のみです。照合するのは参照、金額、環境、および注文の合計と通貨です。新しい取引がWindcaveに登録されるまで30秒の猶予があり、その後に「記録なし」が拒否として扱われます。10分ごとの定期確認で、応答が途絶えた支払いや保留にした支払いの状況を追跡します。
+**Result notifications (FPRN)** を有効にすると、各PurchaseでWindcaveに店舗のWCPOS決済Webhookを呼び出すよう要求します。Webhookは`wp-json/wcpos/v2/payments/webhook`で、`provider=windcave`と取引参照を含みます。この呼び出しは通知にすぎず、その後、店舗がWindcaveに結果を直接問い合わせます。
+
+払い戻しは、入力した金額について元のWindcave取引に照合するHIT matched Refundです。店舗は最大20秒間、2秒ごとに状態を確認します。
 
 </details>
 
 ## 関連ドキュメント {#related-documentation}
 
+- [カードリーダー](../../hardware/card-readers/index.mdx)
 - [レガシータブ](../../pos/checkout/legacy-tab.mdx)
-- [チェックアウト](../../pos/checkout/index.mdx)
+- [払い戻し](../../pos/refunds.mdx)
 - [レジ設定](../../settings/wp-admin/checkout.mdx)
-- [拡張機能](../../extensions/index.mdx)
 - [GitHubで問題を報告](https://github.com/wcpos/windcave-terminal-for-woocommerce/issues)してください。アカウント、認証情報、端末についてはWindcaveにお問い合わせください。
 
 <LinkCards>
-  <LinkCard to="/sell/take-payment/legacy-tab" title="レガシータブ" description="オンラインストアの支払いページで決済を受け付けるゲートウェイ" />
+  <LinkCard to="/hardware/card-readers" title="カードリーダー" description="各レジで支払いに使うStationを選択" />
   <LinkCard to="/settings/checkout" title="レジ設定" description="POS用にゲートウェイを有効にする" />
   <LinkCard to="/settings/checkout/payment-gateways" title="すべてのゲートウェイ" description="WCPOSで利用できるその他のカード端末" />
 </LinkCards>
