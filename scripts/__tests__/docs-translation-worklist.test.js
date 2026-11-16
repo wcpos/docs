@@ -494,6 +494,41 @@ describe('ordering, limits, and packets', () => {
     expect(schedule({ maxUnits: 2 }).summary).toMatchObject({ total: 2, deferred_units: 0 });
   });
 
+  it('takes an over-cap group alone once it is the oldest change, so newer small groups cannot starve it', () => {
+    const BIG = 'versioned_docs/version-1.x/big.mdx';
+    const A = 'versioned_docs/version-1.x/a.mdx';
+    const B = 'versioned_docs/version-1.x/b.mdx';
+    const C = 'versioned_docs/version-1.x/c.mdx';
+    const GERMAN_ONE_LINE = 'Öffnen Sie die Einstellungen, um Ihren Shop einzurichten.\n';
+    for (const file of [A, B, C]) addDoc(file, PARAGRAPH + '\n', GERMAN_ONE_LINE);
+    vi.stubEnv('GIT_COMMITTER_DATE', '2026-01-01T00:00:00Z');
+    commitFixtures();
+
+    write(A, EDITED + '\n');
+    write(B, EDITED + '\n');
+    vi.stubEnv('GIT_COMMITTER_DATE', '2026-01-02T00:00:00Z');
+    commitFixtures();
+
+    const text = Array.from({ length: 1700 }, (_, i) => `Step ${i} explains how to configure the store.`).join('\n\n') + '\n';
+    addDoc(BIG, text, null);
+    vi.stubEnv('GIT_COMMITTER_DATE', '2026-01-03T00:00:00Z');
+    commitFixtures();
+
+    const run1 = schedule({ maxUnits: 1500 });
+    expect(run1.plan.targets.filter(entry => entry.status === 'translate').map(entry => entry.source)).toEqual([A, B]);
+    expect(run1.summary.deferred_units).toBeGreaterThanOrEqual(1700);
+
+    git('rm', A, B, sourceToTranslatedPath(A, 'de'), sourceToTranslatedPath(B, 'de'));
+    write(C, EDITED + '\n');
+    vi.stubEnv('GIT_COMMITTER_DATE', '2026-01-04T00:00:00Z');
+    commitFixtures();
+
+    const run2 = schedule({ maxUnits: 1500 });
+    expect(run2.plan.targets.filter(entry => entry.status === 'translate').map(entry => entry.source)).toEqual([BIG]);
+    expect(run2.summary.total).toBeGreaterThanOrEqual(1700);
+    expect(run2.summary.deferred_units).toBe(1);
+  });
+
   it('takes --first pages ahead of higher-priority groups under the cap', () => {
     addDoc('versioned_docs/version-1.x/a-first.mdx', PARAGRAPH, null);
     addDoc('versioned_docs/version-1.x/z-new/page.mdx', PARAGRAPH, null);
