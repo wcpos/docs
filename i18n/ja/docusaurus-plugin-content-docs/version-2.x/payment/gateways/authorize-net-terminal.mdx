@@ -1,0 +1,284 @@
+---
+title: Authorize.net
+slug: /hardware/card-readers/authorize-net
+description: "Authorize.net のスマートフォンアプリで Tap to Pay 決済を行い、WCPOS に注文へ記録させる方法です。設定、Sandbox と Production、返金、ベータ版の制限について説明します。"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/authorize-net-terminal/en/manifest.json';
+
+# Authorize.net Tap to Pay {#authorizenet-tap-to-pay}
+
+お客様は、Authorize.net 独自のアプリを使って、あなたのスマートフォンにカードをタッチします。金額は自分でアプリに入力します。レジから金額は送信されません。その後、レジが Authorize.net で決済を見つけ、注文に記録します。
+
+これは Stripe Terminal を使う [WCPOS アプリ独自の Tap to Pay](../../hardware/card-readers/index.mdx#tap-to-pay) とは別の機能です。店舗管理者向けの [Authorize.net Tap to Pay の設定](#setup) では、認証情報、スマートフォン、動作確認の方法を説明します。
+
+:::info Pro 機能
+Authorize.net Tap to Pay を使うには、[WCPOS Pro](../../getting-started/pro-license.mdx) 2.0 以降が必要です。
+:::
+
+:::warning ベータ版：最初にテスト決済を行ってください
+**バージョン 0.1.0 はベータ版で、Authorize.net アプリでの実際のタッチ決済はまだ試されていません。** お客様のカードを受け付ける前に、ご自身のカードで少額の決済を行い、返金してください。
+
+<details>
+<summary>テスト済みの内容と未テストの内容</summary>
+
+バージョン 0.1.0 は Authorize.net の Sandbox でテストしました。タッチ決済の代わりに Authorize.net の API を通じて対面決済を行い、決済、照合、取消、売上確定後の返金を確認しました。未テストの内容は、アプリでの実際のタッチ決済、実際のタッチ決済後に Legacy タブに表示される照合候補の一覧、Authorize.net アプリとペアリングしたカードリーダーです。問題を報告する際は、注文番号、決済時刻、スクリーンショットをお知らせください。
+
+</details>
+:::
+
+## 決済を行う {#take-payment}
+
+:::note 最初にレジを開いてください
+**レジの開閉**が有効な場合、レジが閉じている間は決済を記録できません。すでにカードを受け付けていると、返金が必要になります。この設定については[レジ](../../settings/wp-admin/registers.mdx#one-register)を参照してください。
+:::
+
+1. カートで **チェックアウト** を押します。
+2. **支払い方法**タブで **Authorize.net Tap to Pay** のタイルをタップします（店舗によって名前が変更されている場合があります）。テンキーの上には **端末：** とスマートフォン名が表示されます。管理者が変更していない場合、スマートフォン名は **Authorize.net アプリ** です。
+3. **Authorize.net Tap to Pay に … を送信**を押します。たとえば、**Authorize.net Tap to Pay に $10.00 を送信**を押します。レジに **端末でお客様をお待ちしています** と表示されます。
+4. スマートフォンの Authorize.net アプリで、**まったく同じ金額**を入力します。アプリでチップを追加しないでください。[チップ](../../pos/checkout/tips.mdx)を参照してください。
+5. お客様にスマートフォンへカードをタッチしてもらいます。
+6. レジの処理を待ちます。決済が見つかるとレジに記録され、未払い額がなくなった時点でレシートが開きます。
+
+送信を押してから 5 分以内にタッチ決済を行います。5 分を過ぎるとレジは決済をキャンセルし、**タイムアウト — 決済がキャンセルされました** と表示して、決済を検索しなくなります。
+
+<details>
+<summary>レジが決済を見つける仕組み</summary>
+
+レジが待機している間、WCPOS はその金額の決済がないか Authorize.net を繰り返し確認します。**自動照合**が有効で、**送信**を押す 30 秒前以降に該当する決済が 1 件だけ到着した場合、レジが自動的に記録します。記録前に、金額や通貨を含む決済情報を WCPOS が Authorize.net に確認します。1 件の決済が記録される注文は、常に 1 件だけです。
+
+決済が進むと、レジの表示が **送信済み**、**端末上**、**承認済み**、**売上確定済み** と順に点灯します。
+
+</details>
+
+### 決済をキャンセルする {#cancel}
+
+**端末でキャンセル**を押します。WCPOS でキャンセルしても Authorize.net アプリは停止しないため、お客様にはタッチしないよう伝えてください。
+
+レジは最後にもう一度 Authorize.net を確認します。その金額の新しい決済が 1 件だけ到着していれば、代わりにその決済を記録して販売を完了します。それ以外の場合は決済をキャンセルします。
+
+## 問題が発生した場合 {#goes-wrong}
+
+### お客様が支払いを済ませた可能性がある場合 {#may-have-paid}
+
+:::warning カードをもう一度受け付けないでください
+このような場合、注文が未払いのままでも、Authorize.net アカウントにはすでに入金されている可能性があります。以下の Legacy タブの手順に従うか、管理者に連絡してください。
+:::
+
+**お客様がタッチした後もレジが待機し続ける。** レジが自動的に決済を記録するのは、どの決済がお客様のものか確実に判断できる場合だけです。判断できない場合は待機を続け、5 分後にタイムアウトします。次のような場合に発生します：
+
+- アプリに入力した金額がレジの金額と異なる（たとえば、アプリでチップを追加した場合）。
+- 別のレジやオンラインショップから、同じ金額の決済が同時に届いた。
+- 管理者がゲートウェイ設定で **自動照合** を無効にしている。
+
+**支払い方法**タブでは、どの決済がお客様のものか選択できません。過去 15 分間の決済であれば、注文の [**Legacy**](../../pos/checkout/legacy-tab.mdx) タブで選べます。レジ係または管理者が次の操作を行います：
+
+1. 同じ注文のチェックアウト画面で、**Legacy** タブ、次に **Authorize.net Tap to Pay** を選びます。
+2. **Authorize.net アプリに 10.00 USD を送信**を押します（このタブではタイル名ではなくスマートフォン名がボタンに表示されます）。カードをもう一度受け付けないでください。
+3. レジに、たとえば **Authorize.net の決済 2 件（USD 10.00）が該当する可能性があります。今行った決済を選んでください。** という見出しの一覧が表示されます。
+4. 各行にはカードの種類、下 4 桁、時刻、Authorize.net の取引番号が表示されます。お客様のカードとタッチした時刻に一致する行を押します。注文は支払い済みになります。
+
+一覧が表示されない場合、カードをもう一度受け付けないでください。管理者が Authorize.net アカウントで決済を見つけ、[そこで返金](#refunds)します。
+
+**キャンセル後にお客様がタッチした。** キャンセルしてもアプリは停止しません。上記の手順で Legacy タブから決済を記録するか、管理者が Authorize.net アカウントで返金します。
+
+**決済失敗：端末で確認された金額が異なります。** これは上記のチップのケースではありません。Authorize.net 自体が、レジで選択された決済について別の金額または通貨を報告した場合にのみ表示されます。たとえば、店舗の通貨がアカウントで利用できない場合です。レジは決済を記録せず、注文メモを追加します。Legacy タブは使わず、管理者に連絡してください。管理者が Authorize.net アカウントで決済を見つけて返金します。
+
+別の理由でレジの決済が停止している場合は、[カードリーダー決済が停止した場合](../index.mdx#card-reader-problems)を参照してください。
+
+### その他のメッセージ {#other-messages}
+
+<Accordion>
+  <AccordionItem question="決済失敗：拒否されました">
+
+  アプリでカードが拒否されました。お客様がもう一度タッチする前に新しい決済を開始するには **再試行** を押します。別のタイルで支払うには **別の支払い方法を選択** を押します。[カードリーダーでの決済](../../pos/checkout/taking-a-payment.mdx#card-reader)を参照してください。
+
+  別のレジで同じ金額の決済が拒否された場合も、待機中の決済が終了することがあります。
+
+  </AccordionItem>
+  <AccordionItem question="決済失敗：Sandbox と Production が切り替えられました">
+
+  レジに **決済失敗：mode_changed** と表示されます。レジの待機中に管理者が **環境** を **Sandbox** と **Production** の間で切り替えました。設定が正しいことを確認してから **再試行** を押します。
+
+  </AccordionItem>
+  <AccordionItem question="タイムアウト — 決済がキャンセルされました">
+
+  5 分以内に決済が記録されませんでした。お客様がタッチした場合は、[お客様が支払いを済ませた可能性がある場合](#may-have-paid)を参照してください。それ以外の場合は **再試行** を押します。
+
+  </AccordionItem>
+  <AccordionItem question="レジに「この決済を解除」と表示される">
+
+  レジはキャンセルを Authorize.net に確認できませんでした。「解除」を実行すると、別の方法で注文の支払いができるようになり、WCPOS はバックグラウンドで確認を続けます。管理者が Authorize.net アカウントを確認し、その販売の決済がないと確かめた後にだけ押してください。
+
+  </AccordionItem>
+  <AccordionItem question="接続が不安定です。再試行中です">
+
+  WCPOS が Authorize.net に接続できません。レジは再試行を続けます。問題が続く場合は、管理者が認証情報、**環境**、Transaction Details API（[設定](#setup)）、[ログ](#logs)を確認します。
+
+  </AccordionItem>
+  <AccordionItem question="Authorize.net Tap to Pay のタイルがグレー表示または表示されない">
+
+  [タイルを使用できない場合](../index.mdx#unavailable-tiles)を参照してください。両方の認証情報が保存され、WCPOS でゲートウェイが有効になるまでタイルは表示されません。管理者に[設定](#setup)を確認してもらってください。
+
+  </AccordionItem>
+</Accordion>
+
+## Authorize.net の決済を返金する {#refunds}
+
+1. POS で注文の返金画面を開きます。[返金](../../pos/refunds.mdx)を参照してください。
+2. **Authorize.net Tap to Pay に返金**を選び、**返金を処理**を押します。
+
+Authorize.net が決済を売上確定する前（通常は翌朝まで）は、全額返金のみ可能で、決済は取り消されます。売上確定後は、カードに全額または一部を返金できます。WP Admin で注文から返金する場合も同じです。
+
+<details>
+<summary>返金メッセージ</summary>
+
+- **Authorize.net はこの決済を翌朝に売上確定します。今すぐ全額返金して取り消すか、売上確定後に一部返金してください。** — 全額返金するか、一部返金は翌日までお待ちください。
+- **過去 8 時間以内に同じ返金が送信されています。再試行する前に Authorize.net Merchant Interface を確認してください。**
+- **この Authorize.net の決済はすでに取り消されています。** — 売上確定前に全額が取り消されました。
+- **Authorize.net は返金を確認できませんでした。再試行する前に Authorize.net Merchant Interface を確認してください。**
+- **Authorize.net は現在この決済を返金できません。Authorize.net Merchant Interface を確認してください。**
+- **この決済は別の Authorize.net 環境で受け付けられました。** — **環境**を元に戻すか、Merchant Interface で返金してください。
+- **この決済には返金できる Authorize.net 取引がありません。**
+- **返金額は 0 より大きくする必要があります。**
+
+</details>
+
+## Authorize.net Tap to Pay を設定する {#setup}
+
+管理者が WP Admin でゲートウェイを一度設定し、スマートフォンで Authorize.net アプリにサインインします。
+
+### 必要条件 {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="プロセッサー">Authorize.net の加盟店アカウントでは TSYS プロセッサーを使用し、Authorize.net に Tap to Pay を有効化してもらう必要があります。スマートフォンを購入する前に Authorize.net に確認してください。</RequirementItem>
+  <RequirementItem label="Authorize.net アカウント">米国の加盟店アカウント、API Login ID と Transaction Key、ならびに有効化済みの Transaction Details API が必要です。</RequirementItem>
+  <RequirementItem label="スマートフォン">Authorize.net の説明によると、iPhone の Tap to Pay には iOS 18 以降を搭載した iPhone XS 以降が必要です。Android の Tap to Pay には、Tap to Pay Ready 対応スマートフォンで Android 15 が必要です。同じ Authorize.net アカウントのユーザーで Authorize.net 2.0 アプリにサインインしてください。</RequirementItem>
+  <RequirementItem label="通貨">USD：Authorize.net 2.0 アプリが対応する通貨は USD のみです。</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro 2.0 以降と、レジでのインターネット接続が必要です。</RequirementItem>
+  <RequirementItem label="サーバー">WooCommerce 7.0 以降、PHP 7.4 以降、および誤差が 30 秒以内のサーバー時刻が必要です。</RequirementItem>
+</RequirementsList>
+
+### 拡張機能をインストールする {#install}
+
+`WP Admin > POS > 設定 > 拡張機能` で **Authorize.net Tap to Pay for WooCommerce (beta)** を見つけ、**インストール**をクリックします。WCPOS がインストールと有効化を行い、**自動更新**を有効にするため、新しいベータ版は自動的にインストールされます。[拡張機能](../../extensions/index.mdx#installing-an-extension)と[自動更新](../../extensions/index.mdx#auto-updates)を参照してください。
+
+<details>
+<summary>ダウンロードした zip からインストールする場合</summary>
+
+[GitHub のリリースページ](https://github.com/wcpos/authorize-net-terminal-for-woocommerce/releases)から `authorize-net-terminal-for-woocommerce.zip` をダウンロードし、`プラグイン > Add Plugin` からアップロードして、**プラグインをアップロード**をクリックします。GitHub の「Source code」zip はインストールできません。
+
+</details>
+
+### API 認証情報を取得する {#credentials}
+
+Authorize.net Merchant Interface で次の操作を行います：
+
+1. **Account → Settings → API Credentials & Keys** を開き、**API Login ID** をコピーします。Authorize.net が **Transaction Key** を表示するのは作成時だけです。保存したキーがない場合は、新しいキーを作成してすぐにコピーしてください。新しいキーを作成すると古いキーが置き換わります。オンラインショップですでにこのアカウントを使っている場合は、既存のキーを再利用するか、ショップ側も更新してください。**Production** には本番アカウントの認証情報を使用します。Sandbox アカウントの認証情報は **Sandbox** でのみ使用できます。
+2. **Account → Settings → Transaction Details API** を開き、有効にします。これが無効だと店舗は決済情報を読み取れず、レジに決済が記録されません。
+
+### 認証情報を入力する {#enter-credentials}
+
+`WP Admin > WooCommerce > 設定 > 支払い` を開き、**Authorize.net Tap to Pay** をクリックします。
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[410, 0], [410, 0], [410, 0], [410, 0], [-30, 0], [410, 0]]} maxWidth={720} alt="WP Admin の未設定店舗における Authorize.net Tap to Pay 設定：タイトルは Authorize.net Tap to Pay、環境は Sandbox、API Login ID と Transaction Key の各欄は空で「保存済みの値はありません」と表示、自動照合はチェック済み、リーダー名は Authorize.net アプリ">
+
+1. **タイトル** — レジでタイルに表示する名前です。
+2. **環境** — **Production** を選択します。スマートフォンを使わず店舗側の動作だけを試す場合に限り、既定値の **Sandbox** を使用してください。[Sandbox と Production](#environments)を参照してください。
+3. **API Login ID** — ここに貼り付けます。
+4. **Transaction Key** — ここに貼り付けます。保存後、両方の欄は空欄になり、下 4 桁だけが表示されます。保存済みの値を維持するには空欄のままにします。保存時に認証情報のテストは行われません。テストは[動作を確認する](#check)で行います。
+5. **自動照合** — チェックを入れたままにします。無効にすると、レジは決済を自動的に記録しません。
+6. **リーダー名** — レジでテンキーの上に表示される名前です。
+
+</JourneyShot>
+
+**変更を保存**をクリックします。
+
+### スマートフォンを設定する {#phone}
+
+スマートフォンに Authorize.net アプリをインストールし、入力した認証情報の Authorize.net アカウントのユーザーでサインインします。**Production** の場合は本番アカウントを使います。
+
+### WCPOS で有効にする {#enable}
+
+ゲートウェイの設定ページに **有効化** のチェックボックスはありません。`WP Admin > POS > 設定 > 支払い` を開きます。
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[-22, 0], [50, 0]]} maxWidth={720} alt="WP Admin の POS 設定、レジ：ゲートウェイ表に 3 行あり、カードは有効、Authorize.net Tap to Pay と銀行振込は無効">
+
+1. **Authorize.net Tap to Pay** — **ゲートウェイ**表にある拡張機能の行です。
+2. **有効** — スイッチをオンにします。再読み込みするとレジにタイルが表示されます。
+
+</JourneyShot>
+
+このゲートウェイはオンラインショップのチェックアウトには表示されません。[チェックアウト設定](../../settings/wp-admin/checkout.mdx#enabling-a-gateway)を参照してください。
+
+### 動作を確認する {#check}
+
+1. レジで POS を再読み込みし、**チェックアウト**を押します。支払い方法の中に **Authorize.net Tap to Pay** のタイルが表示されます。
+2. タイルをタップします。テンキーの上に **端末：** と **リーダー名** が表示されます。
+3. **環境**が **Production** になっていることを確認してから、ご自身のカードで少額の決済を行います。
+4. 同じ日に全額を返金してください。売上確定前の全額返金は決済の取消になります。
+
+レジが決済を自動記録してレシートを開き、注文の支払い情報に Authorize.net の取引 ID が表示されれば、動作しています。
+
+レジに **接続が不安定です。再試行中です** と表示されたままの場合は、認証情報、**環境**、Transaction Details API を確認してください。
+
+## Sandbox と Production {#environments}
+
+既定の **Sandbox** は `apitest.authorize.net` を使用します。**Production** は `api.authorize.net` を使用し、実際に決済されます。認証情報は環境ごとに異なるため、選択した環境に対応する認証情報を入力してください。店舗側の機能は Sandbox で動作します。ベータ版では Authorize.net の API を使った決済でテストしました。Authorize.net はアプリから Sandbox アカウントにサインインできるか明示していないため、Production で実際のタッチ決済を試してください。
+
+レジで Authorize.net の決済を受け付けていないときに限り、**環境**を切り替えてください。待機中の決済は失敗します。決済を受け付けた後に環境を切り替えると、レジから返金できません。
+
+## 設定リファレンス {#settings}
+
+`WP Admin > WooCommerce > 設定 > 支払い > Authorize.net Tap to Pay` の設定：
+
+| 設定 | 説明 |
+|---|---|
+| **タイトル** | レジでタイルに表示する名前です。既定値は **Authorize.net Tap to Pay** です。 |
+| **環境** | **Sandbox**（既定値）または **Production** |
+| **API Login ID** | Merchant Interface の **Account → Settings → API Credentials & Keys** にあります。保存後は下 4 桁のみ表示されます。維持する場合は空欄にします。 |
+| **Transaction Key** | サーバーにのみ保存され、再表示されません。API Login ID と同じ方法で保存・表示されます。 |
+| **自動照合** | 条件に一致する Authorize.net の決済が 1 件だけの場合、自動的に記録します。既定で有効です。 |
+| **リーダー名** | レジでテンキーの上に表示される名前です。既定値は **Authorize.net アプリ** です。 |
+
+制御文字を含む認証情報を貼り付けると、**Authorize.net の認証情報に制御文字を含めることはできません。** と表示され、拒否されます。もう一度貼り付けてください。
+
+**最初に Authorize.net API Login ID と Transaction Key を入力してください。** は認証情報が不足していることを示します。両方を入力して **変更を保存** をクリックしてください。
+
+## ログとサポートバンドル {#logs}
+
+<JourneyShot manifest={manifest} device="desktop" step={3} offsets={[[-20, 0]]} maxWidth={720} alt="WP Admin の Authorize.net Tap to Pay 設定ページ下部：サポートバンドルと「サポートバンドルをダウンロード」ボタン">
+
+1. **サポートバンドルをダウンロード** — WCPOS サポートに提供するファイルです。サイト上のすべての POS 決済プロバイダーを対象とし、秘密情報とカード番号は削除されます。
+
+</JourneyShot>
+
+ログは `WooCommerce > Status > ログ` にあり、ソースは `authorize-net-terminal-for-woocommerce` です。認証情報とカード番号は削除されています。決済で問題が起きた場合は、サポートバンドルに **注文番号** と **販売時刻** を添えて送ってください。
+
+拡張機能に **Authorize.net Tap to Pay for WooCommerce POS needs WooCommerce POS Pro 2.0.0 or newer.** と表示された場合は、WCPOS Pro をインストールまたは更新してください。これがないと拡張機能は POS に何も追加しません。
+
+## この機能でできないこと {#scope-and-limitations}
+
+- スマートフォンに金額を送信すること：アプリに金額を入力する必要があります。
+- アプリでチップを追加すること：金額を完全に一致させる必要があります。
+- **支払い方法**タブに決済候補の一覧を表示すること：候補から選ぶには [Legacy タブ](#may-have-paid)を使います。
+- 物理カード端末には対応していません。Authorize.net アプリとペアリングしたリーダーは未テストです。
+- 手動売上確定や、Authorize.net が審査のために保留する決済には対応しません。レジは待機を続けます。
+- 米国以外のアカウント、または USD 以外の通貨には対応しません。
+- 決済件数が非常に多いアカウント：バージョン 0.1.0 が調べるのは、Authorize.net がまだ売上確定していない最新 50 件のみです。タッチ後、レジが決済を見つける前に、同じアカウントでほかの決済（どのレジやオンラインショップのものでも）が 50 件以上届くと、レジは該当の決済を見つけられません。
+- 2 台のレジを区別すること：同じ金額の決済を 2 台のレジで同時に行うと、それぞれが相手の決済を記録する可能性があります。
+
+## 関連ドキュメント {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment" title="決済の受付" description="レジで決済を受け付けるすべての方法" />
+  <LinkCard to="/sell/refunds" title="返金" description="POS から返金する" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="決済ゲートウェイ" description="WCPOS が対応するその他の端末とゲートウェイ" />
+</LinkCards>
