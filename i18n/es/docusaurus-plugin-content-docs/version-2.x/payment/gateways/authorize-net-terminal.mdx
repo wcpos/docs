@@ -1,0 +1,284 @@
+---
+title: Authorize.net
+slug: /hardware/card-readers/authorize-net
+description: "Aceptar pagos Tap to Pay en la aplicación móvil de Authorize.net y permitir que WCPOS los registre en el pedido. Configuración, sandbox y producción, reembolsos y límites de la beta"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/authorize-net-terminal/en/manifest.json';
+
+# Tap to Pay de Authorize.net {#authorizenet-tap-to-pay}
+
+El cliente acerca su tarjeta a su teléfono, en la propia aplicación de Authorize.net. Introduzca el importe manualmente en esa aplicación: la caja no lo envía. A continuación, la caja busca el pago en Authorize.net y lo registra en el pedido.
+
+Esta opción es distinta de [Tap to Pay de la propia aplicación WCPOS](../../hardware/card-readers/index.mdx#tap-to-pay), que utiliza Stripe Terminal. Administradores de la tienda: [Configurar Tap to Pay de Authorize.net](#setup) explica las credenciales, el teléfono y cómo comprobar que funciona.
+
+:::info Función Pro
+Tap to Pay de Authorize.net requiere [WCPOS Pro](../../getting-started/pro-license.mdx) 2.0 o posterior.
+:::
+
+:::warning Beta: realice primero un pago de prueba
+**La versión 0.1.0 es una beta y aún no se ha probado un pago real acercando la tarjeta en la aplicación de Authorize.net.** Antes de aceptar la tarjeta de un cliente, realice un pago pequeño con su propia tarjeta y reembólselo.
+
+<details>
+<summary>Qué se ha probado y qué no</summary>
+
+La versión 0.1.0 se probó con el sandbox de Authorize.net; se simuló el pago acercando la tarjeta mediante una venta con tarjeta presente realizada a través de la API de Authorize.net: la venta, la coincidencia, una anulación y un reembolso después de la liquidación. Aún no se han probado: un pago real acercando la tarjeta en la aplicación, la lista de pagos coincidentes de la pestaña Legacy después de un pago real ni los lectores de tarjetas vinculados con la aplicación de Authorize.net. Informe de los problemas e incluya el número del pedido, la hora de la venta y una captura de pantalla.
+
+</details>
+:::
+
+## Aceptar un pago {#take-payment}
+
+:::note Abra primero la caja
+Si **Abrir y cerrar la caja** está activado, la caja no registrará pagos mientras permanezca cerrada y tendrá que reembolsar cualquier pago con tarjeta que ya haya aceptado. Consulte el ajuste en [Cajas](../../settings/wp-admin/registers.mdx#one-register).
+:::
+
+1. Pulse **Pagar** en el carrito.
+2. En la pestaña **Pagos**, toque el mosaico **Tap to Pay de Authorize.net** (es posible que se haya cambiado el nombre en su tienda). Encima del teclado, la caja muestra **Terminal:** y el nombre de su teléfono, **Aplicación de Authorize.net**, salvo que un administrador lo haya cambiado.
+3. Pulse **Enviar … a Tap to Pay de Authorize.net**, por ejemplo, **Enviar $10.00 a Tap to Pay de Authorize.net**. La caja muestra **Esperando al cliente en el terminal**.
+4. En la aplicación de Authorize.net del teléfono, introduzca **exactamente el mismo importe**. No añada una propina en la aplicación: consulte [Propinas](../../pos/checkout/tips.mdx).
+5. El cliente acerca su tarjeta al teléfono.
+6. Espere a que responda la caja. Cuando encuentre el pago, lo registra y abre el recibo cuando ya no queda nada por pagar.
+
+Complete el pago acercando la tarjeta en los 5 minutos siguientes a pulsar Enviar. Transcurridos 5 minutos, la caja cancela el pago, muestra **Se agotó el tiempo de espera: pago cancelado** y deja de buscarlo.
+
+<details>
+<summary>Cómo encuentra la caja el pago</summary>
+
+Mientras la caja espera, WCPOS consulta continuamente Authorize.net para encontrar un pago por ese importe. Lo registra automáticamente si ha llegado exactamente uno desde 30 segundos antes de que pulsara **Enviar** y está activada la opción **Coincidencia automática**. Antes de registrarlo, WCPOS comprueba el pago con Authorize.net, incluidos el importe y la moneda. Un pago solo se registra una vez y en un único pedido.
+
+La caja va marcando **Enviado**, **En terminal**, **Aprobado** y **Capturado** a medida que se procesa el pago.
+
+</details>
+
+### Cancelar un pago {#cancel}
+
+Pulse **Cancelar en el terminal**. Cancelar en WCPOS no detiene nada en la aplicación de Authorize.net, así que indique al cliente que no acerque la tarjeta.
+
+La caja vuelve a consultar Authorize.net por última vez. Si ha llegado exactamente un pago nuevo por ese importe, lo registra y completa la venta. De lo contrario, cancela el pago.
+
+## Si algo sale mal {#goes-wrong}
+
+### Si es posible que el cliente ya haya pagado {#may-have-paid}
+
+:::warning No vuelva a aceptar la tarjeta
+En estos casos, es posible que el dinero ya esté en su cuenta de Authorize.net aunque el pedido siga pendiente de pago. Siga los pasos de la pestaña Legacy que se indican más abajo o avise a un administrador.
+:::
+
+**La caja sigue esperando después de que el cliente acercara la tarjeta.** La caja solo registra automáticamente un pago cuando puede identificar con certeza cuál es el suyo. De lo contrario, sigue esperando y, al cabo de 5 minutos, agota el tiempo de espera. Esto ocurre cuando:
+
+- el importe de la aplicación no coincide con el de la caja, por ejemplo, porque se añadió una propina en la aplicación;
+- llegó al mismo tiempo otro pago por el mismo importe desde otra caja o desde su tienda en línea;
+- un administrador desactivó **Coincidencia automática** en los ajustes de la pasarela.
+
+La pestaña **Pagos** no permite preguntarle cuál es su pago. En la pestaña [**Legacy**](../../pos/checkout/legacy-tab.mdx) del pedido sí se puede hacer, para pagos de los últimos 15 minutos. El cajero o un administrador debe hacer lo siguiente:
+
+1. Con el mismo pedido en la pantalla de pago, elija la pestaña **Legacy** y, a continuación, **Tap to Pay de Authorize.net**.
+2. Pulse **Enviar 10.00 USD a la aplicación de Authorize.net** (en esta pestaña, el botón muestra el nombre del teléfono, no el del mosaico). No vuelva a aceptar la tarjeta.
+3. La caja muestra una lista con un encabezado como **2 pagos de Authorize.net por 10.00 USD podrían ser este. Elija el que acaba de aceptar.**
+4. Cada línea muestra el tipo de tarjeta, los últimos 4 dígitos, la hora y el número de transacción de Authorize.net. Pulse la línea que coincida con la tarjeta del cliente y la hora del pago. El pedido queda pagado.
+
+Si no aparece ninguna lista, no vuelva a aceptar la tarjeta: un administrador debe buscar el pago en su cuenta de Authorize.net y [reembolsarlo allí](#refunds).
+
+**El cliente acercó la tarjeta después de que usted cancelara.** La cancelación no detiene la aplicación. Registre el pago desde la pestaña Legacy como se indica arriba o pida a un administrador que lo reembolse en su cuenta de Authorize.net.
+
+**Pago fallido: El terminal confirmó un importe distinto.** No se trata del caso de la propina anterior: este mensaje solo aparece cuando Authorize.net indica otro importe o moneda para el pago que seleccionó la caja, por ejemplo, si la moneda de la tienda no está habilitada en la cuenta. La caja no registra el pago y añade una nota al pedido. No use la pestaña Legacy: avise a un administrador para que busque el pago en su cuenta de Authorize.net y lo reembolse.
+
+Si un pago se queda bloqueado en la caja por otro motivo, consulte [Si se bloquea un pago con lector de tarjetas](../index.mdx#card-reader-problems).
+
+### Otros mensajes {#other-messages}
+
+<Accordion>
+  <AccordionItem question="Pago fallido: tarjeta rechazada">
+
+  La aplicación rechazó la tarjeta. Pulse **Volver a intentarlo** para iniciar un pago nuevo antes de que el cliente vuelva a acercar la tarjeta, o **Elegir otro método** para pagar con otro mosaico. Consulte [Con un lector de tarjetas](../../pos/checkout/taking-a-payment.mdx#card-reader).
+
+  El rechazo de un pago por el mismo importe en otra caja también puede finalizar un pago que aún esté en espera.
+
+  </AccordionItem>
+  <AccordionItem question="Pago fallido: se cambió Sandbox o Producción">
+
+  La caja muestra **Pago fallido: mode_changed**. Mientras la caja esperaba, un administrador cambió **Entorno** entre **Sandbox** y **Producción**. Pulse **Volver a intentarlo** cuando el ajuste sea correcto.
+
+  </AccordionItem>
+  <AccordionItem question="Se agotó el tiempo de espera: pago cancelado">
+
+  No se registró ningún pago en 5 minutos. Si el cliente acercó la tarjeta, consulte [Si es posible que el cliente ya haya pagado](#may-have-paid). De lo contrario, pulse **Volver a intentarlo**.
+
+  </AccordionItem>
+  <AccordionItem question="La caja ofrece la opción Liberar este pago">
+
+  La caja no pudo confirmar la cancelación con Authorize.net. La opción Liberar permite pagar el pedido de otra forma, mientras WCPOS sigue comprobando el pago en segundo plano. Púlsela solo después de que un administrador haya revisado la cuenta de Authorize.net y confirmado que no hay ningún pago correspondiente a la venta.
+
+  </AccordionItem>
+  <AccordionItem question="Conexión inestable; se sigue intentando">
+
+  WCPOS no puede conectarse con Authorize.net. La caja sigue intentándolo. Si el problema persiste, un administrador debe comprobar las credenciales, el **Entorno** y la Transaction Details API ([configuración](#setup)), así como los [registros](#logs).
+
+  </AccordionItem>
+  <AccordionItem question="El mosaico Tap to Pay de Authorize.net aparece atenuado o no está disponible">
+
+  Consulte [Cuándo no se puede usar un mosaico](../index.mdx#unavailable-tiles). El mosaico no aparece hasta que se hayan guardado ambas credenciales y la pasarela esté activada en WCPOS. Un administrador puede revisar [la configuración](#setup).
+
+  </AccordionItem>
+</Accordion>
+
+## Reembolsar un pago de Authorize.net {#refunds}
+
+1. En el POS, abra el reembolso del pedido. Consulte [Reembolsos](../../pos/refunds.mdx).
+2. Elija **Reembolsar a Tap to Pay de Authorize.net** y pulse **Procesar reembolso**.
+
+Antes de que Authorize.net liquide el pago (normalmente durante la noche), solo es posible un reembolso completo, que anula el pago. Una vez liquidado, puede reembolsar todo el importe o una parte a la tarjeta. El proceso es el mismo si se reembolsa el pedido desde WP Admin.
+
+<details>
+<summary>Mensajes de reembolso</summary>
+
+- **Authorize.net liquida este pago durante la noche. Reembolse el importe completo para anularlo ahora, o una parte cuando se haya liquidado.** — reembolse el importe completo o espere hasta mañana para realizar un reembolso parcial.
+- **Se envió un reembolso idéntico en las últimas 8 horas. Compruebe Authorize.net Merchant Interface antes de volver a intentarlo.**
+- **Este pago de Authorize.net ya se había anulado.** — se anuló el pago completo antes de la liquidación.
+- **Authorize.net no confirmó el reembolso. Compruebe Authorize.net Merchant Interface antes de volver a intentarlo.**
+- **Authorize.net no puede reembolsar este pago ahora. Compruebe Authorize.net Merchant Interface.**
+- **Este pago se aceptó en el otro entorno de Authorize.net.** — vuelva a cambiar **Entorno** o reembolse el pago desde Merchant Interface.
+- **Este pago no tiene ninguna transacción de Authorize.net que se pueda reembolsar.**
+- **El importe del reembolso debe ser mayor que cero.**
+
+</details>
+
+## Configurar Tap to Pay de Authorize.net {#setup}
+
+Un administrador configura la pasarela una vez en WP Admin e inicia sesión en la aplicación de Authorize.net desde el teléfono.
+
+### Requisitos {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Procesador">La cuenta de comerciante de Authorize.net debe utilizar el procesador TSYS y Authorize.net debe haber activado Tap to Pay. Confírmelo con Authorize.net antes de comprar teléfonos</RequirementItem>
+  <RequirementItem label="Cuenta de Authorize.net">Una cuenta de comerciante de EE. UU., su API Login ID y Transaction Key, y la Transaction Details API activada</RequirementItem>
+  <RequirementItem label="Teléfono">Según Authorize.net: Tap to Pay en iPhone requiere un iPhone XS o posterior con iOS 18 o posterior; Tap to Pay en Android requiere Android 15 en un teléfono compatible con Tap to Pay. Inicie sesión en la aplicación Authorize.net 2.0 con un usuario de la misma cuenta de Authorize.net</RequirementItem>
+  <RequirementItem label="Moneda">USD: la aplicación Authorize.net 2.0 solo acepta USD</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro 2.0 o posterior y conexión en la caja</RequirementItem>
+  <RequirementItem label="Servidor">WooCommerce 7.0+, PHP 7.4+ y un reloj del servidor con un desfase máximo de 30 segundos</RequirementItem>
+</RequirementsList>
+
+### Instalar la extensión {#install}
+
+En `WP Admin > POS > Ajustes > Extensiones`, busque **Tap to Pay de Authorize.net para WooCommerce (beta)** y pulse **Instalar**. WCPOS la instala y activa, y habilita **Actualización automática** para que las nuevas versiones beta se instalen automáticamente. Consulte [Extensiones](../../extensions/index.mdx#installing-an-extension) y [Actualizaciones automáticas](../../extensions/index.mdx#auto-updates).
+
+<details>
+<summary>Instalar desde un archivo zip descargado</summary>
+
+Descargue `authorize-net-terminal-for-woocommerce.zip` desde la [página de versiones de GitHub](https://github.com/wcpos/authorize-net-terminal-for-woocommerce/releases) y súbalo desde `Plugins > Add Plugin`; después, pulse **Subir plugin**. El archivo zip «Source code» de GitHub no se puede instalar.
+
+</details>
+
+### Obtener las credenciales de la API {#credentials}
+
+En Authorize.net Merchant Interface:
+
+1. Abra **Cuenta → Ajustes → Credenciales y claves de API** y copie el **API Login ID**. Authorize.net solo muestra el **Transaction Key** cuando se crea: si no lo guardó, cree uno nuevo y cópielo inmediatamente. La clave nueva sustituye a la anterior; si su tienda en línea ya usa esta cuenta, reutilice su clave o actualice también la tienda. Use las credenciales de su cuenta real en **Producción**; las de una cuenta sandbox solo funcionan con **Sandbox**.
+2. Abra **Cuenta → Ajustes → Transaction Details API** y actívela. Sin esta opción, la tienda no puede leer los pagos y la caja nunca registra ninguno.
+
+### Introducir las credenciales {#enter-credentials}
+
+Abra `WP Admin > WooCommerce > Ajustes > Pagos` y pulse **Tap to Pay de Authorize.net**.
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[410, 0], [410, 0], [410, 0], [410, 0], [-30, 0], [410, 0]]} maxWidth={720} alt="WP Admin, ajustes de Tap to Pay de Authorize.net en una tienda aún sin configurar: Título Tap to Pay de Authorize.net, Entorno Sandbox, campos API Login ID y Transaction Key vacíos que indican Ningún valor guardado, Coincidencia automática marcada, Nombre del lector Aplicación de Authorize.net">
+
+1. **Título** — el nombre del mosaico en la caja.
+2. **Entorno** — elija **Producción**. Mantenga **Sandbox**, la opción predeterminada, solo para probar la parte de la tienda sin el teléfono. Consulte [Sandbox y producción](#environments).
+3. **API Login ID** — péguelo aquí.
+4. **Transaction Key** — péguela aquí. Una vez guardados, ambos campos quedan vacíos y solo muestran los últimos 4 caracteres: déjelos vacíos para conservar los valores guardados. Al guardar no se comprueban las credenciales; para ello, use [Comprobar que funciona](#check).
+5. **Coincidencia automática** — déjela marcada. Si no lo está, la caja nunca registra pagos automáticamente.
+6. **Nombre del lector** — el nombre que muestra la caja encima del teclado.
+
+</JourneyShot>
+
+Pulse **Guardar cambios**.
+
+### Configurar el teléfono {#phone}
+
+Instale la aplicación de Authorize.net en el teléfono e inicie sesión con un usuario de la cuenta de Authorize.net cuyas credenciales introdujo: use su cuenta real para **Producción**.
+
+### Activarlo en WCPOS {#enable}
+
+La página de ajustes de la pasarela no tiene ninguna casilla **Activar**. Abra `WP Admin > POS > Ajustes > Finalizar compra`.
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[-22, 0], [50, 0]]} maxWidth={720} alt="WP Admin, Ajustes de POS, Caja: tres filas de la tabla Pasarelas; Tarjeta activada, Tap to Pay de Authorize.net y Transferencia bancaria directa desactivadas">
+
+1. **Tap to Pay de Authorize.net** — la fila de la extensión en la tabla **Pasarelas**.
+2. **Activada** — actívela. La caja mostrará el mosaico cuando se vuelva a cargar.
+
+</JourneyShot>
+
+La pasarela nunca se ofrece en la pantalla de pago de su tienda en línea. Consulte [Ajustes de caja](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+### Comprobar que funciona {#check}
+
+1. En una caja, vuelva a cargar el POS y pulse **Pagar**. El mosaico **Tap to Pay de Authorize.net** aparecerá entre las formas de pago.
+2. Tóquelo: encima del teclado, la caja muestra **Terminal:** y el **Nombre del lector**.
+3. Asegúrese de que **Entorno** sea **Producción** y, a continuación, realice una venta pequeña con su propia tarjeta.
+4. Reembolse el importe completo ese mismo día: antes de la liquidación, el reembolso completo anula el pago.
+
+La configuración funciona si la caja registra el pago automáticamente y abre el recibo, y el pago del pedido muestra el ID de transacción de Authorize.net.
+
+Si la caja se queda esperando con el mensaje **Conexión inestable; se sigue intentando**, compruebe las credenciales, el **Entorno** y la Transaction Details API.
+
+## Sandbox y producción {#environments}
+
+**Sandbox** es la opción predeterminada y utiliza `apitest.authorize.net`. **Producción** utiliza `api.authorize.net` y procesa pagos reales. Las credenciales corresponden a un solo entorno: introduzca las del entorno que haya elegido. La parte de la tienda funciona en Sandbox: la beta se probó allí con ventas realizadas a través de la API de Authorize.net. Authorize.net no indica si su aplicación permite iniciar sesión con una cuenta sandbox, así que pruebe un pago real acercando la tarjeta en Producción.
+
+Cambie **Entorno** solo cuando ninguna caja esté aceptando un pago de Authorize.net: cualquier pago en espera fallará. Después de cambiarlo, no podrá reembolsar desde la caja un pago aceptado en el otro entorno.
+
+## Referencia de ajustes {#settings}
+
+En `WP Admin > WooCommerce > Ajustes > Pagos > Authorize.net Tap to Pay`:
+
+| Ajuste | Función |
+|---|---|
+| **Título** | El nombre del mosaico en la caja. Predeterminado: **Tap to Pay de Authorize.net** |
+| **Entorno** | **Sandbox** (predeterminado) o **Producción** |
+| **API Login ID** | Se obtiene en Merchant Interface: **Cuenta → Ajustes → Credenciales y claves de API**. Una vez guardado, solo se muestran sus últimos 4 caracteres; déjelo vacío para conservarlo |
+| **Transaction Key** | Solo se guarda en el servidor y no vuelve a mostrarse. Se guarda y se muestra igual que el API Login ID |
+| **Coincidencia automática** | Registra automáticamente el pago cuando coincide exactamente uno de Authorize.net. Activada de forma predeterminada |
+| **Nombre del lector** | El nombre que muestra la caja encima del teclado. Predeterminado: **Aplicación de Authorize.net** |
+
+Si se pega una credencial con caracteres ocultos, se rechaza con el mensaje **Las credenciales de Authorize.net no pueden contener caracteres de control.** Vuelva a pegarla.
+
+**Introduzca primero el API Login ID y el Transaction Key de Authorize.net.** significa que falta una credencial: introduzca ambas y pulse **Guardar cambios**.
+
+## Registros y paquete de soporte {#logs}
+
+<JourneyShot manifest={manifest} device="desktop" step={3} offsets={[[-20, 0]]} maxWidth={720} alt="WP Admin, parte inferior de los ajustes de Tap to Pay de Authorize.net: paquete de soporte con su botón Descargar paquete de soporte">
+
+1. **Descargar paquete de soporte** — archivo para el equipo de soporte de WCPOS. Incluye todos los proveedores de pago del POS de su sitio; se eliminan los secretos y los números de tarjeta.
+
+</JourneyShot>
+
+Los registros están en `WooCommerce > Status > Registros`, con el origen `authorize-net-terminal-for-woocommerce`; se eliminan las credenciales y los números de tarjeta. Si ocurre un problema con un pago, envíe el paquete de soporte e incluya el **número del pedido** y la **hora de la venta**.
+
+Si la extensión muestra **Tap to Pay de Authorize.net para WooCommerce POS requiere WooCommerce POS Pro 2.0.0 o posterior.**, instale o actualice WCPOS Pro: sin él, la extensión no añade nada al POS.
+
+## Qué no hace {#scope-and-limitations}
+
+- Enviar el importe al teléfono: debe introducirlo en la aplicación.
+- Aceptar propinas en la aplicación: el importe debe coincidir exactamente.
+- Mostrar la lista de posibles pagos en la pestaña **Pagos**: selecciónelos en la [pestaña Legacy](#may-have-paid).
+- Terminales físicos de tarjetas. No se han probado lectores vinculados con la aplicación de Authorize.net.
+- Capturas manuales o pagos que Authorize.net retiene para revisarlos: la caja sigue esperando.
+- Cuentas de fuera de EE. UU. o monedas distintas de USD.
+- Cuentas con mucha actividad: la versión 0.1.0 solo consulta los 50 pagos más recientes que Authorize.net aún no ha liquidado. Si después del pago acercando la tarjeta llegan 50 pagos adicionales o más a la cuenta (desde cualquier caja, incluida su tienda en línea) antes de que la caja lo encuentre, no lo detectará.
+- Distinguir entre dos cajas: si ambas aceptan el mismo importe en el mismo momento, cada una podría registrar el pago de la otra.
+
+## Documentación relacionada {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment" title="Aceptar un pago" description="Todas las formas de aceptar pagos en la caja" />
+  <LinkCard to="/sell/refunds" title="Reembolsos" description="Devolver dinero desde el POS" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Pasarelas de pago" description="Los otros terminales y pasarelas que admite WCPOS" />
+</LinkCards>

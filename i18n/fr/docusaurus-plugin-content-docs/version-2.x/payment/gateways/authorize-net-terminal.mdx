@@ -1,0 +1,284 @@
+---
+title: Authorize.net
+slug: /hardware/card-readers/authorize-net
+description: "Accepter un paiement Tap to Pay dans l’application mobile Authorize.net et laisser WCPOS l’enregistrer sur la commande. Configuration, environnement de test et production, remboursements et limites de la version bêta"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/authorize-net-terminal/en/manifest.json';
+
+# Tap to Pay d’Authorize.net {#authorizenet-tap-to-pay}
+
+Le client approche sa carte de votre téléphone, dans l’application même d’Authorize.net. Vous saisissez vous-même le montant dans cette application : la caisse ne l’envoie pas. La caisse recherche ensuite le paiement dans Authorize.net et l’enregistre sur la commande.
+
+Cette solution est distincte du [Tap to Pay de l’application WCPOS](../../hardware/card-readers/index.mdx#tap-to-pay), qui utilise Stripe Terminal. Administrateurs de boutique : [Configurer Tap to Pay d’Authorize.net](#setup) explique comment configurer les identifiants, le téléphone et vérifier que tout fonctionne.
+
+:::info Fonctionnalité Pro
+Tap to Pay d’Authorize.net nécessite [WCPOS Pro](../../getting-started/pro-license.mdx) 2.0 ou une version ultérieure.
+:::
+
+:::warning Version bêta : effectuez d’abord un paiement de test
+**La version 0.1.0 est une version bêta, et aucun paiement réel par approche dans l’application Authorize.net n’a encore été essayé.** Avant d’accepter la carte d’un client, effectuez un petit paiement avec votre propre carte et remboursez-le.
+
+<details>
+<summary>Éléments testés et non testés</summary>
+
+La version 0.1.0 a été testée dans l’environnement de test d’Authorize.net, en simulant le paiement par approche avec une vente en présence de la carte effectuée via l’API d’Authorize.net : la vente, la mise en correspondance, une annulation et un remboursement après règlement. N’ont pas encore été testés : un paiement réel par approche dans l’application, la liste des paiements correspondants dans l’onglet Legacy après un paiement réel par approche, et les lecteurs de cartes associés à l’application Authorize.net. Pour signaler un problème, indiquez le numéro de commande et l’heure de la vente, et joignez une capture d’écran.
+
+</details>
+:::
+
+## Accepter un paiement {#take-payment}
+
+:::note Ouvrez d’abord la caisse
+Lorsque l’option **Ouvrir et fermer la caisse** est activée, la caisse n’enregistre aucun paiement tant qu’elle est fermée. Si vous avez déjà accepté un paiement par carte, vous devrez alors le rembourser. Consultez la page [Caisses](../../settings/wp-admin/registers.mdx#one-register) pour connaître ce réglage.
+:::
+
+1. Appuyez sur **Paiement** dans le panier.
+2. Dans l’onglet **Paiements**, appuyez sur la vignette **Tap to Pay d’Authorize.net** (le nom a peut-être été modifié pour votre boutique). Au-dessus du clavier, la caisse affiche **Terminal :** et le nom de votre téléphone, **Application Authorize.net**, sauf si un responsable l’a modifié.
+3. Appuyez sur **Envoyer … à Tap to Pay d’Authorize.net**, par exemple **Envoyer $10.00 à Tap to Pay d’Authorize.net**. La caisse affiche **En attente du client sur le terminal**.
+4. Dans l’application Authorize.net de votre téléphone, saisissez **exactement le même montant**. N’ajoutez pas de pourboire dans l’application : consultez la page [Pourboires](../../pos/checkout/tips.mdx).
+5. Le client approche sa carte du téléphone.
+6. Attendez que la caisse réagisse. Dès qu’elle trouve le paiement, elle l’enregistre et affiche le reçu lorsqu’il ne reste plus rien à payer.
+
+Effectuez le paiement par approche dans les 5 minutes suivant l’appui sur Envoyer. Au bout de 5 minutes, la caisse annule le paiement, affiche **Délai dépassé — paiement annulé** et cesse de le rechercher.
+
+<details>
+<summary>Comment la caisse trouve le paiement</summary>
+
+Pendant l’attente, WCPOS recherche régulièrement dans Authorize.net un paiement du montant indiqué. Il enregistre lui-même le paiement si un seul paiement a été effectué depuis les 30 secondes précédant votre appui sur **Envoyer** et si **Mise en correspondance automatique** est activée. Avant de l’enregistrer, WCPOS vérifie le paiement auprès d’Authorize.net, notamment le montant et la devise. Un paiement n’est enregistré qu’une seule fois, sur une seule commande.
+
+La caisse signale **Envoyé**, **Sur le terminal**, **Approuvé** et **Capturé** au fur et à mesure du traitement du paiement.
+
+</details>
+
+### Annuler un paiement {#cancel}
+
+Appuyez sur **Annuler sur le terminal**. L’annulation dans WCPOS n’interrompt pas l’application Authorize.net : demandez donc au client de ne pas approcher sa carte.
+
+La caisse effectue une dernière vérification auprès d’Authorize.net. Si un seul nouveau paiement de ce montant a été effectué, elle l’enregistre et finalise la vente. Sinon, le paiement est annulé.
+
+## En cas de problème {#goes-wrong}
+
+### Si le client a peut-être payé {#may-have-paid}
+
+:::warning Ne passez pas la carte une seconde fois
+Dans ces cas, l’argent se trouve peut-être déjà sur votre compte Authorize.net alors que la commande n’est pas encore payée. Suivez les étapes ci-dessous dans l’onglet Legacy ou appelez un responsable.
+:::
+
+**La caisse reste en attente après que le client a approché sa carte.** La caisse n’enregistre automatiquement un paiement que lorsqu’elle peut déterminer avec certitude lequel vous concerne. Sinon, elle reste en attente et le délai expire au bout de 5 minutes. Cela se produit lorsque :
+
+- le montant saisi dans l’application diffère de celui de la caisse, par exemple parce qu’un pourboire a été ajouté dans l’application ;
+- un autre paiement du même montant a été effectué au même moment, depuis une autre caisse ou votre boutique en ligne ;
+- un responsable a désactivé **Mise en correspondance automatique** dans les réglages de la passerelle de paiement.
+
+L’onglet **Paiements** ne peut pas vous demander quel paiement vous concerne. L’onglet [**Legacy**](../../pos/checkout/legacy-tab.mdx) de la commande le permet pour les paiements effectués au cours des 15 dernières minutes. Le caissier ou un responsable procède ainsi :
+
+1. Pour la même commande, à l’étape du paiement, choisissez l’onglet **Legacy**, puis **Tap to Pay d’Authorize.net**.
+2. Appuyez sur **Envoyer 10.00 USD à l’application Authorize.net** (dans cet onglet, le bouton indique le nom du téléphone, et non celui de la vignette). Ne passez pas la carte une seconde fois.
+3. La caisse affiche une liste avec un titre tel que **2 paiements Authorize.net de USD 10.00 pourraient correspondre. Choisissez celui que vous venez d’effectuer.**
+4. Chaque ligne indique le type de carte, ses 4 derniers chiffres, l’heure et le numéro de transaction Authorize.net. Appuyez sur la ligne correspondant à la carte du client et à l’heure du paiement par approche. La commande est payée.
+
+Si aucune liste ne s’affiche, ne passez pas la carte une seconde fois : un responsable retrouve le paiement dans votre compte Authorize.net et [le rembourse depuis ce compte](#refunds).
+
+**Le client a approché sa carte après votre annulation.** L’annulation n’interrompt pas l’application. Enregistrez le paiement depuis l’onglet Legacy en suivant les étapes ci-dessus, ou demandez à un responsable de le rembourser depuis votre compte Authorize.net.
+
+**Paiement échoué : le terminal a confirmé un montant différent.** Il ne s’agit pas du cas du pourboire ci-dessus : ce message apparaît uniquement lorsque Authorize.net indique lui-même un autre montant ou une autre devise pour le paiement sélectionné par la caisse, par exemple si la devise de la boutique n’est pas associée au compte. La caisse n’enregistre pas le paiement et ajoute une note à la commande. N’utilisez pas l’onglet Legacy : appelez un responsable, qui retrouvera le paiement dans votre compte Authorize.net et le remboursera.
+
+Si un paiement reste bloqué dans la caisse pour une autre raison, consultez [Un paiement par lecteur de carte est bloqué](../index.mdx#card-reader-problems).
+
+### Autres messages {#other-messages}
+
+<Accordion>
+  <AccordionItem question="Paiement échoué : refusé">
+
+  La carte a été refusée dans l’application. Appuyez sur **Réessayer** pour démarrer un nouveau paiement avant que le client ne repasse sa carte, ou sur **Choisir un autre moyen** pour utiliser une autre vignette. Consultez la page [Avec un lecteur de carte](../../pos/checkout/taking-a-payment.mdx#card-reader).
+
+  Le refus d’un paiement du même montant sur une autre caisse peut également mettre fin à un paiement toujours en attente.
+
+  </AccordionItem>
+  <AccordionItem question="Paiement échoué : l’environnement de test ou de production a été modifié">
+
+  La caisse affiche **Paiement échoué : mode_changed**. Pendant l’attente de la caisse, un responsable a changé **Environnement** de **Environnement de test** à **Production**, ou inversement. Appuyez sur **Réessayer** une fois le réglage corrigé.
+
+  </AccordionItem>
+  <AccordionItem question="Délai dépassé — paiement annulé">
+
+  Aucun paiement n’a été enregistré dans les 5 minutes. Si le client a approché sa carte, consultez [Si le client a peut-être payé](#may-have-paid). Sinon, appuyez sur **Réessayer**.
+
+  </AccordionItem>
+  <AccordionItem question="La caisse propose de libérer ce paiement">
+
+  La caisse n’a pas pu confirmer l’annulation auprès d’Authorize.net. La libération permet de régler la commande par un autre moyen, tandis que WCPOS continue ses vérifications en arrière-plan. N’appuyez sur cette option qu’après qu’un responsable a vérifié dans votre compte Authorize.net qu’aucun paiement n’a été effectué pour cette vente.
+
+  </AccordionItem>
+  <AccordionItem question="Connexion instable, nouvelles tentatives en cours">
+
+  WCPOS ne parvient pas à joindre Authorize.net. La caisse continue d’essayer. Si le problème persiste, un responsable vérifie les identifiants, **Environnement** et l’API Transaction Details ([configuration](#setup)), ainsi que les [journaux](#logs).
+
+  </AccordionItem>
+  <AccordionItem question="La vignette Tap to Pay d’Authorize.net est grisée ou absente">
+
+  Consultez [Lorsqu’une vignette ne peut pas être utilisée](../index.mdx#unavailable-tiles). La vignette n’apparaît pas tant que les deux identifiants ne sont pas enregistrés et que la passerelle de paiement n’est pas activée dans WCPOS : un responsable doit vérifier [la configuration](#setup).
+
+  </AccordionItem>
+</Accordion>
+
+## Rembourser un paiement Authorize.net {#refunds}
+
+1. Dans le PDV, ouvrez le remboursement de la commande. Consultez la page [Remboursements](../../pos/refunds.mdx).
+2. Choisissez **Rembourser avec Tap to Pay d’Authorize.net**, puis appuyez sur **Traiter le remboursement**.
+
+Avant le règlement du paiement par Authorize.net (généralement pendant la nuit), seul un remboursement intégral est possible et il annule le paiement. Après son règlement, vous pouvez rembourser la totalité ou une partie du montant sur la carte. Un remboursement depuis la commande dans WP Admin fonctionne de la même manière.
+
+<details>
+<summary>Messages de remboursement</summary>
+
+- **Authorize.net règle ce paiement pendant la nuit. Remboursez le montant total pour l’annuler maintenant, ou remboursez-en une partie après son règlement.** — remboursez la totalité ou attendez demain pour effectuer un remboursement partiel.
+- **Un remboursement identique a été envoyé au cours des 8 dernières heures. Vérifiez l’interface marchand Authorize.net avant de réessayer.**
+- **Ce paiement Authorize.net a déjà été annulé.** — le paiement intégral a été annulé avant son règlement.
+- **Authorize.net n’a pas confirmé le remboursement. Vérifiez l’interface marchand Authorize.net avant de réessayer.**
+- **Authorize.net ne peut pas rembourser ce paiement pour le moment. Vérifiez l’interface marchand Authorize.net.**
+- **Ce paiement a été effectué dans l’autre environnement Authorize.net.** — repassez à **Environnement** précédent ou remboursez-le dans l’interface marchand.
+- **Aucune transaction Authorize.net n’est associée à ce paiement à rembourser.**
+- **Le montant du remboursement doit être supérieur à zéro.**
+
+</details>
+
+## Configurer Tap to Pay d’Authorize.net {#setup}
+
+Un responsable configure une fois la passerelle de paiement dans WP Admin et connecte le téléphone à l’application Authorize.net.
+
+### Prérequis {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Processeur de paiement">Votre compte marchand Authorize.net doit utiliser le processeur TSYS, et Authorize.net doit avoir activé Tap to Pay. Vérifiez ce point auprès d’Authorize.net avant d’acheter des téléphones</RequirementItem>
+  <RequirementItem label="Compte Authorize.net">Un compte marchand américain, son API Login ID et sa Transaction Key, et l’API Transaction Details activée</RequirementItem>
+  <RequirementItem label="Téléphone">Selon Authorize.net : Tap to Pay sur iPhone nécessite un iPhone XS ou plus récent sous iOS 18 ou version ultérieure ; Tap to Pay sur Android nécessite Android 15 sur un téléphone compatible Tap to Pay. Connectez-vous à l’application Authorize.net 2.0 avec un utilisateur du même compte Authorize.net</RequirementItem>
+  <RequirementItem label="Devise">USD : l’application Authorize.net 2.0 n’accepte que les USD</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro 2.0 ou version ultérieure, et une connexion réseau à la caisse</RequirementItem>
+  <RequirementItem label="Serveur">WooCommerce 7.0+, PHP 7.4+ et une horloge de serveur précise à 30 secondes près</RequirementItem>
+</RequirementsList>
+
+### Installer l’extension {#install}
+
+Dans `WP Admin > POS > Réglages > Extensions`, recherchez **Tap to Pay d’Authorize.net pour WooCommerce (bêta)** et cliquez sur **Installer**. WCPOS l’installe et l’active, puis active **Mise à jour automatique** afin que les nouvelles versions bêta s’installent automatiquement. Consultez les pages [Extensions](../../extensions/index.mdx#installing-an-extension) et [Mises à jour automatiques](../../extensions/index.mdx#auto-updates).
+
+<details>
+<summary>Installer plutôt depuis un fichier zip téléchargé</summary>
+
+Téléchargez `authorize-net-terminal-for-woocommerce.zip` depuis la [page des versions GitHub](https://github.com/wcpos/authorize-net-terminal-for-woocommerce/releases) et téléversez-le via `Extensions > Add Plugin`, puis cliquez sur **Téléverser une extension**. Le fichier zip « Source code » de GitHub ne peut pas être installé.
+
+</details>
+
+### Obtenir vos identifiants API {#credentials}
+
+Dans l’interface marchand Authorize.net :
+
+1. Ouvrez **Account → Settings → API Credentials & Keys** et copiez l’**API Login ID**. Authorize.net n’affiche la **Transaction Key** qu’au moment de sa création : si vous ne l’avez pas enregistrée, créez-en une nouvelle et copiez-la immédiatement. Une nouvelle clé remplace l’ancienne. Si votre boutique en ligne utilise déjà ce compte, réutilisez sa clé ou mettez également à jour la boutique. Utilisez les identifiants de votre compte réel pour **Production** ; ceux d’un compte de test ne fonctionnent qu’avec **Environnement de test**.
+2. Ouvrez **Account → Settings → Transaction Details API** et activez-la. Sans cette API, votre boutique ne peut pas lire les paiements et la caisse n’en enregistre aucun.
+
+### Saisir les identifiants {#enter-credentials}
+
+Ouvrez `WP Admin > WooCommerce > Réglages > Paiements` et cliquez sur **Tap to Pay d’Authorize.net**.
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[410, 0], [410, 0], [410, 0], [410, 0], [-30, 0], [410, 0]]} maxWidth={720} alt="WP Admin, réglages Tap to Pay d’Authorize.net d’une boutique qui n’est pas encore configurée : Titre Tap to Pay d’Authorize.net, Environnement de test, champs API Login ID et Transaction Key vides indiquant Aucune valeur enregistrée, Mise en correspondance automatique cochée, nom du lecteur Application Authorize.net">
+
+1. **Titre** — le nom de la vignette dans la caisse.
+2. **Environnement** — choisissez **Production**. Conservez **Environnement de test**, la valeur par défaut, uniquement pour essayer la configuration de la boutique sans le téléphone. Consultez [Environnement de test et production](#environments).
+3. **API Login ID** — collez-le ici.
+4. **Transaction Key** — collez-la ici. Une fois les valeurs enregistrées, les deux champs restent vides et n’affichent que les 4 derniers caractères : laissez-les vides pour conserver les valeurs enregistrées. L’enregistrement ne vérifie pas les identifiants : [Vérifier que tout fonctionne](#check) le fait.
+5. **Mise en correspondance automatique** — laissez cette option cochée. Sans elle, la caisse n’enregistre jamais automatiquement les paiements.
+6. **Nom du lecteur** — nom affiché par la caisse au-dessus du clavier.
+
+</JourneyShot>
+
+Cliquez sur **Enregistrer les modifications**.
+
+### Configurer le téléphone {#phone}
+
+Installez l’application Authorize.net sur le téléphone et connectez-vous avec un utilisateur du compte Authorize.net dont vous avez saisi les identifiants : utilisez votre compte réel pour **Production**.
+
+### Activer dans WCPOS {#enable}
+
+La page de réglages de la passerelle de paiement ne comporte pas de case **Activer**. Ouvrez `WP Admin > POS > Réglages > Validation de la commande`.
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[-22, 0], [50, 0]]} maxWidth={720} alt="WP Admin, réglages PDV, Caisse : trois lignes du tableau des passerelles de paiement, Carte activée, Tap to Pay d’Authorize.net et Virement bancaire direct désactivés">
+
+1. **Tap to Pay d’Authorize.net** — ligne de l’extension dans le tableau **Passerelles de paiement**.
+2. **Activée** — activez l’option. La vignette apparaît dans la caisse après son rechargement.
+
+</JourneyShot>
+
+Cette passerelle de paiement n’est jamais proposée lors du paiement dans votre boutique en ligne. Consultez la page [Réglages de la caisse](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+### Vérifier que tout fonctionne {#check}
+
+1. Dans une caisse, rechargez le PDV et appuyez sur **Paiement**. La vignette **Tap to Pay d’Authorize.net** figure parmi les moyens de paiement.
+2. Appuyez dessus : au-dessus du clavier, la caisse affiche **Terminal :** et votre **Nom du lecteur**.
+3. Vérifiez que **Environnement** indique **Production**, puis effectuez une petite vente avec votre propre carte.
+4. Remboursez intégralement le paiement le jour même : avant le règlement, un remboursement intégral l’annule.
+
+Le test est réussi lorsque la caisse enregistre automatiquement le paiement et affiche le reçu, et que la transaction Authorize.net apparaît dans le paiement de la commande.
+
+Si la caisse reste en attente et affiche **Connexion instable, nouvelles tentatives en cours**, vérifiez les identifiants, **Environnement** et l’API Transaction Details.
+
+## Environnement de test et production {#environments}
+
+**Environnement de test** est la valeur par défaut et utilise `apitest.authorize.net`. **Production** utilise `api.authorize.net` et traite des paiements réels. Les identifiants sont propres à chaque environnement : saisissez ceux de l’environnement choisi. La partie boutique fonctionne dans l’environnement de test : la version bêta y a été testée avec des ventes effectuées via l’API d’Authorize.net. Authorize.net ne précise pas si son application peut se connecter à un compte de test ; essayez donc un vrai paiement par approche en production.
+
+Ne modifiez **Environnement** que lorsqu’aucune caisse ne traite un paiement Authorize.net : tout paiement en attente échouera. Après le changement d’environnement, vous ne pouvez pas rembourser depuis la caisse un paiement accepté dans l’autre environnement.
+
+## Référence des réglages {#settings}
+
+Dans `WP Admin > WooCommerce > Réglages > Paiements > Authorize.net Tap to Pay` :
+
+| Réglage | Fonction |
+|---|---|
+| **Titre** | Nom de la vignette dans la caisse. Valeur par défaut : **Tap to Pay d’Authorize.net** |
+| **Environnement** | **Environnement de test** (valeur par défaut) ou **Production** |
+| **API Login ID** | Depuis l’interface marchand : **Account → Settings → API Credentials & Keys**. Après l’enregistrement, seuls ses 4 derniers caractères sont affichés ; laissez le champ vide pour le conserver |
+| **Transaction Key** | Stockée uniquement sur le serveur et jamais affichée à nouveau. Elle est enregistrée et affichée comme l’API Login ID |
+| **Mise en correspondance automatique** | Enregistre automatiquement le paiement lorsqu’un seul paiement Authorize.net correspond. Activée par défaut |
+| **Nom du lecteur** | Nom affiché par la caisse au-dessus du clavier. Valeur par défaut : **Application Authorize.net** |
+
+Un identifiant contenant des caractères invisibles est refusé avec le message **Les identifiants Authorize.net ne peuvent pas contenir de caractères de contrôle.** Saisissez-le à nouveau.
+
+Le message **Saisissez d’abord l’API Login ID et la Transaction Key d’Authorize.net.** indique qu’un identifiant manque : saisissez les deux et cliquez sur **Enregistrer les modifications**.
+
+## Journaux et archive d’assistance {#logs}
+
+<JourneyShot manifest={manifest} device="desktop" step={3} offsets={[[-20, 0]]} maxWidth={720} alt="WP Admin, bas des réglages Tap to Pay d’Authorize.net : archive d’assistance avec son bouton Télécharger l’archive d’assistance">
+
+1. **Télécharger l’archive d’assistance** — fichier destiné à l’assistance WCPOS. Il contient des informations sur tous les fournisseurs de paiement PDV de votre site, après suppression des secrets et des numéros de carte.
+
+</JourneyShot>
+
+Les journaux se trouvent dans `WooCommerce > Status > Journaux`, sous la source `authorize-net-terminal-for-woocommerce` ; les identifiants et numéros de carte en sont supprimés. En cas de problème de paiement, envoyez l’archive d’assistance avec le **numéro de commande** et l’**heure de la vente**.
+
+Si l’extension affiche **Tap to Pay d’Authorize.net pour WooCommerce POS nécessite WooCommerce POS Pro 2.0.0 ou une version ultérieure.**, installez ou mettez à jour WCPOS Pro : sans cela, l’extension n’ajoute rien au PDV.
+
+## Fonctions non prises en charge {#scope-and-limitations}
+
+- Envoyer le montant au téléphone : vous le saisissez dans l’application.
+- Pourboires dans l’application : le montant doit correspondre exactement.
+- Afficher la liste des paiements possibles dans l’onglet **Paiements** : choisissez un paiement dans l’[onglet Legacy](#may-have-paid).
+- Terminaux de paiement par carte physiques. Les lecteurs associés à l’application Authorize.net n’ont pas été testés.
+- Capture manuelle ou paiement qu’Authorize.net retient pour vérification : la caisse reste en attente.
+- Comptes hors des États-Unis ou devises autres que USD.
+- Comptes très actifs : la version 0.1.0 ne consulte que les 50 paiements les plus récents qu’Authorize.net n’a pas encore réglés. Si 50 paiements ou plus sont effectués sur le compte après le paiement par approche et avant que la caisse ne le trouve (depuis n’importe quelle caisse, y compris votre boutique en ligne), la caisse ne le retrouvera pas.
+- Distinguer deux caisses : si deux caisses acceptent au même moment un paiement du même montant, chacune peut enregistrer le paiement de l’autre.
+
+## Documentation associée {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment" title="Accepter un paiement" description="Tous les moyens d’accepter un paiement à la caisse" />
+  <LinkCard to="/sell/refunds" title="Remboursements" description="Rembourser un client depuis le PDV" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Passerelles de paiement" description="Les autres terminaux et passerelles de paiement pris en charge par WCPOS" />
+</LinkCards>
