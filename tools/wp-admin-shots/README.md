@@ -41,6 +41,9 @@ built plugin folder instead of the artifact.
 1. Add `shots/<docs path with / replaced by ->.mjs` exporting `journey` (the file prefix, e.g. `'SS'`)
    and a default array of `{ step, slug, url, prepare?, crop, pad?, padBottom?, maxHeight?, pins, alt }`.
    `url` may use `{storeId:<store name>}` or `{productId:<product name>}`.
+   Two optional fields change the site for that one shot and are undone after it, even when it fails:
+   `site: 'free'` (Pro off, woocommerce-pos on; the manifest says `variant: 'free'`) and
+   `settings: { <option>: { <key>: <value> } }` (keys merged into the option, the old value written back).
 2. Seed anything new in `seed.php` (find before create).
 3. `shoot` then `verify`, open every PNG, and use the manifest in the page:
    `import m from '@site/static/img/2.x/<page>/en/wp-admin.json'` with `<JourneyShot manifest={m} device="desktop" step={N} … />`.
