@@ -11,7 +11,7 @@ export default [
   {
     step: 1,
     slug: 'register-free',
-    variant: 'free',
+    site: 'free',
     url: GENERAL,
     prepare: (page) => switchesOn(page, section('Register')),
     crop: [section('Register')],

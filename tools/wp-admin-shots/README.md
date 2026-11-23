@@ -41,9 +41,11 @@ its mounts, and activates Pro before seeding.
 ## Adding a page
 
 1. Add `shots/<docs path with / replaced by ->.mjs` exporting `journey` (the file prefix, e.g. `'SS'`)
-   and a default array of `{ step, slug, url, variant?, prepare?, crop, pad?, padBottom?, maxHeight?, pins, alt }`.
+   and a default array of `{ step, slug, url, site?, settings?, prepare?, crop, pad?, padBottom?, maxHeight?, pins, alt }`.
    `url` may use `{storeId:<store name>}` or `{productId:<product name>}`.
-   `variant: 'free'` swaps Pro for the standalone free plugin for that shot and swaps back afterwards, even on failure; any other value means `'pro'`, and the manifest records the variant.
+   Two optional fields change the site for that one shot and are undone after it, even when it fails:
+   `site: 'free'` (Pro off, woocommerce-pos on; the manifest says `variant: 'free'`) and
+   `settings: { <option>: { <key>: <value> } }` (keys merged into the option, the old value written back).
 2. Seed anything new in `seed.php` (find before create).
 3. `shoot` then `verify`, open every PNG, and use the manifest in the page:
    `import m from '@site/static/img/2.x/<page>/en/wp-admin.json'` with `<JourneyShot manifest={m} device="desktop" step={N} … />`.

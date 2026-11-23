@@ -34,7 +34,7 @@ export default [
   {
     step: 3,
     slug: 'store-details-free',
-    variant: 'free',
+    site: 'free',
     url: GENERAL,
     crop: [section('Store details')],
     pins: [
