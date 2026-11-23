@@ -393,6 +393,11 @@ describe('score integrity', () => {
         .toEqual([`::error::page-scores.json: a/page: ${reason}`]);
     });
   it.each(['warn', 'exception'])('integrity obeys the enforcement date but no exception (%s)', (mode) => {
+    if (mode === 'exception') {
+      // R2 needs a drop from a recorded base; an under-floor score with no previous record passes.
+      record();
+      options.base = commitFixture('score');
+    }
     saveScores(root, { 'a/page': { climb: 'a__page', round: 2, hash: pageHash(root, 'a/page'), scores: seven(6), mean: 6 } });
     if (mode === 'warn') options.now = new Date('2026-11-15T12:00:00Z');
     else {
