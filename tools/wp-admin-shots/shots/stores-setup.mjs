@@ -33,8 +33,9 @@ export default [
     step: 3,
     slug: 'details',
     url: 'wp-admin/admin.php?page=wcpos-store-edit&id={storeId:Harbour Street}#/details',
-    crop: [`${editor} div:has(> h1)`, `${editor} aside[aria-label="Store menu"]`, `${editor} main > *`],
-    maxHeight: 860, // the whole Details panel, down to Web address
+    // No title bar. The menu's first item sits beside Store name, so a rectangle holding the whole menu holds that section too.
+    crop: [`${editor} aside[aria-label="Store menu"] nav`, `${editor} main > * > :nth-child(1)`, `${editor} main > * > :nth-child(3)`],
+    maxHeight: 800, // down to the whole Web address field
     pins: [
       { name: 'store-menu', selector: `${editor} aside[aria-label="Store menu"] nav` },
       { name: 'address-1', selector: `${editor} main > * > :nth-child(2) input` },
@@ -46,15 +47,15 @@ export default [
     step: 4,
     slug: 'registers',
     url: 'wp-admin/admin.php?page=wcpos-store-edit&id={storeId:Harbour Street}#/registers',
-    crop: [section('Tills'), section('Cash drawer rules')],
+    // The Tills table's bordered box only: headings, register rows and + Add register.
+    crop: [`${section('Tills')} > div:nth-child(2)`],
     pins: [
       // The Front counter row by its name: rows sort by name, so it is not the first.
       { name: 'opening-float', selector: '[data-testid^="register-row-"]:has-text("Front counter") input' },
       { name: 'register-menu', selector: '[data-testid^="register-row-"]:has-text("Front counter") [data-testid^="register-menu-"]' },
       { name: 'register-add', selector: '[data-testid="register-add"]' },
-      { name: 'customise', selector: `${section('Cash drawer rules')} button:text-is("Customise")` },
     ],
-    alt: 'WP Admin, store editor for Harbour Street, Registers: the Tills table with Café till and Front counter, their opening floats and status, + Add register, and the Cash drawer rules section.',
+    alt: 'WP Admin, store editor for Harbour Street, Registers: the Tills table with Café till and Front counter, their opening floats and status, and + Add register.',
   },
   {
     step: 5,
@@ -100,10 +101,13 @@ export default [
       await page.locator(`${section('Cash drawer rules')} button:text-is("Customise")`).click();
       await page.locator(`${section('Cash drawer rules')} button[role="switch"]`).first().waitFor({ state: 'visible' });
     },
-    crop: [section('Cash drawer rules')],
+    // The rules box only (Customise row and the switch row), not the heading or its description.
+    crop: [`${section('Cash drawer rules')} > div:nth-child(2)`],
+    pad: 12, // 16 would reach the description line just above the box
     pins: [
       { name: 'open-close-toggle', selector: `${section('Cash drawer rules')} button[role="switch"]` },
       { name: 'site-default', selector: `${section('Cash drawer rules')} span:text-is("Site default")` },
+      { name: 'customise', selector: `${section('Cash drawer rules')} button:text-is("Customise")` },
     ],
     alt: 'WP Admin, store editor for Harbour Street, Registers, Cash drawer rules after Customise: the Site defaults chip and one rule, Open and close the register each day (cashiers start with a float and count the drawer at close), switched off and marked Site default.',
   },
