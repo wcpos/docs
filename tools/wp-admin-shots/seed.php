@@ -311,6 +311,56 @@ if ( array_map( 'intval', (array) get_post_meta( $wpas_riverside, '_authorized_u
 	$wpas_note( 'Riverside Pop-up staff' );
 }
 
+// Receipts pages. The WCPOS Cloud Print relay stays off on this env: a one-line mu-plugin (loaded
+// on every request from now on, and here before the printer is saved) turns its filter off.
+$wpas_relay_file = WPMU_PLUGIN_DIR . '/wpas-relay-off.php';
+$wpas_relay_code = "<?php // wp-admin-shots: the docs env never contacts the WCPOS Cloud Print relay.\nadd_filter( 'wcpos_cloud_print_relay_enabled', '__return_false' );\n";
+if ( ! is_file( $wpas_relay_file ) || file_get_contents( $wpas_relay_file ) !== $wpas_relay_code ) {
+	file_put_contents( $wpas_relay_file, $wpas_relay_code );
+	$wpas_note( 'mu-plugin wpas-relay-off.php (wcpos_cloud_print_relay_enabled false)' );
+}
+require_once $wpas_relay_file;
+
+// The gallery's Simple Thermal Receipt (80mm), installed the way Use Template does it, made active.
+$wpas_thermal_title = 'Simple Thermal Receipt (80mm)';
+$wpas_thermal       = get_posts( array( 'post_type' => 'wcpos_template', 'post_status' => 'publish', 'title' => $wpas_thermal_title, 'fields' => 'ids', 'numberposts' => 1 ) );
+$wpas_thermal       = $wpas_thermal ? (int) $wpas_thermal[0] : 0;
+if ( ! $wpas_thermal ) {
+	$wpas_thermal = (int) $wpas_rest( 'POST', '/wcpos/v1/templates/install', array( 'gallery_key' => 'thermal-simple-80mm' ) )['id'];
+	$wpas_note( "template $wpas_thermal_title" );
+}
+if ( (string) \WCPOS\WooCommercePOS\Templates::get_active_template_id( 'receipt' ) !== (string) $wpas_thermal ) {
+	\WCPOS\WooCommercePOS\Templates::set_active_template_id( $wpas_thermal, 'receipt' );
+	$wpas_note( "$wpas_thermal_title active" );
+}
+
+// Kitchen printer (Star CloudPRNT) and one auto-print rule, through the settings route the Cloud
+// Print screen saves with (a full replacement: the current printers and rules are sent back).
+$wpas_cp_route = '/wcpos/v2/settings/cloud-print';
+$wpas_cp       = $wpas_rest( 'GET', $wpas_cp_route );
+$wpas_kitchen  = current( wp_list_filter( $wpas_cp['printers'], array( 'name' => 'Kitchen printer' ) ) );
+if ( ! $wpas_kitchen ) {
+	$wpas_cp_printers   = $wpas_cp['printers'];
+	$wpas_cp_printers[] = array( 'id' => '', 'name' => 'Kitchen printer', 'provider' => 'star-cloudprnt', 'store_id' => 0 );
+	$wpas_rest( 'POST', $wpas_cp_route, array( 'printers' => $wpas_cp_printers, 'assignments' => $wpas_cp['assignments'] ) );
+	$wpas_note( 'printer Kitchen printer (Star CloudPRNT)' ); // the response's poll token is never printed
+	$wpas_cp      = $wpas_rest( 'GET', $wpas_cp_route );
+	$wpas_kitchen = current( wp_list_filter( $wpas_cp['printers'], array( 'name' => 'Kitchen printer' ) ) );
+}
+$wpas_rule = array( 'printer_id' => $wpas_kitchen['id'], 'store_id' => 0, 'scope' => 'pos', 'template_id' => (string) $wpas_thermal, 'copies' => 1, 'trigger' => 'created' );
+if ( ! wp_list_filter( $wpas_cp['assignments'], $wpas_rule ) ) {
+	$wpas_rest( 'POST', $wpas_cp_route, array( 'printers' => $wpas_cp['printers'], 'assignments' => array_merge( $wpas_cp['assignments'], array( $wpas_rule ) ) ) );
+	$wpas_note( 'auto-print rule POS orders → Kitchen printer' );
+}
+
+// My Account receipts on, with the active receipt template.
+$wpas_general = get_option( 'woocommerce_pos_settings_general', array() );
+$wpas_general = is_array( $wpas_general ) ? $wpas_general : array();
+if ( true !== ( $wpas_general['storefront_receipt_enabled'] ?? null ) || '' !== ( $wpas_general['storefront_receipt_template'] ?? '' ) ) {
+	update_option( 'woocommerce_pos_settings_general', array_merge( $wpas_general, array( 'storefront_receipt_enabled' => true, 'storefront_receipt_template' => '' ) ) );
+	$wpas_note( 'storefront receipts on' );
+}
+
 // ---- extensions (A): begin
 // PayPal Reader for WooCommerce, installed through Pro's own Extensions action (catalogue download),
 // then deactivated, so the Extensions screen shows one installed, Inactive card. Nothing is faked.
