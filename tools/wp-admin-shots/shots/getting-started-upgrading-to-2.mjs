@@ -19,6 +19,7 @@ export default [
       });
     },
     crop: ['table.plugins thead', woo],
+    pad: 0,
     pins: [
       { name: 'pro-version', selector: `${pro} .plugin-version-author-uri` },
       { name: 'standalone-notice', selector: '#the-list tr.wcpos-free-plugin-notice .notice' },

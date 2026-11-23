@@ -19,14 +19,13 @@ export default [
     step: 1,
     slug: 'upload-plugin',
     url: 'wp-admin/plugin-install.php?tab=upload',
-    // The heading row with its toggle, then the upload box's help line and form (not the empty page below).
-    crop: ['.wrap.plugin-install-tab-upload > h1', '.wrap a.upload-view-toggle', '.upload-plugin .install-help', '.upload-plugin .wp-upload-form'],
+    // The heading row (its toggle reads Browse Plugins here), then the upload box's help line and form.
+    crop: ['.wrap.plugin-install-tab-upload > h1', '.upload-plugin .install-help', '.upload-plugin .wp-upload-form'],
     pins: [
-      { name: 'upload-plugin', selector: '.wrap a.upload-view-toggle' },
       { name: 'choose-file', selector: '#pluginzip' },
       { name: 'install-now', selector: '#install-plugin-submit' },
     ],
-    alt: 'WP Admin, Plugins → Add Plugin with Upload Plugin open: the box for a plugin in .zip format, its Choose File field and the Install Now button.',
+    alt: 'WP Admin, Add Plugins heading with the Browse Plugins button above the box for a plugin in .zip format, its Choose File field and the Install Now button.',
   },
   {
     step: 2,
@@ -38,6 +37,7 @@ export default [
       await page.locator(`${app} main code`).evaluate((el) => { el.textContent = 'XXXXXXXXX...XXXXXXXX'; });
     },
     crop: licenseCrop,
+    maxHeight: 500,
     pins: [
       menuLicense,
       { name: 'license-key', selector: `${app} main code` },
@@ -64,6 +64,7 @@ export default [
       await page.unroute(isLicenseGet);
     },
     crop: licenseCrop,
+    maxHeight: 500,
     pins: [
       menuLicense,
       { name: 'license-key-field', selector: '#license-key' },
