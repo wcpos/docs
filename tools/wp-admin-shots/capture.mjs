@@ -175,6 +175,8 @@ async function up(args) {
   // A running container's bind mount keeps the deleted plugin folder, and start does not recreate it.
   if (started && replaced) try { wpEnv(state, ['stop']); } catch (error) { if (!(error instanceof Fail)) throw error; }
   wpEnv(state, ['start']);
+  // A rebuild of .cache/plugins while the env runs makes WordPress deactivate Pro, and `start` does not re-activate it.
+  wp(state, 'plugin', 'activate', 'woocommerce', 'woocommerce-pos-pro');
   const seedFile = 'wp-content/mu-plugins/wpas-seed.php';
   wp(state, 'eval-file', seedFile, 'licence');
   const seed = wp(state, 'eval-file', seedFile).split('\n').find((line) => line.startsWith('seed:')) || 'seed: no summary';
