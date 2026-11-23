@@ -18,6 +18,7 @@ export default [
       { name: 'open-close', selector: `${section('Register')} button[role="switch"] >> nth=0` },
       { name: 'ask-manager', selector: `${section('Register')} button[role="switch"] >> nth=1` },
       { name: 'remind', selector: `${section('Register')} button[role="switch"] >> nth=2` },
+      { name: 'manage-stores', selector: `${section('Register')} :text-is("Manage stores")` },
     ],
     alt: 'The Register section of General with WCPOS Pro: Open and close the register, Ask a manager when the count is out and Remind the cashier to close, all on, as site defaults each store can customise.',
   },

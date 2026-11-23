@@ -29,6 +29,7 @@ export default [
       { name: 'ip', selector: `${S} main section span:text-is("IP")` },
       { name: 'created', selector: `${S} main section span:text-is("Created")` },
       { name: 'user-agent', selector: `${S} main section summary` },
+      { name: 'expires', selector: `${S} main section span:text-is("Expires")` },
     ],
     alt: 'One session card: Desktop Application 1.8.6 on macOS, last active 2 minutes ago, its IP address, Created and Expires dates, the User Agent toggle and the Terminate button.',
   },
