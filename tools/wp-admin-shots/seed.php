@@ -344,8 +344,9 @@ foreach ( $wpas_session_rows as list( $wpas_user_key, $wpas_jti, $wpas_platform,
 	if ( null === $wpas_sessions->record( $wpas_user_id, $wpas_jti, $wpas_expires, $wpas_context ) ) {
 		WP_CLI::error( 'session for ' . $wpas_user_key . ' not stored' );
 	}
-	$wpas_tokens                          = get_user_meta( $wpas_user_id, $wpas_meta_key, true );
+	$wpas_tokens                             = get_user_meta( $wpas_user_id, $wpas_meta_key, true );
 	$wpas_tokens[ $wpas_jti ]['created']     = time() - $wpas_session_created;
+	$wpas_tokens[ $wpas_jti ]['expires']     = $wpas_tokens[ $wpas_jti ]['created'] + 30 * DAY_IN_SECONDS;
 	$wpas_tokens[ $wpas_jti ]['last_active'] = time() - $wpas_last_active;
 	update_user_meta( $wpas_user_id, $wpas_meta_key, $wpas_tokens );
 	if ( $wpas_new ) {
