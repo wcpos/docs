@@ -311,4 +311,15 @@ if ( array_map( 'intval', (array) get_post_meta( $wpas_riverside, '_authorized_u
 	$wpas_note( 'Riverside Pop-up staff' );
 }
 
+// ---- extensions (A): begin
+// PayPal Reader for WooCommerce, installed through Pro's own Extensions action (catalogue download),
+// then deactivated, so the Extensions screen shows one installed, Inactive card. Nothing is faked.
+if ( ! is_dir( WP_PLUGIN_DIR . '/paypal-reader-for-woocommerce' ) ) {
+	foreach ( array( 'install', 'deactivate' ) as $wpas_action ) {
+		$wpas_rest( 'POST', '/wcpos/v1/extensions/action', array( 'slug' => 'paypal-reader-for-woocommerce', 'action' => $wpas_action ) );
+	}
+	$wpas_note( 'PayPal Reader for WooCommerce installed through Extensions, inactive' );
+}
+// ---- extensions (A): end
+
 WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
