@@ -257,6 +257,125 @@ async function shoot(pageArg) {
   }
 }
 
+// ---- `pos`: the released WCPOS desktop app's Choose a store screen, connected to this env.
+// The web build at /pos skips Connect/Choose a store, so this screen comes from the desktop app.
+const APP_RELEASE = 'v2.0.6';
+const APP_DEFAULT = path.join(CACHE, 'app', 'WCPOS.app');
+const posManifestPath = (page) => path.join(outDir(page), 'manifest.json');
+// One desktop-app shot per page. `user` signs in with the seed's throwaway local password.
+const POS_SHOTS = {
+  'stores/setup': {
+    journey: 'ST', step: 1, slug: 'choose-store', user: 'maya', pick: 'Harbour Street', stores: ['Harbour Street', 'Market Hall'],
+  },
+};
+const TABLET = { width: 1024, height: 768 };
+
+function appExecutable(given) {
+  const app = path.resolve(given || APP_DEFAULT);
+  const exe = app.endsWith('.app') && fs.existsSync(path.join(app, 'Contents', 'MacOS'))
+    ? path.join(app, 'Contents', 'MacOS', fs.readdirSync(path.join(app, 'Contents', 'MacOS'))[0] || '-')
+    : app;
+  if (!fs.existsSync(exe) || fs.statSync(exe).isDirectory()) {
+    fail(`no WCPOS desktop app at ${app}. Fetch it: gh release download ${APP_RELEASE} -R wcpos/electron -p 'WCPOS-darwin-arm64-${APP_RELEASE.slice(1)}.zip' -D <dir>, then ditto -x -k <zip> ${path.dirname(APP_DEFAULT)} (or pass --app <path>)`);
+  }
+  return exe;
+}
+
+const storeIds = (state) => Object.fromEntries(
+  JSON.parse(wp(state, 'post', 'list', '--post_type=wcpos_store', '--fields=ID,post_title', '--format=json')).map((p) => [p.post_title, p.ID]),
+);
+
+async function pos(pageArg, args) {
+  const state = readState();
+  if (!state.siteUrl) fail('run `capture.mjs up` first');
+  const spec = POS_SHOTS[pageArg] || fail(`no desktop-app shot for ${pageArg} (have: ${Object.keys(POS_SHOTS).join(', ')})`);
+  const executablePath = appExecutable(option(args, '--app'));
+  const ids = storeIds(state);
+  for (const name of spec.stores) if (!ids[name]) fail(`no store "${name}" on the env; run up`);
+  // A throwaway profile, emptied every run: the app's real data in ~/Library is never touched.
+  const profile = path.join(CACHE, 'pos-profile');
+  fs.rmSync(profile, { recursive: true, force: true });
+  fs.mkdirSync(profile, { recursive: true });
+  const { _electron } = await import('playwright');
+  const app = await _electron.launch({
+    executablePath, args: [`--user-data-dir=${profile}`, '--lang=en-US', '--force-device-scale-factor=1'],
+    env: { ...process.env, LANG: 'en_US.UTF-8' }, timeout: 60000,
+  });
+  const started = new Date();
+  try {
+    const userData = await app.evaluate(({ app: a }) => a.getPath('userData'));
+    if (path.resolve(userData) !== path.resolve(profile)) fail(`the desktop app ignored --user-data-dir (userData ${userData})`);
+    const version = await app.evaluate(({ app: a }) => a.getVersion());
+    await app.evaluate(({ nativeTheme }) => { nativeTheme.themeSource = 'light'; });
+    // The app's normalizeStoreUrl strips the scheme and always connects over https, and this env is
+    // plain http. In this throwaway profile's session only, https://<env> is redirected to http://.
+    const https = state.siteUrl.replace(/^http:/, 'https:');
+    await app.evaluate(({ session }, [from, to]) => {
+      session.defaultSession.webRequest.onBeforeRequest({ urls: [`${from}/*`] }, (d, cb) => cb({ redirectURL: to + d.url.slice(from.length) }));
+    }, [https, state.siteUrl]);
+    const page = await app.firstWindow();
+    await app.evaluate(({ BrowserWindow }, [w, h]) => {
+      const win = BrowserWindow.getAllWindows().find((b) => !b.isDestroyed() && b.isVisible()) ?? BrowserWindow.getAllWindows()[0];
+      win.setContentSize(w, h);
+    }, [TABLET.width, TABLET.height]);
+    const byId = (id) => page.getByTestId(id).filter({ visible: true }).first();
+    await byId('store-url-input').waitFor({ state: 'visible', timeout: 90000 });
+    await byId('store-url-input').fill(state.siteUrl);
+    await byId('connect-store-button').click();
+    await byId('add-user-button').waitFor({ state: 'visible', timeout: 60000 });
+    // Sign in through the app's own auth window (the plugin's /wcpos-auth/ form).
+    const authWindow = app.waitForEvent('window', { timeout: 60000 });
+    await byId('add-user-button').click();
+    const auth = await authWindow;
+    await auth.locator('#wcpos-user-login').waitFor({ state: 'visible', timeout: 60000 });
+    await auth.locator('#wcpos-user-login').fill(spec.user);
+    await auth.locator('#wcpos-user-pass').fill('password'); // the seed's local throwaway, like wp-env's admin/password
+    await auth.locator('#wcpos-submit').click();
+    await auth.waitForEvent('close', { timeout: 120000 }).catch(() => {});
+    await byId('wp-user-row').waitFor({ state: 'visible', timeout: 60000 });
+    for (const name of spec.stores) await byId(`store-option-${ids[name]}`).waitFor({ state: 'visible', timeout: 60000 });
+    await byId(`store-option-${ids[spec.pick]}`).click();
+    await page.mouse.move(1, 1); // park the pointer where nothing reacts to hover
+    // Three stores make the screen taller than the window (the app's title bar then overlays the top
+    // of the logo): start from the top, scroll only as far as Open POS needs, no scrollbar track.
+    await page.addStyleTag({ content: '* { scrollbar-width: none !important; }' });
+    await page.evaluate(() => { for (const el of document.querySelectorAll('*')) if (el.scrollTop) el.scrollTop = 0; });
+    await byId('open-pos-button').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
+    await page.waitForTimeout(1000);
+    const size =await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    if (size.width !== TABLET.width || size.height !== TABLET.height) fail(`app window is ${size.width}x${size.height}, not ${TABLET.width}x${TABLET.height}`);
+    const pins = [];
+    for (const testID of [...spec.stores.map((name) => `store-option-${ids[name]}`), 'open-pos-button']) {
+      const b = await byId(testID).boundingBox();
+      if (!b) fail(`pin ${testID} not visible`);
+      pins.push({ testID, box: { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) } });
+    }
+    const file = `tablet-light-regular--${spec.journey.toLowerCase()}-${spec.step}-${spec.slug}.png`;
+    fs.mkdirSync(outDir(pageArg), { recursive: true });
+    await page.screenshot({ path: path.join(outDir(pageArg), file), animations: 'disabled', caret: 'hide' });
+    fs.mkdirSync(path.dirname(textPath(file)), { recursive: true });
+    fs.writeFileSync(textPath(file), await page.locator('body').innerText());
+    const manifest = {
+      runId: `pos-${started.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, '')}`, commit: version, date: started.toISOString(),
+      journey: spec.journey, page: `${pageArg}/index.mdx`, locale: 'en', tool: 'tools/wp-admin-shots',
+      captures: [{
+        file, step: spec.step, slug: spec.slug, device: 'tablet', colorScheme: 'light', scale: 'regular', store: 'wp-env', variant: 'pro',
+        viewport: TABLET, pins,
+      }],
+    };
+    fs.writeFileSync(posManifestPath(pageArg), `${JSON.stringify(manifest, null, 2)}\n`);
+    console.log(`pos: ${path.relative(ROOT, path.join(outDir(pageArg), file))} (WCPOS ${version}, ${spec.user})`);
+    console.log(`pos: ${path.relative(ROOT, posManifestPath(pageArg))}`);
+  } catch (error) {
+    const shot = path.join(CACHE, 'pos-failure.png');
+    for (const w of app.windows()) await w.screenshot({ path: shot.replace('.png', `-${app.windows().indexOf(w)}.png`) }).catch(() => {});
+    console.error(`pos: failed; window screenshots in ${path.relative(ROOT, CACHE)}/pos-failure-*.png`);
+    throw error;
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 function pngSize(file) {
   const buf = fs.readFileSync(file);
   if (buf.toString('ascii', 12, 16) !== 'IHDR') return null;
@@ -277,36 +396,54 @@ async function verify(pageArg) {
   }
   for (const c of manifest.captures) {
     listed.add(c.file);
-    const file = path.join(outDir(pageArg), c.file);
-    if (!fs.existsSync(file)) { failures.push(`${c.file}: missing`); continue; }
-    const size = pngSize(file);
-    if (!size || size.width !== c.viewport.width || size.height !== c.viewport.height) {
-      failures.push(`${c.file}: PNG is ${size ? `${size.width}x${size.height}` : 'unreadable'}, viewport says ${c.viewport.width}x${c.viewport.height}`);
-    }
-    if (!c.alt || !c.alt.trim()) failures.push(`${c.file}: empty alt`);
-    for (const { testID, box } of c.pins) {
-      if (box.x < 0 || box.y < 0 || box.x + box.width > c.viewport.width || box.y + box.height > c.viewport.height) failures.push(`${c.file}: pin ${testID} outside the viewport`);
-    }
-    if (!fs.existsSync(textPath(c.file))) { failures.push(`${c.file}: no text dump in .cache/text (run shoot)`); continue; }
-    const text = fs.readFileSync(textPath(c.file), 'utf8');
-    for (const [, domain] of text.matchAll(/[\w.%+-]+@([\w-]+(?:\.[\w-]+)+)/g)) {
-      if (!['example.com', 'example.org'].includes(domain.toLowerCase())) failures.push(`${c.file}: address @${domain} in text`);
-    }
-    if (/WCPOS-DOCS/i.test(text)) failures.push(`${c.file}: licence key in text`);
-    if (/localhost|127\.0\.0\.1/i.test(text)) failures.push(`${c.file}: local URL in text`);
+    checkCapture(pageArg, c, failures, { alt: true, run: 'shoot' });
   }
   const prefix = `desktop-light-regular--${manifest.journey.toLowerCase()}-`;
   for (const file of fs.readdirSync(outDir(pageArg))) {
     if (file.startsWith(prefix) && !listed.has(file)) failures.push(`${file}: not in wp-admin.json`);
   }
+  let count = manifest.captures.length;
+  if (POS_SHOTS[pageArg]) {
+    if (!fs.existsSync(posManifestPath(pageArg))) failures.push(`no ${path.relative(ROOT, posManifestPath(pageArg))} (run pos)`);
+    else {
+      for (const c of JSON.parse(fs.readFileSync(posManifestPath(pageArg), 'utf8')).captures) {
+        count += 1;
+        if (c.viewport.width !== TABLET.width || c.viewport.height !== TABLET.height) failures.push(`${c.file}: viewport is not ${TABLET.width}x${TABLET.height}`);
+        checkCapture(pageArg, c, failures, { alt: false, run: 'pos', site: readState().siteUrl });
+      }
+    }
+  }
   if (failures.length) fail(`verify: ${failures.length} failure(s)\n${failures.map((f) => `  - ${f}`).join('\n')}`);
-  console.log(`verify: ${manifest.captures.length} shots OK for ${pageArg}`);
+  console.log(`verify: ${count} shots OK for ${pageArg}`);
+}
+
+// Size, pins inside the image, and leak checks on the text the shot was taken from.
+function checkCapture(pageArg, c, failures, { alt, run, site }) {
+  const file = path.join(outDir(pageArg), c.file);
+  if (!fs.existsSync(file)) { failures.push(`${c.file}: missing`); return; }
+  const size = pngSize(file);
+  if (!size || size.width !== c.viewport.width || size.height !== c.viewport.height) {
+    failures.push(`${c.file}: PNG is ${size ? `${size.width}x${size.height}` : 'unreadable'}, viewport says ${c.viewport.width}x${c.viewport.height}`);
+  }
+  if (alt && (!c.alt || !c.alt.trim())) failures.push(`${c.file}: empty alt`);
+  for (const { testID, box } of c.pins) {
+    if (box.x < 0 || box.y < 0 || box.x + box.width > c.viewport.width || box.y + box.height > c.viewport.height) failures.push(`${c.file}: pin ${testID} outside the viewport`);
+  }
+  if (!fs.existsSync(textPath(c.file))) { failures.push(`${c.file}: no text dump in .cache/text (run ${run})`); return; }
+  // The desktop app's site card shows the connected env's own address; nothing else local may show.
+  const raw = fs.readFileSync(textPath(c.file), 'utf8');
+  const text = site ? raw.split(site).join('') : raw;
+  for (const [, domain] of text.matchAll(/[\w.%+-]+@([\w-]+(?:\.[\w-]+)+)/g)) {
+    if (!['example.com', 'example.org'].includes(domain.toLowerCase())) failures.push(`${c.file}: address @${domain} in text`);
+  }
+  if (/WCPOS-DOCS/i.test(text)) failures.push(`${c.file}: licence key in text`);
+  if (/localhost|127\.0\.0\.1/i.test(text)) failures.push(`${c.file}: local URL in text`);
 }
 
 const [command, ...rest] = process.argv.slice(2);
-const commands = { up: () => up(rest), down, shoot: () => shoot(rest[0] || fail('shoot needs a page, e.g. stores/setup')), verify: () => verify(rest[0] || fail('verify needs a page')) };
+const commands = { up: () => up(rest), down, shoot: () => shoot(rest[0] || fail('shoot needs a page, e.g. stores/setup')), verify: () => verify(rest[0] || fail('verify needs a page')), pos: () => pos(rest[0] || fail('pos needs a page, e.g. stores/setup'), rest) };
 try {
-  if (!commands[command]) fail('usage: capture.mjs up [--free-dir DIR] [--pro-dir DIR] | shoot <page> | verify <page> | down');
+  if (!commands[command]) fail('usage: capture.mjs up [--free-dir DIR] [--pro-dir DIR] | shoot <page> | pos <page> [--app PATH] | verify <page> | down');
   await commands[command]();
 } catch (error) {
   console.error(error instanceof Fail ? error.message : error.stack);

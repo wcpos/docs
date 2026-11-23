@@ -91,6 +91,14 @@ foreach ( $wpas_options as $wpas_key => $wpas_value ) {
 	update_option( $wpas_key, $wpas_value );
 }
 
+// The env is plain http://localhost: with force_ssl on, /pos redirects to an https URL nothing serves.
+$wpas_general = get_option( 'woocommerce_pos_settings_general', array() );
+$wpas_general = is_array( $wpas_general ) ? $wpas_general : array();
+if ( false !== ( $wpas_general['force_ssl'] ?? null ) ) {
+	update_option( 'woocommerce_pos_settings_general', array_merge( $wpas_general, array( 'force_ssl' => false ) ) );
+	$wpas_note( 'force_ssl off' );
+}
+
 global $wpdb;
 $wpas_rate = $wpdb->get_var( "SELECT tax_rate_id FROM {$wpdb->prefix}woocommerce_tax_rates WHERE tax_rate_country = 'US' AND tax_rate_state = 'WA' AND tax_rate_class = ''" );
 if ( ! $wpas_rate ) {
@@ -118,7 +126,10 @@ if ( $wpas_admin && 'Alex Morgan' !== $wpas_admin->display_name ) {
 	$wpas_note( 'admin profile' );
 }
 
-$wpas_users = array();
+// Maya Chen signs in to the desktop app for the Choose a store shot. Like wp-env's own
+// admin/password, this is a throwaway for a local container only, not a secret.
+$wpas_maya_pass = 'password';
+$wpas_users     = array();
 foreach ( array( array( 'Maya', 'Chen', 'cashier' ), array( 'Leo', 'Park', 'cashier' ), array( 'Priya', 'Nair', 'cashier' ), array( 'Sam', 'Ortiz', 'shop_manager' ) ) as list( $wpas_first, $wpas_last, $wpas_role ) ) {
 	$wpas_login = strtolower( $wpas_first );
 	$wpas_user  = get_user_by( 'login', $wpas_login );
@@ -127,7 +138,7 @@ foreach ( array( array( 'Maya', 'Chen', 'cashier' ), array( 'Leo', 'Park', 'cash
 			array(
 				'user_login'   => $wpas_login,
 				'user_email'   => $wpas_login . '@example.com',
-				'user_pass'    => wp_generate_password( 24 ),
+				'user_pass'    => 'maya' === $wpas_login ? $wpas_maya_pass : wp_generate_password( 24 ),
 				'first_name'   => $wpas_first,
 				'last_name'    => $wpas_last,
 				'display_name' => "$wpas_first $wpas_last",
@@ -137,8 +148,12 @@ foreach ( array( array( 'Maya', 'Chen', 'cashier' ), array( 'Leo', 'Park', 'cash
 		if ( is_wp_error( $wpas_id ) ) {
 			WP_CLI::error( "user $wpas_login: " . $wpas_id->get_error_message() );
 		}
-		$wpas_note( "user $wpas_first $wpas_last" );
+		$wpas_note( "user $wpas_first $wpas_last" . ( 'maya' === $wpas_login ? ' (local password)' : '' ) );
 		$wpas_user = get_user_by( 'id', $wpas_id );
+	}
+	if ( 'maya' === $wpas_login && ! wp_check_password( $wpas_maya_pass, $wpas_user->user_pass, $wpas_user->ID ) ) {
+		wp_set_password( $wpas_maya_pass, $wpas_user->ID );
+		$wpas_note( 'Maya Chen password' );
 	}
 	$wpas_users[ $wpas_login ] = (int) $wpas_user->ID;
 }
@@ -229,9 +244,16 @@ if ( ! in_array( 'Front counter', $wpas_names, true ) ) {
 	$wpas_rest( 'PATCH', '/wcpos/v2/registers/' . $wpas_registers[0]['id'], array( 'name' => 'Front counter', 'default_float' => '150.00' ) );
 	$wpas_note( 'register Front counter' );
 }
+// Café till is saved with its own float: unset, the store editor shows the plugin's 200.00 placeholder.
 if ( ! in_array( 'Café till', $wpas_names, true ) ) {
-	$wpas_rest( 'POST', '/wcpos/v2/registers', array( 'name' => 'Café till', 'store_id' => $wpas_harbour ) );
-	$wpas_note( 'register Café till' );
+	$wpas_rest( 'POST', '/wcpos/v2/registers', array( 'name' => 'Café till', 'store_id' => $wpas_harbour, 'default_float' => '100.00' ) );
+	$wpas_note( 'register Café till (float 100.00)' );
+}
+foreach ( $wpas_harbour_tills() as $wpas_row ) {
+	if ( 'Café till' === $wpas_row['name'] && '100.00' !== number_format( (float) ( $wpas_row['default_float'] ?? 0 ), 2, '.', '' ) ) {
+		$wpas_rest( 'PATCH', '/wcpos/v2/registers/' . $wpas_row['id'], array( 'default_float' => '100.00' ) );
+		$wpas_note( 'Café till float 100.00' );
+	}
 }
 
 $wpas_mug = wc_get_product( wc_get_product_id_by_sku( 'HV-MUG-01' ) );
