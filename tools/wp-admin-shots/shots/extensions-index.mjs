@@ -7,6 +7,50 @@ const grid = `${app} main > div > div:nth-child(3)`;
 const card = (name) => `${grid} h3:text-is("${name}") >> xpath=../../..`;
 const paypal = card('PayPal Reader for WooCommerce');
 const square = card('Square Terminal for WooCommerce');
+const search = `${app} main input[placeholder^="Search extensions"]`;
+
+// Shared by the extension pages (atum, wpml, wp-multilang, storeapps-smart-coupons): step 1 searches
+// for one extension by name and shoots the search row, the tabs and its card, the only result.
+export const cardShot = (name, alt) => ({
+  step: 1,
+  slug: 'extension-card',
+  url: 'wp-admin/admin.php?page=woocommerce-pos-settings#/extensions',
+  prepare: async (page) => {
+    await page.locator(search).fill(name);
+    await page.waitForFunction(([sel, title]) => {
+      const cards = document.querySelectorAll(`${sel} > div`);
+      return cards.length === 1 && cards[0].querySelector('h3')?.textContent === title;
+    }, [grid, name]);
+    await page.locator(search).blur(); // no focus ring
+  },
+  crop: [`${app} main > div > div:first-child`, `${grid} > div`],
+  pins: [
+    { name: 'search', selector: search },
+    { name: 'install', selector: `${card(name)} >> button:text-is("Install")` },
+  ],
+  alt,
+});
+
+// Step 2 of wpml, wp-multilang and storeapps-smart-coupons: WordPress core's Upload Plugin form,
+// cut above the plugin directory (no third-party cards or text).
+export const uploadPluginShot = {
+  step: 2,
+  slug: 'upload-plugin',
+  url: 'wp-admin/plugin-install.php',
+  prepare: async (page) => {
+    await page.locator('.upload-view-toggle').click();
+    await page.locator('.upload-plugin #pluginzip').waitFor({ state: 'visible' });
+    await page.locator('.upload-view-toggle').blur(); // no focus ring
+    await page.addStyleTag({ content: '#screen-meta-links { display: none !important; }' }); // the Help tab
+  },
+  crop: ['.wrap > h1', '.wrap .upload-view-toggle', '.upload-plugin .install-help', '.upload-plugin form'],
+  pins: [
+    { name: 'upload-plugin', selector: '.wrap .upload-view-toggle' },
+    { name: 'choose-file', selector: '.upload-plugin #pluginzip' },
+    { name: 'install-now', selector: '.upload-plugin #install-plugin-submit' },
+  ],
+  alt: 'WP Admin, Plugins → Add Plugins after Upload Plugin: the upload form with its Choose File button for a plugin .zip file and the Install Now button.',
+};
 
 export default [
   {
