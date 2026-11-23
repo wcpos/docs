@@ -9,6 +9,7 @@ export default [
     slug: 'people-and-sessions',
     url: 'wp-admin/admin.php?page=woocommerce-pos-settings#/sessions',
     crop: [`${S} main > div > div:nth-child(2)`],
+    pad: 8,
     pins: [
       { name: 'filter-users', selector: `${S} main input[aria-label="Filter users"]` },
       { name: 'person', selector: `${S} main aside button[aria-pressed="true"]` },

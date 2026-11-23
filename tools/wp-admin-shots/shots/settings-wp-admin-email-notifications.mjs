@@ -12,12 +12,12 @@ export default [
     slug: 'email-switches',
     url: 'wp-admin/admin.php?page=woocommerce-pos-settings#/checkout',
     prepare: (page) => switchesOn(page, row('Cashier emails')),
-    crop: [row('Admin emails'), row('Cashier emails')],
+    crop: [row('Prevent overselling'), row('Admin emails'), row('Cashier emails')],
     pins: [
       { name: 'admin-emails', selector: `${row('Admin emails')} button[role="switch"]` },
       { name: 'customer-emails', selector: `${row('Customer emails')} button[role="switch"]` },
       { name: 'cashier-emails', selector: `${row('Cashier emails')} button[role="switch"]` },
     ],
-    alt: 'WP Admin, POS → Settings → Checkout: the Admin emails, Customer emails and Cashier emails switches, all on, each with a checkbox for every email in its group.',
+    alt: 'WP Admin, POS → Settings → Checkout: the Prevent overselling switch above the Admin emails, Customer emails and Cashier emails switches, all on, each with a checkbox for every email in its group.',
   },
 ];
