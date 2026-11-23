@@ -23,7 +23,6 @@ export default [
     crop: ['.wrap h1.wp-heading-inline', '.wrap a.page-title-action', '#the-list tr.wcpos-free-plugin-notice'],
     padBottom: 0, // the default pad would show the top of the WooCommerce row
     pins: [
-      { name: 'add-plugin', selector: '.wrap a.page-title-action' },
       { name: 'automatic-updates', selector: 'table.plugins thead th.column-auto-updates' },
       { name: 'wcpos-auto-updates', selector: `${wcpos} td.column-auto-updates a` },
     ],

@@ -4,13 +4,8 @@ export const journey = 'LK';
 
 const app = '#woocommerce-pos-settings';
 const licenseUrl = 'wp-admin/admin.php?page=woocommerce-pos-settings#/license';
-// The sidebar's brand row and its Account group, then the License content (title bar and the screen).
-const licenseCrop = [
-  `${app} aside > div:first-child`,
-  `${app} aside div:has(> nav [data-testid="settings-nav-license"])`,
-  `${app} main`,
-];
-const menuLicense = { name: 'menu-license', selector: `${app} [data-testid="settings-nav-license"]` };
+// The activated card's text column; its lines are full-column blocks, shrunk to their text in prepare.
+const thanks = `${app} main .wcpos\\:col-span-2`;
 // The License screen's settings request, as /wp-json/… or ?rest_route=… (apiFetch uses either).
 const isLicenseGet = (url) => decodeURIComponent(url.href).includes('wcpos/v2/settings/license');
 
@@ -35,11 +30,13 @@ export default [
     prepare: async (page) => {
       await page.getByText('Thank You!').waitFor({ state: 'visible' });
       await page.locator(`${app} main code`).evaluate((el) => { el.textContent = 'XXXXXXXXX...XXXXXXXX'; });
+      await page.addStyleTag({ content: `${thanks} > * { width: fit-content; }` });
     },
-    crop: licenseCrop,
-    maxHeight: 500,
+    // The content card only: the confetti, Thank You!, the activated and support lines, Deactivate.
+    crop: [`${app} main img.emoji`, `${thanks} > h3`, `${thanks} > p:has(> code)`,
+      `${thanks} > p:last-of-type`, `${thanks} > button`],
+    pad: 24,
     pins: [
-      menuLicense,
       { name: 'license-key', selector: `${app} main code` },
       { name: 'deactivate', selector: `${app} main button:text-is("Deactivate")` },
     ],
@@ -63,13 +60,13 @@ export default [
       await page.locator('#license-key').waitFor({ state: 'visible' });
       await page.unroute(isLicenseGet);
     },
-    crop: licenseCrop,
-    maxHeight: 500,
+    // The form row only: the License Key label, the field and the Activate button.
+    crop: [`${app} main .wcpos\\:sm\\:justify-end > div`, '#license-key', `${app} main button:text-is("Activate")`],
+    pad: 24,
     pins: [
-      menuLicense,
       { name: 'license-key-field', selector: '#license-key' },
       { name: 'activate', selector: `${app} main button:text-is("Activate")` },
     ],
-    alt: 'WP Admin, POS → Settings → License before activation: an empty License Key field and the Activate button, greyed out until a key is entered.',
+    alt: 'WP Admin, POS → Settings → License before a key is activated: an empty License Key field and the Activate button, greyed out until a key is entered.',
   },
 ];
