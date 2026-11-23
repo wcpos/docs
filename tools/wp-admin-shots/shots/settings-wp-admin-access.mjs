@@ -17,9 +17,9 @@ export default [
       await page.click(role('shop_manager'));
       await page.locator(`${settings} main h2:text-is("What the Shop manager role can do")`).waitFor({ state: 'visible' });
     },
-    crop: [`${settings} aside div:has(> nav [data-testid="settings-nav-access"])`, `${settings} main > div:last-child`],
+    // The role list and the task panel only: no Settings sidebar, no notice.
+    crop: [`${settings} main ul:has(> [data-testid^="access-role-"])`, `${settings} main h2`, '[data-testid="access-restore-defaults"]', advanced],
     pins: [
-      { name: 'nav-access', selector: '[data-testid="settings-nav-access"]' },
       { name: 'role-shop-manager', selector: role('shop_manager') },
       { name: 'changed-dot', selector: `${role('editor')} span[title="Changed from the WCPOS defaults"]` },
       { name: 'heading', selector: `${settings} main h2` },
@@ -29,7 +29,7 @@ export default [
       { name: 'restore-defaults', selector: '[data-testid="access-restore-defaults"]' },
       { name: 'advanced', selector: '[data-testid="access-advanced-summary"]' },
     ],
-    alt: 'WP Admin, POS → Settings → Access: the roles Administrator to Cashier on the left, Shop manager selected and Editor marked with an amber dot. What the Shop manager role can do, using the WCPOS defaults: every task ticked except Manage customers, which shows a dash, a 2 of 3 badge and Review. Restore defaults is greyed out, and the Advanced individual capabilities bar is at the foot.',
+    alt: 'WP Admin, POS → Settings → Access, the role list and its tasks: the roles Administrator to Cashier on the left, Shop manager selected and Editor marked with an amber dot. What the Shop manager role can do, using the WCPOS defaults: every task ticked except Manage customers, which shows a dash, a 2 of 3 badge and Review. Restore defaults is greyed out, and the Advanced individual capabilities bar is at the foot.',
   },
   {
     step: 2,
@@ -68,6 +68,9 @@ export default [
       { name: 'advanced-heading', selector: '[data-testid="access-advanced-summary"]' },
       { name: 'group-wcpos', selector: '[data-testid="access-capability-group-wcpos"]' },
       { name: 'cap-cash', selector: `${advanced} div:has(> label:text-is("manage_woocommerce_pos_cash"))` },
+      { name: 'cap-reports', selector: `${advanced} div:has(> label:text-is("view_woocommerce_pos_reports"))` },
+      { name: 'cap-closures', selector: `${advanced} div:has(> label:text-is("manage_woocommerce_pos_closures"))` },
+      { name: 'cap-reassign', selector: `${advanced} div:has(> label:text-is("reassign_woocommerce_pos_sales"))` },
     ],
     alt: 'WP Admin, POS → Settings → Access with Cashier selected and Advanced open: the note that each task is a set of these capabilities, and the WCPOS group with access_woocommerce_pos, manage_woocommerce_pos_cash and view_woocommerce_pos_reports ticked, and manage_woocommerce_pos, manage_woocommerce_pos_closures and reassign_woocommerce_pos_sales not ticked.',
   },
