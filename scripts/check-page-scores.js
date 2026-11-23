@@ -324,6 +324,7 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
   const changed = new Set(integrity.docs);
   const failing = [];
   const warning = [];
+  const belowWarnings = [];
   for (const result of results) {
     const { doc } = result;
     const entry = entries[groupOf(doc) || doc];
@@ -331,7 +332,7 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
     if (base && !docSource(root, doc, base) && !(entry?.carriedFrom && docSource(root, entry.carriedFrom, base))) {
       // R1: a new page must clear the floor.
     } else if (changed.has(doc)) {
-      // R2: a changed entry must clear the floor and keep its mean within MEAN_DROP of the previous record.
+      // R2: a changed entry below the floor warns unless its mean drops more than MEAN_DROP from the previous record.
       const previous = baseEntries[entry.carriedFrom || groupOf(doc) || doc];
       const mean = meanOf(entry.scores);
       const before = isPlain(previous?.scores) && Object.values(previous.scores).some(Number.isFinite) ? meanOf(previous.scores) : NaN;
@@ -339,6 +340,10 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
         fails = true;
         result.status = 'drop';
         result.reasons = [`mean ${mean} is more than ${MEAN_DROP} below the previous ${before}`];
+      } else if (result.status === 'below') {
+        fails = false;
+        belowWarnings.push(`::warning::${doc}: below the floor (${result.reasons.join('; ')}), passes because ${Number.isNaN(before)
+          ? 'it had no previous record' : `the previous mean was ${before}`}. Climb it when you can.`);
       }
     } else if (result.status === 'stale' && !belowFloor(entry.scores).length) {
       // R3: a passing page made stale warns for STALE_DAYS, then fails until re-scored.
@@ -354,6 +359,7 @@ function run({ root, changedFiles, event, exceptionEvents, now, base, issueLooku
   }
   const lines = results.map(({ doc, status, reasons }) =>
     `${doc}: ${status}` + (reasons.length ? ` (${reasons.join('; ')})` : ''));
+  lines.push(...belowWarnings);
   if (baseNote) lines.push(`::warning::${baseNote}`);
   // Shape errors fail on any date; integrity repeats a changed entry's shape error, so that one prints once, as a shape error.
   lines.push(...integrity.errors.filter((error) => !shape.some((bad) => bad.error === error)).map((error) => `::${enforced ? 'error' : 'warning'}::page-scores.json: ${error}`));
