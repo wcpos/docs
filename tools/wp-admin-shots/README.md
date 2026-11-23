@@ -3,6 +3,7 @@
 Cropped, light-theme WP Admin screenshots for the docs, taken from a local wp-env that runs the
 current `main` builds of woocommerce-pos and woocommerce-pos-pro, seeded with fictional data
 (Harbour and Vine: three stores, four staff, eight products; every email `@example.com`).
+The seed adds four POS login sessions: Maya on desktop and web, Leo on iPad, and Priya on Android; none for Sam or the admin.
 
 ## Prerequisites
 
@@ -34,12 +35,13 @@ The seed also turns the POS setting `force_ssl` off, so `/pos` stays on plain ht
 
 `up` is idempotent: it reuses the ports in `.cache/state.json`, downloads a build only when `main`
 moved, and the seed finds everything before creating it. `--free-dir`/`--pro-dir <dir>` use a
-built plugin folder instead of the artifact.
+built plugin folder instead of the artifact. `up` refreshes a plugin in place, so a running env keeps
+its mounts, and activates Pro before seeding.
 
 ## Adding a page
 
 1. Add `shots/<docs path with / replaced by ->.mjs` exporting `journey` (the file prefix, e.g. `'SS'`)
-   and a default array of `{ step, slug, url, prepare?, crop, pad?, padBottom?, maxHeight?, pins, alt }`.
+   and a default array of `{ step, slug, url, site?, settings?, prepare?, crop, pad?, padBottom?, maxHeight?, pins, alt }`.
    `url` may use `{storeId:<store name>}` or `{productId:<product name>}`.
    Two optional fields change the site for that one shot and are undone after it, even when it fails:
    `site: 'free'` (Pro off, woocommerce-pos on; the manifest says `variant: 'free'`) and

@@ -311,6 +311,49 @@ if ( array_map( 'intval', (array) get_post_meta( $wpas_riverside, '_authorized_u
 	$wpas_note( 'Riverside Pop-up staff' );
 }
 
+// POS login sessions use fixed token IDs, with timestamps relative to this seed run.
+if ( ! class_exists( '\WCPOS\WooCommercePOS\Services\Session_Registry' ) || ! class_exists( '\WCPOS\WooCommercePOS\Services\Session_Context' ) ) {
+	WP_CLI::error( 'WCPOS Session_Registry and Session_Context are required to seed POS sessions.' );
+}
+$wpas_sessions     = \WCPOS\WooCommercePOS\Services\Auth::instance()->sessions();
+$wpas_meta_key     = \WCPOS\WooCommercePOS\Services\Session_Registry::META_KEY;
+$wpas_session_rows = array(
+	array(
+		'maya', 'd0c5d0c5-0001-4000-8000-000000000001', 'electron', '1.8.6', '',
+		'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/537.36 (KHTML, like Gecko) WCPOS/1.8.6 Chrome/128.0.0.0 Electron/32.1.2 Safari/537.36', '203.0.113.24', 120, 3 * DAY_IN_SECONDS,
+	),
+	array(
+		'maya', 'd0c5d0c5-0001-4000-8000-000000000002', 'web', '', '',
+		'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', '203.0.113.24', 2 * HOUR_IN_SECONDS, 6 * DAY_IN_SECONDS,
+	),
+	array(
+		'leo', 'd0c5d0c5-0002-4000-8000-000000000001', 'ios', '1.8.6', '412',
+		'Mozilla/5.0 (iPad; CPU OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148', '198.51.100.17', 25 * MINUTE_IN_SECONDS, 2 * DAY_IN_SECONDS,
+	),
+	array(
+		'priya', 'd0c5d0c5-0003-4000-8000-000000000001', 'android', '1.8.6', '388',
+		'Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', '198.51.100.42', 5 * HOUR_IN_SECONDS, 9 * DAY_IN_SECONDS,
+	),
+);
+foreach ( $wpas_session_rows as list( $wpas_user_key, $wpas_jti, $wpas_platform, $wpas_version, $wpas_build, $wpas_user_agent, $wpas_ip, $wpas_last_active, $wpas_session_created ) ) {
+	$wpas_user_id = $wpas_users[ $wpas_user_key ];
+	$wpas_tokens  = get_user_meta( $wpas_user_id, $wpas_meta_key, true );
+	$wpas_new     = ! isset( $wpas_tokens[ $wpas_jti ] );
+	$wpas_context = new \WCPOS\WooCommercePOS\Services\Session_Context( $wpas_user_agent, $wpas_platform, $wpas_version, $wpas_build, $wpas_ip );
+	$wpas_expires = time() + 30 * DAY_IN_SECONDS;
+	if ( null === $wpas_sessions->record( $wpas_user_id, $wpas_jti, $wpas_expires, $wpas_context ) ) {
+		WP_CLI::error( 'session for ' . $wpas_user_key . ' not stored' );
+	}
+	$wpas_tokens                             = get_user_meta( $wpas_user_id, $wpas_meta_key, true );
+	$wpas_tokens[ $wpas_jti ]['created']     = time() - $wpas_session_created;
+	$wpas_tokens[ $wpas_jti ]['expires']     = $wpas_tokens[ $wpas_jti ]['created'] + 30 * DAY_IN_SECONDS;
+	$wpas_tokens[ $wpas_jti ]['last_active'] = time() - $wpas_last_active;
+	update_user_meta( $wpas_user_id, $wpas_meta_key, $wpas_tokens );
+	if ( $wpas_new ) {
+		$wpas_note( 'POS session ' . $wpas_user_key . ' ' . $wpas_platform );
+	}
+}
+
 // Hello Dolly is WordPress's sample plugin: a first row of noise in every Plugins shot.
 if ( file_exists( WP_PLUGIN_DIR . '/hello.php' ) ) {
 	require_once ABSPATH . 'wp-admin/includes/plugin.php';
