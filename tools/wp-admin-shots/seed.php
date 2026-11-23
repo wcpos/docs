@@ -361,4 +361,21 @@ if ( true !== ( $wpas_general['storefront_receipt_enabled'] ?? null ) || '' !== 
 	$wpas_note( 'storefront receipts on' );
 }
 
+// ---- settings-2: begin
+// Settings pages. Editor may use the POS (Access › Use the POS): Editor then differs from the
+// WCPOS defaults, so the role list marks it and its Restore defaults is enabled.
+$wpas_editor = get_role( 'editor' );
+if ( $wpas_editor && ! $wpas_editor->has_cap( 'access_woocommerce_pos' ) ) {
+	$wpas_editor->add_cap( 'access_woocommerce_pos' );
+	$wpas_note( 'Editor role access_woocommerce_pos' );
+}
+// Harbour Street's own tax number, through the stores route the store editor saves with.
+$wpas_harbour_tax = array( 'type' => 'us_ein', 'value' => '93-4815162', 'country' => 'US' );
+$wpas_harbour_ids = (array) ( $wpas_rest( 'GET', '/wcpos/v1/stores/' . $wpas_harbour )['tax_ids'] ?? array() );
+if ( ! wp_list_filter( $wpas_harbour_ids, $wpas_harbour_tax ) ) {
+	$wpas_rest( 'PATCH', '/wcpos/v1/stores/' . $wpas_harbour, array( 'tax_ids' => array( $wpas_harbour_tax ) ) );
+	$wpas_note( 'Harbour Street tax number US EIN 93-4815162' );
+}
+// ---- settings-2: end
+
 WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
