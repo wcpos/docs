@@ -501,4 +501,36 @@ if ( ! function_exists( 'PLL' ) ) {
 }
 // ---- extensions (B, polylang): end
 
+// ---- other-1: begin
+// One variable product, so the POS-only products page can show a variation's own POS visibility (left at POS & Online).
+if ( ! wc_get_product_id_by_sku( 'HV-APR-01' ) ) {
+	$wpas_colour = new WC_Product_Attribute();
+	$wpas_colour->set_name( 'Colour' );
+	$wpas_colour->set_options( array( 'Natural', 'Charcoal' ) );
+	$wpas_colour->set_visible( true );
+	$wpas_colour->set_variation( true );
+	$wpas_apron = new WC_Product_Variable();
+	$wpas_apron->set_name( 'Linen Apron' );
+	$wpas_apron->set_sku( 'HV-APR-01' );
+	$wpas_apron->set_status( 'publish' );
+	$wpas_apron->set_attributes( array( $wpas_colour ) );
+	$wpas_apron_id = $wpas_apron->save();
+	// menu_order keeps Natural first in the Variations panel (WooCommerce lists the newest first otherwise).
+	foreach ( array( array( 'Natural', 'HV-APR-01-NAT', 10 ), array( 'Charcoal', 'HV-APR-01-CHR', 6 ) ) as $wpas_order => list( $wpas_value, $wpas_sku, $wpas_stock ) ) {
+		$wpas_variation = new WC_Product_Variation();
+		$wpas_variation->set_parent_id( $wpas_apron_id );
+		$wpas_variation->set_menu_order( $wpas_order );
+		$wpas_variation->set_attributes( array( 'colour' => $wpas_value ) );
+		$wpas_variation->set_sku( $wpas_sku );
+		$wpas_variation->set_regular_price( '28.00' );
+		$wpas_variation->set_manage_stock( true );
+		$wpas_variation->set_stock_quantity( $wpas_stock );
+		$wpas_variation->set_status( 'publish' );
+		$wpas_variation->save();
+	}
+	WC_Product_Variable::sync( $wpas_apron_id );
+	$wpas_note( 'product Linen Apron' );
+}
+// ---- other-1: end
+
 WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
