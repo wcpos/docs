@@ -3,31 +3,12 @@
 export const journey = 'WT';
 
 const form = '#mainform';
-const control = (id) => `${form} tr:has(label[for="${id}"]) td.forminp :is(.select2-container, input#${id})`;
 const rates = `${form} table.wc_tax_rates`;
 const editor = '#wcpos-store-edit';
 
 export default [
   {
     step: 1,
-    slug: 'tax-options',
-    url: 'wp-admin/admin.php?page=wc-settings&tab=tax',
-    // In the browser only: the rows' 20 px top and bottom padding is tightened to 8 px so the section fits in 720 px, and
-    // WooCommerce's empty fixed footer bar (a 1 px line at the viewport's bottom edge) and HTTPS banner are hidden.
-    prepare: (page) => page.addStyleTag({ content: '#mainform .form-table th, #mainform .form-table td { padding-top: 8px; padding-bottom: 8px; } .woocommerce-layout__footer, #message.woocommerce-message { display: none !important; }' }),
-    pad: 8,
-    crop: [`${form} ul.subsubsub`, `${form} h2:text-is("Tax options")`, `${form} h2:text-is("Tax options") ~ table.form-table`],
-    pins: [
-      { name: 'prices-entered', selector: `${form} td.forminp:has(input[name="woocommerce_prices_include_tax"]) ul` },
-      { name: 'based-on', selector: control('woocommerce_tax_based_on') },
-      { name: 'display-shop', selector: control('woocommerce_tax_display_shop') },
-      { name: 'display-cart', selector: control('woocommerce_tax_display_cart') },
-      { name: 'display-totals', selector: control('woocommerce_tax_total_display') },
-    ],
-    alt: 'WooCommerce → Settings → Tax, Tax options (links to Standard rates, Reduced rate rates and Zero rate rates): Prices entered with tax No, I will enter prices exclusive of tax; Calculate tax based on Customer shipping address; Shipping tax class based on cart items; Rounding unticked; Additional tax classes Reduced rate and Zero rate; Display prices in the shop and during cart and checkout Excluding tax; an empty Price display suffix; and Display tax totals Itemized.',
-  },
-  {
-    step: 2,
     slug: 'standard-rates',
     url: 'wp-admin/admin.php?page=wc-settings&tab=tax&section=standard',
     prepare: (page) => page.locator(`${rates} #rates tr[data-id]`).first().waitFor({ state: 'visible' }),
@@ -40,7 +21,7 @@ export default [
     alt: 'WooCommerce → Settings → Tax, "Standard" tax rates: one rate for country US, state WA, any postcode and any city, Rate % 10.2500, Tax name Sales tax, Priority 1, not compound and applied to shipping, with Insert row, Remove selected row(s), Import CSV and Export CSV below.',
   },
   {
-    step: 3,
+    step: 2,
     slug: 'store-tax',
     url: 'wp-admin/admin.php?page=wcpos-store-edit&id={storeId:Harbour Street}#/tax',
     crop: [`${editor} aside[aria-label="Store menu"] nav`, `${editor} div:has(> h1)`, `${editor} main > * > *:has(h3:text-is("Tax"))`],
