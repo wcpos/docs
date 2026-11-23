@@ -26,12 +26,12 @@ export default [
       await page.locator(`${editor} .cm-editor`).waitFor({ state: 'visible' });
       await page.locator(previewBar).waitFor({ state: 'visible' });
     },
-    // Title, Update, the start of the XML and the top of the preview. The crop ends on the preview's
-    // bar, so the sample receipt below it is in the picture but not in the leak-check text.
+    // Title, Update, the start of the XML and the preview. The crop ends on the preview's bar; padBottom
+    // carries the picture down the sample receipt (store name, items, total), which is not in the leak-check text.
     crop: ['#titlediv', '#submitdiv', previewBar],
     pad: 12, // 16 would show the bottom edge of the Add New Template button above the title
-    padBottom: 240,
-    maxHeight: 900,
+    padBottom: 824,
+    maxHeight: 1600,
     pins: [
       { name: 'fields', selector: '#wcpos-template-editor-fields-panel' },
       { name: 'xml-editor', selector: `${editor} div:has(> .cm-editor)` },
@@ -40,6 +40,6 @@ export default [
       { name: 'update', selector: '#publish' },
       { name: 'paper-size', selector: '#wcpos-template-paper-width' },
     ],
-    alt: 'WP Admin, Edit Template for Simple Thermal Receipt (80mm): the XML editor with its fields list, the Thermal Preview below it showing the top of the sample receipt, and the Update button.',
+    alt: 'WP Admin, Edit Template for Simple Thermal Receipt (80mm): the XML editor with its fields list, the Thermal Preview below it showing the sample receipt (store name, items, total), and the Update button.',
   },
 ];
