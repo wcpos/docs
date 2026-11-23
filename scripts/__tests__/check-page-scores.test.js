@@ -750,7 +750,7 @@ describe('ratchet rules', () => {
     ['mean exactly 8.3', seven(8.3), 0, 'a/page: ok'],
     ['mean 8.29', seven(8.29), 1, 'a/page: drop (mean 8.29 is more than 0.3 below the previous 8.6)'],
     ['a category at 7', seven(8.6, { 'task clarity': 7 }), 0, 'a/page: ok'],
-    ['a category at 6.5', seven(10, { 'task clarity': 6.5 }), 1, 'a/page: below (task clarity 6.5 < 7.0)'],
+    ['a category at 6.5', seven(10, { 'task clarity': 6.5 }), 0, 'a/page: below (task clarity 6.5 < 7.0)'],
     ['mean 8.0 with an exception', seven(8), 0, 'a/page: drop (mean 8 is more than 0.3 below the previous 8.6)'],
   ])('R2: a changed entry may not drop far (%s)', (name, scores, exitCode, line) => {
     recordedBase(seven(8.6));
@@ -760,6 +760,29 @@ describe('ratchet rules', () => {
     const result = run(options);
     expect(result.exitCode).toBe(exitCode);
     expect(result.lines[0]).toBe(line);
+  });
+
+  it.each([
+    ['equal', seven(7.5), seven(7.5), 0, 'a/page: below (mean 7.5 < 8.0)',
+      '::warning::a/page: below the floor (mean 7.5 < 8.0), passes because the previous mean was 7.5. Climb it when you can.'],
+    ['above', seven(7), seven(7.6), 0, 'a/page: below (mean 7.6 < 8.0)',
+      '::warning::a/page: below the floor (mean 7.6 < 8.0), passes because the previous mean was 7. Climb it when you can.'],
+    ['within the drop', seven(7.6), seven(7.4), 0, 'a/page: below (mean 7.4 < 8.0)',
+      '::warning::a/page: below the floor (mean 7.4 < 8.0), passes because the previous mean was 7.6. Climb it when you can.'],
+    ['drop', seven(7.6), seven(7.2), 1, 'a/page: drop (mean 7.2 is more than 0.3 below the previous 7.6)'],
+  ])('R2: an under-floor entry passes unless it drops far (%s)', (name, previous, scores, exitCode, line, warning) => {
+    recordedBase(previous);
+    record(scored(scores, 3));
+    options.changedFiles = ['page-scores.json'];
+    const result = run(options);
+    expect(result.exitCode).toBe(exitCode);
+    expect(result.lines[0]).toBe(line);
+    if (exitCode === 0) {
+      expect(result.lines).toContain(warning);
+      expect(result.lines).toContain(notBlocking(['a/page']));
+    } else {
+      expect(result.lines.some((text) => text.includes('below the floor ('))).toBe(false);
+    }
   });
 
   it.each(['missing', 'below'])('R3: an unchanged %s page warns', (kind) => {
