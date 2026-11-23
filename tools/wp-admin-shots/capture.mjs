@@ -128,7 +128,7 @@ async function up(args) {
   wpEnv(state, ['start']);
   const seedFile = 'wp-content/mu-plugins/wpas-seed.php';
   wp(state, 'eval-file', seedFile, 'licence');
-  const seed = wp(state, 'eval-file', seedFile).split('\n').find((line) => line.startsWith('seed:')) || 'seed: no summary';
+  const seed = wp(state, 'eval-file', seedFile).split('\n').findLast((line) => line.startsWith('seed:')) || 'seed: no summary';
   console.log(`up: ${state.siteUrl} · woocommerce-pos ${state.shas.free} · woocommerce-pos-pro ${state.shas.pro} · ${seed}`);
 }
 
