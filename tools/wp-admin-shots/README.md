@@ -2,7 +2,7 @@
 
 Cropped, light-theme WP Admin screenshots for the docs, taken from a local wp-env that runs the
 current `main` builds of woocommerce-pos and woocommerce-pos-pro, seeded with fictional data
-(Harbour & Vine: three stores, four staff, eight products; every email `@example.com`).
+(Harbour and Vine: three stores, four staff, eight products; every email `@example.com`).
 
 ## Prerequisites
 

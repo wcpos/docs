@@ -68,7 +68,6 @@ if ( ! function_exists( 'woocommerce_pos_pro_activated' ) || ! woocommerce_pos_p
 
 // Site and WooCommerce settings (plain option writes; not counted as created).
 $wpas_options = array(
-	'blogname'                                  => 'Harbour & Vine',
 	'blogdescription'                           => 'Homeware and coffee',
 	'admin_email'                               => 'alex@example.com',
 	'timezone_string'                           => 'America/Los_Angeles', // the stores' own zone, as shoot's browser
@@ -89,6 +88,12 @@ $wpas_options = array(
 );
 foreach ( $wpas_options as $wpas_key => $wpas_value ) {
 	update_option( $wpas_key, $wpas_value );
+}
+
+// No ampersand: WordPress stores blogname HTML-escaped and the desktop app prints it raw ("&amp;").
+if ( 'Harbour and Vine' !== get_option( 'blogname' ) ) {
+	update_option( 'blogname', 'Harbour and Vine' );
+	$wpas_note( 'site name Harbour and Vine' );
 }
 
 // The env is plain http://localhost: with force_ssl on, /pos redirects to an https URL nothing serves.
@@ -296,6 +301,14 @@ $wpas_staff = array( 1, $wpas_users['maya'], $wpas_users['leo'] );
 if ( array_map( 'intval', (array) get_post_meta( $wpas_harbour, '_authorized_users', true ) ) !== $wpas_staff ) {
 	$wpas_rest( 'PATCH', '/wcpos/v1/stores/' . $wpas_harbour, array( 'authorized_users' => $wpas_staff ) );
 	$wpas_note( 'Harbour Street staff' );
+}
+// Riverside Pop-up is Leo Park's and Priya Nair's (and the admin's, for its store prices), so Maya
+// Chen's Choose a store lists two stores: Harbour Street and Market Hall.
+$wpas_riverside       = $wpas_store_ids['Riverside Pop-up'];
+$wpas_riverside_staff = array( 1, $wpas_users['leo'], $wpas_users['priya'] );
+if ( array_map( 'intval', (array) get_post_meta( $wpas_riverside, '_authorized_users', true ) ) !== $wpas_riverside_staff ) {
+	$wpas_rest( 'PATCH', '/wcpos/v1/stores/' . $wpas_riverside, array( 'authorized_users' => $wpas_riverside_staff ) );
+	$wpas_note( 'Riverside Pop-up staff' );
 }
 
 WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
