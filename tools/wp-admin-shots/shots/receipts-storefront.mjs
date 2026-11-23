@@ -26,6 +26,7 @@ export default [
     // From the Customers heading down to the customer receipt template; the Tax IDs part is left out.
     crop: [`${section('Customers')} h3`, row('Receipt template for customers')],
     pins: [
+      { name: 'customers-heading', selector: `${section('Customers')} h3` },
       { name: 'download-receipts', selector: `${row('Let customers download receipts')} > button[role="switch"]` },
       { name: 'receipt-template', selector: `${section('Customers')} select[aria-label="Receipt template for customers"]` },
     ],

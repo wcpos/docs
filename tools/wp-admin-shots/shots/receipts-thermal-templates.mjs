@@ -33,9 +33,12 @@ export default [
     padBottom: 240,
     maxHeight: 900,
     pins: [
+      { name: 'fields', selector: '#wcpos-template-editor-fields-panel' },
       { name: 'xml-editor', selector: `${editor} div:has(> .cm-editor)` },
       { name: 'preview', selector: previewBar },
+      { name: 'sample-data', selector: `${previewBar} [role="radiogroup"][aria-label="Preview"]` },
       { name: 'update', selector: '#publish' },
+      { name: 'paper-size', selector: '#wcpos-template-paper-width' },
     ],
     alt: 'WP Admin, Edit Template for Simple Thermal Receipt (80mm): the XML editor with its fields list, the Thermal Preview below it showing the top of the sample receipt, and the Update button.',
   },
