@@ -311,6 +311,25 @@ if ( array_map( 'intval', (array) get_post_meta( $wpas_riverside, '_authorized_u
 	$wpas_note( 'Riverside Pop-up staff' );
 }
 
+// Hello Dolly is WordPress's sample plugin: a first row of noise in every Plugins shot.
+if ( file_exists( WP_PLUGIN_DIR . '/hello.php' ) ) {
+	require_once ABSPATH . 'wp-admin/includes/plugin.php';
+	require_once ABSPATH . 'wp-admin/includes/file.php';
+	$wpas_deleted = delete_plugins( array( 'hello.php' ) );
+	if ( true !== $wpas_deleted ) {
+		WP_CLI::error( 'Hello Dolly: ' . ( is_wp_error( $wpas_deleted ) ? $wpas_deleted->get_error_message() : 'not deleted' ) );
+	}
+	$wpas_note( 'Hello Dolly removed' );
+}
+
+// Auto-updates on for the free plugin, as a store following the docs has it ("Disable auto-updates").
+$wpas_auto = (array) get_site_option( 'auto_update_plugins', array() );
+if ( ! in_array( 'woocommerce-pos/woocommerce-pos.php', $wpas_auto, true ) ) {
+	$wpas_auto[] = 'woocommerce-pos/woocommerce-pos.php';
+	update_site_option( 'auto_update_plugins', array_values( $wpas_auto ) );
+	$wpas_note( 'WCPOS auto-updates on' );
+}
+
 // Receipts pages. The WCPOS Cloud Print relay stays off on this env: a one-line mu-plugin (loaded
 // on every request from now on, and here before the printer is saved) turns its filter off.
 $wpas_relay_file = WPMU_PLUGIN_DIR . '/wpas-relay-off.php';
