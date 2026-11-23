@@ -52,6 +52,8 @@ export default [
     pins: [
       // The Front counter row by its name: rows sort by name, so it is not the first.
       { name: 'opening-float', selector: '[data-testid^="register-row-"]:has-text("Front counter") input' },
+      // The status dot: the Status cell has no testid and its td spans the wide column; the pin lands on the dot either way.
+      { name: 'status', selector: '[data-testid^="register-row-"]:has-text("Front counter") td:nth-child(3) > span' },
       { name: 'register-menu', selector: '[data-testid^="register-row-"]:has-text("Front counter") [data-testid^="register-menu-"]' },
       { name: 'register-add', selector: '[data-testid="register-add"]' },
     ],
@@ -104,6 +106,7 @@ export default [
     // The whole Cash drawer rules section: its heading, description line and the rules box.
     crop: [section('Cash drawer rules')],
     pins: [
+      { name: 'site-defaults', selector: `${section('Cash drawer rules')} span:text-is("Site defaults")` },
       { name: 'open-close-toggle', selector: `${section('Cash drawer rules')} button[role="switch"]` },
       { name: 'site-default', selector: `${section('Cash drawer rules')} span:text-is("Site default")` },
       { name: 'customise', selector: `${section('Cash drawer rules')} button:text-is("Customise")` },
