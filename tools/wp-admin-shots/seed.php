@@ -323,3 +323,55 @@ if ( ! is_dir( WP_PLUGIN_DIR . '/paypal-reader-for-woocommerce' ) ) {
 // ---- extensions (A): end
 
 WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
+
+// ---- extensions (B, polylang): begin
+// Polylang (wordpress.org) with English (default) and Français, then WCPOS Polylang through Pro's
+// own extension action. Polylang boots on plugins_loaded, so when it is installed in this run the
+// seed runs again in a child process where it is loaded, and the child's notes are counted here.
+if ( ! function_exists( 'PLL' ) ) {
+	$wpas_pll = WP_CLI::runcommand( 'plugin install polylang --activate', array( 'return' => 'all', 'exit_error' => false ) );
+	if ( 0 !== $wpas_pll->return_code ) {
+		WP_CLI::error( 'Polylang install: ' . trim( $wpas_pll->stderr . ' ' . $wpas_pll->stdout ) );
+	}
+	$wpas_note( 'plugin Polylang ' . WP_CLI::runcommand( 'plugin get polylang --field=version', array( 'return' => true ) ) );
+	$wpas_child = WP_CLI::runcommand( 'eval-file wp-content/mu-plugins/wpas-seed.php', array( 'return' => 'all', 'exit_error' => false ) );
+	if ( 0 !== $wpas_child->return_code ) {
+		WP_CLI::error( 'seed after Polylang: ' . trim( $wpas_child->stderr . ' ' . $wpas_child->stdout ) );
+	}
+	foreach ( explode( "\n", $wpas_child->stdout ) as $wpas_line ) {
+		if ( str_starts_with( $wpas_line, 'created: ' ) ) {
+			$wpas_note( substr( $wpas_line, 9 ) );
+		}
+	}
+} else {
+	$wpas_model = PLL()->model;
+	foreach ( array( array( 'English', 'en', 'en_US', 'us' ), array( 'Français', 'fr', 'fr_FR', 'fr' ) ) as $wpas_i => list( $wpas_name, $wpas_slug, $wpas_locale, $wpas_flag ) ) {
+		if ( $wpas_model->get_language( $wpas_locale ) ) {
+			continue;
+		}
+		$wpas_lang = array( 'name' => $wpas_name, 'slug' => $wpas_slug, 'locale' => $wpas_locale, 'rtl' => false, 'term_group' => $wpas_i, 'flag' => $wpas_flag );
+		$wpas_done = isset( $wpas_model->languages ) ? $wpas_model->languages->add( $wpas_lang ) : $wpas_model->add_language( $wpas_lang );
+		if ( is_wp_error( $wpas_done ) ) {
+			WP_CLI::error( "Polylang language $wpas_locale: " . $wpas_done->get_error_message() );
+		}
+		$wpas_model->clean_languages_cache();
+		$wpas_note( "language $wpas_name ($wpas_locale)" );
+	}
+	// Polylang's first-run wizard: no activation redirect, and its wizard notice counted as dismissed.
+	delete_transient( 'pll_activation_redirect' );
+	$wpas_dismissed = (array) get_option( 'pll_dismissed_notices', array() );
+	if ( ! in_array( 'wizard', $wpas_dismissed, true ) ) {
+		update_option( 'pll_dismissed_notices', array_merge( $wpas_dismissed, array( 'wizard' ) ) );
+	}
+	$wpas_ext_on = array_filter( (array) get_option( 'active_plugins' ), static fn( $p ) => str_starts_with( $p, 'wcpos-polylang/' ) );
+	if ( ! $wpas_ext_on || ! is_dir( WP_PLUGIN_DIR . '/wcpos-polylang' ) ) {
+		$wpas_ext = $wpas_rest( 'POST', '/wcpos/v1/extensions/action', array( 'slug' => 'wcpos-polylang', 'action' => 'install' ) );
+		if ( 'active' !== ( $wpas_ext['status'] ?? '' ) ) {
+			WP_CLI::error( 'WCPOS Polylang install: ' . wp_json_encode( $wpas_ext ) );
+		}
+		$wpas_note( 'extension WCPOS Polylang' );
+	}
+}
+// The seed's summary again, now with this block's notes: capture.mjs reads the last one.
+WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
+// ---- extensions (B, polylang): end
