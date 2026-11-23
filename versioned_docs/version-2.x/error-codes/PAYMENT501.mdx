@@ -1,69 +1,81 @@
 ---
 title: "PAYMENT501: The order was already paid online"
 sidebar_label: PAYMENT501
-description: "The order had already been paid online, so the payment taken at the till is an additional one."
+description: "The order was already paid online, so the payment taken at the till is extra. Give that payment back the way it was taken."
 ---
 
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import SupportContact from '@site/src/components/SupportContact';
 import ErrorMeta from '@site/src/components/ErrorMeta';
-import JourneyShot from '@site/src/components/JourneyShot';
-import logs from '@site/static/img/2.x/support/logs/en/manifest.json';
 
-## What this means {#what-this-means}
+**Symptom:** after you take a payment, a pop-up says the order was already paid online. **Orders** shows **1 sale needs attention**.
 
-Your store reported that this order was already paid — but the till had already taken a payment for it as well. The customer has therefore paid twice.
+{/* source: pop-up packages/core/src/screens/main/pos/checkout/payments/payment-refusal-attention.ts:46-53 (showToast, no own title, so the title is core.json:2476); band core.json:974, orders/index.mdx:261; customer paid twice error-registry.json:840 */}
 
-The till payment is kept on the order, marked as failed, so nothing is hidden and the second payment is not silently dropped. What remains is to give the money back.
+**Do this now:** tell the customer the order was already paid, and you'll give the second payment back.
 
-## Your data {#your-data}
+{/* source: error-registry.json:843 */}
 
-Money moved — the customer has been charged twice. Refund the payment taken at the till; the order and the online payment are intact, and the extra payment is recorded on the order rather than discarded.
+:::warning
 
-## Troubleshoot {#troubleshoot}
+The payment has been taken. Don't charge the customer again.
 
-### At the till {#at-the-till}
-
-:::warning Do not use Refund
-Do not use **Refund** on the order in WCPOS for this. It refunds against the order itself — the legitimate online payment — not against the till payment your store refused.
 :::
 
-Do this before the customer leaves.
+{/* source: dataSafety money-moved, error-registry.json:838; the app's own line, core.json:2166 */}
 
-1. Tell the customer the order was already paid online and that the second payment will be refunded.
-2. Check the amount and method taken at the till: **Store health → Database** lists the order under **… needs attention** with a line such as *"Order #… was already paid online; … was also taken at the till — refund that payment"*. The same line is in [**Store health → Logs**](#log-entry).
-3. Give that payment back the way it was taken: cash from the drawer, or a refund of that charge on the card machine or in your payment provider's dashboard. Do not record a paid out for cash handed back — the refused payment was never counted in the drawer's expected cash, so the drawer already balances.
-4. Do not void or delete the order. It is a legitimate paid order; only the extra payment is wrong.
+## Fix it at the till {#at-the-till}
 
-### On the store {#on-the-store}
+1. Go to **Orders**: the red band names the order, amount and method. **Store health → Database** also lists it.
+2. Give it back the way it was taken: cash from the drawer, or refund the charge on the card machine or the provider's dashboard.
+3. Don't record a **Paid out**, and don't press **Refund** on the order: that refunds the online payment.
+4. Don't void or delete the order. Press **Handled** to clear the entry.
 
-For the site administrator.
+{/* source: step 1 orders/index.mdx:261-263, core.json:1063, :2174, registry-mismatches.md (payment-refusal-attention.ts:53 sync.record failed row, health/attention-panel.tsx:46); step 2 error-registry.json:845; step 3 error-registry.json:845 (no paid out: the drawer never counted it), :846, core.json:1019;
+    step 4 error-registry.json:846, core.json:977, packages/core/src/screens/main/orders/attention-notice.tsx:86-90 */}
 
-1. Confirm the online payment against the gateway in WooCommerce, so you know which of the two payments is the one being kept.
-2. Add an order note in **WooCommerce → Orders** saying the duplicate till payment was returned, how, and when.
-3. Check whether the refund has settled — a card refund can take several days to reach the customer's statement.
-4. If this happens repeatedly, the usual cause is an order being paid online while it is already open on a till; review how orders reach the POS before they are settled.
+## Is anything lost? {#your-data}
+
+No. The online payment stands. The till payment stays on the order, marked failed (`order_already_paid`), never retried.
+
+{/* source: error-registry.json:841; packages/sync-core/src/woo/moneyCommandAnswer.ts:41-45 (stored as a failed row); record-manual-payment.ts:260-286; retryPolicy never, error-registry.json:837 */}
+
+## If it keeps happening {#keeps-happening}
+
+Orders are paid online while still open on a till. Tell whoever looks after your website.
+
+{/* source: error-registry.json:847 */}
 
 <details>
-<summary>Technical detail</summary>
+<summary>For whoever looks after your website</summary>
 
-The till payment is kept on the order's ledger, marked as failed with the reason `order_already_paid`.
+1. In WP Admin, confirm the online payment on the order in **WooCommerce → Orders**.
+2. Add an order note saying the duplicate till payment was returned, how and when. A card refund can take days to reach the customer.
+
+{/* source: error-registry.json:847; ledger reason order_already_paid, error-registry.json:841; refund timing kept from the current page (provider side, see CHECK.md) */}
 
 </details>
 
-## Find the entry in the log {#log-entry}
+## Still stuck? {#still-stuck}
 
-Every code is logged in **Store health → Logs**. Press **Errors**, then tap the entry with this code to open it under its row. The picture shows an example entry, AUTH201; on your till the entry shows this page's code.
+[Send the log to support](../support/logs.mdx#for-support) with the order number and amount.
 
-<JourneyShot manifest={logs} device="tablet" step={3} offsets={[[17, 28], [549, -9], [-54, -97], [131, 0], [101, 0], [-33, 0]]} alt="An error entry opened under its row in Store health → Logs: what the server said, what to do, Open record, the Help link, the event code with Copy, and the record, operation and request">
+{/* source: payment-refusal-attention.ts:76-93 (the refusal is also logged) */}
 
-1. **Errors** — the filter that's on.
-2. **The entry** — the code in **Status** is its error code.
-3. **What happened and what to do** — what your store said, when it said something, then one line on what to do. When it matters, a warning comes first, such as **Payment has been taken — don't charge again.** or **Don't clear this device's data**.
-4. **Help** — opens the code's page in these docs.
-5. **Open record** — opens the order, product or customer the entry is about, when this till has it, your store has WCPOS Pro, and you're allowed to edit it.
-6. **Copy** — copies the whole entry for support. The rows under it are for support; you don't need to read them.
+<SupportContact />
 
-</JourneyShot>
-
-## Details {#details}
+<details>
+<summary>Code details for support</summary>
 
 <ErrorMeta code="PAYMENT501" />
+
+</details>
+
+## Related Documentation {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/manage-store/orders" title="Orders" description="Sales needing attention" />
+  <LinkCard to="/sell/refunds" title="Refunds" description="Refund an order" />
+  <LinkCard to="/troubleshooting/logs" title="Logs" description="Send the log to support" />
+</LinkCards>
