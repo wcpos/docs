@@ -9,6 +9,8 @@ current `main` builds of woocommerce-pos and woocommerce-pos-pro, seeded with fi
 - Docker running; Node 20+; `gh` authenticated (the plugin builds are the `deployment-package`
   artifacts of each repo's `Deploy to Dev Site` workflow on `main`).
 - Once, in this folder: `PLAYWRIGHT_SKIP_BROWSER_GC=1 npm install` (its own lockfile, never the repo root).
+  `npm install` fetches no browser, so then, also in this folder: `npx playwright install chromium`
+  (the Chromium that matches the locked Playwright; `capture.mjs` launches it).
 - For `pos` only: the released WCPOS desktop app (macOS arm64), unpacked into `.cache/app/`:
   `gh release download v2.0.6 -R wcpos/electron -p 'WCPOS-darwin-arm64-2.0.6.zip' -D .cache/app-download`
   then `ditto -x -k .cache/app-download/WCPOS-darwin-arm64-2.0.6.zip .cache/app`.
