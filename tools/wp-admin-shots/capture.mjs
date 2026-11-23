@@ -51,6 +51,51 @@ function wpEnv(state, args, { quiet = true } = {}) {
 
 const wp = (state, ...args) => wpEnv(state, ['run', 'cli', 'wp', ...args]);
 
+// The free plugin's activation sets these (consent modal and callout) when consent is undecided.
+const CONSENT_TRANSIENTS = ['wcpos_show_consent_modal', 'wcpos_consent_reach'];
+
+// Raw JSON of an option, or undefined when wp-cli says it does not exist (any other failure throws).
+function readOption(state, name) {
+  try {
+    const raw = wp(state, 'option', 'get', name, '--format=json').trim();
+    JSON.parse(raw); // throws on anything but JSON
+    return raw;
+  } catch (error) {
+    if (error instanceof Fail && /Could not get '.+' option/.test(error.message)) return undefined;
+    throw error;
+  }
+}
+
+// A shot's `site` and `settings`, applied around run() and undone in reverse (settings, then site)
+// even when the shot fails. Pro bundles the free plugin and deactivates a standalone one, so
+// 'free' is Pro off and woocommerce-pos on; the undo turns free off before Pro on (no clash).
+async function withShotSite(state, shot, run) {
+  const undo = [];
+  try {
+    if (shot.site === 'free') {
+      const absent = CONSENT_TRANSIENTS.filter((name) => !wp(state, 'transient', 'get', name).trim());
+      undo.unshift(() => {
+        wp(state, 'plugin', 'deactivate', REPOS.free);
+        wp(state, 'plugin', 'activate', REPOS.pro);
+        wp(state, 'plugin', 'is-active', REPOS.pro); // exits 1, so fails loudly, unless Pro is active
+        for (const name of absent) wp(state, 'transient', 'delete', name);
+      });
+      wp(state, 'plugin', 'deactivate', REPOS.pro);
+      wp(state, 'plugin', 'activate', REPOS.free);
+    } else if (shot.site) fail(`shot ${shot.step}: unknown site "${shot.site}" (only 'free')`);
+    for (const [name, keys] of Object.entries(shot.settings || {})) {
+      const before = readOption(state, name);
+      undo.unshift(() => (before === undefined ? wp(state, 'option', 'delete', name) : wp(state, 'option', 'update', name, before, '--format=json')));
+      wp(state, 'option', 'update', name, JSON.stringify({ ...JSON.parse(before ?? '{}'), ...keys }), '--format=json');
+    }
+    return await run();
+  } finally {
+    const errors = [];
+    for (const step of undo) try { step(); } catch (error) { errors.push(error.message); }
+    if (errors.length) fail(`shot ${shot.step} ${shot.slug}: could not restore the site:\n${errors.join('\n')}`);
+  }
+}
+
 function portIsFree(port) {
   return new Promise((resolve) => {
     const socket = net.connect({ port, host: '127.0.0.1' });
@@ -114,17 +159,21 @@ function option(args, name) {
 
 async function up(args) {
   const state = readState();
+  const [started, before] = [Boolean(state.port), state.shas || {}];
   if (!state.port) [state.port, state.testsPort] = await freePorts(2);
   state.shas = {
     free: fetchPlugin('free', option(args, '--free-dir'), state),
     pro: fetchPlugin('pro', option(args, '--pro-dir'), state),
   };
+  const replaced = option(args, '--free-dir') || option(args, '--pro-dir') || before.free !== state.shas.free || before.pro !== state.shas.pro;
   state.siteUrl = `http://localhost:${state.port}`;
   writeState(state);
   // seed.php doubles as a mu-plugin. A folder is mapped, not the file: editors replace files
   // by rename, which leaves a single-file bind mount pointing at the old copy.
   fs.mkdirSync(path.join(CACHE, 'mu-plugins'), { recursive: true });
   fs.copyFileSync(path.join(TOOL, 'seed.php'), path.join(CACHE, 'mu-plugins', 'wpas-seed.php'));
+  // A running container's bind mount keeps the deleted plugin folder, and start does not recreate it.
+  if (started && replaced) try { wpEnv(state, ['stop']); } catch (error) { if (!(error instanceof Fail)) throw error; }
   wpEnv(state, ['start']);
   const seedFile = 'wp-content/mu-plugins/wpas-seed.php';
   wp(state, 'eval-file', seedFile, 'licence');
@@ -196,7 +245,7 @@ async function takeShot(page, state, shot, journey, page_) {
   fs.mkdirSync(path.dirname(textPath(file)), { recursive: true });
   fs.writeFileSync(textPath(file), text.join('\n\n'));
   return {
-    file, step: shot.step, slug: shot.slug, device: 'desktop', colorScheme: 'light', scale: 'regular', store: 'wp-env', variant: 'pro',
+    file, step: shot.step, slug: shot.slug, device: 'desktop', colorScheme: 'light', scale: 'regular', store: 'wp-env', variant: shot.site === 'free' ? 'free' : 'pro',
     viewport: { width: clip.width, height: clip.height }, url: new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash,
     selector: shot.crop.join(', '), alt: shot.alt, pins,
   };
@@ -234,7 +283,7 @@ async function shoot(pageArg) {
     for (const shot of [...shots].sort((a, b) => a.step - b.step)) {
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
-          captures.push(await takeShot(page, state, shot, journey, pageArg));
+          captures.push(await withShotSite(state, shot, () => takeShot(page, state, shot, journey, pageArg)));
           break;
         } catch (error) {
           if (error instanceof Fail) throw error;

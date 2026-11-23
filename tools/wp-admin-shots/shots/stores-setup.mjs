@@ -47,15 +47,17 @@ export default [
     step: 4,
     slug: 'registers',
     url: 'wp-admin/admin.php?page=wcpos-store-edit&id={storeId:Harbour Street}#/registers',
-    // The Tills table's bordered box only: headings, register rows and + Add register.
-    crop: [`${section('Tills')} > div:nth-child(2)`],
+    // The whole Tills section: its heading, description line and the table box with + Add register.
+    crop: [section('Tills')],
     pins: [
       // The Front counter row by its name: rows sort by name, so it is not the first.
       { name: 'opening-float', selector: '[data-testid^="register-row-"]:has-text("Front counter") input' },
+      // The status dot: the Status cell has no testid and its td spans the wide column; the pin lands on the dot either way.
+      { name: 'status', selector: '[data-testid^="register-row-"]:has-text("Front counter") td:nth-child(3) > span' },
       { name: 'register-menu', selector: '[data-testid^="register-row-"]:has-text("Front counter") [data-testid^="register-menu-"]' },
       { name: 'register-add', selector: '[data-testid="register-add"]' },
     ],
-    alt: 'WP Admin, store editor for Harbour Street, Registers: the Tills table with Café till and Front counter, their opening floats and status, and + Add register.',
+    alt: 'WP Admin, store editor for Harbour Street, Registers: the Tills section, with the Tills table listing Café till and Front counter, their opening floats and status, and + Add register.',
   },
   {
     step: 5,
@@ -101,10 +103,10 @@ export default [
       await page.locator(`${section('Cash drawer rules')} button:text-is("Customise")`).click();
       await page.locator(`${section('Cash drawer rules')} button[role="switch"]`).first().waitFor({ state: 'visible' });
     },
-    // The rules box only (Customise row and the switch row), not the heading or its description.
-    crop: [`${section('Cash drawer rules')} > div:nth-child(2)`],
-    pad: 12, // 16 would reach the description line just above the box
+    // The whole Cash drawer rules section: its heading, description line and the rules box.
+    crop: [section('Cash drawer rules')],
     pins: [
+      { name: 'site-defaults', selector: `${section('Cash drawer rules')} span:text-is("Site defaults")` },
       { name: 'open-close-toggle', selector: `${section('Cash drawer rules')} button[role="switch"]` },
       { name: 'site-default', selector: `${section('Cash drawer rules')} span:text-is("Site default")` },
       { name: 'customise', selector: `${section('Cash drawer rules')} button:text-is("Customise")` },
