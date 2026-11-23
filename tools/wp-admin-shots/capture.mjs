@@ -133,7 +133,7 @@ async function up(args) {
   fs.mkdirSync(path.join(CACHE, 'mu-plugins'), { recursive: true });
   fs.copyFileSync(path.join(TOOL, 'seed.php'), path.join(CACHE, 'mu-plugins', 'wpas-seed.php'));
   wpEnv(state, ['start']);
-  wp(state, 'plugin', 'activate', 'woocommerce-pos', 'woocommerce-pos-pro');
+  wp(state, 'plugin', 'activate', 'woocommerce-pos-pro');
   const seedFile = 'wp-content/mu-plugins/wpas-seed.php';
   wp(state, 'eval-file', seedFile, 'licence');
   const seed = wp(state, 'eval-file', seedFile).split('\n').find((line) => line.startsWith('seed:')) || 'seed: no summary';
@@ -241,9 +241,11 @@ async function shoot(pageArg) {
     const failed = [];
     for (const shot of [...shots].sort((a, b) => a.step - b.step)) {
       try {
+        // Pro bundles the free plugin and deactivates the standalone copy, so a free shot swaps one for the other.
         if (shot.variant === 'free') {
           wp(state, 'plugin', 'deactivate', 'woocommerce-pos-pro');
-          console.log(`shoot: woocommerce-pos-pro deactivated for step ${shot.step} ${shot.slug}`);
+          wp(state, 'plugin', 'activate', 'woocommerce-pos');
+          console.log(`shoot: free plugin only for step ${shot.step} ${shot.slug}`);
         }
         for (let attempt = 1; attempt <= 2; attempt += 1) {
           try {
@@ -257,6 +259,7 @@ async function shoot(pageArg) {
         }
       } finally {
         if (shot.variant === 'free') {
+          wp(state, 'plugin', 'deactivate', 'woocommerce-pos');
           wp(state, 'plugin', 'activate', 'woocommerce-pos-pro');
           console.log('shoot: woocommerce-pos-pro reactivated');
         }

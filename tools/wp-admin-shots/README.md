@@ -36,14 +36,14 @@ The seed also turns the POS setting `force_ssl` off, so `/pos` stays on plain ht
 `up` is idempotent: it reuses the ports in `.cache/state.json`, downloads a build only when `main`
 moved, and the seed finds everything before creating it. `--free-dir`/`--pro-dir <dir>` use a
 built plugin folder instead of the artifact. `up` refreshes a plugin in place, so a running env keeps
-its mounts, and activates both WCPOS plugins before seeding.
+its mounts, and activates Pro before seeding.
 
 ## Adding a page
 
 1. Add `shots/<docs path with / replaced by ->.mjs` exporting `journey` (the file prefix, e.g. `'SS'`)
    and a default array of `{ step, slug, url, variant?, prepare?, crop, pad?, padBottom?, maxHeight?, pins, alt }`.
    `url` may use `{storeId:<store name>}` or `{productId:<product name>}`.
-   `variant: 'free'` deactivates Pro for that shot and reactivates it afterwards, even on failure; any other value means `'pro'`, and the manifest records the variant.
+   `variant: 'free'` swaps Pro for the standalone free plugin for that shot and swaps back afterwards, even on failure; any other value means `'pro'`, and the manifest records the variant.
 2. Seed anything new in `seed.php` (find before create).
 3. `shoot` then `verify`, open every PNG, and use the manifest in the page:
    `import m from '@site/static/img/2.x/<page>/en/wp-admin.json'` with `<JourneyShot manifest={m} device="desktop" step={N} … />`.
