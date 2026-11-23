@@ -196,7 +196,7 @@ async function takeShot(page, state, shot, journey, page_) {
   fs.mkdirSync(path.dirname(textPath(file)), { recursive: true });
   fs.writeFileSync(textPath(file), text.join('\n\n'));
   return {
-    file, step: shot.step, slug: shot.slug, device: 'desktop', colorScheme: 'light', scale: 'regular', store: 'wp-env', variant: 'pro',
+    file, step: shot.step, slug: shot.slug, device: 'desktop', colorScheme: 'light', scale: 'regular', store: 'wp-env', variant: shot.variant === 'free' ? 'free' : 'pro',
     viewport: { width: clip.width, height: clip.height }, url: new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash,
     selector: shot.crop.join(', '), alt: shot.alt, pins,
   };
@@ -232,14 +232,25 @@ async function shoot(pageArg) {
     const captures = [];
     const failed = [];
     for (const shot of [...shots].sort((a, b) => a.step - b.step)) {
-      for (let attempt = 1; attempt <= 2; attempt += 1) {
-        try {
-          captures.push(await takeShot(page, state, shot, journey, pageArg));
-          break;
-        } catch (error) {
-          if (error instanceof Fail) throw error;
-          console.error(`shot ${shot.step} ${shot.slug}: ${error.message.split('\n')[0]}${attempt === 1 ? '; reloading once' : ''}`);
-          if (attempt === 2) failed.push(`${shot.step} ${shot.slug}`);
+      try {
+        if (shot.variant === 'free') {
+          wp(state, 'plugin', 'deactivate', 'woocommerce-pos-pro');
+          console.log(`shoot: woocommerce-pos-pro deactivated for step ${shot.step} ${shot.slug}`);
+        }
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          try {
+            captures.push(await takeShot(page, state, shot, journey, pageArg));
+            break;
+          } catch (error) {
+            if (error instanceof Fail) throw error;
+            console.error(`shot ${shot.step} ${shot.slug}: ${error.message.split('\n')[0]}${attempt === 1 ? '; reloading once' : ''}`);
+            if (attempt === 2) failed.push(`${shot.step} ${shot.slug}`);
+          }
+        }
+      } finally {
+        if (shot.variant === 'free') {
+          wp(state, 'plugin', 'activate', 'woocommerce-pos-pro');
+          console.log('shoot: woocommerce-pos-pro reactivated');
         }
       }
     }

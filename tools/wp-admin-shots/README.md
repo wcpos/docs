@@ -3,6 +3,7 @@
 Cropped, light-theme WP Admin screenshots for the docs, taken from a local wp-env that runs the
 current `main` builds of woocommerce-pos and woocommerce-pos-pro, seeded with fictional data
 (Harbour and Vine: three stores, four staff, eight products; every email `@example.com`).
+The seed adds four POS login sessions: Maya on desktop and web, Leo on iPad, and Priya on Android; none for Sam or the admin.
 
 ## Prerequisites
 
@@ -39,8 +40,9 @@ built plugin folder instead of the artifact.
 ## Adding a page
 
 1. Add `shots/<docs path with / replaced by ->.mjs` exporting `journey` (the file prefix, e.g. `'SS'`)
-   and a default array of `{ step, slug, url, prepare?, crop, pad?, padBottom?, maxHeight?, pins, alt }`.
+   and a default array of `{ step, slug, url, variant?, prepare?, crop, pad?, padBottom?, maxHeight?, pins, alt }`.
    `url` may use `{storeId:<store name>}` or `{productId:<product name>}`.
+   `variant: 'free'` deactivates Pro for that shot and reactivates it afterwards, even on failure; any other value means `'pro'`, and the manifest records the variant.
 2. Seed anything new in `seed.php` (find before create).
 3. `shoot` then `verify`, open every PNG, and use the manifest in the page:
    `import m from '@site/static/img/2.x/<page>/en/wp-admin.json'` with `<JourneyShot manifest={m} device="desktop" step={N} … />`.
