@@ -126,6 +126,8 @@ async function up(args) {
   fs.mkdirSync(path.join(CACHE, 'mu-plugins'), { recursive: true });
   fs.copyFileSync(path.join(TOOL, 'seed.php'), path.join(CACHE, 'mu-plugins', 'wpas-seed.php'));
   wpEnv(state, ['start']);
+  // A rebuild of .cache/plugins while the env runs makes WordPress deactivate Pro, and `start` does not re-activate it.
+  wp(state, 'plugin', 'activate', 'woocommerce', 'woocommerce-pos-pro');
   const seedFile = 'wp-content/mu-plugins/wpas-seed.php';
   wp(state, 'eval-file', seedFile, 'licence');
   const seed = wp(state, 'eval-file', seedFile).split('\n').find((line) => line.startsWith('seed:')) || 'seed: no summary';
