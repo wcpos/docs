@@ -1,266 +1,296 @@
 ---
 title: Windcave
 slug: /hardware/card-readers/windcave
-description: "在 POS 结账界面通过 Windcave 终端收取银行卡付款，并在 WP Admin 中设置 Windcave Terminal 扩展（HIT）。"
+description: "通过 WCPOS 结账界面在 Windcave 终端上收取银行卡付款并办理退款，同时在 WP Admin 中设置 Windcave Terminal 扩展（HIT）。"
 ---
 
 import LinkCards from '@site/src/components/LinkCards';
 import LinkCard from '@site/src/components/LinkCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
 import RequirementsList from '@site/src/components/RequirementsList';
 import RequirementItem from '@site/src/components/RequirementItem';
 import JourneyShot from '@site/src/components/JourneyShot';
-import manifest from '@site/static/img/2.x/payment/gateways/windcave-terminal-0.1/en/manifest.json';
+import manifest from '@site/static/img/2.x/payment/gateways/windcave-terminal/en/manifest.json';
 
 # Windcave Terminal 网关 {#windcave-terminal-gateway}
 
-收银机将订单总额发送到 Windcave 终端，顾客在终端上付款，Windcave 批准付款后销售便会自动完成。安装此扩展以及在收银机上使用它，都需要 [WCPOS Pro](../../getting-started/pro-license.mdx)。本页分为两部分：在收银机上[收款](#take-payment)，以及在 WP Admin 中[设置](#setup)。
+Windcave Terminal 会将销售请求从收银机发送到 Windcave 终端。顾客在终端上付款，Windcave 确认后，收银机便会记录这笔付款。
+
+本页从收银机操作开始。店铺管理员可参阅[设置 Windcave Terminal](#setup)，了解凭据、WP Admin 设置以及如何确认设置成功。
+
+:::info Pro 功能
+Windcave Terminal 需要 2.0 或更高版本的 [WCPOS Pro](../../getting-started/pro-license.mdx)，以及 1.0 或更高版本的扩展。
+:::
 
 :::warning 尚未通过 Windcave 认证
-**仅用于测试付款。** 目前请勿用它收取顾客的真实付款：只能使用 Windcave 的 **UAT**（测试）凭据。
+**仅用于测试付款：目前请勿使用 Windcave 收取真实顾客的银行卡付款。** Windcave 要求所有 POS 集成通过审批后才能收取真实付款，而此集成尚未获批。
 
 <details>
-<summary>原因及尚未测试的内容</summary>
+<summary>尚未测试的内容</summary>
 
-Windcave 要求所有 POS 集成都必须通过其 QA 认证，才能收取真实付款。此集成尚未通过认证，也尚未使用 Windcave 账户或实体终端运行测试：以下步骤依据 Windcave 的 HIT 文档和扩展代码编写。
+此扩展尚未在实体 Windcave 终端上运行过。我们根据 Windcave 文档构建了 HIT 服务模拟环境，并在其中测试了付款和退款。正式使用前，请先在 UAT 环境进行一笔小额销售并退款。
 
 </details>
 :::
 
-{/* Version 0.1.1 is the one in the extension directory, and the version this page describes. It runs on the Legacy tab. 1.0.0 (prerelease 1.0.0-beta1, for WCPOS Pro 2.0) moves Station selection and logs into Pro and adds refunds; its catalog cut is roadmap#546. Rewrite this page when it ships. */}
+## 收取银行卡付款 {#take-payment}
 
-## 收款 {#take-payment}
-
-开始之前：店铺必须联网，因为付款会在 POS 内的店铺付款页面上进行，并且需要有 WP Admin 访问权限的人员[设置网关](#setup)。如果启用了 **开启和关闭收银机**，请先[开启收银机](../../pos/register/index.mdx#open)。
-
-:::info Windcave 收取全额付款
-终端始终收取整个订单的金额，因此不能与其他付款方式共同支付同一笔销售。
+:::note 请先开启收银机
+启用 **开启和关闭收银机** 后，收银机关闭时无法记录付款；如果已经收取银行卡款项，则必须退款。有关此设置，请参阅[收银机](../../settings/wp-admin/registers.mdx#one-register)。
 :::
 
-1. 将商品加入购物车，然后点击 **结账**。
-2. 打开 **传统** 选项卡。店铺的付款页面会在 POS 内打开。请参阅[传统选项卡](../../pos/checkout/legacy-tab.mdx)。
+1. 在购物车中按 **结账**，然后点按 **付款** 选项卡中的 **Windcave Terminal** 磁贴。如果终端会询问签名，请改用 **传统** 选项卡：参阅[终端询问问题时](#terminal-questions)。
+2. 查看键盘上方。如果看到 **选择终端**，请点按柜台所用终端的 **Station ID**：这是 Windcave 为每台终端指定的名称，例如 `DOCS-STATION-1`。如果看到 **终端：** 和一个 ID，则表示此收银机正在使用该终端；按 **更改** 可选择其他终端。收银机会记住您的选择。
+3. 如需用银行卡支付部分余额，请输入金额。剩余金额仍需通过另一笔付款结清。
+4. 按 **发送 … 到 Windcave Terminal**。收银机将显示 **终端处理中** 和四个步骤：**已发送**、**终端处理中**、**已批准** 和 **已扣款**，表示款项已收取。
+5. 顾客在终端上感应、插入或刷卡。付款扣款完成且没有剩余应付金额时，系统会打开收据。如果还有余额，请使用另一种付款磁贴收取。
 
-   <details>
-   <summary>选项卡显示“仅限整单付款”</summary>
+<JourneyShot manifest={manifest} device="tablet" step={4} offsets={[[105, 0], [-40, 0], [190, 0], [-45, 0], [0, 0], [85, 0]]} maxWidth={720} alt="在付款选项卡中为 $45.00 销售进行结账：已选中 Windcave Terminal 磁贴，选择终端下方列出两个 Station ID，其下方显示全额余额；未选择终端前，发送 $45.00 到 Windcave Terminal 按钮呈灰色不可用">
 
-   该订单已经收取过一笔付款，因此此选项卡不会打开付款页面。要使用 Windcave，请先[取消该笔付款](../../pos/checkout/cancelling-a-payment.mdx)。
-
-   </details>
-
-3. 选择 **Windcave Terminal**。您的店铺可能为它设置了其他名称。
-4. 在 **终端** 下选择终端。只有一台终端或已锁定默认终端时，系统会自动选中。如果有两台或更多终端且未设置默认终端，则必须手动选择。
-5. 点击 **开始终端付款**。面板会显示 **正在发送到终端…**，并将订单全额发送到该终端。
-6. 顾客在终端上感应、插入或刷银行卡。终端显示的内容及其按钮也会出现在面板上。终端要求核对签名时，请在面板中选择 **是** 或 **否**。
-7. Windcave 批准付款后，面板会显示 **付款完成 — 正在完成订单…**，POS 随即进入收据页面。
-
-无需点击传统选项卡底部的 **处理付款**：终端批准付款后，销售会自动完成。
-
-### 停止或暂时搁置付款 {#payment-controls}
-
-:::warning 暂时搁置的付款仍可能成功
-改用其他方式收款前，请先查看终端。如果显示付款已批准，请勿再次向顾客收费。如果无法确定，请询问经理。
-:::
-
-- 付款进行时，**取消终端付款** 会替换 **开始终端付款**。如果终端提供 **取消** 按钮，此操作会按下该按钮。否则，面板会给出提示：请直接在终端上取消，或暂时搁置付款。
-- 付款进行 5 分钟仍无响应，或终端无法取消付款时，会显示 **暂时搁置付款**。此操作 **不会** 取消 Windcave 端的付款。改用其他方式收款前，请确认终端显示付款已被拒绝或已取消。如果仍在等待、屏幕空白或状态不明，请先让经理查看 Windcave 门户。
-- **重新加载页面** 会恢复正在进行的付款，并显示 **取消终端付款**。
-
-<details>
-<summary>暂时搁置付款后会发生什么</summary>
-
-即使关闭收银机，店铺仍会每隔 10 分钟向 Windcave 查询该笔付款。如果订单已通过其他方式付款，之后 Windcave 又批准了这笔付款，订单中会添加说明此情况的备注：请在 Windcave 门户中退还这笔付款。
-
-</details>
-
-## 故障排查 {#goes-wrong}
-
-以下消息可能意味着顾客已经付款。再次收款前，请先阅读这些说明。
-
-### 等待终端超时 {#timed-out}
-
-五分钟后仍无结果，面板已停止查询。执行其他操作之前，请先查看终端：
-
-- **显示付款已批准。** 请勿再次收费。重新加载页面后，面板会恢复该笔付款并完成销售。如果销售仍未完成，请让经理检查订单备注和 Windcave 门户。
-- **显示付款已被拒绝或已取消。** 点击 **取消终端付款** 或 **暂时搁置付款**，然后重新收款。
-- **屏幕空白、仍在等待或无法判断状态。** 暂时不要再次收款。请先让经理查看 Windcave 门户。请参阅[警告](#payment-controls)。
-
-### 此订单已通过另一笔付款支付 {#already-paid}
-
-终端批准了付款，但订单此前已通过其他方式支付，因此顾客支付了两次。请勿重试。请在 Windcave 门户中退还终端付款；订单备注中会注明该笔付款。
-
-### 无法验证终端付款 {#not-verified}
-
-Windcave 批准了一笔无法用于此订单的付款，例如订单总额发生了变化。请勿再次从银行卡扣款：问题解决之前，点击开始按钮仍会显示相同消息。请先检查订单备注和 Windcave 门户，并联系经理。
-
-<details>
-<summary>付款被拒绝、终端忙碌、未选择终端及其他消息</summary>
-
-**请先选择终端。** 在 **终端** 下选择一台终端，然后再次点击 **开始终端付款**。
-
-**付款被拒绝**、终端自身的拒绝提示，或 **Windcave 拒绝了付款（代码 …）**。点击 **开始终端付款** 重试，或使用其他方式收款。
-
-**终端仍在完成上一笔交易。** 请在终端上完成或取消该笔交易，然后重新开始。
-
-**Windcave 没有此交易的记录。请重新发起付款。** 付款请求未到达 Windcave。请再次点击 **开始终端付款**。
-
-**Windcave 返回代码 …：请检查站点 ID 和 HIT 设置。** Windcave 拒绝了请求，通常是因为站点 ID 有误。请让设置网关的人员检查[设置](#settings)，或暂时搁置付款。
-
-**此付款在 UAT 环境中发起**（或 **生产环境**）。付款进行期间，有人更改了 **环境**。请切换回原环境以完成付款，或在 Windcave 门户中检查。
-
-</details>
-
-<details>
-<summary>设置过程中出现的消息</summary>
-
-**尚未配置 Windcave HIT 凭据。** **HIT 用户名** 或 **HIT 密钥** 为空。请输入两项内容并保存，同时确认 **环境** 与凭据相匹配。
-
-**终端** 列表显示 **未配置站点 ID**。请添加 Windcave 提供的站点 ID，每行一个，然后保存。
-
-**无法启用。** 服务器需要 **PHP 7.4** 或更高版本以及 PHP DOM 扩展（**php-xml**）。请让主机服务商启用该扩展。
-
-</details>
-
-## 销售完成后 {#receipts}
-
-Windcave 从终端发送收据文本时，该文本会作为 **私密备注** 保存到订单中。POS 仍会照常显示自己的收据。
-
-## 退款 {#refunds}
-
-此版本不支持从 WooCommerce 发起退款。请在 Windcave 门户（Payline）或终端上退款，然后在 WooCommerce 的订单中手动记录退款。请参阅[退款](../../pos/refunds.mdx)。
-
-## 设置 {#setup}
-
-本部分适用于管理店铺 WP Admin 的人员。请按顺序完成以下四步：
-
-1. 从扩展目录[安装扩展](#install)。
-2. 向 Windcave [获取 HIT 凭据](#credentials)。
-3. [填写网关设置](#gateway-settings)。
-4. [为 POS 启用网关](#enable)。
-
-### 安装扩展 {#install}
-
-打开 `WP Admin > POS > 设置 > 扩展`，找到 **Windcave Terminal for WooCommerce**，然后点击 **安装**。WCPOS 会一次性完成下载、安装和启用。请参阅[安装扩展](../../extensions/index.mdx#installing-an-extension)。
-
-<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[700, 0], [-42, 0], [-40, 0]]} alt="WP Admin 中的 POS 设置、扩展页面，搜索 windcave 后：Windcave Terminal for WooCommerce 卡片显示版本 0.1.1 和安装按钮">
-
-1. **搜索扩展** — 输入 `windcave` 查找卡片。
-2. **Windcave Terminal for WooCommerce** — 此扩展及目录将安装的版本。
-3. **安装** — 下载、安装并启用扩展。需要 WCPOS Pro。
+1. **Windcave Terminal** — 点按后会以边框突出显示的磁贴。
+2. **选择终端** 下方的 **Station ID** — 点按柜台所用终端对应的 ID。此收银机选定终端后，此行会显示 **终端：** 及其 ID，并提供 **更改**。
+3. **待支付** — 此次付款的金额。输入较小金额即可用银行卡支付部分余额。
+4. **全额余额** — 将所有剩余应付金额填回 **待支付**。
+5. **发送 … 到 Windcave Terminal** — 在终端上开始付款。选择终端前，此按钮呈灰色不可用。
+6. **传统** — 另一个付款选项卡，适用于有独立付款页面的网关。终端询问签名时请使用此选项卡。
 
 </JourneyShot>
 
-如果不使用扩展目录，请从 [GitHub 发布页面](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases)下载 **插件 zip**（不是源代码 zip），在 `插件 > Add Plugin` 中通过 **上传插件** 上传，然后启用。WooCommerce 必须已启用。
+四个步骤下方的 **详情** 会打开付款日志，其中包含付款所用的 Station。终端不支持小费、附加费或刷卡取现。
 
-### 向 Windcave 获取 HIT 凭据 {#credentials}
+### 终端询问问题时 {#terminal-questions}
 
-向 Windcave 申请 **HIT 用户名**、**HIT 密钥**，以及每台终端各自的 **站点 ID**。如需开发账户，请使用 Windcave 的[集成需求表单](https://www.windcave.com/merchant-attended-developer-hit)。
+终端可能会暂停并提出问题，例如询问顾客的签名是否相符。此版本的 **付款** 选项卡不会显示这些问题，**传统** 选项卡则会显示：
 
-UAT 和生产环境使用不同的凭据。在此集成通过 Windcave 认证之前，请使用 UAT 凭据。
+1. 打开 **传统** 选项卡并选择 **Windcave Terminal**。请参阅[传统选项卡](../../pos/checkout/legacy-tab.mdx)。
+2. 在该选项卡中开始付款。整个订单会通过一笔付款结清。
+3. 终端提问时，付款页面会显示问题以及终端自带的按钮，例如 **YES** 和 **NO**。请按下相应答案。
 
-### 填写网关设置 {#gateway-settings}
+### 取消付款 {#cancel}
 
-1. 前往 `WP Admin > WooCommerce > 设置 > 支付`，打开 **Windcave Terminal**。
-2. 将 **环境** 保持为默认的 **UAT（测试）**。通过认证后，才能使用 **生产环境** 及其凭据。
-3. 输入 **HIT 用户名** 和 **HIT 密钥**。
-4. 输入 **站点 ID**，每行一个。
-5. 可选：设置 **默认站点 ID**，并勾选 **锁定终端选择**，让收银员始终使用该终端。
-6. 将 **供应商 ID** 留空。Windcave 会在认证期间提供该 ID。
-7. 可选：勾选 **结果通知（FPRN）**，让 Windcave 在结果就绪时也通知店铺，作为收银机自行查询的补充。
-8. 保存。
+请在顾客付款前按 **在终端上取消**。只有终端本身提供 **CANCEL** 时，此操作才有效。否则，收银机会显示 *终端当前未提供取消选项。请在终端上取消。*
 
-此处没有测试连接按钮。凭据和站点 ID 会在首次付款时验证，因此请在 UAT 终端上进行一次测试付款。
+取消操作只是发送请求。如果已经读取银行卡，付款仍可能成功：收银机会显示 **正在取消 — 等待终端确认**，继续查询并显示结果。请等待结果后再改用其他方式收款。
 
-### 为 POS 启用网关 {#enable}
+如果收银机无法获取结果，会提供 **释放此笔付款**。释放不代表已取消：只有经理检查 Windcave 门户并确认该订单没有已批准的付款后，才能按此按钮。之后可以改用其他方式支付订单，而店铺仍会继续查询终端。
 
-前往 `WP Admin > POS > 设置 > 结账`，找到 **Windcave Terminal**，打开 **已启用** 开关。请参阅[启用网关](../../settings/wp-admin/checkout.mdx#enabling-a-gateway)。
+## 故障排查 {#goes-wrong}
 
-请勿勾选 WooCommerce 设置中的 **启用/禁用**。无论是否勾选该项，只要此处的 **已启用** 开关打开，POS 就能使用该网关。
+### 顾客可能已付款时 {#may-have-paid}
+
+:::warning 请勿再次收款
+在以下两种情况下，银行卡可能已扣款。经理应先检查 Windcave 门户，销售记录会列在订单编号下。
+:::
+
+**无法确认终端结果。再次收款前，请先检查 Windcave。** 收银机重新查询了已发送的付款，但 Windcave 的答复不明确。只有经理在门户中查找销售记录并确认不存在后，才能再次收款。
+
+**付款失败：终端确认的金额不同。** 终端批准的金额与收银机发送的金额不同，因此收银机没有记录这笔付款，但银行卡可能已扣款。请勿再次收款：让经理在门户中按订单编号查找销售记录，并比较终端收取的金额与订单金额。
+
+### 其他消息 {#other-messages}
+
+<Accordion>
+  <AccordionItem question="付款失败：银行卡被拒绝">
+
+  按 **重试** 将付款再次发送到终端，或按 **选择其他方式** 使用另一种付款磁贴。
+
+  </AccordionItem>
+  <AccordionItem question="终端仍在完成之前的交易">
+
+  Station 正在处理另一笔付款。请在终端上完成或取消该笔付款，然后按 **重试**。
+
+  </AccordionItem>
+  <AccordionItem question="付款发送后立即失败">
+
+  扩展会等待 30 秒，让 Windcave 登记新付款。如果届时 Windcave 仍没有记录，扩展会将其视为未发送，并判定付款失败。请确认终端已开机且已联网，并且设置中填有其 Station ID，然后按 **重试**。
+
+  </AccordionItem>
+  <AccordionItem question="终端提出问题，但收银机一直等待">
+
+  **付款** 选项卡不会显示终端的问题，因此会一直等待，直到付款结束。按 **在终端上取消**，或直接在终端上取消，然后在 **传统** 选项卡中收款。参阅[终端询问问题时](#terminal-questions)。
+
+  </AccordionItem>
+  <AccordionItem question="超时 — 付款已取消">
+
+  5 分钟内无人付款。请检查终端，然后按 **重试**。
+
+  </AccordionItem>
+  <AccordionItem question="Windcave Terminal 磁贴呈灰色或未显示">
+
+  收银机会在磁贴下方说明原因。所有原因请参阅[磁贴无法使用时](../index.mdx#unavailable-tiles)。
+
+  - **正被订单 #… 使用** — 此 Station 正在处理另一订单的付款。请完成或取消该笔付款，或按 **更改** 并选择其他 Station。
+  - **需要连接** — 收银机处于离线状态。终端付款需经由店铺处理，请改用其他付款方式或等待网络恢复。
+  - **完全没有磁贴** — 网关缺少 **HIT 用户名**、**HIT 密钥** 或 **Station ID**，或者未在 WCPOS 中启用。请让经理检查[设置](#setup)。
+
+  </AccordionItem>
+</Accordion>
+
+## 退还 Windcave 付款 {#refunds}
+
+退款会经由 Windcave 返回到收取该笔销售款项的 Station，可退还全额或部分金额。
+
+1. 在 POS 中打开订单的退款界面。请参阅[退款](../../pos/refunds.mdx)。
+2. 选择 **退还到 Windcave Terminal**，然后按 **处理退款**。
+3. 店铺最多等待 Windcave 回复 20 秒，然后将结果添加到订单备注中。
+
+在 WP Admin 中使用 WooCommerce 的 **通过 Windcave Terminal 退款 …** 按钮办理退款，操作方式相同。
+
+如果退款仍处于 **待处理** 状态，请先在 Windcave 门户中检查，再次退款前确认结果。
+
+<Accordion>
+  <AccordionItem question="退款一直处于待处理状态">
+
+  Windcave 未在 20 秒内回复，或批准的金额与请求金额不同。店铺不会重试。请在 Windcave 门户中查找退款：如果退款已成功，顾客已收到款项；如果没有成功，请再次退款。
+
+  </AccordionItem>
+  <AccordionItem question="使用 0.1 版本收取的销售款无法退款">
+
+  退款会因 *请先在 POS 设置中配置默认 Station，然后再退还此笔销售。* 而停止。扩展 0.1 版本没有记录收取销售款的 Station，因此 1.0 版本会使用店铺级默认 Station 退款。现在每台收银机都会在 **设置 > 刷卡器** 下选择自己的 Station，而 WCPOS 2.0 目前没有店铺级默认值。请在 Windcave 门户或终端上退还该笔销售，然后在 WooCommerce 中选择 **手动退款 …** 记录退款。
+
+  </AccordionItem>
+</Accordion>
+
+## 设置 Windcave Terminal {#setup}
+
+管理员只需在 WP Admin 中为每个店铺设置一次，然后在每台收银机上选择一个 Station。店铺通过互联网经由 Windcave 连接各终端，因此无需配对，任何收银机都可以使用任意终端。
+
+### 要求 {#requirements}
+
+您需要 HIT 凭据、**HIT 用户名**、**HIT 密钥**，以及每台终端对应的 **Station ID**。这些信息均由 Windcave 提供；WP Admin 无法查询或创建。请联系 Windcave，申请 **UAT** HIT 凭据和每台终端的 Station ID；也可以使用 Windcave 的[集成要求表](https://www.windcave.com/merchant-attended-developer-hit)申请开发账户。UAT 和生产环境各自使用独立的用户名和密钥；Windcave 认证通过后会提供 **Vendor ID**。
+
+<RequirementsList>
+  <RequirementItem label="Windcave 账户">HIT 凭据，以及每台终端对应的一个 Station ID。Windcave 完成集成认证前请使用 UAT 凭据</RequirementItem>
+  <RequirementItem label="终端">支持 HIT 付款的 Windcave 终端</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro 2.0 或更高版本，以及 1.0 或更高版本的扩展</RequirementItem>
+  <RequirementItem label="服务器">WooCommerce，以及 PHP 7.4 或更高版本并安装 DOM 扩展（php-xml）</RequirementItem>
+</RequirementsList>
+
+### 安装扩展 {#install}
+
+打开 `WP Admin > POS > 设置 > 扩展`，找到 **Windcave Terminal for WooCommerce**，安装并启用。需要 1.0 或更高版本；0.1 版本适用于 WCPOS 2.0 之前的版本。请参阅[扩展](../../extensions/index.mdx#installing-an-extension)。
+
+您也可以从 [GitHub 发布页面](https://github.com/wcpos/windcave-terminal-for-woocommerce/releases)下载**插件 zip**（不是源代码 zip），然后通过 `插件 > Add Plugin > 上传插件` 上传。
+
+如果没有 WCPOS Pro 2.0，WP Admin 会显示 *Windcave Terminal 需要 WooCommerce POS Pro 2.0 或更高版本。*，并且不会添加此网关。PHP 低于 7.4 或未安装 DOM 扩展时，系统会拒绝启用：请联系主机服务商启用 **php-xml**。
+
+### 输入 HIT 凭据 {#credentials}
+
+前往 `WP Admin > WooCommerce > 设置 > 支付`，打开 **Windcave Terminal**。
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[410, 0], [410, 0], [410, 0], [850, 0], [410, 0], [410, 0]]} maxWidth={720} alt="WP Admin 中的 Windcave Terminal 设置：环境为 UAT（测试），HIT 用户名、HIT 密钥、Station ID 和 Vendor ID 均为空，POS 名称为 WCPOS">
+
+1. **环境** — 保持默认的 **UAT（测试）**。Windcave 完成集成认证并提供生产凭据后，才能使用 **生产环境**。
+2. **HIT 用户名** — 由 Windcave 针对所选环境提供。
+3. **HIT 密钥** — 由 Windcave 提供。保存后，此字段会保持空白：留空即可保留已保存的密钥。
+4. **Station ID** — 每台终端填写一个，每行一个。由 Windcave 提供，不会自动查找。
+5. **Vendor ID** — Windcave 提供前请留空。
+6. **POS 名称** — POS 在 Windcave 中使用的名称。默认为 `WCPOS`。
+
+</JourneyShot>
+
+下方的 **结果通知（FPRN）** 为可选项。勾选后，Windcave 也会在结果就绪时通知店铺，作为收银机自行查询的备用方式。要使用此功能，您的网站必须能从互联网访问。
+
+点击 **保存更改**。
+
+### 在 WCPOS 中启用 {#enable}
+
+前往 `WP Admin > POS > 设置 > 结账`，在 **网关** 表格中找到 **Windcave Terminal**，然后打开 **已启用** 开关。此页面会自动保存更改，无需点击保存按钮。
+
+请在 WooCommerce 设置页面中关闭 **启用/禁用**。无论该选项是否勾选，只要此处的 **已启用** 已打开，POS 就会使用此网关。请参阅[结账设置](../../settings/wp-admin/checkout.mdx#enabling-a-gateway)。
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[172, 0], [-26, 0]]} maxWidth={720} alt="WP Admin 中的 POS 设置、结账页面：网关表格有两行，Vipps MobilePay 已开启，Windcave Terminal 已关闭">
+
+1. **Windcave Terminal** — 扩展在 **网关** 表格中的一行。
+2. **已启用** — 网关 ID 旁边的开关；请将其打开。收银机重新加载后会显示 **Windcave Terminal** 磁贴。
+
+</JourneyShot>
+
+### 为每台收银机选择 Station {#till-terminal}
+
+在每台收银机上打开 **设置 > 刷卡器**。您输入的每个 Station ID 都会列在 **智能刷卡器** 下方，并标记为 **在线**：扩展不会向 Windcave 查询终端是否已开机。按柜台所用 Station 对应的 **使用此读卡器**，其所在行会显示 **已选中**。收银员仍可在结账时按 **更改**。
+
+只有一个 Station 时无需选择：每台收银机上都已将其标记为 **已选中**。请参阅[选择智能刷卡器](../../hardware/card-readers/index.mdx#smart-readers)。
+
+### 确认设置成功 {#check}
+
+1. 返回 Windcave Terminal 设置页面，设置下方会显示 `uat: HIT credentials configured (not verified).`。这表示用户名和密钥已保存，并不代表 Windcave 已接受它们。`HIT credentials missing.` 表示其中一项为空。
+2. 在收银机上重新加载 POS 并按 **结账**。可用付款方式中会出现 **Windcave Terminal** 磁贴。点按后，键盘上方会显示 Station ID，位置在 **选择终端** 下方，或显示为 **终端：** 及此收银机正在使用的终端。
+3. 在 UAT 终端上进行一笔小额销售，然后退款。此扩展没有测试连接按钮：首次销售用于检查凭据和 Station ID。
+
+### 从 0.1 版本升级 {#upgrade}
+
+- 先将 WCPOS、WCPOS Pro 和应用更新到 2.0，然后再更新扩展。
+- 升级期间正在处理的付款会继续保留，不会重复扣款。
+- 如果订单仍未付款，0.1 版本暂存的付款会继续保留。否则，订单会收到备注：*Windcave TxnRef … 在 1.0.0 升级前已暂存，不再自动跟踪。* 请在 Windcave 门户中检查该笔付款：如果已获批准，请在那里退款，或手动在订单中记录。
+- 以下 0.1 版本设置已移除：**默认 Station ID**、**锁定终端选择**、**结账日志** 和 **日志级别**。现在每台收银机都会在 **设置 > 刷卡器** 下选择自己的 Station。
+- 暂存功能也已移除，终端收据文本不再作为私密备注添加到订单中。
+- 退还使用 0.1 版本收取的销售款：请参阅[退还 Windcave 付款](#refunds)。
 
 ## 设置参考 {#settings}
 
-位于 `WP Admin > WooCommerce > 设置 > 支付 > Windcave Terminal`。上述步骤已涵盖必需的设置；展开列表可查看所有设置及其默认值。
-
-<details>
-<summary>全部 15 项设置</summary>
+前往 `WP Admin > WooCommerce > 设置 > 支付 > Windcave Terminal`：
 
 | 设置 | 作用 |
 |---|---|
-| **启用/禁用** | 让网店也显示此网关。请保持关闭：在线使用时，它只能在现有订单的付款页面收款，无法用于常规结账页面。默认关闭。POS 有独立的开关，位于 `POS > 设置 > 结账` |
-| **标题** | 收银员在付款页面选择的名称。默认为 `Windcave Terminal` |
-| **描述** | 显示在标题下方的说明。默认为 `Pay in person on the Windcave terminal.` |
-| **环境** | **UAT（测试）**（默认）或 **生产环境**。每种环境都有独立的 HIT 凭据；生产环境需要通过 Windcave 认证 |
+| **启用/禁用** | 在网店结账页面提供此网关。请保持关闭；POS 在 `POS > 设置 > 结账` 下有自己的开关 |
+| **标题** | 收银机上磁贴的名称。默认为 `Windcave Terminal` |
+| **描述** | 默认为 `Pay in person on the Windcave terminal.` |
+| **环境** | **UAT（测试）**（默认）或 **生产环境**。每种环境都有独立的 HIT 凭据；生产环境需要 Windcave 认证。在某个环境中发起的付款始终会在该环境中查询 |
 | **HIT 用户名** | 由 Windcave 提供，适用于所选环境 |
-| **HIT 密钥** | 由 Windcave 提供，适用于所选环境 |
-| **站点 ID** | 每行一个站点 ID，每台终端对应一个。由 Windcave 提供，不会自动发现 |
-| **默认站点 ID** | 初始选中的终端，也是在未选择终端时使用的终端 |
-| **锁定终端选择** | 收银员无法更改终端，始终使用默认终端。仅在已设置默认终端时生效 |
-| **供应商 ID** | 由 Windcave 在认证期间提供。在此之前请留空 |
+| **HIT 密钥** | 由 Windcave 提供。保存后不会再显示；留空即可保留该密钥 |
+| **Station ID** | 每台终端填写一个，每行一个。重复项会被删除 |
+| **Vendor ID** | 在认证期间与 Windcave 确认。在此之前请留空 |
 | **POS 名称** | 您的 POS 在 Windcave 中使用的名称。默认为 `WCPOS` |
 | **结果通知（FPRN）** | 结果就绪时，Windcave 也会通知店铺，作为收银机查询的补充。默认关闭 |
-| **结账日志** | 在付款面板上显示 **显示日志**、**复制** 和 **清除**。默认关闭 |
-| **日志级别** | **关闭**、**仅错误** 或 **调试**（默认） |
-| **支持** | **下载支持包**，以及日志链接 |
-
-</details>
 
 ## 日志和支持包 {#logs-and-support-bundle}
 
-日志位于 `WP Admin > WooCommerce > Status > 日志`，来源为 `windcave-terminal`。**日志级别** 默认为 **调试**，会记录发送到 Windcave 的每次请求及其响应，并遮蔽 HIT 密钥和银行卡号。
+设置页面底部有支持包、凭据状态行和日志链接。
 
-付款失败时，请在网关设置页面点击 **下载支持包**，将 `.json` 文件连同 **订单编号** 一起发送给支持团队。
+<JourneyShot manifest={manifest} device="desktop" step={3} offsets={[[200, 0], [80, 0], [-20, 0]]} maxWidth={720} alt="尚未完成设置的店铺中，WP Admin 的 Windcave Terminal 设置页面底部：支持包及其下载支持包按钮、uat: HIT credentials missing 状态行和查看日志">
 
-<details>
-<summary>支持包包含的内容</summary>
+1. **凭据状态行** — 此店铺尚未完成设置，因此显示 `HIT credentials missing.`。您的状态应显示 `HIT credentials configured (not verified).`。
+2. **查看日志** — 打开 `WooCommerce > Status > 日志`，日志来源为 `windcave-terminal`。
+3. **下载支持包** — 提供给 WCPOS 支持人员的文件。
 
-- 店铺配置：WordPress、WooCommerce、PHP 和扩展的版本、环境以及终端数量。
-- 网关设置，其中 HIT 密钥已遮蔽，HIT 用户名仅保留前三个字符。
-- 最近最多 20 个订单的付款尝试记录，不含收据。
-- 最新两个 `windcave-terminal` 日志文件的最后 1,000 行。这些日志可能包含终端收据文本，其中银行卡号已遮蔽。
+</JourneyShot>
 
-如果 WooCommerce 将日志保存在数据库中，支持包将不包含日志行：请从 `WooCommerce > Status > 日志` 导出日志并一并发送。
+日志会记录发往 Windcave 的每个请求及其回复，并遮蔽 HIT 密钥和银行卡号。
 
-</details>
-
-## 要求 {#requirements}
-
-<RequirementsList>
-  <RequirementItem label="Windcave 账户">一个 HIT 用户名、一个 HIT 密钥，以及每台终端各自的站点 ID。真实付款需要通过 Windcave 认证</RequirementItem>
-  <RequirementItem label="终端">支持 HIT 付款的 Windcave 终端</RequirementItem>
-  <RequirementItem label="连接">仅支持联网使用。店铺通过互联网将每笔付款发送到终端，因此任何收银机都可以使用任意终端，并在结账时选择</RequirementItem>
-  <RequirementItem label="WCPOS">WCPOS Pro</RequirementItem>
-  <RequirementItem label="服务器">WordPress 5.2 或更高版本、WooCommerce，以及带有 DOM 扩展（php-xml）的 PHP 7.4 或更高版本</RequirementItem>
-  <RequirementItem label="货币">使用两位小数的货币</RequirementItem>
-</RequirementsList>
+付款出现问题时，点击 **下载支持包**，并将文件连同 **订单编号** 一起发送给 WCPOS 支持人员。WCPOS Pro 会添加此按钮：支持包涵盖网站上的所有 POS 付款提供商，并会移除机密信息和银行卡号。
 
 ## 不支持的功能 {#scope-and-limitations}
 
-- 从 WooCommerce 发起退款。
-- 小费、附加费和刷卡取现。
-- 不使用两位小数的货币。
-- 部分付款：终端始终收取整个订单的金额。
+- Windcave 完成集成认证前不支持真实付款。
+- 不支持小费、附加费、刷卡取现，也不支持先授权后扣款。
+- 无法在 **付款** 选项卡中回答终端的问题。请使用 **传统** 选项卡。
 - 自动发现终端：需要手动输入每个站点 ID。
-- 网店的常规结账页面。在线使用时，它只能在现有订单的付款页面收款。
+- 首次付款前无法检查 HIT 凭据。
 
 <details>
 <summary>开发者说明：工作原理</summary>
 
-此网关通过 HTTPS 使用 Windcave **HIT（主机发起交易）**。**环境** 决定使用 UAT 还是生产环境端点，每台终端通过其 **站点 ID** 寻址。
+此网关通过 HTTPS 使用 Windcave **HIT（主机发起交易）**：UAT 使用 `uat.windcave.com`，生产环境使用 `sec.windcave.com`。每台终端通过其 **Station ID** 寻址。
 
-发起付款时，系统会在订单上记录交易参考编号，然后发送包含订单总额和货币的购买请求。面板每隔 1.5 秒向 Windcave 查询状态，并同步显示终端上的文本行和已启用按钮。启用 **结果通知（FPRN）** 后，Windcave 也会在结果就绪时回调店铺。
+付款请求会发送一笔金额与收银机显示金额相同的 Purchase，并以 `Order #` 和订单编号作为商户参考，然后 WCPOS Pro 会持续查询状态直至完成。如果收银机再次发起查询，扩展会先查询同一交易参考，而不是再发起一笔 Purchase。Windcave 在 30 秒内未登记的 Purchase 会被视为未发送。
 
-只有付款结果获批，且与订单上记录的付款尝试相符时，订单才会完成：核对内容包括参考编号、金额、环境，以及订单总额和货币。系统会给 Windcave 30 秒来登记新交易，之后才会将“无记录”视为拒绝。定时检查每隔 10 分钟跟进无响应或已暂时搁置的付款。
+启用 **结果通知（FPRN）** 后，每笔 Purchase 都会要求 Windcave 调用店铺的 WCPOS 付款 webhook：`wp-json/wcpos/v2/payments/webhook`，并附带 `provider=windcave` 和交易参考。此调用仅作提示：随后店铺会自行向 Windcave 查询结果。
+
+退款是针对原 Windcave 交易发起的 HIT 匹配退款，金额为您输入的金额。店铺最多每隔 2 秒查询一次状态，持续 20 秒。
 
 </details>
 
 ## 相关文档 {#related-documentation}
 
+- [刷卡器](../../hardware/card-readers/index.mdx)
 - [传统选项卡](../../pos/checkout/legacy-tab.mdx)
-- [结账](../../pos/checkout/index.mdx)
+- [退款](../../pos/refunds.mdx)
 - [收银台设置](../../settings/wp-admin/checkout.mdx)
-- [扩展](../../extensions/index.mdx)
 - [在 GitHub 上报告问题](https://github.com/wcpos/windcave-terminal-for-woocommerce/issues)。有关账户、凭据和终端的问题，请联系 Windcave。
 
 <LinkCards>
-  <LinkCard to="/sell/take-payment/legacy-tab" title="传统选项卡" description="在店铺自己的付款页面上收款的网关" />
+  <LinkCard to="/hardware/card-readers" title="刷卡器" description="选择每台收银机用于付款的 Station" />
   <LinkCard to="/settings/checkout" title="收银台设置" description="为 POS 启用网关" />
   <LinkCard to="/settings/checkout/payment-gateways" title="所有网关" description="WCPOS 支持的其他银行卡终端" />
 </LinkCards>
