@@ -13,6 +13,13 @@ export default [
     step: 1,
     slug: 'store-address',
     url,
+    // Match the POS shot on the page (Alabama, 12345, no city): values staged in the browser only, the form is never submitted.
+    prepare: (page) => page.evaluate(() => {
+      const $ = window.jQuery;
+      $('#woocommerce_store_address, #woocommerce_store_address_2, #woocommerce_store_city').val('');
+      $('#woocommerce_store_postcode').val('12345');
+      $('#woocommerce_default_country').val('US:AL').trigger('change');
+    }),
     crop: section('Store Address'),
     pins: [
       { name: 'address-1', selector: control('woocommerce_store_address') },
@@ -20,20 +27,6 @@ export default [
       { name: 'country-state', selector: control('woocommerce_default_country') },
       { name: 'postcode', selector: control('woocommerce_store_postcode') },
     ],
-    alt: 'WooCommerce → Settings → General, Store Address: this is where your business is located; Address line 1 12 Harbour Street, an empty Address line 2, City Portland, Country / State United States (US) — Oregon and Postcode / ZIP 97204.',
-  },
-  {
-    step: 2,
-    slug: 'currency-options',
-    url,
-    crop: section('Currency options'),
-    pins: [
-      { name: 'currency', selector: control('woocommerce_currency') },
-      { name: 'currency-position', selector: control('woocommerce_currency_pos') },
-      { name: 'thousand-separator', selector: control('woocommerce_price_thousand_sep') },
-      { name: 'decimal-separator', selector: control('woocommerce_price_decimal_sep') },
-      { name: 'decimals', selector: control('woocommerce_price_num_decimals') },
-    ],
-    alt: 'WooCommerce → Settings → General, Currency options: Currency United States (US) dollar ($) — USD, Currency position Left, Thousand separator a comma, Decimal separator a full stop and Number of decimals 2.',
+    alt: 'WooCommerce → Settings → General, Store Address: this is where your business is located; an empty Address line 1 and Address line 2, an empty City, Country / State United States (US) — Alabama and Postcode / ZIP 12345.',
   },
 ];
