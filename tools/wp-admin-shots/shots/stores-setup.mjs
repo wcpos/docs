@@ -21,13 +21,13 @@ export default [
     step: 2,
     slug: 'new-store',
     url: 'wp-admin/post-new.php?post_type=wcpos_store',
-    // The title bar, then the Store name and Logo and address sections of the Details panel.
-    crop: [`${editor} div:has(> h1)`, `${editor} main > * > :nth-child(1)`, `${editor} main > * > :nth-child(2)`],
+    // The title bar, then only the Store name section of the Details panel.
+    crop: [`${editor} div:has(> h1)`, `${editor} main > * > :nth-child(1)`],
     pins: [
       { name: 'store-name', selector: `${editor} main > * > :nth-child(1) input` },
       { name: 'create', selector: `${editor} button:text-is("Create")` },
     ],
-    alt: 'WP Admin, POS → Stores → Add New Store: the store editor before it is created, with an empty Store name field, the Logo and address fields and the Create button.',
+    alt: 'WP Admin, POS → Stores → Add New Store: the store editor before it is created, with an empty Store name field and the Create button.',
   },
   {
     step: 3,
@@ -90,5 +90,21 @@ export default [
       { name: 'store-regular-price', selector: '#general_product_data input[id^="_pos_regular_price_store_"]:visible' },
     ],
     alt: 'WP Admin, editing the Stoneware Mug product, General tab: Enable Harbour Street specific prices. is ticked, with its own Regular price of 16.00.',
+  },
+  {
+    step: 8,
+    slug: 'cash-drawer-rules',
+    url: 'wp-admin/admin.php?page=wcpos-store-edit&id={storeId:Harbour Street}#/registers',
+    // Customise only expands the rules (aria-expanded); it saves nothing, so there is nothing to undo.
+    prepare: async (page) => {
+      await page.locator(`${section('Cash drawer rules')} button:text-is("Customise")`).click();
+      await page.locator(`${section('Cash drawer rules')} button[role="switch"]`).first().waitFor({ state: 'visible' });
+    },
+    crop: [section('Cash drawer rules')],
+    pins: [
+      { name: 'open-close-toggle', selector: `${section('Cash drawer rules')} button[role="switch"]` },
+      { name: 'site-default', selector: `${section('Cash drawer rules')} span:text-is("Site default")` },
+    ],
+    alt: 'WP Admin, store editor for Harbour Street, Registers, Cash drawer rules after Customise: the Site defaults chip and one rule, Open and close the register each day (cashiers start with a float and count the drawer at close), switched off and marked Site default.',
   },
 ];
