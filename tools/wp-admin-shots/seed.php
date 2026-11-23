@@ -322,8 +322,6 @@ if ( ! is_dir( WP_PLUGIN_DIR . '/paypal-reader-for-woocommerce' ) ) {
 }
 // ---- extensions (A): end
 
-WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
-
 // ---- extensions (B, polylang): begin
 // Polylang (wordpress.org) with English (default) and Français, then WCPOS Polylang through Pro's
 // own extension action. Polylang boots on plugins_loaded, so when it is installed in this run the
@@ -372,6 +370,6 @@ if ( ! function_exists( 'PLL' ) ) {
 		$wpas_note( 'extension WCPOS Polylang' );
 	}
 }
-// The seed's summary again, now with this block's notes: capture.mjs reads the last one.
-WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
 // ---- extensions (B, polylang): end
+
+WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
