@@ -83,13 +83,21 @@ function newestBuild(repo) {
   return fail(`no completed deploy-dev run on main with a deployment-package artifact for wcpos/${repo}`);
 }
 
+// A running wp-env bind-mounts this folder; replacing it leaves the containers on the deleted copy.
+function emptyDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  for (const name of fs.readdirSync(dir)) {
+    fs.rmSync(path.join(dir, name), { recursive: true, force: true });
+  }
+}
+
 // Puts a built plugin at .cache/plugins/<repo>; returns the headSha it came from.
 function fetchPlugin(key, givenDir, state) {
   const repo = REPOS[key];
   const target = path.join(CACHE, 'plugins', repo);
   if (givenDir) {
     if (!fs.existsSync(path.join(givenDir, `${repo}.php`))) fail(`${givenDir} has no ${repo}.php`);
-    fs.rmSync(target, { recursive: true, force: true });
+    emptyDir(target);
     fs.cpSync(path.resolve(givenDir), target, { recursive: true });
     return 'local';
   }
@@ -100,8 +108,7 @@ function fetchPlugin(key, givenDir, state) {
   gh('run', 'download', String(run.databaseId), '-R', `wcpos/${repo}`, '-n', 'deployment-package', '-D', download);
   const tarball = path.join(download, `${repo}.tar.gz`);
   if (!fs.existsSync(tarball)) fail(`artifact of run ${run.databaseId} has no ${repo}.tar.gz`);
-  fs.rmSync(target, { recursive: true, force: true });
-  fs.mkdirSync(target, { recursive: true });
+  emptyDir(target);
   execFileSync('tar', ['-xzf', tarball, '-C', target]);
   if (!fs.existsSync(path.join(target, `${repo}.php`))) fail(`${repo}.tar.gz has no ${repo}.php at its root`);
   return run.headSha;
@@ -126,6 +133,7 @@ async function up(args) {
   fs.mkdirSync(path.join(CACHE, 'mu-plugins'), { recursive: true });
   fs.copyFileSync(path.join(TOOL, 'seed.php'), path.join(CACHE, 'mu-plugins', 'wpas-seed.php'));
   wpEnv(state, ['start']);
+  wp(state, 'plugin', 'activate', 'woocommerce-pos', 'woocommerce-pos-pro');
   const seedFile = 'wp-content/mu-plugins/wpas-seed.php';
   wp(state, 'eval-file', seedFile, 'licence');
   const seed = wp(state, 'eval-file', seedFile).split('\n').find((line) => line.startsWith('seed:')) || 'seed: no summary';

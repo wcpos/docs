@@ -29,8 +29,8 @@ export default [
     pins: [
       { name: 'choice', selector: `${S} [data-testid="privacy-undecided-prompt"]` },
       { name: 'usage-data', selector: `${section('Privacy')} button[role="switch"]` },
-      { name: 'learn-more', selector: `${section('Privacy')} a:has-text("Learn what")` },
+      { name: 'learn-more', selector: `${section('Privacy')} button:has-text("Learn what")` },
     ],
-    alt: 'The Privacy section of General: the prompt asking whether WCPOS can send usage data and error reports, with Allow and No thanks, then the Allow anonymous usage data and error reports switch and its Learn what is collected link.',
+    alt: 'The Privacy section of General: the prompt asking whether WCPOS can send usage data and error reports, with Allow and No thanks, then the Allow anonymous usage data and error reports switch and its Learn what\'s collected button.',
   },
 ];

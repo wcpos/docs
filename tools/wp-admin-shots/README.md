@@ -35,7 +35,8 @@ The seed also turns the POS setting `force_ssl` off, so `/pos` stays on plain ht
 
 `up` is idempotent: it reuses the ports in `.cache/state.json`, downloads a build only when `main`
 moved, and the seed finds everything before creating it. `--free-dir`/`--pro-dir <dir>` use a
-built plugin folder instead of the artifact.
+built plugin folder instead of the artifact. `up` refreshes a plugin in place, so a running env keeps
+its mounts, and activates both WCPOS plugins before seeding.
 
 ## Adding a page
 
