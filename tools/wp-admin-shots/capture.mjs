@@ -159,17 +159,21 @@ function option(args, name) {
 
 async function up(args) {
   const state = readState();
+  const [started, before] = [Boolean(state.port), state.shas || {}];
   if (!state.port) [state.port, state.testsPort] = await freePorts(2);
   state.shas = {
     free: fetchPlugin('free', option(args, '--free-dir'), state),
     pro: fetchPlugin('pro', option(args, '--pro-dir'), state),
   };
+  const replaced = option(args, '--free-dir') || option(args, '--pro-dir') || before.free !== state.shas.free || before.pro !== state.shas.pro;
   state.siteUrl = `http://localhost:${state.port}`;
   writeState(state);
   // seed.php doubles as a mu-plugin. A folder is mapped, not the file: editors replace files
   // by rename, which leaves a single-file bind mount pointing at the old copy.
   fs.mkdirSync(path.join(CACHE, 'mu-plugins'), { recursive: true });
   fs.copyFileSync(path.join(TOOL, 'seed.php'), path.join(CACHE, 'mu-plugins', 'wpas-seed.php'));
+  // A running container's bind mount keeps the deleted plugin folder, and start does not recreate it.
+  if (started && replaced) try { wpEnv(state, ['stop']); } catch (error) { if (!(error instanceof Fail)) throw error; }
   wpEnv(state, ['start']);
   const seedFile = 'wp-content/mu-plugins/wpas-seed.php';
   wp(state, 'eval-file', seedFile, 'licence');
