@@ -195,8 +195,14 @@ function buildWorklist({ rootDir, locales = LOCALES, maxUnits = Infinity, packet
     if (group.targets.length) groups.push(group);
   }
 
+  for (const group of groups) {
+    const time = git(['log', '-1', '--format=%ct', '--', group.source], true)?.trim();
+    const age = Number(time);
+    group.age = time && Number.isFinite(age) ? age : Infinity;
+  }
+  // Oldest English change first, so a group deferred by the cap (even one larger than the cap, which then runs alone) goes first on the next run.
   groups.sort((a, b) => firstRank(a.source) - firstRank(b.source)
-    || a.priority - b.priority || (a.source < b.source ? -1 : a.source > b.source ? 1 : 0));
+    || a.age - b.age || a.priority - b.priority || (a.source < b.source ? -1 : a.source > b.source ? 1 : 0));
   const taken = [];
   let deferred = false;
   for (const [index, group] of groups.entries()) {

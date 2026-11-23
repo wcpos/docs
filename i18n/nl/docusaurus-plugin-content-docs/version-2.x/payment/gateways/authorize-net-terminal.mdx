@@ -1,0 +1,284 @@
+---
+title: Authorize.net
+slug: /hardware/card-readers/authorize-net
+description: "Neem een Tap to Pay-betaling aan in de Authorize.net-app op de telefoon en laat WCPOS deze op de bestelling registreren. Configuratie, sandbox en productie, terugbetalingen en de beperkingen van de bèta"
+---
+
+import LinkCards from '@site/src/components/LinkCards';
+import LinkCard from '@site/src/components/LinkCard';
+import Accordion from '@site/src/components/Accordion';
+import AccordionItem from '@site/src/components/AccordionItem';
+import RequirementsList from '@site/src/components/RequirementsList';
+import RequirementItem from '@site/src/components/RequirementItem';
+import JourneyShot from '@site/src/components/JourneyShot';
+import manifest from '@site/static/img/2.x/payment/gateways/authorize-net-terminal/en/manifest.json';
+
+# Authorize.net Tap to Pay {#authorizenet-tap-to-pay}
+
+De klant houdt zijn kaart tegen je telefoon, in de eigen app van Authorize.net. Je voert het bedrag zelf in die app in: de kassa verstuurt het niet. De kassa zoekt de betaling vervolgens op bij Authorize.net en registreert deze op de bestelling.
+
+Dit staat los van de eigen [Tap to Pay-functie van de WCPOS-app](../../hardware/card-readers/index.mdx#tap-to-pay), die Stripe Terminal gebruikt. Winkelbeheerders: [Authorize.net Tap to Pay instellen](#setup) behandelt de inloggegevens, de telefoon en hoe je controleert of alles werkt.
+
+:::info Pro-functie
+Voor Authorize.net Tap to Pay is [WCPOS Pro](../../getting-started/pro-license.mdx) 2.0 of hoger vereist.
+:::
+
+:::warning Bèta: doe eerst een testbetaling
+**Versie 0.1.0 is een bèta en een echte tik in de Authorize.net-app is nog niet getest.** Neem eerst een kleine betaling aan met je eigen kaart en betaal deze terug voordat je de kaart van een klant gebruikt.
+
+<details>
+<summary>Wat wel en niet is getest</summary>
+
+Versie 0.1.0 is getest met de sandbox van Authorize.net. Een kaartbetaling via de API van Authorize.net diende als vervanging voor de tik: de verkoop, de koppeling, een annulering en een terugbetaling na afwikkeling. Nog niet getest: een echte tik in de app, de lijst met overeenkomende betalingen op het tabblad Legacy na een echte tik en kaartlezers die aan de Authorize.net-app zijn gekoppeld. Meld problemen met het bestelnummer, het tijdstip van de verkoop en een schermafbeelding.
+
+</details>
+:::
+
+## Een betaling aannemen {#take-payment}
+
+:::note Open eerst de kassa
+Als **Kassa openen en sluiten** is ingeschakeld, registreert de kassa geen betaling wanneer de kassa gesloten is. Een kaartbetaling die je al hebt aangenomen, moet je dan terugbetalen. Zie [Kassa's](../../settings/wp-admin/registers.mdx#one-register) voor deze instelling.
+:::
+
+1. Druk in het winkelmandje op **Afrekenen**.
+2. Tik op het tabblad **Betalingen** op de tegel **Authorize.net Tap to Pay** (je winkel kan deze een andere naam hebben gegeven). Boven het toetsenblok toont de kassa **Terminal:** en de naam van je telefoon, standaard **Authorize.net-app**, tenzij een manager die heeft gewijzigd.
+3. Druk op **Verstuur … naar Authorize.net Tap to Pay**, bijvoorbeeld **Verstuur $10.00 naar Authorize.net Tap to Pay**. De kassa toont **Wachten op de klant bij de terminal**.
+4. Voer in de Authorize.net-app op je telefoon **precies hetzelfde bedrag** in. Voeg geen fooi toe in de app: zie [Fooien](../../pos/checkout/tips.mdx).
+5. De klant houdt zijn kaart tegen de telefoon.
+6. Wacht op de kassa. Zodra deze de betaling vindt, registreert de kassa die. De bon wordt geopend zodra er niets meer betaald hoeft te worden.
+
+Voer de tik binnen 5 minuten na het indrukken van Versturen uit. Na 5 minuten annuleert de kassa de betaling, toont **Time-out — betaling geannuleerd** en zoekt niet langer naar de betaling.
+
+<details>
+<summary>Zo vindt de kassa de betaling</summary>
+
+Terwijl de kassa wacht, controleert WCPOS steeds bij Authorize.net of er een betaling voor dat bedrag is. De kassa registreert een betaling automatisch als er precies één is binnengekomen sinds 30 seconden vóór je op **Versturen** drukte en **Automatisch koppelen** is ingeschakeld. Voordat WCPOS de betaling registreert, controleert het deze bij Authorize.net, inclusief het bedrag en de valuta. Een betaling wordt altijd maar op één bestelling geregistreerd.
+
+Tijdens de verwerking licht de kassa achtereenvolgens **Verstuurd**, **Op terminal**, **Goedgekeurd** en **Vastgelegd** op.
+
+</details>
+
+### Een betaling annuleren {#cancel}
+
+Druk op **Annuleren op terminal**. Annuleren in WCPOS stopt niets in de Authorize.net-app. Vraag de klant dus om niet te tikken.
+
+De kassa controleert Authorize.net nog een laatste keer. Als er precies één nieuwe betaling voor dat bedrag is binnengekomen, wordt deze geregistreerd en is de verkoop voltooid. Anders wordt de betaling geannuleerd.
+
+## Als er iets misgaat {#goes-wrong}
+
+### Wanneer de klant mogelijk heeft betaald {#may-have-paid}
+
+:::warning Houd de kaart niet opnieuw tegen de telefoon
+In deze gevallen staat het geld mogelijk al op je Authorize.net-account, terwijl de bestelling nog onbetaald is. Volg hieronder de stappen voor het tabblad Legacy of neem contact op met een manager.
+:::
+
+**De kassa blijft wachten nadat de klant heeft getikt.** De kassa registreert een betaling alleen automatisch als deze zeker weet welke betaling van jou is. Anders blijft de kassa wachten en volgt na 5 minuten een time-out. Dit gebeurt wanneer:
+
+- het bedrag in de app afwijkt van dat in de kassa, bijvoorbeeld doordat er een fooi aan de app is toegevoegd;
+- er op hetzelfde moment een andere betaling voor hetzelfde bedrag is binnengekomen, vanaf een andere kassa of je webwinkel;
+- een manager **Automatisch koppelen** heeft uitgeschakeld in de gateway-instellingen.
+
+Op het tabblad **Betalingen** kun je niet aangeven welke betaling van jou is. Op het tabblad [**Legacy**](../../pos/checkout/legacy-tab.mdx) van de bestelling kan dat wel, voor betalingen uit de afgelopen 15 minuten. De kassamedewerker of een manager doet het volgende:
+
+1. Kies bij het afrekenen van dezelfde bestelling het tabblad **Legacy** en vervolgens **Authorize.net Tap to Pay**.
+2. Druk op **Verstuur 10.00 USD naar Authorize.net-app** (op dit tabblad vermeldt de knop de telefoon, niet de tegel). Houd de kaart niet opnieuw tegen de telefoon.
+3. De kassa toont een lijst met bijvoorbeeld de kop **2 Authorize.net-betalingen van USD 10.00 kunnen deze betaling zijn. Kies de betaling die je zojuist hebt aangenomen.**
+4. Elke regel toont het kaarttype, de laatste 4 cijfers, het tijdstip en het transactienummer van Authorize.net. Druk op de regel met de kaart van de klant en het tijdstip van de tik. De bestelling is betaald.
+
+Als er geen lijst verschijnt, houd de kaart dan niet opnieuw tegen de telefoon. Een manager zoekt de betaling op in je Authorize.net-account en [betaalt deze daar terug](#refunds).
+
+**De klant tikte nadat je had geannuleerd.** Annuleren stopt de app niet. Registreer de betaling via het tabblad Legacy zoals hierboven beschreven, of laat een manager deze terugbetalen via je Authorize.net-account.
+
+**Betaling mislukt: de terminal heeft een ander bedrag bevestigd.** Dit is niet het geval met de fooi hierboven: dit bericht verschijnt alleen wanneer Authorize.net zelf een ander bedrag of een andere valuta meldt voor de betaling die de kassa heeft geselecteerd, bijvoorbeeld wanneer de winkelvaluta niet op het account staat. De kassa registreert de betaling niet en voegt een notitie aan de bestelling toe. Gebruik het tabblad Legacy niet. Neem contact op met een manager, die de betaling opzoekt in je Authorize.net-account en terugbetaalt.
+
+Een betaling die om een andere reden vastloopt op de kassa: zie [Een kaartlezerbetaling die vastloopt](../index.mdx#card-reader-problems).
+
+### Andere meldingen {#other-messages}
+
+<Accordion>
+  <AccordionItem question="Betaling mislukt: geweigerd">
+
+  De betaling is in de app geweigerd. Druk op **Opnieuw proberen** om een nieuwe betaling te starten voordat de klant opnieuw tikt, of op **Andere betaalmethode kiezen** om een andere tegel te gebruiken. Zie [Met een kaartlezer](../../pos/checkout/taking-a-payment.mdx#card-reader).
+
+  Een weigering voor hetzelfde bedrag bij een andere kassa kan ook een betaling beëindigen waarop nog wordt gewacht.
+
+  </AccordionItem>
+  <AccordionItem question="Betaling mislukt: sandbox of productie is gewijzigd">
+
+  De kassa toont **Payment failed: mode_changed**. Een manager heeft tijdens het wachten **Omgeving** gewijzigd van **Sandbox** naar **Productie** of andersom. Druk op **Opnieuw proberen** zodra de instelling juist staat.
+
+  </AccordionItem>
+  <AccordionItem question="Time-out — betaling geannuleerd">
+
+  Binnen 5 minuten is geen betaling geregistreerd. Als de klant heeft getikt, zie [Wanneer de klant mogelijk heeft betaald](#may-have-paid). Druk anders op **Opnieuw proberen**.
+
+  </AccordionItem>
+  <AccordionItem question="De kassa biedt Betaling vrijgeven aan">
+
+  De kassa kon de annulering niet bevestigen bij Authorize.net. Met Vrijgeven kan de bestelling op een andere manier worden betaald. WCPOS blijft op de achtergrond controleren. Druk hier pas op nadat een manager je Authorize.net-account heeft gecontroleerd en heeft vastgesteld dat er geen betaling voor de verkoop is.
+
+  </AccordionItem>
+  <AccordionItem question="Verbinding instabiel, nieuwe pogingen worden gedaan">
+
+  WCPOS kan Authorize.net niet bereiken. De kassa blijft het proberen. Als dit aanhoudt, controleert een manager de inloggegevens, de **Omgeving** en de Transaction Details API ([instellen](#setup)), en de [logboeken](#logs).
+
+  </AccordionItem>
+  <AccordionItem question="De tegel Authorize.net Tap to Pay is grijs of ontbreekt">
+
+  Zie [Wanneer een tegel niet kan worden gebruikt](../index.mdx#unavailable-tiles). De tegel is pas beschikbaar nadat beide inloggegevens zijn opgeslagen en de gateway in WCPOS is ingeschakeld. Een manager controleert [de configuratie](#setup).
+
+  </AccordionItem>
+</Accordion>
+
+## Een Authorize.net-betaling terugbetalen {#refunds}
+
+1. Open in de POS de terugbetaling van de bestelling. Zie [Terugbetalingen](../../pos/refunds.mdx).
+2. Kies **Terugbetalen via Authorize.net Tap to Pay** en druk op **Terugbetaling verwerken**.
+
+Voordat Authorize.net de betaling afwikkelt (meestal 's nachts), is alleen een volledige terugbetaling mogelijk; hiermee wordt de betaling geannuleerd. Na de afwikkeling kun je het volledige bedrag of een deel ervan terugbetalen op de kaart. Een terugbetaling van de bestelling in WP Admin werkt hetzelfde.
+
+<details>
+<summary>Berichten over terugbetalingen</summary>
+
+- **Authorize.net wikkelt deze betaling vannacht af. Betaal nu het volledige bedrag terug om de betaling te annuleren, of betaal een deel terug nadat de betaling is afgewikkeld.** — betaal het volledige bedrag terug of wacht tot morgen om een deel terug te betalen.
+- **De afgelopen 8 uur is al een identieke terugbetaling verstuurd. Controleer de Authorize.net Merchant Interface voordat je het opnieuw probeert.**
+- **Deze Authorize.net-betaling was al geannuleerd.** — de volledige betaling is vóór de afwikkeling geannuleerd.
+- **Authorize.net heeft de terugbetaling niet bevestigd. Controleer de Authorize.net Merchant Interface voordat je het opnieuw probeert.**
+- **Authorize.net kan deze betaling nu niet terugbetalen. Controleer de Authorize.net Merchant Interface.**
+- **Deze betaling is in de andere Authorize.net-omgeving aangenomen.** — schakel terug naar de eerdere **Omgeving** of betaal de betaling terug via de Merchant Interface.
+- **Voor deze betaling is geen Authorize.net-transactie om terug te betalen.**
+- **Het terug te betalen bedrag moet groter zijn dan nul.**
+
+</details>
+
+## Authorize.net Tap to Pay instellen {#setup}
+
+Een manager stelt de gateway eenmalig in via WP Admin en meldt de telefoon aan bij de Authorize.net-app.
+
+### Vereisten {#requirements}
+
+<RequirementsList>
+  <RequirementItem label="Processor">Je Authorize.net-verkopersaccount moet de TSYS-processor gebruiken en Authorize.net moet Tap to Pay hebben ingeschakeld. Controleer dit bij Authorize.net voordat je telefoons aanschaft</RequirementItem>
+  <RequirementItem label="Authorize.net-account">Een Amerikaans verkopersaccount, de bijbehorende API Login ID en Transaction Key, en de ingeschakelde Transaction Details API</RequirementItem>
+  <RequirementItem label="Telefoon">Volgens Authorize.net: Tap to Pay op iPhone vereist een iPhone XS of nieuwer met iOS 18 of hoger; Tap to Pay op Android vereist Android 15 op een telefoon die Tap to Pay Ready is. Meld je bij de Authorize.net 2.0-app aan met een gebruiker van hetzelfde Authorize.net-account</RequirementItem>
+  <RequirementItem label="Valuta">USD: de Authorize.net 2.0-app ondersteunt alleen USD</RequirementItem>
+  <RequirementItem label="WCPOS">WCPOS Pro 2.0 of hoger en een verbinding bij de kassa</RequirementItem>
+  <RequirementItem label="Server">WooCommerce 7.0+, PHP 7.4+ en een serverklok die niet meer dan 30 seconden afwijkt</RequirementItem>
+</RequirementsList>
+
+### De extensie installeren {#install}
+
+Zoek in `WP Admin > POS > Settings > Extensions` naar **Authorize.net Tap to Pay for WooCommerce (beta)** en klik op **Installeren**. WCPOS installeert en activeert de extensie en schakelt **Automatisch bijwerken** in, zodat nieuwe bèta-versies vanzelf worden geïnstalleerd. Zie [Extensies](../../extensions/index.mdx#installing-an-extension) en [Automatische updates](../../extensions/index.mdx#auto-updates).
+
+<details>
+<summary>Installeren vanuit een gedownload zipbestand</summary>
+
+Download `authorize-net-terminal-for-woocommerce.zip` vanaf de [GitHub-releasespagina](https://github.com/wcpos/authorize-net-terminal-for-woocommerce/releases) en upload het via `Plugins > Add Plugin`. Klik vervolgens op **Plugin uploaden**. Het zipbestand met GitHub-"Source code" kan niet worden geïnstalleerd.
+
+</details>
+
+### Je API-inloggegevens ophalen {#credentials}
+
+Ga in de Authorize.net Merchant Interface als volgt te werk:
+
+1. Open **Account → Instellingen → API-inloggegevens en -sleutels** en kopieer de **API Login ID**. Authorize.net toont een **Transaction Key** alleen wanneer deze wordt aangemaakt. Als je de sleutel niet hebt opgeslagen, maak je een nieuwe aan en kopieer je deze meteen. Een nieuwe sleutel vervangt de oude. Als je webwinkel dit account al gebruikt, gebruik je dezelfde sleutel opnieuw of werk je de webwinkel ook bij. Gebruik de inloggegevens van je live-account voor **Productie**; de inloggegevens van een sandbox-account werken alleen met **Sandbox**.
+2. Open **Account → Instellingen → Transaction Details API** en schakel deze in. Zonder deze API kan je winkel geen betalingen lezen en registreert de kassa er geen.
+
+### De inloggegevens invoeren {#enter-credentials}
+
+Open `WP Admin > WooCommerce > Settings > Payments` en klik op **Authorize.net Tap to Pay**.
+
+<JourneyShot manifest={manifest} device="desktop" step={1} offsets={[[410, 0], [410, 0], [410, 0], [410, 0], [-30, 0], [410, 0]]} maxWidth={720} alt="WP Admin, instellingen van Authorize.net Tap to Pay voor een winkel die nog niet is ingesteld: Titel Authorize.net Tap to Pay, Omgeving Sandbox, lege velden API Login ID en Transaction Key met de tekst Geen opgeslagen waarde, Automatisch koppelen aangevinkt, Lezernaam Authorize.net-app">
+
+1. **Titel** — de naam van de tegel bij de kassa.
+2. **Omgeving** — kies **Productie**. Laat **Sandbox**, de standaardinstelling, alleen geselecteerd om de winkelconfiguratie zonder telefoon uit te proberen. Zie [Sandbox en productie](#environments).
+3. **API Login ID** — plak deze hier.
+4. **Transaction Key** — plak deze hier. Na het opslaan blijven beide velden leeg en worden alleen de laatste 4 tekens getoond. Laat ze leeg om de opgeslagen waarden te behouden. Bij het opslaan worden de inloggegevens niet getest: dat gebeurt via [Controleren of het werkt](#check).
+5. **Automatisch koppelen** — laat dit aangevinkt. Zonder deze optie registreert de kassa nooit automatisch een betaling.
+6. **Lezernaam** — de naam die de kassa boven het toetsenblok toont.
+
+</JourneyShot>
+
+Klik op **Wijzigingen opslaan**.
+
+### De telefoon instellen {#phone}
+
+Installeer de Authorize.net-app op de telefoon en meld je aan met een gebruiker van het Authorize.net-account waarvan je de inloggegevens hebt ingevoerd: je live-account voor **Productie**.
+
+### Inschakelen in WCPOS {#enable}
+
+Op de instellingenpagina van de gateway staat geen selectievakje **Inschakelen**. Open `WP Admin > POS > Settings > Checkout`.
+
+<JourneyShot manifest={manifest} device="desktop" step={2} offsets={[[-22, 0], [50, 0]]} maxWidth={720} alt="WP Admin, POS-instellingen, Kassa: drie rijen van de tabel Betaalgateways, Kaart ingeschakeld, Authorize.net Tap to Pay en Directe bankoverschrijving uitgeschakeld">
+
+1. **Authorize.net Tap to Pay** — de rij van de extensie in de tabel **Betaalgateways**.
+2. **Ingeschakeld** — schakel dit in. Na het opnieuw laden toont de kassa de tegel.
+
+</JourneyShot>
+
+De gateway wordt nooit aangeboden bij het afrekenen in je webwinkel. Zie [Checkout-instellingen](../../settings/wp-admin/checkout.mdx#enabling-a-gateway).
+
+### Controleren of het werkt {#check}
+
+1. Laad de POS opnieuw bij een kassa en druk op **Afrekenen**. De tegel **Authorize.net Tap to Pay** staat tussen de betaalmethoden.
+2. Tik erop: boven het toetsenblok toont de kassa **Terminal:** en je **Lezernaam**.
+3. Controleer of **Omgeving** op **Productie** staat en neem vervolgens een kleine betaling aan met je eigen kaart.
+4. Betaal het volledige bedrag dezelfde dag terug: vóór de afwikkeling annuleert een volledige terugbetaling de betaling.
+
+Het is gelukt wanneer de kassa de betaling automatisch registreert en de bon opent, en de betaling bij de bestelling de transactie-ID van Authorize.net toont.
+
+Als de kassa blijft wachten met **Verbinding instabiel, nieuwe pogingen worden gedaan**, controleer dan de inloggegevens, de **Omgeving** en de Transaction Details API.
+
+## Sandbox en productie {#environments}
+
+**Sandbox** is de standaardinstelling en gebruikt `apitest.authorize.net`. **Productie** gebruikt `api.authorize.net` en verwerkt echte betalingen. Inloggegevens zijn aan één omgeving gekoppeld: voer de gegevens in voor de omgeving die je hebt gekozen. Het winkelgedeelte werkt in Sandbox: de bèta is daar getest met verkopen via de API van Authorize.net. Authorize.net vermeldt niet of je met de app kunt aanmelden bij een sandbox-account, dus probeer een echte tik in Productie.
+
+Wijzig **Omgeving** alleen wanneer geen enkele kassa een Authorize.net-betaling verwerkt: een betaling waarop wordt gewacht, mislukt. Nadat je de omgeving hebt gewijzigd, kun je een betaling uit de vorige omgeving niet via de kassa terugbetalen.
+
+## Naslag voor instellingen {#settings}
+
+Op `WP Admin > WooCommerce > Settings > Payments > Authorize.net Tap to Pay`:
+
+| Instelling | Wat deze doet |
+|---|---|
+| **Titel** | De naam van de tegel bij de kassa. Standaard **Authorize.net Tap to Pay** |
+| **Omgeving** | **Sandbox** (standaard) of **Productie** |
+| **API Login ID** | Uit de Merchant Interface: **Account → Instellingen → API-inloggegevens en -sleutels**. Na het opslaan worden alleen de laatste 4 tekens getoond; laat het veld leeg om de waarde te behouden |
+| **Transaction Key** | Wordt alleen op de server opgeslagen en nooit opnieuw getoond. Wordt opgeslagen en weergegeven zoals de API Login ID |
+| **Automatisch koppelen** | Registreert de betaling automatisch als precies één Authorize.net-betaling overeenkomt. Standaard ingeschakeld |
+| **Lezernaam** | De naam die de kassa boven het toetsenblok toont. Standaard **Authorize.net-app** |
+
+Een inloggegeven dat met verborgen tekens is geplakt, wordt geweigerd met de melding **Authorize.net-inloggegevens mogen geen controletekens bevatten.** Plak het opnieuw.
+
+**Voer eerst de Authorize.net API Login ID en Transaction Key in.** betekent dat een inloggegeven ontbreekt: voer beide in en klik op **Wijzigingen opslaan**.
+
+## Logboeken en ondersteuningspakket {#logs}
+
+<JourneyShot manifest={manifest} device="desktop" step={3} offsets={[[-20, 0]]} maxWidth={720} alt="WP Admin, onderaan de instellingen van Authorize.net Tap to Pay: ondersteuningspakket met de knop Ondersteuningspakket downloaden">
+
+1. **Ondersteuningspakket downloaden** — een bestand voor WCPOS-ondersteuning. Het bevat gegevens over alle POS-betaalproviders op je site, waarbij geheimen en kaartnummers zijn verwijderd.
+
+</JourneyShot>
+
+De logboeken staan in `WooCommerce > Status > Logs`, met als bron `authorize-net-terminal-for-woocommerce`; inloggegevens en kaartnummers zijn verwijderd. Stuur bij een probleem met een betaling het ondersteuningspakket mee met het **bestelnummer** en het **tijdstip van de verkoop**.
+
+Als de extensie **Authorize.net Tap to Pay voor WooCommerce POS vereist WooCommerce POS Pro 2.0.0 of hoger.** toont, installeer of werk je WCPOS Pro bij. Zonder WCPOS Pro voegt de extensie niets toe aan de POS.
+
+## Wat het niet doet {#scope-and-limitations}
+
+- Het bedrag naar de telefoon versturen: je voert het zelf in de app in.
+- Fooien in de app verwerken: het bedrag moet exact overeenkomen.
+- Een lijst met mogelijke betalingen tonen op het tabblad **Betalingen**: kies daaruit op het tabblad [Legacy](#may-have-paid).
+- Fysieke betaalterminals. Lezers die aan de Authorize.net-app zijn gekoppeld, zijn niet getest.
+- Handmatige vastlegging of een betaling die Authorize.net vasthoudt voor controle: de kassa blijft wachten.
+- Accounts buiten de VS of valuta's anders dan USD.
+- Accounts met veel verkeer: versie 0.1.0 bekijkt alleen de 50 nieuwste betalingen die Authorize.net nog niet heeft afgewikkeld. Als er na de tik, voordat de kassa de betaling vindt, 50 of meer andere betalingen op het account binnenkomen (vanaf welke kassa dan ook, inclusief je webwinkel), vindt de kassa de betaling niet.
+- Twee kassa's uit elkaar houden: als twee kassa's op hetzelfde moment hetzelfde bedrag aannemen, kunnen ze elk de betaling van de andere registreren.
+
+## Gerelateerde documentatie {#related-documentation}
+
+<LinkCards>
+  <LinkCard to="/sell/take-payment" title="Een betaling aannemen" description="Alle manieren om bij de kassa een betaling aan te nemen" />
+  <LinkCard to="/sell/refunds" title="Terugbetalingen" description="Geld terugbetalen vanuit de POS" />
+  <LinkCard to="/settings/checkout/payment-gateways" title="Betaalgateways" description="De andere terminals en gateways die WCPOS ondersteunt" />
+</LinkCards>
