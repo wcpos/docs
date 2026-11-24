@@ -201,10 +201,11 @@ const outDir = (page) => path.join(ROOT, 'static', 'img', '2.x', page, 'en');
 const manifestPath = (page) => path.join(outDir(page), 'wp-admin.json');
 const textPath = (file) => path.join(CACHE, 'text', `${file}.txt`);
 
-// Replaces {storeId:<name>} and {productId:<name>} with post IDs looked up through wp-cli.
+// Replaces {storeId:<name>}, {productId:<name>} and {couponId:<code>} (a shop_coupon's post_title)
+// with post IDs looked up through wp-cli.
 function resolveUrl(state, url) {
-  return url.replace(/\{(storeId|productId):([^}]+)\}/g, (match, kind, name) => {
-    const type = kind === 'storeId' ? 'wcpos_store' : 'product';
+  return url.replace(/\{(storeId|productId|couponId):([^}]+)\}/g, (match, kind, name) => {
+    const type = { storeId: 'wcpos_store', productId: 'product', couponId: 'shop_coupon' }[kind];
     const posts = JSON.parse(wp(state, 'post', 'list', `--post_type=${type}`, '--fields=ID,post_title', '--format=json'));
     const post = posts.find((p) => p.post_title === name);
     return post ? String(post.ID) : fail(`no ${type} titled "${name}"`);

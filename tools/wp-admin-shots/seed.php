@@ -532,5 +532,22 @@ if ( ! wc_get_product_id_by_sku( 'HV-APR-01' ) ) {
 	$wpas_note( 'product Linen Apron' );
 }
 // ---- other-1: end
+// ---- other-2: begin
+// Two till coupons for Apply a Coupon, found by code before they are created.
+$wpas_coupons = array(
+	'mgr10'  => array( 'discount_type' => 'percent', 'amount' => '10', 'individual_use' => false, 'description' => 'Manager discount' ),
+	'loyal5' => array( 'discount_type' => 'fixed_cart', 'amount' => '5', 'minimum_amount' => '25', 'usage_limit_per_user' => 1, 'description' => 'Loyalty reward' ),
+);
+foreach ( $wpas_coupons as $wpas_code => $wpas_props ) {
+	if ( wc_get_coupon_id_by_code( $wpas_code ) ) {
+		continue;
+	}
+	$wpas_coupon = new WC_Coupon();
+	$wpas_coupon->set_code( $wpas_code );
+	$wpas_coupon->set_props( $wpas_props );
+	$wpas_coupon->save();
+	$wpas_note( "coupon $wpas_code" );
+}
+// ---- other-2: end
 
 WP_CLI::log( 'seed: created ' . count( $wpas_created ) . ( $wpas_created ? ' (' . implode( ', ', $wpas_created ) . ')' : ' (nothing)' ) );
