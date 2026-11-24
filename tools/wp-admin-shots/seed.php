@@ -501,6 +501,49 @@ if ( ! function_exists( 'PLL' ) ) {
 }
 // ---- extensions (B, polylang): end
 
+// ---- support: begin
+// Troubleshooting pages. One made-up PHP fatal, written through WooCommerce's logger in the shape
+// WC 10.4's own log_errors() shutdown handler writes (minus 'remote-logging'), so the fatal-errors
+// file exists and WCPOS's Logs banner reads it. File storage only; the setting is never changed.
+$wpas_logging = wc_get_container()->get( Automattic\WooCommerce\Internal\Admin\Logging\Settings::class );
+if ( Automattic\WooCommerce\Internal\Admin\Logging\LogHandlerFileV2::class !== $wpas_logging->get_default_handler() || ! $wpas_logging->logging_is_enabled() ) {
+	WP_CLI::error( 'WooCommerce logs are not on file storage; not writing the fatal-errors entry.' );
+}
+$wpas_fatal_files = glob( trailingslashit( wp_upload_dir()['basedir'] ) . 'wc-logs/fatal-errors-*.log' );
+if ( ! array_filter( (array) $wpas_fatal_files, static fn( $f ) => str_contains( (string) file_get_contents( $f ), 'hvl_points_balance' ) ) ) {
+	$wpas_fatal_file = '/var/www/html/wp-content/plugins/harbour-loyalty/includes/class-points.php';
+	wc_get_logger()->critical(
+		"Uncaught Error: Call to undefined function hvl_points_balance() in $wpas_fatal_file:87",
+		array( 'source' => 'fatal-errors', 'error' => array( 'type' => E_ERROR, 'file' => $wpas_fatal_file, 'line' => 87 ), 'backtrace' => array( '', '#0 {main}', 'thrown' ) )
+	);
+	$wpas_note( 'fatal-errors log entry (hvl_points_balance)' );
+}
+// Three POS orders (guest customers), marked as WCPOS marks its own, found by _wpas_seed.
+$wpas_orders = array(
+	array( 'completed', 'Hannah', 'Brooks', array( 'HV-MUG-01' => 2, 'HV-CBR-250' => 1 ) ),
+	array( 'processing', 'Omar', 'Haddad', array( 'HV-CND-01' => 1 ) ),
+	array( 'pending', 'Grace', 'Lindqvist', array( 'HV-TWL-01' => 2, 'HV-BNS-1LB' => 1 ) ),
+);
+foreach ( $wpas_orders as $wpas_i => list( $wpas_status, $wpas_first, $wpas_last, $wpas_lines ) ) {
+	$wpas_tag = 'support-order-' . ( $wpas_i + 1 );
+	if ( wc_get_orders( array( 'meta_key' => '_wpas_seed', 'meta_value' => $wpas_tag, 'limit' => 1, 'return' => 'ids' ) ) ) {
+		continue;
+	}
+	$wpas_order = wc_create_order( array( 'status' => $wpas_status, 'created_via' => 'woocommerce-pos' ) );
+	foreach ( $wpas_lines as $wpas_sku => $wpas_qty ) {
+		$wpas_order->add_product( wc_get_product( wc_get_product_id_by_sku( $wpas_sku ) ), $wpas_qty );
+	}
+	$wpas_order->set_address( array( 'first_name' => $wpas_first, 'last_name' => $wpas_last, 'email' => strtolower( "$wpas_first.$wpas_last@example.com" ) ), 'billing' );
+	$wpas_order->set_payment_method( 'pos_cash' );
+	$wpas_order->set_payment_method_title( 'Cash' );
+	foreach ( array( '_pos_user' => $wpas_users['maya'], '_pos_user_created' => $wpas_users['maya'], '_pos_store' => $wpas_harbour, '_wpas_seed' => $wpas_tag ) as $wpas_key => $wpas_value ) {
+		$wpas_order->update_meta_data( $wpas_key, (string) $wpas_value );
+	}
+	$wpas_order->calculate_totals();
+	$wpas_note( "order $wpas_tag ($wpas_status)" );
+}
+// ---- support: end
+
 // ---- other-1: begin
 // One variable product, so the POS-only products page can show a variation's own POS visibility (left at POS & Online).
 if ( ! wc_get_product_id_by_sku( 'HV-APR-01' ) ) {
