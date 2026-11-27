@@ -7,6 +7,7 @@ const grid = `${app} main > div > div:nth-child(3)`;
 const card = (name) => `${grid} h3:text-is("${name}") >> xpath=../../..`;
 const paypal = card('PayPal Reader for WooCommerce');
 const square = card('Square Terminal for WooCommerce');
+const stripe = card('Stripe Terminal for WooCommerce');
 const search = `${app} main input[placeholder^="Search extensions"]`;
 
 // Shared by the extension pages (atum, wpml, wp-multilang, storeapps-smart-coupons): step 1 searches
@@ -89,5 +90,18 @@ export default [
     crop: [square],
     pins: [{ name: 'install', selector: `${square} >> button:text-is("Install")` }],
     alt: 'The Square Terminal for WooCommerce card, not installed: version v1.0.0, the Payments category, a short description and the Install button.',
+  },
+  {
+    step: 4,
+    slug: 'payment-card',
+    url: 'wp-admin/admin.php?page=woocommerce-pos-settings#/extensions',
+    crop: [stripe],
+    pins: [
+      { name: 'status', selector: `${stripe} >> h3 + div > span:first-child` },
+      { name: 'more-actions', selector: `${stripe} >> [aria-label="More actions"]` },
+      { name: 'in-pos', selector: `${stripe} >> div:has(> button[role="switch"])` },
+      { name: 'settings', selector: `${stripe} >> a:text-is("Check settings")` },
+    ],
+    alt: "The Stripe Terminal for WooCommerce card, active with WCPOS Pro: 1 step left, version v2.0.1, the Payments category, the ⋮ more actions button, the Off in the POS switch, the Check settings button and the note We can't tell if they're finished.",
   },
 ];

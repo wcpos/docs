@@ -451,6 +451,15 @@ if ( ! is_dir( WP_PLUGIN_DIR . '/paypal-reader-for-woocommerce' ) ) {
 }
 // ---- extensions (A): end
 
+// ---- extensions (C): begin
+// Stripe Terminal for WooCommerce, installed through Pro's own Extensions action and left active, not
+// switched on in the POS and with its settings untouched, so its card shows the payment setup footer.
+if ( ! is_dir( WP_PLUGIN_DIR . '/stripe-terminal-for-woocommerce' ) ) {
+	$wpas_rest( 'POST', '/wcpos/v1/extensions/action', array( 'slug' => 'stripe-terminal-for-woocommerce', 'action' => 'install' ) );
+	$wpas_note( 'Stripe Terminal for WooCommerce installed through Extensions, active, off in the POS' );
+}
+// ---- extensions (C): end
+
 // ---- extensions (B, polylang): begin
 // Polylang (wordpress.org) with English (default) and Français, then WCPOS Polylang through Pro's
 // own extension action. Polylang boots on plugins_loaded, so when it is installed in this run the
