@@ -1,15 +1,15 @@
 <!-- page-scores run: doc=payment/gateways/payarc-terminal climb=payment__gateways__payarc-terminal round=16 judge=opus-b -->
-| Category | Open the Register (j1) | Checkout (j2) | Product Panel (j12) | Square: Build your customer's cart | Shopify: Quick reference – processing a sale | PayArc Terminal Gateway | Baseline |
+| Category | PayArc Terminal Gateway | Open the Register (j1) | Checkout (j2) | Product Panel (j12) | Square: Build your customer's cart | Shopify: Quick reference – processing a sale | Baseline |
 |---|---|---|---|---|---|---|---|
-| Task clarity | 8.5 | 9 | 8.5 | 6.5 | 7.5 | 8 | 8 |
-| Language | 8 | 8.5 | 8 | 6.5 | 7 | 6.5 | 6.5 |
-| Visuals | 9 | 9 | 8.5 | 4 | 4.5 | 6.5 | 6.5 |
-| Structure | 8.5 | 9 | 8.5 | 7 | 7.5 | 7.5 | 7.5 |
-| Layering | 8.5 | 9 | 9 | 7.5 | 6 | 8.5 | 8.5 |
-| Consistency with approved pages | 9.5 | 9.5 | 9.5 | 4 | 4 | 7.5 | 7.5 |
-| Accuracy signals | 9 | 9 | 8.5 | 7.5 | 7.5 | 7.5 | 7.5 |
-| Admin setup | 8 | 7.5 | 7 | 6 | 4.5 | 8 | 8 |
-| **Average** | **8.63** | **8.81** | **8.44** | **6.13** | **6.06** | **7.5** | **7.5** |
+| Task clarity | 8 | 8.5 | 9 | 8.5 | 6.5 | 7.5 | 8 |
+| Language | 6.5 | 8 | 8.5 | 8 | 6.5 | 7 | 6.5 |
+| Visuals | 6.5 | 9 | 9 | 8.5 | 4 | 4.5 | 6.5 |
+| Structure | 7.5 | 8.5 | 9 | 8.5 | 7 | 7.5 | 7.5 |
+| Layering | 8.5 | 8.5 | 9 | 9 | 7.5 | 6 | 8.5 |
+| Consistency with approved pages | 7.5 | 9.5 | 9.5 | 9.5 | 4 | 4 | 7.5 |
+| Accuracy signals | 7.5 | 9 | 9 | 8.5 | 7.5 | 7.5 | 7.5 |
+| Admin setup | 8 | 8 | 7.5 | 7 | 6 | 4.5 | 8 |
+| **Average** | **7.5** | **8.63** | **8.81** | **8.44** | **6.13** | **6.06** | **7.5** |
 
 1. **Take a card payment / Cancel a payment: Visuals.** The cashier's part of the page has no screenshot. All the labelled shots are of WP Admin screens. The cashier only gets text for the PayArc tile, **Terminal: …** with **Change**, the **Send … to PayArc Terminal** button, the four-step **On the terminal** tracker, **Details**, **Cancel on terminal** and **Release this payment**. Every approved page labels each till screen the cashier touches, often with 8 or 9 labels. **Smallest fix:** add two labelled till shots in the Checkout style. The first shows the tender pane with the PayArc tile selected and labels the tile, Terminal/Change, the amount and the Send button. The second shows On the terminal and labels the four steps, Details, Cancel on terminal and Release this payment.
 
