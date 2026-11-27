@@ -3,7 +3,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
   VDOCS, GROUPS, docSource, pageHash, loadScores, saveScores, meanOf, resolveCommit,
-  JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, runScores, scoredOptional,
+  JUDGES, sha256Of, runPath, climbOf, runHeader, pageColumn, runScores, scoredOptional,
 } = require('./lib/page-scores.js');
 
 function gateEntry(gate, climb, judged = new Date().toISOString().slice(0, 10)) {
@@ -40,7 +40,7 @@ function bindRun({ root, gate, climb, run, key }, scores) {
   if (!files.every((file) => fs.existsSync(file))) throw new Error(`--run ${run} needs opus-a.md and opus-b.md`);
   const bytes = files.map((file) => fs.readFileSync(file));
   const columnOf = JUDGES.map((judge, i) => {
-    const column = firstScoreColumn(bytes[i].toString('utf8'));
+    const column = pageColumn(bytes[i].toString('utf8'));
     if (!column) throw new Error(`cannot find the page column in ${files[i]}`);
     return column;
   });

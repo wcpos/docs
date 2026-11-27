@@ -5,7 +5,7 @@ const { execFileSync, spawnSync } = require('child_process');
 const {
   VDOCS, SCORES_FILE, docSource, referencedPaths, hashInputs, pageHash, pageContent, groupOf,
   loadScores, saveScores, meanOf, belowFloor, evaluate, resolveCommit,
-  REQUIRED_CATEGORIES, sha256Of, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores,
+  REQUIRED_CATEGORIES, sha256Of, climbOf, runHeader, pageColumn, parseJudgeTable, runScores,
 } = require('../lib/page-scores');
 const { recordFromGate, recordGroup, seed, carry, prune } = require('../record-page-score');
 
@@ -534,7 +534,10 @@ describe('judge transcripts', () => {
     ['Tips (page)', '| Category | Tips (page) | Square (page) |\n|---|---|---|\n| Task | 8 | 6 |'],
     [null, '| Category | **Baseline** | Page |\n|---|---|---|\n| Task | 6 | 8 |'],
     [null, 'no table here'],
-  ])('takes the first score column as the page column: %j', (column, text) => {
-    expect(firstScoreColumn(text)).toBe(column);
+    ['Staff Permissions (page)', '| Category | Open the Register (j1) | Checkout (j2) | Square: Build your cart | Staff Permissions (page) | Baseline |\n|---|---|---|---|---|---|\n| Task | 7 | 8 | 8 | 6 | 5 |'],
+    [null, '| Category | Open the Register (J1) | Page | Baseline |\n|---|---|---|---|\n| Task | 7 | 6 | 5 |'],
+    ['Refunds (page)', '| Category | Baseline | Refunds (page) |\n|---|---|---|\n| Task | 6 | 8 |'],
+  ])('finds the page column: %j', (column, text) => {
+    expect(pageColumn(text)).toBe(column);
   });
 });
