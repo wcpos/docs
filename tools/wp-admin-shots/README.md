@@ -22,6 +22,7 @@ The seed adds four POS login sessions: Maya on desktop and web, Leo on iPad, and
 node tools/wp-admin-shots/capture.mjs up                    # fetch builds, start wp-env on a free port from 8890, seed
 node tools/wp-admin-shots/capture.mjs shoot stores/setup    # PNGs + static/img/2.x/stores/setup/en/wp-admin.json
 node tools/wp-admin-shots/capture.mjs pos stores/setup      # desktop app's Choose a store (tablet) + manifest.json
+node tools/wp-admin-shots/capture.mjs webpos orders         # web POS at /pos (tablet), merged into manifest.json
 node tools/wp-admin-shots/capture.mjs verify stores/setup   # sizes, pins, alt text, leak checks
 node tools/wp-admin-shots/capture.mjs down                  # stop this tool's env only
 ```
@@ -32,6 +33,14 @@ throwaway profile in `.cache/pos-profile` (emptied every run; the app's real dat
 connects it to this env, signs in as Maya Chen and picks Harbour Street. Maya's password is the
 literal `password`, a throwaway for this local container like wp-env's own `admin`/`password`.
 The seed also turns the POS setting `force_ssl` off, so `/pos` stays on plain http.
+
+`webpos <page>` drives the web POS at `/pos` in Playwright Chromium (1024×768, light) as Maya, with a
+fixed flow per page in `WEBPOS_SHOTS`. For `orders` it rings up a Stoneware Mug in cash at Front counter,
+then shoots the order's View with Change tender (step 5) and the Change tender sheet with Card picked
+(step 6), never confirming. wcpos-polylang 0.1.2 filters products by language although they are not a
+translated type, which empties `/pos`, so the run deactivates it and reactivates it afterwards, even on
+failure. The shots are merged into `static/img/2.x/<page>/en/manifest.json`: captures with the same step,
+device, colour scheme and scale are replaced, everything else is kept.
 
 `up` is idempotent: it reuses the ports in `.cache/state.json`, downloads a build only when `main`
 moved, and the seed finds everything before creating it. `--free-dir`/`--pro-dir <dir>` use a

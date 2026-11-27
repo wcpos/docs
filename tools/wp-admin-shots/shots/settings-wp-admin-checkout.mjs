@@ -8,6 +8,8 @@ const gateways = `${settings} main div:has(> h2:text-is("Gateways"))`;
 const row = (gateway) => `${settings} tr:has(strong:text-is("${gateway}"))`;
 const menu = (gateway) => `[role="menu"][aria-label="${gateway}"]`;
 const openMenu = (gateway) => async (page) => {
+  // The menu is fixed-position and opens downward, so a row near the bottom leaves its items off screen.
+  await page.locator(row(gateway)).evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await page.locator(`${row(gateway)} [aria-haspopup="menu"]`).click();
   await page.locator(menu(gateway)).waitFor({ state: 'visible' });
 };
@@ -40,7 +42,7 @@ export default [
       { name: 'actions', selector: `${row('Cash')} [aria-haspopup="menu"]` },
       { name: 'bacs-row', selector: `${row('Direct bank transfer')} td:has(> strong)` },
     ],
-    alt: 'WP Admin, POS → Settings → Checkout, Gateways: the description and a table with Default, Gateway, Gateway ID, Enabled and Order Status columns. Cash (the default) and Card are switched on with Completed; Direct bank transfer and Check payments are off with On hold; Cash on delivery is off with Completed. Each row has a drag handle and a ⋮ menu.',
+    alt: 'WP Admin, POS → Settings → Checkout, Gateways: the description and a table with Default, Gateway, Gateway ID, Enabled and Order Status columns. Cash (the default) and Card are switched on with Completed; Direct bank transfer and Check payments are off with On hold; Cash on delivery and Stripe Terminal are off with Completed. Each row has a drag handle and a ⋮ menu.',
   },
   {
     step: 3,
