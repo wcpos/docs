@@ -435,6 +435,104 @@ async function pos(pageArg, args) {
   }
 }
 
+// ---- `webpos`: tablet shots of the web POS at /pos, merged into the page's manifest.json beside the
+// shots already there. One fixed flow per page, no step DSL; `user` signs in with the seed's throwaway password.
+const WEBPOS_SHOTS = {
+  orders: { journey: 'OR', user: 'maya', register: 'Front counter', product: 'Stoneware Mug' },
+};
+const POLYLANG = 'wcpos-polylang';
+
+async function webpos(pageArg) {
+  const state = readState();
+  if (!state.siteUrl) fail('run `capture.mjs up` first');
+  const spec = WEBPOS_SHOTS[pageArg] || fail(`no web POS shots for ${pageArg} (have: ${Object.keys(WEBPOS_SHOTS).join(', ')})`);
+  if (!fs.existsSync(posManifestPath(pageArg))) fail(`no ${path.relative(ROOT, posManifestPath(pageArg))} to merge into`);
+  const commit = wp(state, 'plugin', 'get', REPOS.pro, '--field=version').trim();
+  const started = new Date();
+  const runId = `webpos-${started.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, '')}`;
+  // wcpos-polylang 0.1.2's product-query filter adds a language filter although products are not a
+  // Polylang-translated type, so /pos lists no products. It is off for this run and back on afterwards.
+  let polylang = true;
+  try { wp(state, 'plugin', 'is-active', POLYLANG); } catch (error) { if (!(error instanceof Fail)) throw error; polylang = false; }
+  let browser;
+  try {
+    if (polylang) wp(state, 'plugin', 'deactivate', POLYLANG);
+    const { chromium } = await import('playwright');
+    browser = await chromium.launch();
+    const context = await browser.newContext({ viewport: TABLET, deviceScaleFactor: 1, colorScheme: 'light', locale: 'en-US' });
+    const page = await context.newPage();
+    const byId = (id) => page.getByTestId(id).filter({ visible: true }).first();
+    const captures = [];
+    const shot = async (step, slug, pins) => {
+      await page.mouse.move(1, 1); // park the pointer where nothing reacts to hover
+      await page.waitForTimeout(1500); // toasts and transitions settle
+      const size = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+      if (size.width !== TABLET.width || size.height !== TABLET.height) fail(`page is ${size.width}x${size.height}, not ${TABLET.width}x${TABLET.height}`);
+      const boxes = [];
+      for (const [testID, locator] of pins) {
+        const b = await locator.boundingBox();
+        if (!b) fail(`pin ${testID} not visible`);
+        boxes.push({ testID, box: { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) } });
+      }
+      const file = `tablet-light-regular--${spec.journey.toLowerCase()}-${step}-${slug}.png`;
+      await page.screenshot({ path: path.join(outDir(pageArg), file), animations: 'disabled', caret: 'hide' });
+      fs.mkdirSync(path.dirname(textPath(file)), { recursive: true });
+      fs.writeFileSync(textPath(file), await page.locator('body').innerText());
+      console.log(`webpos: ${path.relative(ROOT, path.join(outDir(pageArg), file))}`);
+      captures.push({
+        file, step, slug, device: 'tablet', colorScheme: 'light', scale: 'regular', store: 'wp-env', variant: 'pro',
+        viewport: TABLET, pins: boxes, runId, commit, tool: 'tools/wp-admin-shots',
+      });
+    };
+    try {
+      await page.goto(`${state.siteUrl}/wp-login.php`);
+      await page.fill('#user_login', spec.user);
+      await page.fill('#user_pass', 'password'); // the seed's local throwaway, like wp-env's admin/password
+      await Promise.all([page.waitForURL(/wp-admin|pos|my-account/, { waitUntil: 'commit', timeout: 120000 }), page.click('#wp-submit')]);
+      await page.goto(`${state.siteUrl}/pos`, { waitUntil: 'domcontentloaded' });
+      await byId('search-products').waitFor({ state: 'visible', timeout: 90000 });
+      await page.addStyleTag({ content: '* { scrollbar-width: none !important; }' });
+      const register = page.getByTestId(/^register-picker-row-/).filter({ hasText: spec.register, visible: true }).first();
+      if (await register.isVisible()) await register.click();
+      // A category card also says "N products"; the footer's count is the first exact match.
+      await page.getByText(/^[1-9]\d* products?$/).first().waitFor({ state: 'visible', timeout: 120000 });
+      await byId('browse-all-products').click();
+      // The card carrying the name is `product-tile`; `product-tile-<id>` is only its picture (no text).
+      await page.getByTestId('product-tile', { exact: true }).filter({ hasText: spec.product, visible: true }).first().click();
+      for (const id of ['checkout-button', 'checkout-method-pos_cash', 'checkout-quick-exact', 'checkout-commit']) await byId(id).click();
+      await byId('receipt-new-sale').waitFor({ state: 'visible', timeout: 60000 });
+      await byId('receipt-new-sale').click();
+      await byId('drawer-item-orders').click();
+      await byId('order-open-button').click(); // newest first: the sale just made
+      await byId('order-modal').waitFor({ state: 'visible', timeout: 60000 });
+      const changeTender = page.getByTestId(/^order-payment-change-tender-/).filter({ visible: true }).first();
+      await changeTender.waitFor({ state: 'visible', timeout: 60000 });
+      // The real test ID ends in the payment leg's id, new every run; the pin keeps a stable name.
+      await shot(5, 'change-tender', [['order-payment-change-tender', changeTender]]);
+      await changeTender.click();
+      await byId('change-tender-sheet').waitFor({ state: 'visible', timeout: 60000 });
+      await byId('change-tender-method-pos_card').click();
+      await page.getByTestId('change-tender-confirm').filter({ visible: true, hasText: 'Change to Card' }).first().waitFor({ timeout: 30000 });
+      // Stops before confirming: Change to Card is never clicked.
+      await shot(6, 'change-tender-sheet', ['change-tender-method-pos_card', 'change-tender-confirm'].map((id) => [id, byId(id)]));
+    } catch (error) {
+      const failure = path.join(CACHE, 'webpos-failure.png');
+      await page.screenshot({ path: failure }).catch(() => {});
+      console.error(`webpos: failed; screenshot in ${path.relative(ROOT, failure)}`);
+      throw error;
+    }
+    // Replace this run's steps (same step, device, colour scheme and scale), keep every other capture and field.
+    const m = JSON.parse(fs.readFileSync(posManifestPath(pageArg), 'utf8'));
+    const same = (a, b) => ['step', 'device', 'colorScheme', 'scale'].every((k) => a[k] === b[k]);
+    m.captures = [...m.captures.filter((c) => !captures.some((n) => same(c, n))), ...captures].sort((a, b) => a.step - b.step);
+    fs.writeFileSync(posManifestPath(pageArg), `${JSON.stringify(m, null, 2)}\n`);
+    console.log(`webpos: ${path.relative(ROOT, posManifestPath(pageArg))} (woocommerce-pos-pro ${commit}, ${spec.user})`);
+  } finally {
+    await browser?.close();
+    if (polylang) wp(state, 'plugin', 'activate', POLYLANG);
+  }
+}
+
 function pngSize(file) {
   const buf = fs.readFileSync(file);
   if (buf.toString('ascii', 12, 16) !== 'IHDR') return null;
@@ -500,9 +598,9 @@ function checkCapture(pageArg, c, failures, { alt, run, site }) {
 }
 
 const [command, ...rest] = process.argv.slice(2);
-const commands = { up: () => up(rest), down, shoot: () => shoot(rest[0] || fail('shoot needs a page, e.g. stores/setup')), verify: () => verify(rest[0] || fail('verify needs a page')), pos: () => pos(rest[0] || fail('pos needs a page, e.g. stores/setup'), rest) };
+const commands = { up: () => up(rest), down, shoot: () => shoot(rest[0] || fail('shoot needs a page, e.g. stores/setup')), verify: () => verify(rest[0] || fail('verify needs a page')), pos: () => pos(rest[0] || fail('pos needs a page, e.g. stores/setup'), rest), webpos: () => webpos(rest[0] || fail('webpos needs a page, e.g. orders')) };
 try {
-  if (!commands[command]) fail('usage: capture.mjs up [--free-dir DIR] [--pro-dir DIR] | shoot <page> | pos <page> [--app PATH] | verify <page> | down');
+  if (!commands[command]) fail('usage: capture.mjs up [--free-dir DIR] [--pro-dir DIR] | shoot <page> | pos <page> [--app PATH] | webpos <page> | verify <page> | down');
   await commands[command]();
 } catch (error) {
   console.error(error instanceof Fail ? error.message : error.stack);
