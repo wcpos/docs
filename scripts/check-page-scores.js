@@ -3,7 +3,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
   VDOCS, referencedPaths, evaluate, loadScores, belowFloor, RATCHET_SHARE, MEAN_FLOOR, docSource, groupOf, pageHash, pageContent,
-  meanOf, REQUIRED_CATEGORIES, OPTIONAL_CATEGORIES, RUNS_DIR, JUDGES, GROUPS, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores, scoredOptional,
+  meanOf, REQUIRED_CATEGORIES, OPTIONAL_CATEGORIES, RUNS_DIR, JUDGES, GROUPS, sha256Of, runPath, climbOf, runHeader, pageColumn, parseJudgeTable, runScores, scoredOptional,
 } = require('./lib/page-scores.js');
 
 // Warn-only before this UTC date, then failures exit 1 (front desk ruling 2026-11-12: required from 2026-11-16).
@@ -168,7 +168,7 @@ function judgeRunProblem(root, doc, entry) {
     const [header, ...rest] = text.split('\n');
     if (header.replace(/\r$/, '') !== runHeader({ doc, climb: entry.climb, round: entry.round, judge })) return `judge run file ${file} does not name this page`;
     const body = rest.join('\n');
-    if (typeof column !== 'string' || column !== firstScoreColumn(body)) return `judge run ${file} column "${column}" is not the page's own column`;
+    if (typeof column !== 'string' || column !== pageColumn(body)) return `judge run ${file} column "${column}" is not the page's own column`;
     texts.push(body);
   }
   const categories = Object.keys(entry.scores);

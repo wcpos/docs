@@ -44,12 +44,13 @@ function tableRows(text) {
   return table.map((line) => line.trim().replace(/^\|+|\|+$/g, '').split('|').map((cell) => cell.trim()));
 }
 
-// The first table's first score column, where every judge transcript puts the page under review; null if none or Baseline.
-function firstScoreColumn(text) {
+// Prefer the first (page) header; otherwise use the first score header unless empty, Baseline, or an anchor.
+function pageColumn(text) {
   let cell;
   try { cell = tableRows(text)[0][1]; } catch { return null; }
+  const marked = tableRows(text)[0].slice(1).map((header) => cleanCell(header).trim()).find((header) => /\(page\)\s*$/i.test(header));
   const column = cleanCell(cell ?? '');
-  return !column || /baseline/i.test(column) ? null : column;
+  return marked ?? (column.trim() && !/baseline|\(j\d+\)\s*$/i.test(column) ? column.trim() : null);
 }
 
 function parseJudgeTable(text, column, categories) {
@@ -228,5 +229,5 @@ function evaluate(root, doc, entries) {
 module.exports = {
   VDOCS, IMG, IMG_ROOTS, SCORES_FILE, MEAN_FLOOR, CATEGORY_FLOOR, RATCHET_SHARE, GROUPS, CATEGORY_KEYWORDS, REQUIRED_CATEGORIES, resolveCommit,
   OPTIONAL_CATEGORIES, docSource, referencedPaths, hashInputs, pageHash, pageContent, groupOf, loadScores, saveScores, meanOf, belowFloor, evaluate,
-  RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, firstScoreColumn, parseJudgeTable, runScores, scoredOptional,
+  RUNS_DIR, JUDGES, sha256Of, runPath, climbOf, runHeader, pageColumn, parseJudgeTable, runScores, scoredOptional,
 };
